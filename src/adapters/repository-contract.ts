@@ -18,7 +18,6 @@ import type {
   Ask,
   Block,
   BookingCode,
-  CheckoutHold,
   Credential,
   CrewMember,
   Event,
@@ -791,56 +790,6 @@ export function runRepositoryContract(
       expect(await repo.getReservationByPaymentIntentId("pi_other")).toBeNull();
     });
 
-    it("getLivePendingByHolderToken: finds the live pending row for this token + slot, by possession only (14.6)", async () => {
-      await repo.saveReservation(pendingRow({ holderToken: "tok-A", email: "mary@x.io", phone: "+12165550148" }));
-      const hit = await repo.getLivePendingByHolderToken(VESSEL, "2026-07-01", "14:00", "tok-A", SINCE);
-      expect(String(hit!.id)).toBe("pend-1");
-      // Wrong token — even with the SAME typed identity — is not a match. Possession, not identity.
-      expect(await repo.getLivePendingByHolderToken(VESSEL, "2026-07-01", "14:00", "tok-B", SINCE)).toBeNull();
-      // A different slot the same session touched is a different checkout.
-      expect(await repo.getLivePendingByHolderToken(VESSEL, "2026-07-01", "15:30", "tok-A", SINCE)).toBeNull();
-    });
-
-    it("getLivePendingByHolderToken: a LAPSED row is not a retry target — it's a new checkout (14.6)", async () => {
-      await repo.saveReservation(
-        pendingRow({ holderToken: "tok-A", reservedAt: "2026-06-01T11:00:00.000Z" }),
-      );
-      expect(await repo.getLivePendingByHolderToken(VESSEL, "2026-07-01", "14:00", "tok-A", SINCE)).toBeNull();
-    });
-
-    it("getLivePendingByHolderToken: a BOOKED row with that token is not returned (only a live pending one) (14.6)", async () => {
-      await repo.saveReservation(pendingRow({ holderToken: "tok-A", status: "booked", eventId: SLOT_ID }));
-      expect(await repo.getLivePendingByHolderToken(VESSEL, "2026-07-01", "14:00", "tok-A", SINCE)).toBeNull();
-    });
-
-    const invA = { fareCents: 50000, extrasCents: 0, taxCents: 0, taxRateBps: 0, serviceFeeCents: 1500, serviceFeeBps: 300, gratuityCents: 10000, gratuityBps: 2000, totalCents: 61500 };
-    const invB = { ...invA, gratuityCents: 12500, gratuityBps: 2500, totalCents: 64000 };
-
-    it("appendPaymentIntentToPending: on a pending row, re-freezes the invoice and appends the id (14.6)", async () => {
-      await repo.saveReservation(pendingRow({ paymentIntentIds: ["pi_1"], invoice: invA }));
-      await repo.appendPaymentIntentToPending(rid("pend-1"), invB, "pi_2", "2026-07-01T13:00:00.000Z");
-      const got = (await repo.getReservation(rid("pend-1")))!;
-      expect(got.status).toBe("pending");
-      expect(got.paymentIntentIds).toEqual(["pi_1", "pi_2"]);
-      expect(got.invoice).toEqual(invB); // re-frozen at the new tip
-      expect(got.updatedAt).toBe("2026-07-01T13:00:00.000Z");
-    });
-
-    it("appendPaymentIntentToPending: NEVER reverts a booked row — appends the id, leaves status/event/invoice (14.6 race guard)", async () => {
-      // The retry's read saw `pending`, but a concurrent confirm booked the row before this write
-      // landed. A full-row upsert would revert a paid booking to pending with a null Event; this
-      // guarded write must not. The superseded id still lands, so 15.2 can refund it.
-      await repo.saveReservation(
-        pendingRow({ status: "booked", eventId: SLOT_ID, paymentIntentIds: ["pi_1"], invoice: invA }),
-      );
-      await repo.appendPaymentIntentToPending(rid("pend-1"), invB, "pi_2", "2026-07-01T13:00:00.000Z");
-      const got = (await repo.getReservation(rid("pend-1")))!;
-      expect(got.status).toBe("booked"); // not reverted
-      expect(String(got.eventId)).toBe(String(SLOT_ID)); // the Event stays attached
-      expect(got.paymentIntentIds).toEqual(["pi_1", "pi_2"]); // the superseded id is still findable
-      expect(got.invoice).toEqual(invA); // the BOOKED invoice is preserved, not the retry's
-    });
-
     it("savePendingIfHullFree: writes the row on a free hull-day — pending, no Event (§2.8.2)", async () => {
       const res = await repo.savePendingIfHullFree(pendingRow(), SINCE);
       expect(res.result).toBe("won");
@@ -1125,22 +1074,9 @@ export function runRepositoryContract(
     });
 
     // ── Checkout holds — acquire / lifecycle (12.1, DEC-109) ───────────────────
-    const hold = (over: Partial<CheckoutHold> = {}): CheckoutHold => ({
-      id: asId<"CheckoutHoldId">("hold-1"),
-      vesselId: VESSEL,
-      date: "2026-07-01",
-      time: "14:00",
-      source: "muster",
-      offeringId: asId<"OfferingId">("off-1"),
-      guestCount: 4,
-      expiresAt: "2026-07-01T12:15:00.000Z",
-      createdAt: "2026-07-01T12:00:00.000Z",
-      ...over,
-    });
-
     /**
      * Save the parent rows the reservations-era foreign keys require (DEC-131). Postgres now
-     * enforces `checkout_holds.{vessel_id,offering_id}` and `offerings.location_id`; the
+     * enforces `offerings.location_id` and the reservations-era keys; the
      * in-memory double enforces nothing, so these saves are inert there. Pure fixture setup —
      * no test's assertions change, they just stop writing children into thin air.
      */
@@ -1302,129 +1238,6 @@ export function runRepositoryContract(
       expect(await repo.claimRecoverySend("dana@example.com", THROTTLE_T0, COOLDOWN)).toEqual({
         claimed: true,
       });
-    });
-
-    /** A real-shaped holder token: 32 CSPRNG bytes as base64url is 43 chars (#575). */
-    const TOKEN = "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWo";
-
-    it("checkout hold: holderToken round-trips, present and absent (#575)", async () => {
-      // The column the retry-reuse rule reads. Absent must stay ABSENT rather than null — the
-      // reuse lookup requires a key on both sides, and a null that round-trips as `null` rather
-      // than `undefined` is the kind of thing that makes two keyless holds compare equal.
-      await saveCatalogParents();
-      expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
-      const bare = (await repo.listCheckoutHolds())[0]!;
-      expect("holderToken" in bare).toBe(false);
-
-      await repo.removeCheckoutHold(bare.id);
-      expect(
-        (await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-keyed"), holderToken: TOKEN })))
-          .acquired,
-      ).toBe(true);
-      expect((await repo.listCheckoutHolds())[0]!.holderToken).toBe(TOKEN);
-    });
-
-    it("acquireCheckoutHold: fresh acquire succeeds and is listable", async () => {
-      await saveCatalogParents();
-      expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
-      expect(await repo.listCheckoutHolds()).toHaveLength(1);
-    });
-
-    it("acquireCheckoutHold: two live acquires on one slot — exactly one wins", async () => {
-      await saveCatalogParents();
-      const a = await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-a") }));
-      const b = await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-b") }));
-      expect([a.acquired, b.acquired].filter(Boolean)).toHaveLength(1);
-      expect(await repo.listCheckoutHolds()).toHaveLength(1);
-    });
-
-    it("acquireCheckoutHold: idempotent re-acquire of one's OWN live hold", async () => {
-      await saveCatalogParents();
-      expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
-      expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
-      expect(await repo.listCheckoutHolds()).toHaveLength(1);
-    });
-
-    it("acquireCheckoutHold: an EXPIRED hold is inert — re-acquire succeeds (delete-expired-first)", async () => {
-      await saveCatalogParents();
-      // seed a hold that is live at its own createdAt but expired by the new acquire's clock
-      await repo.acquireCheckoutHold(
-        hold({ id: asId<"CheckoutHoldId">("h-old"), createdAt: "2026-07-01T10:45:00.000Z", expiresAt: "2026-07-01T11:00:00.000Z" }),
-      );
-      const res = await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-new") }));
-      expect(res.acquired).toBe(true);
-      const holds = await repo.listCheckoutHolds();
-      expect(holds).toHaveLength(1);
-      expect(String(holds[0]!.id)).toBe("h-new"); // the stale row was deleted, not left to block
-    });
-
-    it("listLiveCheckoutHolds: returns only holds live at the given instant (issue #713)", async () => {
-      await saveCatalogParents();
-      // Two holds on DIFFERENT slots so neither displaces the other: one live at T, one expired.
-      await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-live"), time: "14:00" }));
-      await repo.acquireCheckoutHold(
-        hold({
-          id: asId<"CheckoutHoldId">("h-dead"),
-          time: "16:00",
-          createdAt: "2026-07-01T10:45:00.000Z",
-          expiresAt: "2026-07-01T11:00:00.000Z",
-        }),
-      );
-      // The raw read still sees both — pruning lags by design, and the deriver stays responsible
-      // for treating a present-but-expired row as inert.
-      expect(await repo.listCheckoutHolds()).toHaveLength(2);
-
-      const live = await repo.listLiveCheckoutHolds("2026-07-01T12:05:00.000Z");
-      expect(live.map((h) => String(h.id))).toEqual(["h-live"]);
-
-      // Boundary: expiry is exclusive, matching the `expiresAt > asOf` rule the deriver uses.
-      expect(await repo.listLiveCheckoutHolds("2026-07-01T12:15:00.000Z")).toHaveLength(0);
-      expect(await repo.listLiveCheckoutHolds("2026-07-01T12:14:59.999Z")).toHaveLength(1);
-    });
-
-    it("acquireCheckoutHold sweeps EVERY expired hold, not just its own slot (issue #713)", async () => {
-      await saveCatalogParents();
-      // An abandoned checkout on a slot nobody ever re-attempts. Before issue #713 the delete in
-      // `acquireCheckoutHold` was scoped to the acquiring slot identity, so this row was
-      // unreachable by any cleanup path and sat in the table forever.
-      await repo.acquireCheckoutHold(
-        hold({
-          id: asId<"CheckoutHoldId">("h-abandoned"),
-          time: "16:00",
-          createdAt: "2026-07-01T10:45:00.000Z",
-          expiresAt: "2026-07-01T11:00:00.000Z",
-        }),
-      );
-      expect(await repo.listCheckoutHolds()).toHaveLength(1);
-
-      // A completely unrelated acquire, on a different slot, at a later instant.
-      expect((await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-new") }))).acquired).toBe(true);
-
-      const remaining = await repo.listCheckoutHolds();
-      expect(remaining.map((h) => String(h.id))).toEqual(["h-new"]);
-    });
-
-    it("acquireCheckoutHold's sweep never touches a LIVE hold on another slot (issue #713)", async () => {
-      await saveCatalogParents();
-      // The sweep widens a DELETE that runs on the money path. Getting its predicate wrong would
-      // drop a hold somebody is actively paying against and hand their boat to another buyer —
-      // strictly worse than the unbounded growth it exists to fix.
-      await repo.acquireCheckoutHold(
-        hold({ id: asId<"CheckoutHoldId">("h-other-live"), time: "16:00", expiresAt: "2026-07-01T12:15:00.000Z" }),
-      );
-      expect((await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-new") }))).acquired).toBe(true);
-
-      const ids = (await repo.listCheckoutHolds()).map((h) => String(h.id)).sort();
-      expect(ids).toEqual(["h-new", "h-other-live"]);
-    });
-
-    it("checkout holds: remove is idempotent", async () => {
-      await saveCatalogParents();
-      await repo.acquireCheckoutHold(hold());
-      await repo.removeCheckoutHold(asId<"CheckoutHoldId">("hold-1"));
-      expect(await repo.listCheckoutHolds()).toHaveLength(0);
-      await repo.removeCheckoutHold(asId<"CheckoutHoldId">("hold-1")); // no-op, no throw
-      expect(await repo.listCheckoutHolds()).toHaveLength(0);
     });
 
     // ── Reservation catalog — write + read round-trip (12.1a) ──────────────────

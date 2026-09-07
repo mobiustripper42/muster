@@ -27,7 +27,7 @@
  *
  * Runs desktop + 375px (registered in the mobile testMatch): the one screen, two native layouts.
  */
-import { test, expect, resetAndSeed, clickHydrated, plantCheckoutHold, plantVesselBlock } from "./fixtures.js";
+import { test, expect, resetAndSeed, clickHydrated, plantPendingReservation, plantVesselBlock } from "./fixtures.js";
 import { BOOKED, DEMO, DEMO_MONTH_LABEL, TODAY_MONTH_LABEL } from "./reservation-demo.js";
 
 /** The fixture's sole live offering — the one `/book` opens straight into. */
@@ -135,46 +135,50 @@ test.describe("public /book availability", () => {
   /**
    * A slot someone else is mid-payment on must not be advertised (#620).
    *
-   * `deriveVirtualAvailability` has supported this since 12.1 — `holds` + `asOf`, lazy-on-read
-   * with no cron (`availability.ts:185`, `:301`). Neither caller passed them, so the whole branch
-   * was dead in production: the slot rendered "1 boat left", the loser walked the entire funnel,
-   * and the CAS rejected them at the end with "that departure was just taken while you were
-   * checking out". The guard existed and never ran.
+   * `deriveVirtualAvailability` has supported this since 12.1 and the caller passed nothing, so
+   * the whole branch was dead in production: the slot rendered "1 boat left", the loser walked the
+   * entire funnel, and the CAS rejected them at the end with "that departure was just taken while
+   * you were checking out". The guard existed and never ran.
    *
-   * Both cases in one test on purpose. Asserting only that a live hold hides the slot would pass
-   * against a change that simply hides every hold forever — the expiry comparison IS the feature,
-   * and nothing else exercises it, because no cron ever deletes an expired row.
+   * The occupant used to be a `checkout_holds` row; 14.7 dropped that table and a customer at
+   * Stripe is now a live `pending` reservation. Same question, same answer.
+   *
+   * Both cases in one test on purpose. Asserting only that a live row hides the slot would pass
+   * against a change that simply hides every pending row forever — the payment-window comparison
+   * IS the feature, and nothing else exercises it, because no cron ever deletes a lapsed row.
    */
-  test("a live checkout hold takes the slot off sale; an expired one does not", async ({ page }) => {
-    // 15:30 is open in the fixture — 13:30 is the seeded booking, so a hold there would prove
+  test("a live pending row takes the slot off sale; a lapsed one does not", async ({ page }) => {
+    // 15:30 is open in the fixture — 13:30 is the seeded booking, so a row there would prove
     // nothing (already sold out) and the test would pass with the feature reverted.
-    await plantCheckoutHold({
-      id: "hold-live-620",
+    await plantPendingReservation({
+      id: "pend-live-620",
       vesselId: DEMO.vesselId,
       date: BOOKED.date,
       time: "15:30",
       offeringId: DEMO_OFFERING,
       guestCount: 2,
-      // Far future — this test must not turn into a clock race at the top of a minute.
-      expiresAt: "2099-01-01T00:00:00.000Z",
+      // Reserved now: live for the next 15 minutes, which no run of this spec outlasts.
+      reservedAt: new Date().toISOString(),
     });
 
     await page.goto(BOOKED_DAY);
-    // Three boats run at 15:30; the hold takes one off sale, leaving two.
+    // Three boats run at 15:30; the pending row takes one off sale, leaving two.
     await expect(page.getByTestId("slot-15:30")).toContainText("2 boats open");
-    // The neighbour is untouched: the hold subtracts ONE slot, not the boat's day.
+    // The neighbour is untouched: the row commits the hull for its 100 hold minutes (to 17:10),
+    // not for the boat's whole day.
     await expect(page.getByTestId("slot-17:30")).toContainText("3 boats open");
 
-    // An EXPIRED hold is inert. Nothing deletes these rows, so a row that has aged out sits in
-    // the table forever — if the comparison were dropped it would silently keep a slot off sale.
-    await plantCheckoutHold({
-      id: "hold-expired-620",
+    // A LAPSED row is inert. Nothing deletes these rows, so one that has aged out of the payment
+    // window sits in the table forever — if the comparison were dropped it would silently keep a
+    // slot off sale.
+    await plantPendingReservation({
+      id: "pend-lapsed-620",
       vesselId: DEMO.vesselId,
       date: BOOKED.date,
       time: "17:30",
       offeringId: DEMO_OFFERING,
       guestCount: 2,
-      expiresAt: "2020-01-01T00:00:00.000Z",
+      reservedAt: "2020-01-01T00:00:00.000Z",
     });
 
     await page.goto(BOOKED_DAY);

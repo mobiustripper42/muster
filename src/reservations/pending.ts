@@ -9,9 +9,10 @@
  * **Two things called "hold minutes" meet here, and they are not the same number.**
  *
  *   - `PAYMENT_WINDOW_MINUTES` below — how long a customer has to pay before their row lapses.
- *     15 minutes (DEC-109). The code has called this `HOLD_MINUTES` since 12.1, because it is
- *     also the `checkout_holds` TTL, and it stays exported under that name from `claim.ts` for
- *     every existing reader. `CHECKOUT_HOLD_MINUTES` overrides it outside production.
+ *     15 minutes (DEC-109). The code has called this `HOLD_MINUTES` since 12.1, when it was also
+ *     the TTL of the `checkout_holds` table 14.7 dropped, and it stays exported under that name
+ *     from `claim.ts` for every existing reader. `CHECKOUT_HOLD_MINUTES` overrides it outside
+ *     production — the env var keeps its old name too, for the same reason.
  *   - `Reservation.holdMinutes` — how long the HULL is committed for a departure, frozen from
  *     `Offering.holdMinutes` (DEC-161). Two hours for a hundred-minute trip, say. That is a
  *     property of the boat's day, not of the customer's checkout, and it lives in `hull-busy.ts`.

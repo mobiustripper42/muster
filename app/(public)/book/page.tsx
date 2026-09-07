@@ -21,7 +21,7 @@
  * operator's standard, and the acceptance behind the acceptance: **never show a customer
  * something they cannot buy.**
  */
-import type { Block, CheckoutHold, Event, Location, Offering, Reservation, Vessel } from "@core/domain/entities.js";
+import type { Block, Event, Location, Offering, Reservation, Vessel } from "@core/domain/entities.js";
 import { vesselDateOf } from "@core/config/tenant.js";
 import { deriveVirtualAvailability, type VirtualSlot } from "@core/reservations/availability.js";
 import {
@@ -73,23 +73,19 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   let events: Event[];
   let reservations: Reservation[];
   let locations: Location[];
-  let holds: CheckoutHold[];
-  // One instant for the whole render — it filters the hold read here and is handed to the deriver
-  // as `asOf` below, so a hold can't be live for one and dead for the other (issue #713).
+  // One instant for the whole render, handed to the deriver as `asOf` below — every pending row's
+  // liveness is decided against it, so one can't be live for one reader and lapsed for another
+  // (issue #713).
   const asOf = new Date().toISOString();
   try {
     const repo = getRepo();
-    [offerings, vessels, blocks, events, reservations, locations, holds] = await Promise.all([
+    [offerings, vessels, blocks, events, reservations, locations] = await Promise.all([
       repo.listOfferings(),
       repo.listVessels(),
       repo.listBlocks(),
       repo.listEvents(),
       repo.listAllReservations(),
       repo.listLocations(),
-      // Live rows only (issue #713). This page is `force-dynamic`, so it runs on EVERY view and
-      // every date-nav; the unfiltered read scanned a table that grows by one row per abandoned
-      // checkout and never shrank.
-      repo.listLiveCheckoutHolds(asOf),
     ]);
   } catch (e) {
     // Revenue surface: this is the public booking calendar, and a customer who
@@ -166,15 +162,16 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   // Derive over [monthStart, lastDayOfMonth]. lastDay = day before next month's first.
   const lastDay = new Date(Date.parse(`${monthEnd}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 
-  // `holds` + `asOf` (#620). The deriver has supported hold-awareness since 12.1 and NEITHER
-  // caller passed them, so the branch was dead in production: a slot another customer was
-  // actively paying for rendered as available, the loser walked the whole funnel, and the write
-  // CAS rejected them at the end with "that departure was just taken while you were checking
-  // out". The guard existed and never ran.
+  // `asOf` (#620). A slot another customer is actively paying for must not render as available —
+  // before that was passed, the loser walked the whole funnel and the write CAS rejected them at
+  // the end with "that departure was just taken while you were checking out".
   //
-  // `asOf` is required for a hold to count at all — absent, the deriver treats none as live
-  // (conservative by design, since the CAS is still the real backstop). Vessel-local day for the
-  // window, UTC instant for expiry: `expiresAt` is UTC and the comparison is string-lexical.
+  // `asOf` is required for a live pending row to count at all — absent, the deriver treats none as
+  // live (conservative by design, since the CAS is still the real backstop). Vessel-local day for
+  // the window, UTC instant for the payment window, which is compared string-lexically.
+  //
+  // Until 14.7 a `holds` array was passed beside it, read from `checkout_holds`. That table is
+  // gone: a customer at Stripe is a `pending` reservation, and `reservations` already carries it.
   const slots = deriveVirtualAvailability({
     offerings: [chosen],
     vessels,
@@ -182,9 +179,8 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
     blocks,
     events,
     reservations,
-    holds,
-    // The SAME instant the hold read was filtered on (issue #713) — a second `new Date()` here
-    // could disagree with the first by however long the reads took.
+    // The SAME instant the reads above ran under (issue #713) — a second `new Date()` here could
+    // disagree with the first by however long they took.
     asOf,
   });
   const slotsByDate = new Map<string, VirtualSlot[]>();

@@ -23,7 +23,6 @@ import type {
   Block,
   BookingCode,
   BookingInvoice,
-  CheckoutHold,
   Credential,
   CrewMember,
   CrewStatus,
@@ -61,7 +60,6 @@ import type {
   CustomerId,
   AskId,
   BlockId,
-  CheckoutHoldId,
   CredentialId,
   CrewMemberId,
   EventId,
@@ -313,20 +311,6 @@ const toBlock = (r: any): Block => {
       throw new Error(`unknown block kind: ${String(r.kind)}`);
   }
 };
-
-const toCheckoutHold = (r: any): CheckoutHold => ({
-  id: asId<"CheckoutHoldId">(r.id),
-  vesselId: asId<"VesselId">(r.vessel_id),
-  date: r.date,
-  time: r.time,
-  source: "muster",
-  offeringId: asId<"OfferingId">(r.offering_id),
-  guestCount: r.guest_count,
-  expiresAt: r.expires_at,
-  createdAt: r.created_at,
-  ...opt("stripeCheckoutSessionId", r.stripe_checkout_session_id),
-  ...opt("holderToken", r.holder_token),
-});
 
 const toReservation = (r: any): Reservation => ({
   id: asId<"ReservationId">(r.id),
@@ -1799,28 +1783,6 @@ export class PostgresRepository implements Repository {
     return rows[0] ? toReservation(rows[0]) : null;
   }
 
-  async getLivePendingByHolderToken(
-    vesselId: VesselId,
-    date: string,
-    time: string,
-    holderToken: string,
-    pendingLiveSince: string,
-  ): Promise<Reservation | null> {
-    if (!holderToken) return null; // possession only — a cookieless client writes a fresh row
-    // Live = `pending` and (admin-source or reserved after the window opened), the `isLivePending`
-    // rule in SQL. Matched by the httpOnly cookie token + slot, NEVER by typed email or phone.
-    const { rows } = await this.#pool.query(
-      `select * from reservations
-        where status = 'pending'
-          and holder_token = $4
-          and vessel_id = $1 and date = $2 and time = $3
-          and (source = 'admin' or (reserved_at is not null and reserved_at > $5))
-        limit 1`,
-      [vesselId, date, time, holderToken, pendingLiveSince],
-    );
-    return rows[0] ? toReservation(rows[0]) : null;
-  }
-
   async appendPaymentIntentToPending(
     reservationId: ReservationId,
     invoice: BookingInvoice,
@@ -1840,11 +1802,10 @@ export class PostgresRepository implements Repository {
     );
   }
 
-  // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────
   // ── Refund lease (#726) ───────────────────────────────────────────────────
   /**
-   * Delete-if-expired then insert, in ONE transaction — the `acquireCheckoutHold` shape below,
-   * for the same reason: `now()` is not immutable so liveness can't live in an index predicate.
+   * Delete-if-expired then insert, in ONE transaction, because `now()` is not immutable so
+   * liveness can't live in an index predicate.
    * The primary key on `reservation_id` is the mutex; `on conflict do nothing` + `returning`
    * decides the winner without raising.
    *
@@ -1891,7 +1852,7 @@ export class PostgresRepository implements Repository {
 
   // ── Recovery throttle (issue #460) ────────────────────────────────────────
   /** Delete-if-expired then insert, in one short transaction with no network call inside it —
-   *  the `acquireCheckoutHold` shape below. The primary key is the mutex; `on conflict do
+   *  the same delete-if-expired-then-insert shape. The primary key is the mutex; `on conflict do
    *  nothing` + `returning` decides the winner without raising. */
   async claimRecoverySend(
     contactKey: string,
@@ -1921,93 +1882,6 @@ export class PostgresRepository implements Repository {
     } finally {
       client.release();
     }
-  }
-
-  async acquireCheckoutHold(
-    hold: CheckoutHold,
-  ): Promise<{ acquired: true; hold: CheckoutHold } | { acquired: false }> {
-    // Delete any EXPIRED hold for this slot identity first (a stale row would block the
-    // unique), then insert. "now" for expiry = hold.createdAt (the acquire instant) — the
-    // same reference the in-memory adapter uses, so both are behaviorally identical under
-    // the contract. The `checkout_holds_slot_identity` unique makes two live acquires
-    // collide; `on conflict do nothing` + the by-id re-select decides the winner.
-    const client = await this.#pool.connect();
-    try {
-      await client.query("begin");
-      await client.query(
-        // Sweeps EVERY expired muster hold, not just this slot's (issue #713). Scoped to the
-        // slot identity, an abandoned checkout on a departure nobody re-attempts was unreachable
-        // by any cleanup path and grew the table without bound; there is no scheduler in this
-        // codebase, so an acquire is the only moment a sweep can happen.
-        //
-        // Safe to delete another buyer's row because the predicate is `expires_at <= $1` and an
-        // expired hold is ALREADY inert everywhere (DEC-109 lazy-on-read) — the deriver and
-        // `acquireDepartureHold` both ignore it. Indexed on `expires_at`, and it runs inside the
-        // transaction that was already opened for the insert, so it adds no round trip.
-        `delete from checkout_holds where source='muster' and expires_at <= $1`,
-        [hold.createdAt],
-      );
-      await client.query(
-        `insert into checkout_holds
-           (id, vessel_id, date, time, source, offering_id, guest_count, expires_at, created_at, stripe_checkout_session_id, holder_token)
-         values ($1,$2,$3,$4,'muster',$5,$6,$7,$8,$9,$10)
-         on conflict do nothing`,
-        [
-          hold.id,
-          hold.vesselId,
-          hold.date,
-          hold.time,
-          hold.offeringId,
-          hold.guestCount,
-          hold.expiresAt,
-          hold.createdAt,
-          hold.stripeCheckoutSessionId ?? null,
-          hold.holderToken ?? null,
-        ],
-      );
-      // We hold the slot iff the row now under this identity is OURS (fresh insert, or an
-      // idempotent re-acquire of our own live hold). A rival's live hold → not ours → false.
-      const mine = await client.query(
-        `select * from checkout_holds
-         where vessel_id=$1 and date=$2 and time=$3 and source='muster' and id=$4`,
-        [hold.vesselId, hold.date, hold.time, hold.id],
-      );
-      await client.query("commit");
-      return mine.rowCount === 1
-        ? { acquired: true, hold: toCheckoutHold(mine.rows[0]) }
-        : { acquired: false };
-    } catch (e) {
-      await client.query("rollback");
-      throw e;
-    } finally {
-      client.release();
-    }
-  }
-  async listCheckoutHolds(): Promise<CheckoutHold[]> {
-    const { rows } = await this.#pool.query("select * from checkout_holds");
-    return rows.map(toCheckoutHold);
-  }
-  /** `expires_at > $1` — exclusive, matching the deriver (issue #713). Served by
-   *  `checkout_holds_expires_at_idx`; this is what `/book` reads on every render. */
-  async listLiveCheckoutHolds(asOf: string): Promise<CheckoutHold[]> {
-    const { rows } = await this.#pool.query(
-      "select * from checkout_holds where expires_at > $1",
-      [asOf],
-    );
-    return rows.map(toCheckoutHold);
-  }
-  async removeCheckoutHold(id: CheckoutHoldId): Promise<void> {
-    await this.#pool.query("delete from checkout_holds where id=$1", [id]);
-  }
-  async removeCheckoutHoldForSlot(
-    vesselId: VesselId,
-    date: string,
-    time: string,
-  ): Promise<void> {
-    await this.#pool.query(
-      "delete from checkout_holds where vessel_id=$1 and date=$2 and time=$3 and source='muster'",
-      [vesselId, date, time],
-    );
   }
 
   // ── Gratuity (12.3, DEC-124) ────────────────────────────────────────────────

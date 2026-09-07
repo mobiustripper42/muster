@@ -1,22 +1,26 @@
 /**
- * The checkout holder token (#575) — who a checkout hold belongs to.
+ * The checkout holder token (#575) — which checkout session a `pending` reservation belongs to.
  *
- * **Why possession and not identity.** The first cut of this keyed hold reuse on the buyer's
+ * It guarded a `checkout_holds` row when it was written; 14.7 dropped that table and the token
+ * moved onto the reservation itself (`Reservation.holderToken`). Nothing below changed — the
+ * reasoning was never about which table the claim lived in.
+ *
+ * **Why possession and not identity.** The first cut of this keyed retry-reuse on the buyer's
  * email or phone, so that a customer retrying a declined card got their own boat back instead of
  * taking a second one. `/security-review` killed it: those fields are typed into a public,
  * unauthenticated form, so "who I am" was whatever the submitter said it was. Two exploits fell
- * straight out — supply a victim's email and you were handed *their* hold and a PaymentIntent on
+ * straight out — supply a victim's email and you were handed *their* claim and a PaymentIntent on
  * the boat they were buying; supply it with an absurd guest count and the fit-revalidation branch
- * deleted their hold outright. A stranger's email address is not a secret, and it was the entire
- * authorization check.
+ * destroyed their claim outright. A stranger's email address is not a secret, and it was the
+ * entire authorization check.
  *
- * So the hold belongs to a **browser session**, proven by holding an opaque token, not to a
+ * So the claim belongs to a **browser session**, proven by holding an opaque token, not to a
  * claimed identity. Knowing someone's email buys nothing; you would have to steal their cookie,
- * at which point their hold is the least of it.
+ * at which point their booking is the least of it.
  *
- * The token is meaningless on its own — it identifies nothing, links to nothing, and expires with
- * the hold it guards. It is deliberately NOT the customer identity: `customers/identity.ts` still
- * owns that, and the two must not be conflated again.
+ * The token is meaningless on its own — it identifies nothing, links to nothing, and stops
+ * mattering when the row it guards lapses or is booked. It is deliberately NOT the customer
+ * identity: `customers/identity.ts` still owns that, and the two must not be conflated again.
  */
 
 import { randomBytes } from "node:crypto";

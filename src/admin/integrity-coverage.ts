@@ -76,7 +76,6 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   // ── Foreign-keyed: Postgres will not let these dangle ────────────────────
   payments: { kind: "fk", refs: ["reservation_id"] },
   gratuity: { kind: "fk", refs: ["reservation_id", "event_id"] },
-  checkout_holds: { kind: "fk", refs: ["vessel_id", "offering_id"] },
   refund_leases: { kind: "fk", refs: ["reservation_id"] },
   offerings: { kind: "fk", refs: ["location_id"] },
   blocks: { kind: "fk", refs: ["vessel_id", "location_id"] },

@@ -67,38 +67,49 @@ export async function seedExtraAdmin(
 }
 
 /**
- * Plant a live customer checkout-hold on a slot (12.1, DEC-109) — the transient 15-minute soft
- * reservation another buyer takes while they are paying (#620).
+ * Plant a `pending` reservation on a slot (14.4, SPEC §2.8.2) — a customer who is at Stripe with
+ * their card in hand. While it is live it commits the hull, so the slot must not be advertised.
  *
- * Written straight through the port rather than by driving the funnel: acquiring one for real
- * needs a Stripe session, and the thing under test is whether `/book` SUBTRACTS a live hold, not
- * how the hold got there. `expiresAt` is caller-supplied so a test can plant an expired one and
- * prove the slot stays on sale — the lazy-on-read half of the contract, which has no cron behind
- * it and so is only ever exercised by a comparison at derive time.
+ * Replaces `plantCheckoutHold`, which planted a `checkout_holds` row until 14.7 dropped that
+ * table. The thing under test is unchanged: whether `/book` SUBTRACTS a customer mid-payment.
+ *
+ * Written straight through the port rather than by driving the funnel, and with `saveReservation`
+ * rather than `savePendingIfHullFree`, so a test controls exactly what lands — including a LAPSED
+ * row, which is the half of the contract nothing else can reach. Liveness is `reservedAt` inside
+ * the payment window (15 min), lazily compared at derive time with no cron behind it, so a row
+ * that has aged out sits in the table forever and must read as free.
+ *
+ * `holdMinutes` is what the row commits the hull for (DEC-161) — 100 matches the demo offering's
+ * trip length, so a row at 15:30 clears by 17:10 and leaves the 17:30 departure alone.
  */
-export async function plantCheckoutHold(h: {
+export async function plantPendingReservation(r: {
   id: string;
   vesselId: string;
   date: string;
   time: string;
   offeringId: string;
   guestCount: number;
-  expiresAt: string;
+  /** ISO-8601 UTC. Inside the last 15 minutes ⇒ live; older ⇒ lapsed and inert. */
+  reservedAt: string;
 }): Promise<void> {
   const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
   try {
-    const result = await repo.acquireCheckoutHold({
-      id: h.id as never,
-      vesselId: h.vesselId as never,
-      date: h.date,
-      time: h.time,
+    await repo.saveReservation({
+      id: r.id as never,
+      eventId: null,
       source: "muster",
-      offeringId: h.offeringId as never,
-      guestCount: h.guestCount,
-      expiresAt: h.expiresAt,
-      createdAt: "2026-07-06T00:00:00.000Z",
+      status: "pending",
+      customerName: "E2E Pending",
+      partySize: r.guestCount,
+      vesselId: r.vesselId as never,
+      date: r.date,
+      time: r.time,
+      offeringId: r.offeringId as never,
+      reservedAt: r.reservedAt,
+      holdMinutes: 100,
+      tripMinutes: 100,
+      updatedAt: r.reservedAt,
     });
-    if (!result.acquired) throw new Error(`hold not acquired for ${h.vesselId} ${h.date} ${h.time}`);
   } finally {
     await repo.close();
   }
@@ -140,7 +151,7 @@ export async function plantVesselBlock(b: {
  * The `reservation` seed writes bookings with NO payments (every money assertion in
  * `calendar.spec.ts` reads off the pure fare+tax derivation), and adding one to the seed would
  * move those numbers under seven other specs. So the refund tests plant their own, the same
- * way `plantCheckoutHold` does rather than driving a real checkout.
+ * way `plantPendingReservation` does rather than driving a real checkout.
  *
  * `stripePaymentIntentId` matters: it is what `refundReservation` refuses without, and what a
  * `charge.refunded` webhook would find the row by.

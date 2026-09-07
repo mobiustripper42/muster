@@ -19,7 +19,6 @@ import type {
   BookingCode,
   BookingInvoice,
   CalendarFeed,
-  CheckoutHold,
   Gratuity,
   GustoIdentity,
   Location,
@@ -51,7 +50,6 @@ import type {
   AddOnId,
   AskId,
   BlockId,
-  CheckoutHoldId,
   CustomerId,
   LocationId,
   OfferingId,
@@ -361,21 +359,6 @@ export interface Repository {
   getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null>;
 
   /**
-   * The LIVE `pending` row on this slot held by this checkout session's `holderToken`, or null
-   * (14.6, SPEC §2.8.5/§2.8.7). How a retry after a declined card finds ITS OWN row to reuse —
-   * matched by possession (the httpOnly cookie token), NEVER by typed email or phone. `pending
-   * LiveSince` is the caller's clock: a lapsed row is not returned (a new checkout, not a retry).
-   * `holderToken` must be non-empty; a cookieless client gets null and writes a fresh row.
-   */
-  getLivePendingByHolderToken(
-    vesselId: VesselId,
-    date: string,
-    time: string,
-    holderToken: string,
-    pendingLiveSince: string,
-  ): Promise<Reservation | null>;
-
-  /**
    * Record a retry's PaymentIntent against an existing checkout row (14.6). APPENDS `payment
    * IntentId` to `paymentIntentIds` unconditionally — additive, so a superseded id stays findable
    * (§2.8.5) — and re-freezes `invoice` + `updatedAt` ONLY while the row is still `pending`.
@@ -394,52 +377,6 @@ export interface Repository {
     now: string,
   ): Promise<void>;
 
-  // ── Checkout holds — the transient 15-min soft reservation (12.1, DEC-109) ──
-  /**
-   * Acquire a checkout-hold on a physical slot. Atomic: deletes EXPIRED holds first (so a stale
-   * row can't block a fresh acquire — the slot identity is unique), then inserts. Two live
-   * buyers collide on the `checkout_holds_slot_identity` unique → exactly one `{acquired:true}`;
-   * the other gets `{acquired:false}`. Idempotent on id: re-acquiring one's own live hold
-   * returns `{acquired:true}` with the existing row.
-   *
-   * **That delete sweeps EVERY expired hold, not only this slot's (issue #713)** — it is the only
-   * pruning this codebase has, because DEC-109's lazy-on-read expiry deliberately means no cron,
-   * and an acquire is therefore the only moment a sweep can happen. Removing another buyer's
-   * expired row is safe precisely because expiry is a global fact: an expired hold is already
-   * inert to the deriver and to this method.
-   */
-  acquireCheckoutHold(
-    hold: CheckoutHold,
-  ): Promise<{ acquired: true; hold: CheckoutHold } | { acquired: false }>;
-  /**
-   * EVERY hold row, expired included — diagnostics, tests, and the assertions that prove a stale
-   * row was actually deleted rather than merely filtered out of view.
-   *
-   * **Not for a render path.** The table accumulates a row per abandoned checkout, so this is an
-   * unbounded scan; production reads want `listLiveCheckoutHolds` (issue #713).
-   */
-  listCheckoutHolds(): Promise<CheckoutHold[]>;
-  /**
-   * Holds live at `asOf` — `expiresAt > asOf`, the same exclusive comparison the availability
-   * deriver applies (DEC-109 lazy-on-read).
-   *
-   * This does NOT make the deriver's own liveness check redundant, and that check must stay:
-   * pruning lags, the caller's clock and this one can differ, and an expired row that IS present
-   * has to remain inert. The filter is about not reading rows nobody can use, not about
-   * relocating the correctness rule into the database.
-   */
-  listLiveCheckoutHolds(asOf: string): Promise<CheckoutHold[]>;
-  /** Release a hold by id — idempotent no-op if already gone. Called when a checkout is
-   *  abandoned. */
-  removeCheckoutHold(id: CheckoutHoldId): Promise<void>;
-  /** Release the hold on a physical slot — how a won booking clears its own hold (the id was
-   *  a per-attempt mint the webhook doesn't have). Idempotent; there's ≤1 hold per slot. */
-  removeCheckoutHoldForSlot(
-    vesselId: VesselId,
-    date: string,
-    time: string,
-  ): Promise<void>;
-
   // ── Refund lease — the refund mutex (#726) ─────────────────────────────────
   /**
    * Claim the exclusive right to refund this reservation, or report that someone else holds it.
@@ -449,7 +386,7 @@ export interface Repository {
    * and released after, not a lock spanning it. `cancelEventIfUnclaimed` can use an advisory
    * lock because everything it touches is in the database; this cannot.
    *
-   * **Lazily expired, exactly like `acquireCheckoutHold`**: an existing row whose `expiresAt` is
+   * **Lazily expired**, the same lazy-on-read rule the pending row uses (§2.8.1): an existing row whose `expiresAt` is
    * at or before `nowIso` is dead and gets replaced. Without that, a process dying mid-refund
    * would block every future refund on the booking forever — silently and permanently, which is
    * worse than the double-refund this exists to prevent.

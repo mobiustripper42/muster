@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import type {
   Block,
-  CheckoutHold,
   Event,
   Offering,
   Reservation,
@@ -659,74 +658,66 @@ describe("deriveVirtualAvailability — materialized events overlay (DEC-125 pre
   });
 });
 
-describe("deriveVirtualAvailability — checkout holds (12.1, DEC-109)", () => {
-  const hold = (over: Partial<CheckoutHold> = {}): CheckoutHold => ({
-    id: asId<"CheckoutHoldId">("hold-1"),
+/**
+ * Precedence against a live pending row (14.7).
+ *
+ * These three cases came from the `checkout_holds` block that stood here until 14.7. The table is
+ * gone and the customer-at-Stripe it stood for is a `pending` reservation, so the questions are
+ * re-asked of the thing that answers them now — a `held` status no longer exists, and a pending
+ * row reaches `unavailable` through the hull check.
+ */
+describe("deriveVirtualAvailability — what outranks a live pending row", () => {
+  const ASOF = "2026-07-04T12:10:00.000Z";
+  const pend = (over: Partial<Reservation> = {}): Reservation => ({
+    id: asId<"ReservationId">("p-rank"),
+    eventId: null,
+    source: "muster",
+    customerName: "Hooper",
+    partySize: 4,
+    status: "pending",
     vesselId: V,
     date: "2026-07-04",
     time: "13:30",
-    source: "muster",
     offeringId: asId<"OfferingId">("off-1"),
-    guestCount: 4,
-    expiresAt: "2026-07-04T12:15:00.000Z",
-    createdAt: "2026-07-04T12:00:00.000Z",
+    reservedAt: "2026-07-04T12:05:00.000Z", // 5 min before asOf — live
+    holdMinutes: 120,
+    tripMinutes: 100,
     ...over,
   });
-  const sat0704 = { ...base };
 
-  it("a live hold (expiresAt > asOf) marks the slot 'held'", () => {
+  it("a booked Event outranks a live pending row on the same slot", () => {
+    // Both are true of the slot; only one is what an operator needs to see. `booked` carries a
+    // customer's name onto the calendar, `unavailable` does not.
     const out = deriveVirtualAvailability({
-      ...sat0704,
-      holds: [hold()],
-      asOf: "2026-07-04T12:10:00.000Z", // before 12:15 expiry
-    });
-    expect(out[0]!.status).toBe("held");
-  });
-
-  it("an EXPIRED hold contributes nothing — slot reads available (lazy-on-read, no cron)", () => {
-    const out = deriveVirtualAvailability({
-      ...sat0704,
-      holds: [hold()],
-      asOf: "2026-07-04T12:20:00.000Z", // after 12:15 expiry
-    });
-    expect(out[0]!.status).toBe("available");
-  });
-
-  it("no asOf ⇒ holds are ignored (conservative; the write CAS still guards)", () => {
-    const out = deriveVirtualAvailability({ ...sat0704, holds: [hold()] });
-    expect(out[0]!.status).toBe("available");
-  });
-
-  it("a booked Event outranks a live hold on the same slot", () => {
-    const out = deriveVirtualAvailability({
-      ...sat0704,
+      ...base,
       events: [ev("evt-b", { time: "13:30" })],
-      reservations: [res("r1", "evt-b")],
-      holds: [hold()],
-      asOf: "2026-07-04T12:10:00.000Z",
+      reservations: [res("r1", "evt-b"), pend()],
+      asOf: ASOF,
     });
     expect(out[0]!.status).toBe("booked");
   });
 
-  it("a block outranks a live hold on the same slot", () => {
+  it("a block outranks a live pending row on the same slot", () => {
+    // A block is a deliberate operator act and the calendar has to show it as one — being
+    // unsellable twice over is still blocked.
     const out = deriveVirtualAvailability({
-      ...sat0704,
+      ...base,
       blocks: [{ id: asId<"BlockId">("blk"), kind: "vesselHold", vesselId: V, date: "2026-07-04", time: "13:30" }],
-      holds: [hold()],
-      asOf: "2026-07-04T12:10:00.000Z",
+      reservations: [pend()],
+      asOf: ASOF,
     });
     expect(out[0]!.status).toBe("blocked");
   });
 
-  it("a hold on a DIFFERENT slot doesn't touch this one", () => {
+  it("a pending row on a DIFFERENT day doesn't touch this one", () => {
     const out = deriveVirtualAvailability({
       ...base,
       dateRange: RANGE,
-      holds: [hold({ date: "2026-07-11" })],
-      asOf: "2026-07-04T12:10:00.000Z",
+      reservations: [pend({ date: "2026-07-11" })],
+      asOf: ASOF,
     });
     expect(out.find((s) => s.date === "2026-07-04")!.status).toBe("available");
-    expect(out.find((s) => s.date === "2026-07-11")!.status).toBe("held");
+    expect(out.find((s) => s.date === "2026-07-11")!.status).toBe("unavailable");
   });
 });
 

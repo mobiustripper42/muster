@@ -106,7 +106,7 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     const r = await createDeparturePaymentIntent(repo, pay, req, now);
     expect(r).toMatchObject({ ok: true, paymentIntentId: "pi_fake_1" });
     if (r.ok) expect(r.clientSecret).toBe("pi_fake_1_secret_test");
-    expect(await repo.listCheckoutHolds()).toHaveLength(1);
+    expect(await repo.listAllReservations()).toHaveLength(1); // the pending row IS the claim (14.7)
 
     // fare 49900 (4 guests ≤ 6 included → no extras); tax 3618; fee 1497; tip 9980;
     // deposit share 12475 → amount = 12475 + 3618 + 1497 + 9980 = 27570.
@@ -132,17 +132,17 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     const { waiverConsentAt: _a, waiverVersion: _b, ...noWaiver } = req;
     const r = await createDeparturePaymentIntent(repo, new FakePaymentPort(), noWaiver, now);
     expect(r).toEqual({ ok: false, reason: "waiver_required" });
-    expect(await repo.listCheckoutHolds()).toHaveLength(0);
+    expect(await repo.listAllReservations()).toHaveLength(0); // nothing claimed the hull
   });
 
   it("gratuity tier must be one the offering offers (DEC-124, no decline)", async () => {
     const repo = await seededRepo();
     const r = await createDeparturePaymentIntent(repo, new FakePaymentPort(), { ...req, gratuityBps: 1234 }, now);
     expect(r).toEqual({ ok: false, reason: "gratuity_required" });
-    expect(await repo.listCheckoutHolds()).toHaveLength(0);
+    expect(await repo.listAllReservations()).toHaveLength(0);
   });
 
-  it("an off-grid slot is refused before any hold or Stripe call (#799)", async () => {
+  it("an off-grid slot is refused before any claim or Stripe call (#799)", async () => {
     const repo = await seededRepo();
     const pay = new FakePaymentPort();
     // 13:30 is a listed departure; 13:31 is not. A scripted caller could post it; nothing on the
@@ -150,7 +150,7 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     // dies here.
     const r = await createDeparturePaymentIntent(repo, pay, { ...req, time: "13:31" }, now);
     expect(r).toEqual({ ok: false, reason: "off_schedule" });
-    expect(await repo.listCheckoutHolds()).toHaveLength(0);
+    expect(await repo.listAllReservations()).toHaveLength(0);
     expect(pay.intents).toHaveLength(0);
   });
 
@@ -187,8 +187,8 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
     expect(third.ok).toBe(true);
-    // One buyer, one boat — the whole point.
-    expect(await repo.listCheckoutHolds()).toHaveLength(1);
+    // One buyer, one boat, ONE ROW — the whole point.
+    expect(await repo.listAllReservations()).toHaveLength(1);
     // …and the fleet is still sellable to somebody else.
     const other = await createDeparturePaymentIntent(
       repo,
@@ -197,7 +197,7 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
       now,
     );
     expect(other.ok).toBe(true);
-    expect(await repo.listCheckoutHolds()).toHaveLength(2);
+    expect(await repo.listAllReservations()).toHaveLength(2);
   });
 
   it("extra guests bill on top and the fee is on the COMPOSED fare", async () => {
@@ -287,7 +287,9 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     const resId = await resIdBy(repo, "pi_fake_1");
     const res = await repo.getReservation(resId);
     expect(res).toMatchObject({ status: "booked", partySize: 4 });
-    expect(await repo.listCheckoutHolds()).toHaveLength(0); // hold released
+    // The flip converted the row that occupied the hull into the booking that occupies it —
+    // there is no second occupancy record left behind (14.7 dropped `checkout_holds`).
+    expect((await repo.listAllReservations()).filter((x) => x.status === "pending")).toHaveLength(0);
     expect(confirm).toHaveBeenCalledOnce();
     expect(alert).not.toHaveBeenCalled();
 
@@ -690,8 +692,6 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     await repo.saveOffering(tripOffering());
     const pay = new FakePaymentPort();
     await createDeparturePaymentIntent(repo, pay, req, now);
-    // Strip the first buyer's HOLD so only their pending row stands between the rival and v-small.
-    for (const h of await repo.listCheckoutHolds()) await repo.removeCheckoutHold(h.id);
     const rival = await createDeparturePaymentIntent(
       repo,
       pay,

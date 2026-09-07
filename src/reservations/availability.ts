@@ -18,7 +18,6 @@
  */
 import type {
   Block,
-  CheckoutHold,
   Event,
   Offering,
   OfferingSchedule,
@@ -191,15 +190,19 @@ export interface VirtualSlot {
    *  The party fare (base + extras × extraGuestPrice + gratuity, DEC-124) is booking-time,
    *  NOT computed here. */
   priceCents: number;
-  /** Four ways a slot is not sellable, and they are NOT interchangeable:
+  /** Three ways a slot is not sellable, and they are NOT interchangeable:
    *  - `booked` — a reservation exists. The admin calendar draws it with the customer's name.
-   *  - `unavailable` — the BOAT is out on another trip that overlaps this departure (#615,
-   *    #691). Nobody bought this slot; it simply cannot run. Calling it `booked` put phantom
-   *    bookings on the operator's calendar — two cards on one hull where one trip was sold.
-   *  - `held` — a live customer checkout-hold (DEC-109, 12.1), transient.
+   *  - `unavailable` — the HULL is committed over this departure: another trip that overlaps it
+   *    (#615, #691), or a live `pending` row from a customer at Stripe (§2.8.3). Nobody bought
+   *    this slot; it simply cannot run. Calling it `booked` put phantom bookings on the
+   *    operator's calendar — two cards on one hull where one trip was sold.
    *  - `blocked` — an operator block (DEC-125), deliberate and liftable.
-   *  The customer surface collapses all four to "not available"; the operator's does not. */
-  status: "available" | "held" | "booked" | "blocked" | "unavailable";
+   *  The customer surface collapses all three to "not available"; the operator's does not.
+   *
+   *  A fourth, `held`, meant a live `checkout_holds` row and went with that table at 14.7. It
+   *  was never distinguished downstream — `buildSlotRows` counts `available` and nothing else —
+   *  and a customer at Stripe now reaches `unavailable` through the hull check instead. */
+  status: "available" | "booked" | "blocked" | "unavailable";
   /** Set when a materialized `Event` backs this slot (an override or a booking). */
   eventId?: EventId;
 }
@@ -213,13 +216,30 @@ export interface DeriveVirtualAvailabilityInput {
   /** Already-materialized events — overrides + bookings overlay their virtual slots. */
   events: readonly Event[];
   reservations: readonly Reservation[];
-  /** Live customer checkout-holds (12.1, DEC-109). A hold hides its virtual slot only
-   *  while `expiresAt > asOf`; expired holds contribute nothing (lazy-on-read, no cron).
-   *  Optional — absent/empty means no holds (the 12.0 call shape). */
-  holds?: readonly CheckoutHold[];
-  /** ISO-8601 UTC "now" for hold liveness. Required for holds to be evaluated; if absent,
-   *  no hold is treated as live (conservative — the write CAS still prevents oversell). */
+  /** ISO-8601 UTC "now" for pending-row liveness (§2.8.1). Required for a live pending row to
+   *  occupy anything; if absent, none is treated as live (conservative — the write CAS still
+   *  prevents oversell). A `holds` input sat beside this until 14.7; the `checkout_holds` table
+   *  is gone and a customer at Stripe is a `pending` reservation, which `reservations` carries. */
   asOf?: string;
+}
+
+/**
+ * A virtual slot's status, in precedence order (issue #928 — lifted out of two nested ternaries).
+ *
+ * `booked` first: a sale is a fact and the admin calendar draws it with the customer's name.
+ * `blocked` next: an operator's deliberate blackout has to show as one, and `unavailable` is
+ * hidden on the grid where nothing runs — ranking busy above it made a blackout disappear from
+ * both the calendar and the Blocked count. `occupied` last of the three: the hull is committed by
+ * another trip or a live pending row, which is unsellable but nobody's doing.
+ *
+ * Each caller passes only the flags its branch computed; the rest default to false. A materialized
+ * slot can be `booked` and is never asked about blocks; a virtual one is the reverse.
+ */
+function slotStatus(f: { booked?: boolean; blocked?: boolean; occupied?: boolean }): VirtualSlot["status"] {
+  if (f.booked) return "booked";
+  if (f.blocked) return "blocked";
+  if (f.occupied) return "unavailable";
+  return "available";
 }
 
 /** Mon=0…Sun=6 for an ISO `yyyy-mm-dd`, read at UTC midnight (DST-safe). */
@@ -354,17 +374,6 @@ export function deriveVirtualAvailability(
 
   const vesselById = new Map(vessels.map((v) => [String(v.id), v]));
 
-  // Live checkout-holds by slot identity — ONLY those with expiresAt > asOf (lazy-on-read;
-  // an expired-but-undeleted hold is inert here, exactly as it is at the write CAS).
-  const heldSlots = new Set<string>();
-  if (input.asOf !== undefined) {
-    for (const h of input.holds ?? []) {
-      if (h.source === "muster" && h.expiresAt > input.asOf) {
-        heldSlots.add(slotIdentity(h.vesselId, h.date, h.time));
-      }
-    }
-  }
-
   // Materialized Muster events, indexed by physical slot identity, + which are booked.
   const bookedEventIds = new Set<string>();
   for (const r of reservations) {
@@ -449,16 +458,11 @@ export function deriveVirtualAvailability(
               time,
               capacity: materialized.capacity,
               priceCents: materialized.price ?? basePrice,
-              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-              status: booked ? "booked" : collides ? "unavailable" : "available",
+              status: slotStatus({ booked, occupied: collides }),
               eventId: materialized.id,
             });
             continue;
           }
-          // Precedence on a virtual slot: hull-busy (another trip is on this boat) beats
-          // block beats hold beats free. Busy is first because it is a fact about the world —
-          // an operator block can be lifted, a trip already sold cannot.
-          const identity = slotIdentity(vesselId, date, time);
           // No Muster event backs this identity (the materialized branch returned above), so
           // every window here belongs to another trip.
           // Measured by the offering's HOLD minutes, not its trip time (SPEC §2.8.3, "same rule
@@ -474,7 +478,6 @@ export function deriveVirtualAvailability(
           // ranking busy first made an operator's own blackout disappear from the grid and from
           // the Blocked count. Being unsellable twice over is still blocked.
           const blocked = isSlotBlocked(blocks, String(offering.locationId), vesselId, date, time);
-          const held = !blocked && !occupied && heldSlots.has(identity);
           slots.push({
             offeringId: offering.id,
             vesselId,
@@ -482,8 +485,7 @@ export function deriveVirtualAvailability(
             time,
             capacity: vessel.coiMaxPax,
             priceCents: basePrice,
-            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-            status: blocked ? "blocked" : occupied ? "unavailable" : held ? "held" : "available",
+            status: slotStatus({ blocked, occupied }),
           });
         }
       }

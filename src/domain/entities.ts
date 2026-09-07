@@ -17,7 +17,6 @@ import type {
   CustomerId,
   AskId,
   BlockId,
-  CheckoutHoldId,
   CredentialId,
   CrewMemberId,
   EventId,
@@ -772,7 +771,7 @@ export interface Reservation {
   /**
    * How long the hull is committed for this departure, FROZEN from `Offering.holdMinutes` at
    * write time (DEC-161). This is what the row occupies the hull for (§2.8.3). Not the payment
-   * window — that is a setting, and the same word in `checkout_holds` land.
+   * window — that is `PAYMENT_WINDOW_MINUTES`, a setting, and confusingly the same word.
    */
   holdMinutes?: number;
   /** Frozen `Offering.tripLengthMinutes`. What the Event runs for once confirmed (DEC-161). */
@@ -807,63 +806,6 @@ export interface BookingInvoice {
 /** Who ended a booking (#724). The refund policy branches on it — see `refund-terms.ts`. */
 export type CancelledBy = "customer" | "operator";
 
-// ── CheckoutHold — the transient 15-min soft reservation (12.1, DEC-109) ──────
-
-/**
- * A customer checkout-hold (DEC-109): the **optimistic** front-door that makes the
- * common case collision-free — while a buyer is paying, the slot reads unavailable, so
- * the second buyer never starts. **Distinct** from the DEC-125 admin/vessel-hold
- * *block* (a `Block{kind:"vesselHold"}` row, no lifetime) — this one is transient,
- * lazily-expired, and tied to a Stripe session.
- *
- * Load-bearing rules (DEC-109), enforced by 12.1's data layer:
- *  - The hold is an **optimization**, never the authority — the whole-boat mutex
- *    (`bookPendingIfHullFree`) is the backstop; a booking whose hold expired mid-payment
- *    still runs the CAS. Never gate the write on a hold. The backstop guards the whole
- *    HULL over the trip's duration, not just the exact `(vessel, date, time)` triple —
- *    identity alone let two overlapping bookings through in silence (#691).
- *  - **Lazy-on-read expiry, no cron:** a hold with `expiresAt <= asOf` reads as free
- *    everywhere (the deriver filters on it). The physical-slot unique index means a
- *    stale row would *block* re-acquire, so `acquireCheckoutHold` deletes the expired
- *    row for the identity first, in the same critical section.
- *  - **Holds are only ever read through the `expiresAt > asOf` filter** — never
- *    raw-counted. A raw `SELECT … WHERE slot=…` that treats a hit as "held" would
- *    resurrect an expired hold; the deriver + `acquireCheckoutHold` are the only
- *    sanctioned readers.
- */
-export interface CheckoutHold {
-  id: CheckoutHoldId;
-  /** The boat this hold is on — assignment is resolved at acquire (fit-and-fallback). */
-  vesselId: VesselId;
-  /** ISO-8601 vessel-local day. */
-  date: string;
-  /** Departure clock "HH:MM". */
-  time: string;
-  /** Constant `'muster'` — keeps the slot-identity key parallel to `Event`'s (DEC-125). */
-  source: "muster";
-  offeringId: OfferingId;
-  /** Guest/passenger count (never "party") — validated ≤ boat COI cap at acquire. */
-  guestCount: number;
-  /** ISO-8601 UTC — acquire instant + 15 min. Lazily compared to `asOf`; no cron. */
-  expiresAt: string;
-  /** ISO-8601 UTC of acquire. */
-  createdAt: string;
-  /** Bound once the Checkout session is created — links the hold to its payment. */
-  stripeCheckoutSessionId?: string;
-  /**
-   * Which checkout SESSION owns this hold (#575) — an opaque token from `mintHolderToken`,
-   * carried in an httpOnly cookie.
-   *
-   * Exists so a buyer retrying a declined card reuses this hold instead of taking a second boat.
-   * Deliberately a possession token and NOT the buyer's email or phone: those are typed into a
-   * public form, so keying on them made "knowing a stranger's address" sufficient to take over
-   * or delete their hold (`holder-token.ts` records the review that caught it).
-   *
-   * Absent ⇒ never reused, and never matches another tokenless hold — two anonymous sessions
-   * sharing one is the only way this rule could sell a boat twice.
-   */
-  holderToken?: string;
-}
 
 // ── Payment (Muster-native reservations only — DEC-107) ──────────────────────
 

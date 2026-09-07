@@ -1,0 +1,34 @@
+{
+  // Scripts profile (#904 rule 7) — the third `include`, and the reason it exists.
+  //
+  // `db/` holds 30 files: the migration runner, every seed, and the ops scripts you drive
+  // from a terminal (`db:admin`, `db:crew`, `db:mint`, `db:pay`, `db:xola:report`, the
+  // resets). Until this profile, NONE of it was typechecked. `tsconfig.core.json` includes
+  // `src` only and says so on purpose; `tsconfig.json` includes `app` + `components`. Both
+  // scope themselves inward, and `db/` is named by neither. It was never excluded — it was
+  // never claimed.
+  //
+  // The gap is not theoretical and this is its SECOND recorded instance:
+  //  - DEC-159: `db/xola-report.ts` — a canary variable's declaration deleted, its increment
+  //    left behind. "lint, typecheck and 2294 tests all passed on a file that crashes when run."
+  //  - #934: `db/tick-dev.ts` imported `src/adapters/web-link-channel.js` after that file was
+  //    deleted in the same commit. `npm run db:tick` died on module resolution while
+  //    `npm run verify` stayed green — and the `docs/RUNNING.md` rewritten in that same commit
+  //    told the reader to run exactly that command. Caught by review, not by the gate.
+  //
+  // Worth checking because `db/` is a heavy CONSUMER of the core: every seed imports
+  // `../src/…` and builds real domain objects through the Repository port. It is precisely
+  // the code that goes stale when the core moves, and precisely the code nothing was reading.
+  //
+  // **Same compiler options as the core**, inherited rather than restated — including
+  // `exactOptionalPropertyTypes`, which found one of the two defects this profile turned up
+  // on its first run. A looser profile here would let `db/` drift from what it imports.
+  //
+  // `scripts/` is deliberately NOT here: it is all `.mjs`, so there is nothing for TypeScript
+  // to check. Issue #904 rule 3 (`no-undef` scoped to `db/`, `scripts/`, `e2e/`) is what
+  // reaches those, and the two rules are halves of one hole — `no-undef` catches an undeclared
+  // identifier, this catches an import of a module that does not exist. Neither finds the other's.
+  "extends": "./tsconfig.core.json",
+  "include": ["db"],
+  "exclude": ["node_modules", "dist", ".next"]
+}

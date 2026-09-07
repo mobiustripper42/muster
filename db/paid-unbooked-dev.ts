@@ -100,7 +100,11 @@ try {
       reservedAt: new Date().toISOString(),
       holdMinutes: 120,
       tripMinutes: 100,
-      paymentIntentId,
+      // Plural since the pending-slot migration — a pending row accumulates a PI per
+      // checkout attempt. This script still wrote the old singular field, and nothing
+      // read it: `Reservation` has no `paymentIntentId`, so the object literal simply
+      // carried a stray key and the seeded row had no PI at all (#904 rule 7).
+      paymentIntentIds: [paymentIntentId],
     });
   }
   // …and for --unbookable we send a purposed PI with NO pending row behind it — the

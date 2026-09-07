@@ -25,7 +25,6 @@
     "db:seed:fleet": "tsx db/seed-fleet.ts",
     "db:seed:crew": "tsx db/seed-crewapp-dev.ts",
     "db:seed:atrisk": "tsx db/seed-atrisk-dev.ts",
-    "db:seed:outbox": "tsx db/seed-outbox-dev.ts",
     "db:seed:split": "tsx db/seed-split-dev.ts",
     "db:seed:gratuity": "tsx db/seed-gratuity-dev.ts",
     "db:seed:reservation": "tsx db/seed-reservation-dev.ts",

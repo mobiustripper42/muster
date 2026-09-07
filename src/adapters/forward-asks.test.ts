@@ -6,7 +6,7 @@ import type { ChannelPort } from "../ports/channel.js";
 import { FakeChannel } from "./fake-channel.js";
 import { InMemoryRepository } from "./in-memory-repository.js";
 import { forwardAsks } from "./forward-asks.js";
-import { WebLinkChannel } from "./web-link-channel.js";
+import { LogChannel } from "./log-channel.js";
 
 const T0 = new Date("2026-07-01T12:00:00.000Z");
 const TENANT = asId<"TenantId">("tenant-x");
@@ -58,27 +58,29 @@ async function seedSpine(repo: InMemoryRepository): Promise<Ask> {
 }
 
 describe("forwardAsks — the edge wiring's shared seam (DEC-030)", () => {
-  it("an ask fired → an OutboxEntry exists (through the real web-link adapter)", async () => {
+  it("an ask fired → a relayable line, through the real unconfigured-channel adapter", async () => {
+    // Was asserted against `WebLinkChannel` and an `OutboxEntry` row until #934 removed
+    // the outbox. Same claim, same seam: the edge composes the relay text and a working
+    // magic link, and the adapter is the thing that decides what to do with them.
     const repo = new InMemoryRepository();
     const ask = await seedSpine(repo);
-    const channel = new WebLinkChannel(repo, {
+    const lines: string[] = [];
+    const channel = new LogChannel(repo, {
       linkBase: "http://mill-dev:3000",
       now: () => T0,
       mintSecret: () => "secret-0",
+      sink: (l) => lines.push(l),
+      // The link is the thing under test here; in production it is not minted at all (#934).
+      mintLink: true,
     });
 
     expect(await forwardAsks(repo, channel, [ask])).toBe(1);
 
-    const [entry] = await repo.listOutboxEntries();
-    expect(entry).toMatchObject({
-      askId: ask.id,
-      seatId: SEAT,
-      crewMemberId: CREW,
-      status: "pending",
-      // Human relay text from the spine — GSM-7 only (1-segment SMS).
-      body: "Muster: Sat, Jul 4 - Hops - captain. Yes or no?",
-      link: "http://mill-dev:3000/crew/auth?t=secret-0",
-    });
+    expect(lines).toHaveLength(1);
+    // Human relay text from the spine — GSM-7 only (1-segment SMS).
+    expect(lines[0]).toContain("Muster: Sat, Jul 4 - Hops - captain. Yes or no?");
+    expect(lines[0]).toContain("http://mill-dev:3000/crew/auth?t=secret-0");
+    expect(lines[0]).toContain(CREW);
   });
 
   it("addresses the message to the crew member's phone with full correlation", async () => {

@@ -566,7 +566,8 @@ export async function confirmSeat(
  * `confirmSeat` returns null and we pass the claim outcome through — never throw.
  *
  * Both answer surfaces route here (crew `respondToAsk`, operator-as-crew
- * `recordResponseAs`), and the M4 inbound-channel adapter must too — funnelling a
+ * `recordResponseAs`, deleted with the outbox in #934), and the M4 inbound-channel
+ * adapter must too — funnelling a
  * real "in" reply into raw `recordResponse` would strand it at `Claimed`.
  */
 export async function recordResponseAndConfirm(

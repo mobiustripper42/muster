@@ -2,9 +2,8 @@
  * 9.3 (#224, DEC-087) — staff a named person into a supernumerary/trainee seat.
  * Drives the whole loop through the cockpit: add a trainee seat → the picker
  * appears (trainee rule set — unrated is fine; the same-day-committed exclusion
- * is covered by the core suite) → Assign → occupant named on the line + the
- * DEC-084 "you're on" notice lands in the outbox → my-shifts shows the ride →
- * Take off seat → picker returns.
+ * is covered by the core suite) → Assign → occupant named on the line →
+ * my-shifts shows the ride → Take off seat → picker returns.
  *
  * **SKIPPED — the Manning override UI was withdrawn (S55 prod incident).** This
  * spec drives that UI end-to-end: `+ Trainee seat` and the "Trainee for this
@@ -42,9 +41,10 @@ test.describe.skip("trainee staffing (9.3, DEC-087)", () => {
       page.getByText(/Marisol is riding this shift as a trainee/),
     ).toBeVisible();
 
-    // DEC-084: the "you're on" notice landed in the operator outbox.
-    await page.goto("/admin/outbox");
-    await expect(page.getByText(/you.?re on the .*shift/i).first()).toBeVisible();
+    // The DEC-084 "you're on" notice was asserted here by opening /admin/outbox and
+    // reading the queued relay. #934 deleted that screen — with no Twilio key the
+    // notice is now a server log line, which a browser test cannot see. The notice
+    // itself still fires; `forwardNotices` covers it at the unit level.
 
     // My-shifts: the rider sees the shift, provenance-badged (#196).
     await signInAsCrew(page, "crew-ar-sub");

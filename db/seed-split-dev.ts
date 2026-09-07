@@ -2,7 +2,7 @@
  * Dev seed for split/merge testing (8.3 Split / 8.4 Merge) — a real, production-
  * shaped canonical shift you can actually split and merge.
  *
- * WHY THIS EXISTS: the scenario seeds (atrisk / crewapp / outbox) hand-author
+ * WHY THIS EXISTS: the scenario seeds (atrisk / crewapp) hand-author
  * shifts with NON-canonical ids (`shift-ar-gappy`, …) and hand-set seat ids.
  * `formShifts` is global and keyed on `shift-{vessel}-{date}`, so the moment you
  * split ANY shift it re-forms every event's vessel-day and DUPLICATES those
@@ -179,7 +179,7 @@ try {
   console.log("  • Crew a far side, then Merge (8.4) → the far crew get a release notice.");
   console.log("");
   console.log("⚠  Run on a CLEAN DB — splitting fires formShifts globally; any non-canonical");
-  console.log("   scenario-seed shift (atrisk/crewapp/outbox) would duplicate. Reset before seeding.");
+  console.log("   scenario-seed shift (atrisk/crewapp) would duplicate. Reset before seeding.");
 } finally {
   await repo.close();
 }

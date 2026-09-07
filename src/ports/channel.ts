@@ -91,6 +91,16 @@ export interface SendResult {
   ref?: string;
 }
 
+/**
+ * How long a relayed magic link lives: the ask's answer window (DEC-030). The 15-minute
+ * dev-link TTL stays dev-only.
+ *
+ * Lived in `web-link-channel.ts` until #934 deleted that adapter, and `TwilioChannel`
+ * imported it from there — an adapter depending on a sibling adapter for a contract
+ * constant. It belongs with the port both of them implement.
+ */
+export const RELAY_LINK_TTL_MS = 24 * 60 * 60 * 1000;
+
 export interface ChannelPort {
   /** Hand one message to the delivery medium. Throws if the medium rejects it. */
   send(message: OutboundMessage): Promise<SendResult>;

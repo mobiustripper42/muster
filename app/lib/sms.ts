@@ -39,7 +39,7 @@ export function readTwilioEnv(): TwilioEnv | null {
   }
   if ((accountSid || authToken || messagingServiceSid || from) && isProdDeploy()) {
     console.error(
-      "[sms] Twilio half-configured — need TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + (TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM); falling back to the operator outbox",
+      "[sms] Twilio half-configured — need TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + (TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM); falling back to logging what would have been sent (#934)",
     );
   }
   return null;

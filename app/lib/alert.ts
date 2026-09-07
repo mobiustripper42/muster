@@ -6,7 +6,7 @@ import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
  * Operator At-Risk alert — the edge wiring (DEC-095), the At-Risk analog of
- * `forwardToOutbox`/`runDoorbellTick`. The ONE place the app picks the channel +
+ * `relayAsks`/`runDoorbellTick`. The ONE place the app picks the channel +
  * the host-safe board link and hands the tick's new landings to the core sender.
  *
  * No relay fallback (DEC-095): with no live SMS the recipient IS the operator and

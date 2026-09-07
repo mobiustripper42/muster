@@ -3,7 +3,7 @@ import { formShifts, PartialFormError } from "@core/builder/form-shifts.js";
 import { logFormAudit } from "@core/oracle/audit-log.js";
 import { tick, type TickResult } from "@core/builder/tick.js";
 import { getRepo } from "../../../lib/repo";
-import { forwardFormNotices, forwardToOutbox } from "../../../lib/channel";
+import { forwardFormNotices, relayAsks } from "../../../lib/channel";
 import { forwardBoardAlerts } from "../../../lib/alert";
 
 /**
@@ -147,9 +147,9 @@ export async function GET(req: Request) {
   // response/monitoring — and an ask-relay failure must not skip the alert, or
   // vice versa. Independent try/catch each.
   try {
-    await forwardToOutbox(r.firedAsks);
+    await relayAsks(r.firedAsks);
   } catch (e) {
-    console.error("tick: forwardToOutbox failed — asks may not have relayed", e);
+    console.error("tick: relayAsks failed — asks may not have relayed", e);
   }
   let alertsSent = 0;
   try {

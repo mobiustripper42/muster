@@ -7,7 +7,7 @@ import { mergeShift } from "@core/builder/merge.js";
 import { asId } from "@core/domain/ids.js";
 import { logCrewRemoved, logFormAudit } from "@core/oracle/audit-log.js";
 import { readSubject } from "../../../lib/auth";
-import { forwardFormNotices, forwardNoticesToOutbox } from "../../../lib/channel";
+import { forwardFormNotices, relayNotices } from "../../../lib/channel";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../lib/operator";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
@@ -111,7 +111,7 @@ export async function mergeAction(formData: FormData): Promise<void> {
     // merge that happened, and a retry then throws `not split`). Its own guard here
     // covers the channel construction too, not just forwardNotices' per-change swallow.
     try {
-      await forwardNoticesToOutbox(
+      await relayNotices(
         toNotify.map((crewMemberId) => ({
           crewMemberId,
           action: "removed" as const,

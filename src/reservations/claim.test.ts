@@ -1,15 +1,19 @@
 /**
- * Departure claim orchestration (12.1a, DEC-109) — `candidateVessels` (pure boat
- * selection) + `acquireDepartureHold` (fit-and-fallback), driven against the in-memory repo.
+ * Departure claim orchestration (12.1a, DEC-109; 14.7) — `candidateVessels` (pure boat
+ * selection) + `claimDepartureSlot` (fit-and-fallback, writing the pending row), driven against
+ * the in-memory repo.
+ *
+ * 14.7 dropped `checkout_holds`. Every case here that used to plant a rival *hold* now plants a
+ * rival *pending row*, because that is the only thing a checkout produces — and the assertions
+ * are unchanged, which is the point: the occupancy rules survived losing the table.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import type { CheckoutHold, Offering, Reservation, Vessel } from "../domain/entities.js";
-import { asId } from "../domain/ids.js";
+import type { Offering, Reservation, Vessel } from "../domain/entities.js";
+import { asId, type VesselId } from "../domain/ids.js";
 import {
-  acquireDepartureHold,
   candidateVessels,
-  holdExpiry,
+  claimDepartureSlot,
   resolveHoldMinutes,
   HOLD_MINUTES_DEFAULT,
 } from "./claim.js";
@@ -54,6 +58,52 @@ async function seededRepo(): Promise<InMemoryRepository> {
   return repo;
 }
 
+/**
+ * A stand-in for the caller's builder (`create-departure-payment-intent.ts`). Mints a fresh id
+ * per row, and — the contract the real one must also keep — carries a prior row's id and reserved
+ * time straight through so a retry neither forks a second row nor moves its payment window.
+ */
+let seq = 0;
+const builder = (ask: { date: string; time: string; guestCount: number; holderToken?: string }) =>
+  (vesselId: VesselId, prior: Reservation | null, at: string): Reservation => ({
+    id: prior?.id ?? asId<"ReservationId">(`resv-${++seq}`),
+    eventId: null,
+    source: "muster",
+    status: "pending",
+    customerName: "Brody",
+    partySize: ask.guestCount,
+    vesselId,
+    date: ask.date,
+    time: ask.time,
+    offeringId: OFF,
+    reservedAt: prior?.reservedAt ?? at,
+    holdMinutes: 120,
+    tripMinutes: 100,
+    updatedAt: at,
+    ...(ask.holderToken !== undefined ? { holderToken: ask.holderToken } : {}),
+  });
+
+/** The ordinary call: ask for a departure, build a row for whatever boat the claim picks. */
+function claim(
+  repo: InMemoryRepository,
+  ask: { offeringId?: typeof OFF; date?: string; time?: string; guestCount?: number; holderToken?: string },
+  clock: () => string = now,
+) {
+  const req = {
+    offeringId: ask.offeringId ?? OFF,
+    date: ask.date ?? DATE,
+    time: ask.time ?? TIME,
+    guestCount: ask.guestCount ?? 4,
+    ...(ask.holderToken !== undefined ? { holderToken: ask.holderToken } : {}),
+  };
+  return claimDepartureSlot(repo, req, builder(req), clock);
+}
+
+/** The vessel a claim landed on, or null — so an assertion reads as one line and a `soldOut`
+ *  result fails loudly rather than skipping the expect. */
+const claimedVessel = (res: Awaited<ReturnType<typeof claim>>): string | null =>
+  "claimed" in res ? String(res.claimed.vesselId) : null;
+
 describe("candidateVessels — smallest-that-fits (DEC-109)", () => {
   const vessels = [vessel(BIG, 12), vessel(SMALL, 6)];
   const call = (over: Partial<Parameters<typeof candidateVessels>[0]> = {}) =>
@@ -82,142 +132,159 @@ describe("candidateVessels — smallest-that-fits (DEC-109)", () => {
   });
 });
 
-describe("acquireDepartureHold — fit-and-fallback (DEC-109)", () => {
-  it("holds the smallest fitting boat on an empty departure", async () => {
+describe("claimDepartureSlot — fit-and-fallback (DEC-109)", () => {
+  it("writes the pending row on the smallest fitting boat of an empty departure", async () => {
     const repo = await seededRepo();
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
-    expect((await repo.listCheckoutHolds())).toHaveLength(1);
-    // expiry is acquire + 15 min
-    if ("held" in res) expect(res.held.expiresAt).toBe(holdExpiry(NOW));
+    const res = await claim(repo, {});
+    expect(claimedVessel(res)).toBe("v-small");
+    // ONE row, `pending`, no Event — the claim IS the reservation now (§2.8.2).
+    const rows = await repo.listAllReservations();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("pending");
+    expect(rows[0]!.eventId).toBeNull();
+    expect(rows[0]!.reservedAt).toBe(NOW);
   });
 
-  it("falls back to the next boat when the smallest is already live-held by a rival", async () => {
+  it("falls back to the next boat when a rival's live pending row holds the smallest", async () => {
     const repo = await seededRepo();
-    // a rival hold (different id) already occupies the small boat's slot
-    const rival: CheckoutHold = {
-      id: asId<"CheckoutHoldId">("rival"),
-      vesselId: SMALL, date: DATE, time: TIME, source: "muster",
-      offeringId: OFF, guestCount: 2, expiresAt: holdExpiry(NOW), createdAt: NOW,
-    };
-    await repo.acquireCheckoutHold(rival);
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-big"); // fell back
+    await claim(repo, { holderToken: "rival-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+    const res = await claim(repo, { holderToken: "mine-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbb" });
+    expect(claimedVessel(res)).toBe("v-big"); // fell back
   });
 
-  it("skips a boat already BOOKED and holds the next", async () => {
+  it("skips a boat already BOOKED and claims the next", async () => {
     const repo = await seededRepo();
     const evId = eventIdForSlot(SMALL, DATE, TIME);
     await repo.saveEvent({ id: evId, vesselId: SMALL, date: DATE, time: TIME, capacity: 6, status: "scheduled", source: "muster" });
     await repo.saveReservation({ id: asId<"ReservationId">("r-booked"), eventId: evId, source: "muster", customerName: "X", partySize: 2, status: "booked" });
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-big"); // small was sold
+    expect(claimedVessel(await claim(repo, {}))).toBe("v-big"); // small was sold
   });
 
-  it("sold out when every fitting boat is taken", async () => {
+  it("sold out when every fitting boat is taken, and writes no row", async () => {
     const repo = await seededRepo();
-    // both boats live-held by rivals
-    for (const v of [SMALL, BIG]) {
-      await repo.acquireCheckoutHold({
-        id: asId<"CheckoutHoldId">(`rival-${String(v)}`),
-        vesselId: v, date: DATE, time: TIME, source: "muster",
-        offeringId: OFF, guestCount: 2, expiresAt: holdExpiry(NOW), createdAt: NOW,
-      });
-    }
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    expect(res).toEqual({ soldOut: true });
+    await claim(repo, { holderToken: "tok-a-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+    await claim(repo, { holderToken: "tok-b-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" });
+    const third = await claim(repo, { holderToken: "tok-c-cccccccccccccccccccccccccccccccc" });
+    expect(third).toEqual({ soldOut: true });
+    expect(await repo.listAllReservations()).toHaveLength(2); // no third row
   });
 
   it("unbookable: offering missing / not live / invalid guest count", async () => {
     const repo = await seededRepo();
-    expect(await acquireDepartureHold(repo, { offeringId: asId<"OfferingId">("nope"), date: DATE, time: TIME, guestCount: 4 }, now))
-      .toEqual({ unbookable: "offering_missing" });
+    expect(await claim(repo, { offeringId: asId<"OfferingId">("nope") })).toEqual({ unbookable: "offering_missing" });
     await repo.saveOffering(offering({ status: "draft" }));
-    expect(await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now))
-      .toEqual({ unbookable: "not_live" });
+    expect(await claim(repo, {})).toEqual({ unbookable: "not_live" });
     await repo.saveOffering(offering()); // back to live
-    expect(await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 0 }, now))
-      .toEqual({ unbookable: "invalid_guest_count" });
+    expect(await claim(repo, { guestCount: 0 })).toEqual({ unbookable: "invalid_guest_count" });
+    expect(await repo.listAllReservations()).toHaveLength(0);
   });
 
-  it("mints a unique hold id per attempt (not slot-derived — so contention is detectable)", async () => {
+  it("two different buyers get two DISTINCT rows, one per boat", async () => {
     const repo = await seededRepo();
-    const a = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    const b = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    // two different buyers → two different boats → two distinct hold ids
-    expect("held" in a && "held" in b && String(a.held.id) !== String(b.held.id)).toBe(true);
+    const a = await claim(repo, { holderToken: "tok-a-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+    const b = await claim(repo, { holderToken: "tok-b-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" });
+    expect("claimed" in a && "claimed" in b && String(a.claimed.id) !== String(b.claimed.id)).toBe(true);
+    expect([claimedVessel(a), claimedVessel(b)]).toEqual(["v-small", "v-big"]);
+  });
+});
+
+/**
+ * The write is the contention point now (14.7) — so losing it falls through.
+ *
+ * This is the behaviour the hold table made impossible. The hold picked the hull; the pending
+ * write happened afterwards at the caller, all-or-nothing, and a race lost THERE ended the
+ * checkout with `sold_out` while a perfectly free boat sat next to it. Losing the write is not
+ * "the departure is gone" — it is "that hull is gone", and there may be another.
+ */
+describe("claimDepartureSlot — a lost write falls through to the next boat (14.7)", () => {
+  /** A repo whose pending write loses for one named vessel, exactly as a rival committing
+   *  between our read and our write would. Everything else is the real in-memory adapter. */
+  function repoLosingOn(repo: InMemoryRepository, loser: VesselId): InMemoryRepository {
+    const real = repo.savePendingIfHullFree.bind(repo);
+    repo.savePendingIfHullFree = async (row: Reservation, liveSince: string) =>
+      String(row.vesselId) === String(loser) ? { result: "lost" as const } : real(row, liveSince);
+    return repo;
+  }
+
+  it("tries the NEXT hull when the CAS rejects the first, instead of reporting sold out", async () => {
+    const repo = repoLosingOn(await seededRepo(), SMALL);
+    const res = await claim(repo, {});
+    expect(claimedVessel(res)).toBe("v-big");
+    const rows = await repo.listAllReservations();
+    expect(rows).toHaveLength(1);
+    expect(String(rows[0]!.vesselId)).toBe("v-big");
+  });
+
+  it("still reports sold out once EVERY fitting hull loses its write", async () => {
+    const repo = await seededRepo();
+    repo.savePendingIfHullFree = async () => ({ result: "lost" as const });
+    expect(await claim(repo, {})).toEqual({ soldOut: true });
+    expect(await repo.listAllReservations()).toHaveLength(0);
   });
 });
 
 /**
  * The (date, time) must be on the offering's schedule GRID (issue #799).
  *
- * The engine trusted `req.date`/`req.time` verbatim — a scripted call could park a hold at any
+ * The engine trusted `req.date`/`req.time` verbatim — a scripted call could park a claim at any
  * string. Two harms: (1) `13:31` is not a real departure so nothing legitimate ever asks for it,
  * yet it OVERLAPS the real `13:30` in the claim path (interval math) while the availability
- * deriver keys holds on EXACT identity — so an off-grid hold makes `/book` show `13:30` available
- * while every real buyer's checkout returns sold_out, an invisible lockout; (2) an unbounded set
- * of distinct off-grid identities to spam. Rejecting off-grid at the write path is what makes the
- * deriver's exact-identity match correct by construction — the two now agree because only grid
- * slots can ever hold.
+ * deriver keys a materialized slot on EXACT identity — so an off-grid row makes `/book` show
+ * `13:30` available while every real buyer's checkout returns sold_out, an invisible lockout; (2)
+ * an unbounded set of distinct off-grid identities to spam. Rejecting off-grid at the write path
+ * is what makes the deriver's exact-identity match correct by construction.
  *
- * A rejection writes NO hold row. The offering runs Saturdays only (`weekdays:[5]`), season
+ * A rejection writes NO row. The offering runs Saturdays only (`weekdays:[5]`), season
  * 2026-06-01..2026-08-31, departures [13:30]; DATE 2026-07-04 is a Saturday inside it.
  */
-describe("acquireDepartureHold — the slot must be on the schedule grid (#799)", () => {
-  const ask = (date: string, time: string) => ({ offeringId: OFF, date, time, guestCount: 4 });
-
+describe("claimDepartureSlot — the slot must be on the schedule grid (#799)", () => {
   it("refuses a time that is not a listed departure, and writes no row", async () => {
     const repo = await seededRepo();
-    const res = await acquireDepartureHold(repo, ask(DATE, "13:31"), now);
-    expect(res).toEqual({ unbookable: "off_schedule" });
-    expect(await repo.listCheckoutHolds()).toHaveLength(0);
+    expect(await claim(repo, { time: "13:31" })).toEqual({ unbookable: "off_schedule" });
+    expect(await repo.listAllReservations()).toHaveLength(0);
   });
 
   it("refuses a date outside the season", async () => {
     const repo = await seededRepo();
     // 2026-09-05 is a Saturday (right weekday) but past seasonEnd 2026-08-31.
-    const res = await acquireDepartureHold(repo, ask("2026-09-05", TIME), now);
-    expect(res).toEqual({ unbookable: "off_schedule" });
-    expect(await repo.listCheckoutHolds()).toHaveLength(0);
+    expect(await claim(repo, { date: "2026-09-05" })).toEqual({ unbookable: "off_schedule" });
+    expect(await repo.listAllReservations()).toHaveLength(0);
   });
 
   it("refuses a date on a weekday the offering does not run", async () => {
     const repo = await seededRepo();
     // 2026-07-05 is a Sunday; the offering runs Saturdays only.
-    const res = await acquireDepartureHold(repo, ask("2026-07-05", TIME), now);
-    expect(res).toEqual({ unbookable: "off_schedule" });
+    expect(await claim(repo, { date: "2026-07-05" })).toEqual({ unbookable: "off_schedule" });
   });
 
   it("refuses a malformed date or time rather than trusting it", async () => {
     const repo = await seededRepo();
     for (const [d, t] of [["2026-07-04", "13:3 0"], ["2026-13-45", TIME], ["not-a-date", TIME], ["2026-09-31", TIME]]) {
-      expect(await acquireDepartureHold(repo, ask(d!, t!), now)).toEqual({ unbookable: "off_schedule" });
+      expect(await claim(repo, { date: d!, time: t! })).toEqual({ unbookable: "off_schedule" });
     }
-    expect(await repo.listCheckoutHolds()).toHaveLength(0);
+    expect(await repo.listAllReservations()).toHaveLength(0);
   });
 
-  it("still holds a slot that IS on the grid — the guard doesn't over-reject", async () => {
+  it("still claims a slot that IS on the grid — the guard doesn't over-reject", async () => {
     const repo = await seededRepo();
-    const res = await acquireDepartureHold(repo, ask(DATE, TIME), now);
-    expect("held" in res).toBe(true);
-    expect(await repo.listCheckoutHolds()).toHaveLength(1);
+    expect(claimedVessel(await claim(repo, {}))).toBe("v-small");
+    expect(await repo.listAllReservations()).toHaveLength(1);
   });
 });
 
 /**
- * The dev-only hold-TTL override (`CHECKOUT_HOLD_MINUTES`).
+ * The dev-only payment-window override (`CHECKOUT_HOLD_MINUTES`).
  *
  * The reason it exists is testability of the residual race: at 15 minutes, reproducing a
- * hold-expires-mid-payment collision by hand means two browsers and a fifteen-minute wait, so
+ * window-expires-mid-payment collision by hand means two browsers and a fifteen-minute wait, so
  * nobody ever does it. At 0.5 it is a two-minute job.
  *
- * **The assertion that matters is the last one.** Shortening a real buyer's hold releases their
- * slot while their card is still processing — manufacturing the very race the constant bounds. A
+ * **The assertion that matters is the last one.** Shortening a real buyer's window lapses their
+ * row while their card is still processing — manufacturing the very race the constant bounds. A
  * stray env var on a production deploy would cost real customers real bookings, so production
  * must ignore it no matter what it says.
  */
-describe("hold TTL override (CHECKOUT_HOLD_MINUTES)", () => {
+describe("payment-window override (CHECKOUT_HOLD_MINUTES)", () => {
   const ENV = { ...process.env };
   afterEach(() => {
     process.env = { ...ENV };
@@ -235,12 +302,12 @@ describe("hold TTL override (CHECKOUT_HOLD_MINUTES)", () => {
     expect(resolveHoldMinutes()).toBe(0.5);
   });
 
-  it("falls back on garbage and on zero rather than minting a zero-length hold", () => {
+  it("falls back on garbage and on zero rather than minting a zero-length window", () => {
     delete process.env.VERCEL_ENV;
     process.env.NODE_ENV = "development";
     for (const bad of ["", "abc", "0", "-5", "NaN", "Infinity"]) {
       process.env.CHECKOUT_HOLD_MINUTES = bad;
-      // A zero-length hold would make every buyer lose the race to themselves.
+      // A zero-length window would make every buyer lose the race to themselves.
       expect(resolveHoldMinutes()).toBe(HOLD_MINUTES_DEFAULT);
     }
   });
@@ -268,7 +335,7 @@ describe("hold TTL override (CHECKOUT_HOLD_MINUTES)", () => {
   });
 });
 
-describe("acquireDepartureHold — the hull, not just the slot (#615, #691)", () => {
+describe("claimDepartureSlot — the hull, not just the slot (#615, #691)", () => {
   const xolaTrip = (time: string, id: string) => ({
     id: asId<"EventId">(id),
     vesselId: SMALL,
@@ -282,10 +349,9 @@ describe("acquireDepartureHold — the hull, not just the slot (#615, #691)", ()
   it("skips a boat a XOLA trip is already using", async () => {
     const repo = await seededRepo();
     await repo.saveEvent(xolaTrip(TIME, "x-1"));
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    // Small is physically taken by Xola, so the hold falls through to the big boat. Before
-    // #615 the funnel could not see the Xola trip at all and would have held the small one.
-    expect("held" in res && String(res.held.vesselId)).toBe("v-big");
+    // Small is physically taken by Xola, so the claim falls through to the big boat. Before
+    // #615 the funnel could not see the Xola trip at all and would have taken the small one.
+    expect(claimedVessel(await claim(repo, {}))).toBe("v-big");
   });
 
   it("skips a boat busy at an OVERLAPPING time, not just the same one (#691)", async () => {
@@ -293,21 +359,35 @@ describe("acquireDepartureHold — the hull, not just the slot (#615, #691)", ()
     // 13:00 + 100min runs to 14:40, straight through a 13:30 departure. Different slot
     // identity, which is exactly why the old exact-triple check missed it.
     await repo.saveEvent(xolaTrip("13:00", "x-2"));
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-big");
+    expect(claimedVessel(await claim(repo, {}))).toBe("v-big");
   });
 
-  it("still holds a boat whose trip ends exactly when ours starts", async () => {
+  it("still claims a boat whose trip ends exactly when ours starts", async () => {
     const repo = await seededRepo();
     await repo.saveEvent(xolaTrip("11:50", "x-3")); // 11:50 + 100 = 13:30, abuts
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+    expect(claimedVessel(await claim(repo, {}))).toBe("v-small");
   });
 
-  it("still holds a slot that has an UNBOOKED override event of its own", async () => {
-    // An override Event materialized at the very slot being held is not an occupant — it IS
-    // the slot. Counting it made the hold see the boat as busy against itself, so a departure
-    // the calendar shows as available would report sold_out at checkout.
+  it("falls THROUGH an unbooked override event of its own, because the write still counts it", async () => {
+    // An override Event materialized at the very slot being claimed is not an occupant — it IS
+    // the slot, and the READ side has exempted it since #691: `vesselIsAvailable` drops a muster
+    // event at our own slot identity before measuring the hull.
+    //
+    // **The WRITE side does not.** `savePendingIfHullFree` refuses any scheduled event over the
+    // interval with no self-exemption ("a pending row has no Event, so any scheduled trip at its
+    // slot is somebody else's"), which is true of every row that exists today and false of this
+    // one. So the read offers v-small, the CAS rejects it, and 14.7's fall-through takes v-big.
+    //
+    // **Latent, not live.** Nothing in the app materializes an unbooked scheduled muster Event —
+    // `saveEvent` is called only by the Xola import (source `xola`) and by cancellation. It arms
+    // when an operator can create an Event at a slot before a booking exists — a per-departure
+    // price override, or 16.1's operator-created booking. Filed as issue #945, which blocks 16.1:
+    // the write must exempt a muster event at its own slot identity UNLESS an active claim is
+    // already booked on it. Pinned here so the disagreement is observable rather than discovered
+    // by a customer.
+    //
+    // 14.7 improves this without fixing it: before the fall-through, the lost write ended the
+    // checkout with `sold_out` on a departure that had a free hull sitting next to it.
     const repo = await seededRepo();
     await repo.saveEvent({
       id: eventIdForSlot(SMALL, DATE, TIME),
@@ -319,8 +399,7 @@ describe("acquireDepartureHold — the hull, not just the slot (#615, #691)", ()
       source: "muster",
       price: 42000, // an operator override price on this departure
     });
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+    expect(claimedVessel(await claim(repo, {}))).toBe("v-big");
   });
 
   it("sold out when a Xola trip occupies every fitting boat", async () => {
@@ -328,52 +407,11 @@ describe("acquireDepartureHold — the hull, not just the slot (#615, #691)", ()
     for (const [i, v] of [SMALL, BIG].entries()) {
       await repo.saveEvent({ ...xolaTrip(TIME, `x-all-${i}`), vesselId: v, capacity: 12 });
     }
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    expect(res).toEqual({ soldOut: true });
+    expect(await claim(repo, {})).toEqual({ soldOut: true });
   });
 });
 
-describe("acquireDepartureHold — a live HOLD occupies the hull too (#694 review)", () => {
-  it("skips a boat whose overlapping departure is already held by a rival", async () => {
-    // Two buyers, one boat, 13:30 and a departure inside its trip length. The events check
-    // could not see this — a hold materializes nothing — so both started paying and the write
-    // CAS refunded the loser. That refund is exactly what the hold system exists to prevent.
-    const repo = await seededRepo();
-    await repo.acquireCheckoutHold({
-      id: asId<"CheckoutHoldId">("rival-overlap"),
-      vesselId: SMALL,
-      date: DATE,
-      time: "13:00", // 13:00 + 100min runs to 14:40, over a 13:30 departure
-      source: "muster",
-      offeringId: OFF,
-      guestCount: 2,
-      expiresAt: holdExpiry(NOW),
-      createdAt: NOW,
-    });
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-big"); // fell back off the held hull
-  });
-
-  it("an EXPIRED overlapping hold does not occupy anything", async () => {
-    // Lazy-on-read expiry (DEC-109). A stale row must not hold a boat hostage.
-    const repo = await seededRepo();
-    await repo.acquireCheckoutHold({
-      id: asId<"CheckoutHoldId">("stale-overlap"),
-      vesselId: SMALL,
-      date: DATE,
-      time: "13:00",
-      source: "muster",
-      offeringId: OFF,
-      guestCount: 2,
-      expiresAt: "2026-07-04T11:00:00.000Z", // before `now`
-      createdAt: "2026-07-04T10:45:00.000Z",
-    });
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
-  });
-});
-
-describe("acquireDepartureHold — a live PENDING row occupies the hull for its own hold minutes (14.4, §2.8.3)", () => {
+describe("claimDepartureSlot — a live PENDING row occupies the hull for its own hold minutes (14.4, §2.8.3)", () => {
   // The SPEC's worked case (criterion 4): a 100-minute trip with 120 hold minutes. A pending row
   // at 13:30 commits the boat until 15:30; measured by its trip it would be back at 15:10 and a
   // 15:15 departure would sell. Everything in here asks for 15:15.
@@ -410,151 +448,130 @@ describe("acquireDepartureHold — a live PENDING row occupies the hull for its 
 
   it("skips the boat a rival's pending row holds, measured by the ROW's hold minutes (criterion 4)", async () => {
     const repo = await repoWith(pendingRow());
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: ASK, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-big");
+    expect(claimedVessel(await claim(repo, { time: ASK }))).toBe("v-big");
   });
 
   it("the row's frozen hold minutes govern even after the offering's value changed (criterion 2)", async () => {
     const repo = await repoWith(pendingRow({ holdMinutes: 120 }), { holdMinutes: 60 });
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: ASK, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-big");
+    expect(claimedVessel(await claim(repo, { time: ASK }))).toBe("v-big");
   });
 
-  it("still holds the boat when the row's hold minutes end before our departure", async () => {
+  it("still claims the boat when the row's hold minutes end before our departure", async () => {
     const repo = await repoWith(pendingRow({ holdMinutes: 100 })); // to 15:10
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: ASK, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+    expect(claimedVessel(await claim(repo, { time: ASK }))).toBe("v-small");
   });
 
   it("a LAPSED pending row does not occupy anything", async () => {
     const repo = await repoWith(pendingRow({ reservedAt: "2026-07-04T11:30:00.000Z" })); // 30 min ago
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: ASK, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+    expect(claimedVessel(await claim(repo, { time: ASK }))).toBe("v-small");
   });
 
   it("the buyer's OWN pending row (same holder token) does not block their retry", async () => {
     const repo = await repoWith(pendingRow({ holderToken: "tok-mine" }));
-    const res = await acquireDepartureHold(
-      repo,
-      { offeringId: OFF, date: DATE, time: ASK, guestCount: 4, holderToken: "tok-mine" },
-      now,
-    );
-    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+    // Their own row is on the 13:30 departure, so this is a genuinely new checkout at 15:15 —
+    // it must neither be blocked by, nor reuse, the earlier one.
+    const res = await claim(repo, { time: ASK, holderToken: "tok-mine" });
+    expect(claimedVessel(res)).toBe("v-small");
+    expect("claimed" in res && res.reused).toBe(false);
   });
 
-  it("a rival HOLD is measured by hold minutes too, not trip time (issue #825)", async () => {
-    const repo = await repoWith(pendingRow({ reservedAt: "2026-07-04T11:30:00.000Z" })); // lapsed; irrelevant
-    await repo.acquireCheckoutHold({
-      id: asId<"CheckoutHoldId">("rival-1330"),
-      vesselId: SMALL,
-      date: DATE,
-      time: "13:30",
-      source: "muster",
-      offeringId: OFF,
-      guestCount: 2,
-      expiresAt: holdExpiry(NOW),
-      createdAt: NOW,
-    });
-    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: ASK, guestCount: 4 }, now);
-    expect("held" in res && String(res.held.vesselId)).toBe("v-big");
+  it("a rival's 13:30 pending row is measured by hold minutes, not trip time (issue #825)", async () => {
+    // 13:30 + 120 hold minutes runs to 15:30, over a 15:15 departure. Measured by the 100-minute
+    // TRIP it would be back at 15:10 and this would sell — the boat double-booked.
+    const repo = await repoWith(pendingRow());
+    expect(claimedVessel(await claim(repo, { time: ASK }))).toBe("v-big");
   });
 });
 
-
 /**
- * One buyer, one hold per departure (#575).
+ * One buyer, one ROW per departure (#575, §2.8.5).
  *
- * The hold exists to turn "you paid and we refunded you" into "sold out, before you paid". Before
- * this, a declined card — the commonest checkout failure there is — made it do the opposite: each
- * retry took another boat, and the third reported sold_out on a departure nobody had paid for.
+ * The claim exists to turn "you paid and we refunded you" into "sold out, before you paid".
+ * Before this, a declined card — the commonest checkout failure there is — made it do the
+ * opposite: each retry took another boat, and the third reported sold_out on a departure nobody
+ * had paid for. 14.7 moved the rule off the hold table and onto the pending row itself; the
+ * behaviour it protects is identical.
  */
-describe("acquireDepartureHold — session reuse (#575)", () => {
+describe("claimDepartureSlot — session reuse (#575)", () => {
   // A real-shaped holder token (32 CSPRNG bytes, base64url) — the cookie value, not an identity.
   const TOKEN = "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWo";
   const OTHER_TOKEN = "b3RoZXJzZXNzaW9udG9rZW4wMTIzNDU2Nzg5YWJjZGU";
-  const ask = (over: Record<string, unknown> = {}) => ({
-    offeringId: OFF,
-    date: DATE,
-    time: TIME,
-    guestCount: 4,
-    holderToken: TOKEN,
-    ...over,
-  });
 
-  it("returns the SAME hold on a retry instead of taking a second boat", async () => {
+  it("returns the SAME row on a retry instead of taking a second boat", async () => {
     const repo = await seededRepo();
-    const first = await acquireDepartureHold(repo, ask(), now);
-    const second = await acquireDepartureHold(repo, ask(), now);
+    const first = await claim(repo, { holderToken: TOKEN });
+    const second = await claim(repo, { holderToken: TOKEN });
 
-    expect("held" in first && "held" in second).toBe(true);
-    if ("held" in first && "held" in second) {
-      expect(String(second.held.id)).toBe(String(first.held.id));
-      expect(String(second.held.vesselId)).toBe("v-small");
+    expect("claimed" in first && "claimed" in second).toBe(true);
+    if ("claimed" in first && "claimed" in second) {
+      expect(String(second.claimed.id)).toBe(String(first.claimed.id));
+      expect(String(second.claimed.vesselId)).toBe("v-small");
+      expect(second.reused).toBe(true);
     }
-    expect(await repo.listCheckoutHolds()).toHaveLength(1);
+    // The retry writes NOTHING: its row already exists and already occupies the hull.
+    expect(await repo.listAllReservations()).toHaveLength(1);
   });
 
-  it("does NOT extend the expiry — a retry cannot park a boat indefinitely", async () => {
-    // Decided at build (#575): a decline-and-retry happens inside a minute, so extension buys
-    // almost nothing, and refusing it closes the hole where resubmitting holds a boat forever.
+  it("does NOT move the reserved time — a retry cannot park a boat indefinitely (§2.8.7)", async () => {
+    // A resubmit that re-stamped `reservedAt` would push the payment window forward on every
+    // attempt, so a script could hold a hull forever by retrying once a minute.
     const repo = await seededRepo();
-    const first = await acquireDepartureHold(repo, ask(), now);
+    const first = await claim(repo, { holderToken: TOKEN });
     const later = () => "2026-07-04T12:10:00.000Z";
-    const second = await acquireDepartureHold(repo, ask(), later);
+    const second = await claim(repo, { holderToken: TOKEN }, later);
 
     // UNCONDITIONAL, and it is the point: with every assertion inside the type guard, a
     // regression that returned `soldOut` would run zero expects and pass green — pinning
     // nothing while looking like coverage.
-    expect("held" in first && "held" in second).toBe(true);
-    if ("held" in first && "held" in second) {
-      expect(second.held.expiresAt).toBe(first.held.expiresAt);
-      expect(second.held.expiresAt).toBe(holdExpiry(NOW));
+    expect("claimed" in first && "claimed" in second).toBe(true);
+    if ("claimed" in first && "claimed" in second) {
+      expect(second.claimed.reservedAt).toBe(first.claimed.reservedAt);
+      expect(second.claimed.reservedAt).toBe(NOW);
     }
   });
 
   it("a DIFFERENT session still takes the next boat, and the third is still sold out", async () => {
     // The sold-out path is real and must survive the fix — this is capacity, not a retry.
     const repo = await seededRepo();
-    await acquireDepartureHold(repo, ask(), now);
-    const other = await acquireDepartureHold(repo, ask({ holderToken: OTHER_TOKEN }), now);
-    expect("held" in other && String(other.held.vesselId)).toBe("v-big");
+    await claim(repo, { holderToken: TOKEN });
+    const other = await claim(repo, { holderToken: OTHER_TOKEN });
+    expect(claimedVessel(other)).toBe("v-big");
 
-    const third = await acquireDepartureHold(repo, ask({ holderToken: "dGhpcmRzZXNzaW9udG9rZW4wMTIzNDU2Nzg5YWJjZGU" }), now);
+    const third = await claim(repo, { holderToken: "dGhpcmRzZXNzaW9udG9rZW4wMTIzNDU2Nzg5YWJjZGU" });
     expect(third).toEqual({ soldOut: true });
   });
 
-  it("takes a bigger boat when the retry no longer FITS — and leaves the old hold alone", async () => {
-    // Held the small boat (cap 6) for 4, comes back with 9. Silently keeping it would book a
-    // party onto a boat too small for them, so the reuse is refused and a fitting boat acquired.
+  it("takes a bigger boat when the retry no longer FITS — and leaves the old row alone", async () => {
+    // Claimed the small boat (cap 6) for 4, comes back with 9. Silently keeping it would book a
+    // party onto a boat too small for them, so the reuse is refused and a fitting boat claimed.
     //
-    // The old hold is NOT deleted. An earlier cut released it here, and `/security-review` showed
-    // why that was dangerous while holds were keyed on the buyer's email: anyone could delete a
-    // named person's hold by submitting their address with an absurd guest count. The token makes
-    // that unreachable, but deleting is still the wrong instinct on a path whose input is a raw
-    // guest count — so the stale hold simply expires. One boat idle for the rest of a 15-minute
-    // window is a smaller cost than a destroyed checkout.
+    // The old row is NOT cancelled. An earlier cut released it here, and `/security-review`
+    // showed why that was dangerous while claims were keyed on the buyer's email: anyone could
+    // destroy a named person's claim by submitting their address with an absurd guest count. The
+    // token makes that unreachable, but deleting is still the wrong instinct on a path whose
+    // input is a raw guest count — so the stale row simply lapses. One boat idle for the rest of
+    // a payment window is a smaller cost than a destroyed checkout.
     const repo = await seededRepo();
-    const first = await acquireDepartureHold(repo, ask(), now);
-    const bigger = await acquireDepartureHold(repo, ask({ guestCount: 9 }), now);
+    const first = await claim(repo, { holderToken: TOKEN });
+    const bigger = await claim(repo, { holderToken: TOKEN, guestCount: 9 });
 
-    expect("held" in first && "held" in bigger).toBe(true);
-    expect("held" in bigger && String(bigger.held.vesselId)).toBe("v-big");
-    if ("held" in first && "held" in bigger) {
-      expect(String(bigger.held.id)).not.toBe(String(first.held.id));
+    expect(claimedVessel(bigger)).toBe("v-big");
+    if ("claimed" in first && "claimed" in bigger) {
+      expect(String(bigger.claimed.id)).not.toBe(String(first.claimed.id));
+      expect(bigger.reused).toBe(false);
     }
-    const holds = await repo.listCheckoutHolds();
-    expect(holds).toHaveLength(2);
-    expect(holds.map((h) => String(h.vesselId)).sort()).toEqual(["v-big", "v-small"]);
+    const rows = await repo.listAllReservations();
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => String(r.vesselId)).sort()).toEqual(["v-big", "v-small"]);
   });
 
-  it("does NOT hand back a held boat that has since been blocked", async () => {
-    // The world changes inside a 15-minute hold. Operator blocks the vessel at 10:00 for a
+  it("does NOT hand back a claimed boat that has since been blocked", async () => {
+    // The world changes inside a payment window. Operator blocks the vessel at 10:00 for a
     // mechanical fault; the customer's retry at 10:02 must not be handed that boat and charged
-    // for it. The reuse path re-asks every question the mint loop asks — before this it asked
+    // for it. The reuse path re-asks every question the write loop asks — before this it asked
     // only "is it mine, live, and big enough".
     const repo = await seededRepo();
-    const first = await acquireDepartureHold(repo, ask(), now);
-    expect("held" in first && String(first.held.vesselId)).toBe("v-small");
+    expect(claimedVessel(await claim(repo, { holderToken: TOKEN }))).toBe("v-small");
 
     await repo.saveBlock({
       id: asId<"BlockId">("b-mech"),
@@ -564,60 +581,62 @@ describe("acquireDepartureHold — session reuse (#575)", () => {
       time: TIME,
     });
 
-    const retry = await acquireDepartureHold(repo, ask(), now);
-    expect("held" in retry && String(retry.held.vesselId)).toBe("v-big");
+    expect(claimedVessel(await claim(repo, { holderToken: TOKEN }))).toBe("v-big");
   });
 
-  it("does NOT hand back a held boat that has since been BOOKED", async () => {
+  it("does NOT hand back a claimed boat that has since been BOOKED", async () => {
     // Same shape, different cause: the residual race resolved against this session while its
-    // hold was live. Handing the boat back would take payment for a boat already sold.
+    // row was live. Handing the boat back would take payment for a boat already sold.
     const repo = await seededRepo();
-    await acquireDepartureHold(repo, ask(), now);
+    await claim(repo, { holderToken: TOKEN });
 
     const evId = eventIdForSlot(SMALL, DATE, TIME);
     await repo.saveEvent({ id: evId, vesselId: SMALL, date: DATE, time: TIME, capacity: 6, status: "scheduled", source: "muster" });
     await repo.saveReservation({ id: asId<"ReservationId">("r-won"), eventId: evId, source: "muster", customerName: "Rival", partySize: 2, status: "booked" });
 
-    const retry = await acquireDepartureHold(repo, ask(), now);
-    expect("held" in retry && String(retry.held.vesselId)).toBe("v-big");
+    expect(claimedVessel(await claim(repo, { holderToken: TOKEN }))).toBe("v-big");
   });
 
-  it("two sessions with NO token never share a hold", async () => {
-    // The one way this rule could sell one boat twice. A keyless hold is never reused, by
-    // anybody — including the person who minted it.
+  it("two sessions with NO token never share a row", async () => {
+    // The one way this rule could sell one boat twice. A tokenless row is never reused, by
+    // anybody — including the person who wrote it.
     const repo = await seededRepo();
-    const a = await acquireDepartureHold(repo, ask({ holderToken: undefined }), now);
-    const b = await acquireDepartureHold(repo, ask({ holderToken: undefined }), now);
+    const a = await claim(repo, {});
+    const b = await claim(repo, {});
 
-    expect("held" in a && "held" in b).toBe(true);
-    if ("held" in a && "held" in b) {
-      expect(String(b.held.id)).not.toBe(String(a.held.id));
-      expect(String(b.held.vesselId)).toBe("v-big"); // took the next boat, as before #575
+    expect("claimed" in a && "claimed" in b).toBe(true);
+    if ("claimed" in a && "claimed" in b) {
+      expect(String(b.claimed.id)).not.toBe(String(a.claimed.id));
+      expect(String(b.claimed.vesselId)).toBe("v-big"); // took the next boat, as before #575
     }
-    expect(await repo.listCheckoutHolds()).toHaveLength(2);
+    expect(await repo.listAllReservations()).toHaveLength(2);
   });
 
-  it("an EXPIRED hold of the same buyer is not reused", async () => {
+  it("a LAPSED row of the same buyer is not reused", async () => {
     const repo = await seededRepo();
-    await acquireDepartureHold(repo, ask(), now);
-    // Past the 15 minutes: the old row is inert everywhere (DEC-109 lazy expiry), so this is a
-    // fresh acquire rather than a resurrection.
+    const first = await claim(repo, { holderToken: TOKEN });
+    // Past the payment window: the old row is inert everywhere (§2.8.1 lazy lapse), so this is a
+    // fresh claim rather than a resurrection — new id, new reserved time.
     const muchLater = () => "2026-07-04T12:30:00.000Z";
-    const again = await acquireDepartureHold(repo, ask(), muchLater);
-    expect("held" in again).toBe(true);
-    if ("held" in again) expect(again.held.expiresAt).toBe(holdExpiry("2026-07-04T12:30:00.000Z"));
+    const again = await claim(repo, { holderToken: TOKEN }, muchLater);
+    expect("claimed" in again).toBe(true);
+    if ("claimed" in first && "claimed" in again) {
+      expect(String(again.claimed.id)).not.toBe(String(first.claimed.id));
+      expect(again.claimed.reservedAt).toBe("2026-07-04T12:30:00.000Z");
+      expect(again.reused).toBe(false);
+    }
   });
 
-  it("does not reuse a hold from a different departure", async () => {
+  it("does not reuse a row from a different departure", async () => {
     // Same person, same day, different time — a genuinely separate purchase. Both times must be
     // real departures on the grid (#799), so the offering here runs two of them.
     const repo = await seededRepo();
     await repo.saveOffering(offering({ schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: [TIME, "16:00"] } }));
-    const first = await acquireDepartureHold(repo, ask(), now);
-    const otherTime = await acquireDepartureHold(repo, ask({ time: "16:00" }), now);
-    if ("held" in first && "held" in otherTime) {
-      expect(String(otherTime.held.id)).not.toBe(String(first.held.id));
+    const first = await claim(repo, { holderToken: TOKEN });
+    const otherTime = await claim(repo, { holderToken: TOKEN, time: "16:00" });
+    if ("claimed" in first && "claimed" in otherTime) {
+      expect(String(otherTime.claimed.id)).not.toBe(String(first.claimed.id));
     }
-    expect(await repo.listCheckoutHolds()).toHaveLength(2);
+    expect(await repo.listAllReservations()).toHaveLength(2);
   });
 });

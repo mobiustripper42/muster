@@ -1,0 +1,28 @@
+-- 20260907120000_drop_checkout_holds.sql — drop-checkout-holds
+-- Timestamp-named per DEC-121. Applied in filename order by db/migrate.ts.
+--
+-- Phase 14.7 (issue #918). SPEC §2.8.2 names ONE row for a customer who is at Stripe: a `pending`
+-- reservation. Until now there were two. `checkout_holds` (12.1, DEC-109) took a transient
+-- 15-minute row at "Book & pay", and the pending reservation was written moments later against
+-- the same hull for the same window — a second occupancy table whose only job was to say what the
+-- first one already said, expired by the same lazy-on-read rule, and required to agree with it.
+--
+-- The pending row does everything the hold did and more: it occupies the hull for its OWN frozen
+-- `hold_minutes` (§2.8.3, DEC-161) rather than a flat TTL, it survives a provider timeout, and it
+-- carries the money the hold never had. `claimDepartureSlot` now writes it directly inside the
+-- fit-and-fallback loop, so the WRITE is the contention point — a lost CAS moves to the next boat
+-- instead of ending the checkout with `sold_out` beside a free hull.
+--
+-- **Safe to drop rather than migrate.** Rows here are transient by construction: every one is
+-- either expired (inert everywhere — DEC-109 lazy-on-read, no cron) or belongs to a checkout in
+-- flight, which has its own `pending` reservation carrying the same slot and a strictly longer
+-- claim on it. Nothing reads this table after this migration; nothing referenced it by FK (it was
+-- the holder of two, not the target of any).
+--
+-- Takes the two FKs and three indexes with it — `drop table` removes dependent constraints and
+-- indexes, so the objects created by 20260718142705 (the table + `checkout_holds_slot_identity`),
+-- 20260722170000 (`checkout_holds_vessel_id_fkey`, `checkout_holds_offering_id_fkey`, and their
+-- two indexes) and 20260820230000 (`checkout_holds_expires_at_idx`) all go together. Those
+-- migrations stay on disk and stay correct for the era they ran in; this is the era that ends it.
+
+drop table if exists checkout_holds;

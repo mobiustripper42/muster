@@ -90,7 +90,6 @@ const TABLES = [
   "add_ons",
   "customers",
   "blocks",
-  "checkout_holds",
   "recovery_throttle",
   "gratuity",
   "payments",

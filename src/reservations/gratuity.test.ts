@@ -88,7 +88,7 @@ describe("gratuity is required, no decline (DEC-124)", () => {
     const repo = await seededRepo();
     const r = await createDeparturePaymentIntent(repo, new FakePaymentPort(), req(1234), now);
     expect(r).toEqual({ ok: false, reason: "gratuity_required" });
-    expect(await repo.listCheckoutHolds()).toHaveLength(0); // no hold parked
+    expect(await repo.listAllReservations()).toHaveLength(0); // nothing claimed the hull
   });
 
   it("accepts a valid tier and carries the gratuity in metadata", async () => {

@@ -115,13 +115,11 @@ export async function confirmPendingRow(
     patch,
     pendingLiveSince(now()),
   );
-  if (res.result === "won") {
-    // The booking now holds the slot authoritatively — release the transient checkout hold, if
-    // one is still parked (14.7 removes holds entirely; until then a stale hold would keep the
-    // boat parked for the rest of the window).
-    await repo.removeCheckoutHoldForSlot(row.vesselId, row.date, row.time);
-    return { outcome: "booked", reservation: res.reservation };
-  }
+  // Nothing to release: the flip turned the row that occupied this hull into the booking that
+  // occupies it, so there is no second occupancy record to clean up. Until 14.7 there was — a
+  // `checkout_holds` row that had to be deleted here or the boat stayed parked for the rest of
+  // the window.
+  if (res.result === "won") return { outcome: "booked", reservation: res.reservation };
   if (res.result === "already") return { outcome: "already", reservation: res.reservation };
   return { outcome: "lost" };
 }

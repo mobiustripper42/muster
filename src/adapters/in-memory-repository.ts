@@ -17,7 +17,6 @@ import type {
   AuthSubjectKind,
   Block,
   BookingCode,
-  CheckoutHold,
   Credential,
   CrewMember,
   CrewStatus,
@@ -51,7 +50,6 @@ import type {
   CustomerId,
   AskId,
   BlockId,
-  CheckoutHoldId,
   GratuityId,
   CredentialId,
   CrewMemberId,
@@ -92,7 +90,6 @@ import {
   minutesOfDay,
   pendingIntervalsFor,
 } from "../reservations/hull-busy.js";
-import { isLivePending } from "../reservations/pending.js";
 import type { FailureWindow, Repository } from "../ports/repository.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 
@@ -129,7 +126,6 @@ export class InMemoryRepository implements Repository {
   readonly #locations = new Map<LocationId, Location>();
   readonly #blocks = new Map<BlockId, Block>();
   /** Transient checkout-holds (12.1, DEC-109), keyed by id. */
-  readonly #checkoutHolds = new Map<CheckoutHoldId, CheckoutHold>();
   /** Refund mutex (#726), keyed by reservation id — one refund in flight per booking. */
   readonly #refundLeases = new Map<
     string,
@@ -756,25 +752,6 @@ export class InMemoryRepository implements Repository {
     return hit ? clone(hit) : null;
   }
 
-  async getLivePendingByHolderToken(
-    vesselId: VesselId,
-    date: string,
-    time: string,
-    holderToken: string,
-    pendingLiveSince: string,
-  ): Promise<Reservation | null> {
-    if (!holderToken) return null; // possession only — a cookieless client writes a fresh row
-    const hit = [...this.#reservations.values()].find(
-      (r) =>
-        r.holderToken === holderToken &&
-        String(r.vesselId) === String(vesselId) &&
-        r.date === date &&
-        r.time === time &&
-        isLivePending(r, pendingLiveSince),
-    );
-    return hit ? clone(hit) : null;
-  }
-
   async appendPaymentIntentToPending(
     reservationId: ReservationId,
     invoice: BookingInvoice,
@@ -794,10 +771,8 @@ export class InMemoryRepository implements Repository {
     this.#reservations.set(reservationId, clone(next));
   }
 
-  // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────
   // ── Refund lease (#726) ───────────────────────────────────────────────────
-  // Mirrors `acquireCheckoutHold` below: lazy expiry against the caller's `nowIso`, then a
-  // presence check. The double enforces this one (unlike the phone/display-code uniques it
+  // Lazy expiry against the caller's `nowIso`, then a presence check. The double enforces this one (unlike the phone/display-code uniques it
   // deliberately ignores) because the RESULT is semantic — `refundReservation` branches on
   // `acquired` to decide whether real money moves.
   async acquireRefundLease(
@@ -838,60 +813,6 @@ export class InMemoryRepository implements Repository {
     return { claimed: true };
   }
 
-  async acquireCheckoutHold(
-    hold: CheckoutHold,
-  ): Promise<{ acquired: true; hold: CheckoutHold } | { acquired: false }> {
-    const key = slotIdentity(hold.vesselId, hold.date, hold.time);
-    // Delete any EXPIRED hold for this identity first (so a stale row can't block a fresh
-    // acquire); "now" = the incoming hold's createdAt — same reference the pg adapter uses,
-    // keeping the two behaviorally identical under the contract.
-    // Sweeps EVERY expired muster hold, not just this slot's (issue #713). Scoped to the slot,
-    // an abandoned checkout on a departure nobody re-attempts was unreachable by any cleanup
-    // path and sat in the table forever. An expired hold is already inert everywhere, so
-    // deleting someone else's costs nothing and is the only sweep this codebase has — there is
-    // no scheduler.
-    for (const [id, h] of this.#checkoutHolds) {
-      if (h.source === "muster" && h.expiresAt <= hold.createdAt) {
-        this.#checkoutHolds.delete(id);
-      }
-    }
-    const live = [...this.#checkoutHolds.values()].find(
-      (h) =>
-        h.source === "muster" &&
-        slotIdentity(h.vesselId, h.date, h.time) === key &&
-        h.expiresAt > hold.createdAt,
-    );
-    if (live) {
-      // A live hold holds the slot. Idempotent iff it's our own id; else the rival won.
-      return live.id === hold.id
-        ? { acquired: true, hold: clone(live) }
-        : { acquired: false };
-    }
-    this.#checkoutHolds.set(hold.id, clone(hold));
-    return { acquired: true, hold: clone(hold) };
-  }
-  async listCheckoutHolds(): Promise<CheckoutHold[]> {
-    return [...this.#checkoutHolds.values()].map(clone);
-  }
-  /** `expiresAt > asOf` — exclusive, matching the deriver's rule (issue #713). */
-  async listLiveCheckoutHolds(asOf: string): Promise<CheckoutHold[]> {
-    return [...this.#checkoutHolds.values()].filter((h) => h.expiresAt > asOf).map(clone);
-  }
-  async removeCheckoutHold(id: CheckoutHoldId): Promise<void> {
-    this.#checkoutHolds.delete(id);
-  }
-  async removeCheckoutHoldForSlot(
-    vesselId: VesselId,
-    date: string,
-    time: string,
-  ): Promise<void> {
-    const key = slotIdentity(vesselId, date, time);
-    for (const [id, h] of this.#checkoutHolds) {
-      if (h.source === "muster" && slotIdentity(h.vesselId, h.date, h.time) === key) {
-        this.#checkoutHolds.delete(id);
-      }
-    }
-  }
 
   // ── Gratuity (12.3, DEC-124) ────────────────────────────────────────────────
   async saveGratuity(gratuity: Gratuity): Promise<void> {

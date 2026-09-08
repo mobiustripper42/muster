@@ -1,5 +1,66 @@
 # Changelog
 
+## [1.1.5] - 2026-09-08
+
+**Eleven days and 61 PRs since [1.1.4], and the promote is the story.** `production` sat 187 commits
+behind while two lanes worked `main` — so this is not a release so much as a reckoning. Nothing here
+had ever run against live traffic.
+
+Two threads dominate. **Reservations Phase 14** rebuilt the booking write: a pending row exists
+before Stripe is called, every reader became an allow-list, confirm flips that row, a retry lands on
+the same one, and `checkout_holds` is gone. And a **§2.8/§2.10 conformance audit** — 24 criteria,
+one PR each — checked the spec against the code rather than against itself, which is where most of
+Phase 14's work came from.
+
+### Cost — the reason this shipped tonight
+
+- **#950** — the doorbell cron polled every 2 minutes against Neon's 5-minute scale-to-zero, so the
+  production database never slept. 93% awake, ~$76/month, for a feature switched off since July. The
+  flag check now precedes the database call: a kill switch that fires after the connection is open
+  kills the behaviour, not the bill (DEC-167).
+
+### Reservations — Phase 14
+
+- **#947** — drop `checkout_holds`; the pending row is the claim
+- **#942** — retry on the same row; a reservation carries many payment ids
+- **#941** — confirm flips the pending row; the dead hosted insert is deleted
+- **#932** — the write: a pending row before Stripe
+- **#930** — every reader becomes an allow-list
+- **#924** — the pending-row decision record
+- **#921**, **#910**, **#905** — Phase 14-16 planning and materialization
+- **#869** — booking invoice; **#867** — admin booking surface
+- **#873** — DEC-107/124 supersession; **#862** — DEC-161 hold minutes
+- **#865** — e2e refund fixture lead time
+
+### The §2.8/§2.10 conformance audit
+
+One PR per criterion, each verdicting the spec against the code: **#871** (the audit itself), then
+**#872**, **#874**, **#876**, **#877**, **#878**, **#879**, **#881**, **#883**, **#885**, **#887**,
+**#888**, **#889**, **#890**, **#891**, **#894**, **#895**, **#897**, **#898**, **#899**.
+
+### Crew and admin
+
+- **#943** — the outbox is removed from every live path; a log line replaces three queues, three
+  tables and a screen
+- **#939** — a stale crew session no longer traps you on the sign-in form
+- **#938** — log the rendered message body when no channel is configured
+- **#931** — name the terminal-shift guard, and use it in all fourteen places
+- **#884** — required crew on the vessel screen
+- **#875** — a notice survives a mid-loop failure
+- **#863** — derive zero required seats
+
+### The gate itself
+
+- **#944** — typecheck `db/`, the third profile; three defects it found immediately
+- **#929** — cognitive-complexity and nested-conditional rules on, with baselines
+- **#893** — the engine tick's own call gets a catch
+- **#940** — one command gives the standard dev world
+- **#882** — wire the denied gate; **#866** — self-host IBM Plex
+- **#855**, **#856**, **#857**, **#858**, **#859**, **#900** — context-file audit, jig sync, lane
+  rules, `revisit_if` required
+- **#906** — a nickname struck from the prose
+
+
 ## [1.1.4] - 2026-08-28
 
 Nine days and 37 PRs since [1.1.3] — larger than [1.1.2]. Two threads dominate: the **decision

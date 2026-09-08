@@ -164,7 +164,8 @@ export async function processBookingWebhook(
   // own way books the same sale twice. The DEC-134 metadata guard travels with it.
   if (event.type === "payment_succeeded") return confirmBookingFromIntent(deps, event.data);
 
-  // A DECLINED CARD (14.8, criterion 11, `SPEC.md:2067`) — acked, and deliberately nothing else.
+  // A DECLINED CARD — acked, and deliberately nothing else (14.8, criterion 11:
+  // *"A `payment_intent.payment_failed` does **not** expire the reservation."*).
   //
   // The pending row stays exactly as it is. The customer is still inside their payment window,
   // still holding the boat, and their retry lands on that same row (14.6, §2.8.5). Cancelling it

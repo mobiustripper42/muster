@@ -795,7 +795,7 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
 });
 
 /**
- * An abandoned checkout leaves a reservation row and NOTHING else (criterion 7, `SPEC.md:2059`).
+ * An abandoned checkout leaves a reservation row and NOTHING else (criterion 7 — *"Abandoning checkout leaves no `Event`, no customer record and no booking code behind"*).
  *
  * This is the negative half of the pending-row model and the half nothing else asserts. Everything
  * a booking produces downstream — the `Event`, the customer record, the booking code, the
@@ -829,19 +829,38 @@ describe("an abandoned checkout leaves the row and nothing else (criterion 7)", 
     expect(await repo.listBookingCodesForReservation(row.id)).toHaveLength(0);
   });
 
-  it("a DECLINED card changes none of that — still one row, still nothing else", async () => {
-    // The realistic abandonment. `4000000000000002` at the till: the intent is minted, the confirm
-    // fails at the provider, and Muster is never told (a decline is `payment_intent.payment_failed`,
-    // which 14.8 acks and ignores). The row must look exactly as it does above.
+  it("a DECLINED card changes none of that — the decline event runs and still nothing else exists", async () => {
+    // The realistic abandonment, driven end to end: `4000000000000002` at the till mints the
+    // intent, the confirm fails at the provider, and Stripe tells us so with
+    // `payment_intent.payment_failed`. This routes that event for real rather than asserting
+    // around it — an earlier cut of this test named the decline and never sent one, which proves
+    // only that doing nothing changes nothing (@code-review).
     const repo = await seededRepo();
     const pay = new FakePaymentPort();
-    await createDeparturePaymentIntent(repo, pay, req, now);
+    const started = await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
 
+    const { deps } = makeDeps(repo, pay);
+    const declined = await processBookingWebhook(
+      deps,
+      JSON.stringify({
+        type: "payment_failed",
+        data: { paymentIntentId: started.paymentIntentId, declineCode: "card_declined" },
+      } satisfies PaymentEvent & { data: { declineCode: string } }),
+      FAKE_SIGNATURE,
+    );
+    expect(declined).toMatchObject({ handled: true, outcome: "ignored" });
+
+    // The row survives the decline untouched — still pending, still holding the boat, still
+    // reachable by the retry that reuses it (14.6). Everything a SALE would have created is
+    // still absent.
     const rows = await repo.listAllReservations();
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.status).toBe("pending");
+    expect(rows[0]).toMatchObject({ status: "pending", eventId: null });
     expect(await repo.listEvents()).toHaveLength(0);
     expect(await repo.listCustomers()).toHaveLength(0);
+    expect(await repo.listBookingCodesForReservation(rows[0]!.id)).toHaveLength(0);
   });
 
   it("the row is what the abandonment surface later reports (§2.8.8)", async () => {

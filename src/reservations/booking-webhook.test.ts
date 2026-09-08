@@ -987,8 +987,8 @@ describe("processBookingWebhook — charge.dispute.* records the chargeback (iss
 });
 
 /**
- * A declined card is an ordinary event, and the correct response to it is nothing (criterion 11,
- * `SPEC.md:2067`).
+ * A declined card is an ordinary event, and the correct response to it is nothing — criterion 11,
+ * *"A `payment_intent.payment_failed` does **not** expire the reservation."*
  *
  * Stripe sends `payment_intent.payment_failed` on every decline, and this endpoint must ack it so
  * Stripe stops retrying. It must NOT do anything else. The pending row stays exactly as it is: the

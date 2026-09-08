@@ -4,11 +4,16 @@ import { messagingEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
 
 /**
- * The Smart Doorbell tick, on a schedule (#167, DEC-070) — a SEPARATE cron from
- * the engine `tick` and the Xola pull (DEC-040 precedent), so a doorbell hiccup
- * can't disrupt staffing and each has its own cadence. Vercel GETs this per
- * `vercel.json` `crons` (every 2 min — the batch window is 90 s, so a posted
- * message rings within ~one cadence; cadence is the latency lever, DEC-040).
+ * The Smart Doorbell tick — **no longer on a schedule** (DEC-167, #949). It was a
+ * SEPARATE cron from the engine `tick` and the Xola pull (DEC-040 precedent, DEC-070)
+ * every 2 minutes, so a doorbell hiccup couldn't disrupt staffing and each had its own cadence.
+ *
+ * **That cadence was withdrawn because it kept the production database permanently awake.**
+ * Neon's scale-to-zero is 5 minutes; a 2-minute cron resets the idle timer before it can
+ * expire. Measured 93% awake, roughly $76/month, for sweeps that did nothing because
+ * `MESSAGING` is off. `vercel.json` now schedules `/api/cron/tick` only; this route stays
+ * and is hand-triggerable. Re-scheduling it means re-reading DEC-167 first — a cadence is
+ * chosen against the host's idle window now, not for latency alone.
  *
  * Why a cron: presence + the batch/cancel window are time-driven, and a ring is
  * an irreducible outbound side-effect (DEC-049) — "no babysitting" means it fires

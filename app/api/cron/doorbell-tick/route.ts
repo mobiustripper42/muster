@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runDoorbellTick } from "../../../lib/doorbell";
+import { messagingEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -33,6 +34,20 @@ export async function GET(req: Request) {
   }
 
   const now = new Date();
+
+  // FLAG FIRST, and the order is the whole point (#949). `MESSAGING` is off by default
+  // (operator's call 2026-07-12) and the doorbell sweep no-ops when it is — but the pause
+  // check below is a DATABASE QUERY, and it used to run first. So a dormant feature woke
+  // the database every two minutes to ask a question and then do nothing.
+  //
+  // Neon scale-to-zero is 5 minutes; this cron ran every 2. The idle timer never got there,
+  // the compute never slept, and it billed ~24 CU-hours a day — about $76/month, for months,
+  // on a feature nobody could reach. Returning before `getRepo()` is what makes an off
+  // feature actually cost nothing.
+  if (!messagingEnabled()) {
+    return NextResponse.json({ ok: true, messaging: false, at: now.toISOString() });
+  }
+
   // Shares the engine pause gate (#124, DEC-054 / DEC-070): a paused operator means
   // a quiet doorbell too — ringing phones is autonomous activity, armed/disarmed
   // from /admin without a redeploy, enforced at the edge so the core stays pure.

@@ -51,7 +51,7 @@ export interface CrewFlags {
 const CREW_LINKS: CrewLink[] = [
   { href: "/crew", label: "My shifts" },
   { href: "/crew/threads", label: "Messages", feature: "messaging" },
-  { href: "/crew/time", label: "Time", feature: "timeClock" },
+  { href: "/crew/time", label: "Time Clock", feature: "timeClock" },
   { href: "/crew/time-off", label: "Time off" },
   { href: "/crew/calendar", label: "Calendar sync" },
   { href: "/crew/help", label: "How Muster works" },

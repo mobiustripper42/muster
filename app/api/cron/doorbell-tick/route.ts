@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { runDoorbellTick } from "../../../lib/doorbell";
+import { messagingEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
 
 /**
- * The Smart Doorbell tick, on a schedule (#167, DEC-070) — a SEPARATE cron from
- * the engine `tick` and the Xola pull (DEC-040 precedent), so a doorbell hiccup
- * can't disrupt staffing and each has its own cadence. Vercel GETs this per
- * `vercel.json` `crons` (every 2 min — the batch window is 90 s, so a posted
- * message rings within ~one cadence; cadence is the latency lever, DEC-040).
+ * The Smart Doorbell tick — **no longer on a schedule** (DEC-167, #949). It was a
+ * SEPARATE cron from the engine `tick` and the Xola pull (DEC-040 precedent, DEC-070)
+ * every 2 minutes, so a doorbell hiccup couldn't disrupt staffing and each had its own cadence.
+ *
+ * **That cadence was withdrawn because it kept the production database permanently awake.**
+ * Neon's scale-to-zero is 5 minutes; a 2-minute cron resets the idle timer before it can
+ * expire. Measured 93% awake, roughly $76/month, for sweeps that did nothing because
+ * `MESSAGING` is off. `vercel.json` now schedules `/api/cron/tick` only; this route stays
+ * and is hand-triggerable. Re-scheduling it means re-reading DEC-167 first — a cadence is
+ * chosen against the host's idle window now, not for latency alone.
  *
  * Why a cron: presence + the batch/cancel window are time-driven, and a ring is
  * an irreducible outbound side-effect (DEC-049) — "no babysitting" means it fires
@@ -33,6 +39,20 @@ export async function GET(req: Request) {
   }
 
   const now = new Date();
+
+  // FLAG FIRST, and the order is the whole point (#949). `MESSAGING` is off by default
+  // (operator's call 2026-07-12) and the doorbell sweep no-ops when it is — but the pause
+  // check below is a DATABASE QUERY, and it used to run first. So a dormant feature woke
+  // the database every two minutes to ask a question and then do nothing.
+  //
+  // Neon scale-to-zero is 5 minutes; this cron ran every 2. The idle timer never got there,
+  // the compute never slept, and it billed ~24 CU-hours a day — about $76/month, for months,
+  // on a feature nobody could reach. Returning before `getRepo()` is what makes an off
+  // feature actually cost nothing.
+  if (!messagingEnabled()) {
+    return NextResponse.json({ ok: true, messaging: false, at: now.toISOString() });
+  }
+
   // Shares the engine pause gate (#124, DEC-054 / DEC-070): a paused operator means
   // a quiet doorbell too — ringing phones is autonomous activity, armed/disarmed
   // from /admin without a redeploy, enforced at the edge so the core stays pure.

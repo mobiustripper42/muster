@@ -436,12 +436,22 @@ from Neon.
 
 ## Phase I — Scheduled jobs as systemd timers
 
-**52.** There are **two** scheduled jobs, not three:
+**52.** There is **one** scheduled job, not two or three:
 
 | Path | Schedule | Notes |
 |------|----------|-------|
 | `/api/cron/tick` | every 15 min | the engine tick |
-| `/api/cron/doorbell-tick` | every 2 min | inert unless `MESSAGING=1` |
+
+⚠️ **`/api/cron/doorbell-tick` gets NO timer either** — its `*/2` was withdrawn in #949
+(DEC-167). It kept Neon's database permanently awake: a 2-minute interval against a
+5-minute scale-to-zero resets the idle timer before it can expire, measured at 93% awake
+and ~$76/month for sweeps that did nothing, because `MESSAGING` is off.
+
+**On a VPS this specific cost disappears** — your own Postgres does not bill by the
+compute-second and does not scale to zero. But do not restore the timer on that reasoning
+alone: the job is inert while `MESSAGING` is off, so a timer for it buys nothing until the
+feature returns, and DEC-167 asks that any future cadence be chosen against the deployed
+database's idle behaviour rather than inherited from this table.
 
 **53.** ⚠️ **`/api/cron/xola-pull` gets NO timer.** Its schedule was deliberately removed
 (`13d3fb5`); imports are operator-driven from the "Pull from Xola now" button. Its own header says

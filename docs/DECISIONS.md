@@ -149,6 +149,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-071 — Crew messaging UI — read + presence are one edge signal on real view; DM list is a participant index; view-auth is the DEC-052 predicate
 - DEC-072 — Operator messaging surface — cross-visibility via the DEC-052 predicate ORed into `buildThreadView`; the operator is excluded from doorbell rings
 - DEC-073 — Real doorbell-ring relay — the operator-outbox `NotificationPort` adapter, on its own table
+- DEC-167 — A cron interval is chosen against the host's idle timeout, not for latency alone
 
 ### Outbound notifications & operator relay
 - DEC-030 — Pilot channel = operator-relayed web link; the outbox is adapter state, never domain state

@@ -18,9 +18,9 @@ test.describe("crew /crew/time — clock in, clock out", () => {
   test("the clock is one tap from the hub, via the menu", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
     await page.locator(`summary[aria-label="Open menu"]`).click();
-    await page.getByRole("link", { name: "Time", exact: true }).click();
+    await page.getByRole("link", { name: "Time Clock", exact: true }).click();
     await page.waitForURL(/\/crew\/time$/);
-    await expect(page.getByRole("heading", { name: "Time" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Time Clock" })).toBeVisible();
   });
 
   /**
@@ -303,6 +303,6 @@ test.describe("crew /crew/time — clock in, clock out", () => {
   test("signed out, /crew/time redirects to the crew door", async ({ page }) => {
     await page.goto("/crew/time");
     await page.waitForURL(/\/crew$/);
-    await expect(page.getByRole("heading", { name: "Time" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Time Clock" })).toHaveCount(0);
   });
 });

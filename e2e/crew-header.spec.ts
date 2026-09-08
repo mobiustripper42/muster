@@ -16,7 +16,7 @@ import { test, expect, resetAndSeed, signInAsCrew } from "./fixtures.js";
 
 /** Every crew route that carries the shared header, with the heading it should show. */
 const ROUTES = [
-  { path: "/crew/time", heading: "Time" },
+  { path: "/crew/time", heading: "Time Clock" },
   { path: "/crew/time-off", heading: "Time off" },
   { path: "/crew/calendar", heading: "Calendar sync" },
   { path: "/crew/help", heading: "How Muster works" },
@@ -202,13 +202,13 @@ test.describe("crew header (#644)", () => {
     });
 
     test("the current page's entry is a marker, not a link that reloads it", async ({ page }) => {
-      // Tapping "Time" while on /crew/time navigated to the same URL: overlay spinner, no change.
+      // Tapping "Time Clock" while on /crew/time navigated to the same URL: overlay spinner, no change.
       await signInAsCrew(page, "crew-quint");
       await page.goto("/crew/time");
       await page.locator(`summary[aria-label="Open menu"]`).click();
 
-      await expect(page.getByRole("link", { name: "Time", exact: true })).toHaveCount(0);
-      const marker = page.locator('[aria-current="page"]', { hasText: "Time" });
+      await expect(page.getByRole("link", { name: "Time Clock", exact: true })).toHaveCount(0);
+      const marker = page.locator('[aria-current="page"]', { hasText: "Time Clock" });
       await expect(marker).toBeVisible();
       // A neighbour is still a link — otherwise this would pass on a drawer with no links at all.
       await expect(page.getByRole("link", { name: "Time off", exact: true })).toBeVisible();

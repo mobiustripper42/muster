@@ -83,6 +83,10 @@ export const GROUPS: readonly AdminGroup[] = [
       // Blocks is about a date's availability, not catalog data — it belongs with the booking
       // surfaces rather than with Setup.
       { href: "/admin/blocks", label: "Blocks", feature: "reservations" },
+      // Sits with the booking surfaces rather than under Settings, because it answers a question
+      // about SALES — how much boat time is being held by people who don't buy (§2.8.8) — not one
+      // about the system's health. `Integrity check` is the diagnostic; this is a business number.
+      { href: "/admin/abandonment", label: "Abandoned checkouts", feature: "reservations" },
     ],
   },
   {

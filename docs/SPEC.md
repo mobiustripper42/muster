@@ -1828,8 +1828,8 @@ rows that turn on one — abandonment, and a payment landing after expiry — do
 **One `pending` row is exempt from everything in this subsection: an operator's booking, `source`
 `admin`.** It has no window, never lapses, and is never reaped. Only a person ends it (§2.10.6). Every
 rule below is written about a public checkout and a reader implementing one must branch on `source`
-first — including the reaper, whose "rows that never reached payment" would otherwise delete a phone
-booking on its first pass.
+first — including the abandonment surface below, which would otherwise count a phone booking that is
+simply waiting for its customer as a checkout somebody walked away from.
 
 **A pending reservation stops occupying its boat the moment its window runs out** — every reader tests
 `pending AND reserved time + window > now`. Nothing has to run for the hull to come free, so hull-release latency is
@@ -1838,26 +1838,38 @@ zero rather than however often a job happens to fire.
 **There is no sweeper.** Nothing relabels a lapsed row, because a stored label is a second copy of a
 fact the clock already holds, and the copy would need a job to keep it true and a rule to keep that
 job off paid rows. Lapsed is derived, every time, by every reader (2.8.1). The row stays `pending`
-on disk until confirm books it or the reaper deletes it.
+on disk until confirm books it. Nothing deletes it at all — see below.
 
-The **reaper** runs rarely, on a long horizon, and deletes old lapsed rows so the table does not
-grow without bound. **It never deletes a row it cannot prove was unpaid.** A row with a payment id
-recorded against it belongs to the reconciler until the reconciler resolves it; only rows that never
-reached payment are reaped. A pending reservation is creatable by anyone who can reach the checkout,
-so the lapsed rows accumulate scripted abuse as well as real abandonment; distinguishing the two in
-the data is part of building this.
+**Nothing deletes a lapsed row.** There is no reaper. A lapsed `pending` row stays on disk carrying
+its slot, party size and reserved time, and that is the point rather than an omission — **the monitor
+gets built before the destructive tool, not after it.**
 
-**The reaper's horizon is long, and this is load-bearing rather than tidy.** An abandoned checkout is
-the only evidence that says whether the payment window is the right length, and the two ways of being
-wrong are not equally visible:
+An earlier draft of this section specified a reaper on a long horizon, justified by keeping the table
+from growing without bound. That justification did not survive being asked of it: no other table in
+this schema has such a guard, the rows arrive one per abandoned checkout for a single operator, and
+nobody has yet seen a week of them. Writing the delete first would have destroyed the only evidence
+that says whether the delete was ever needed. If the volume turns out to warrant one, it can be built
+then, against a real number.
+
+**What the rows are evidence of.** An abandoned checkout is the only thing that says whether the
+payment window is the right length, and the two ways of being wrong are not equally visible:
 
 - **Window too short** — real buyers cancelled mid-payment. Visible already: each leaves a refund and a
   sold-out message.
 - **Window too long** — hulls tied up for people who were never going to buy. Visible **only** if
-  lapsed rows survive, carrying their slot, party size and reserved time.
+  lapsed rows survive.
 
-With both, *"how many checkouts were started and walked away from last month, and how long did each
-hold a boat"* is a query over lapsed `pending` rows rather than a guess.
+**The abandonment surface** is an operator screen listing every lapsed `pending` row — departure, boat,
+party size, reserved time, how long it held the boat, and whether it ever reached the payment
+provider. It is **raw and unranked on purpose**: a pending reservation is creatable by anyone who can
+reach the checkout, so lapsed rows accumulate scripted abuse alongside real abandonment, and no field
+on the row separates the two. An absent payment id means "never reached the provider", which is a
+script *or* a provider outage *or* a dropped connection — three facts wearing one blank. The screen
+shows what was stored and lets a person read it; categories can be added once somebody has looked at
+a season of them and knows what they are looking at.
+
+It answers *"how many checkouts were started and walked away from last month, and how long did each
+hold a boat"* by being read, rather than by a query somebody has to remember how to write.
 
 **2.8.9 The reconciler — the job that catches payments whose webhook never landed.**
 
@@ -2077,7 +2089,7 @@ the decision is the one that is right.
 - [ ] Killing the webhook entirely still produces a booking for a customer who reaches the success page.
 - [ ] Closing the browser at the moment of payment still produces a booking, via the webhook.
 - [ ] **Kill the webhook, close the browser, then wait past the payment window.** The customer is still
-      booked, by the reconciler — and the reaper has **not** deleted their paid reservation.
+      booked, by the reconciler — nothing having deleted or relabelled their row while they waited.
 - [ ] Confirming the same payment three times produces one booking, one Event and one payment record.
 - [ ] **Confirming produces a shift for that vessel-day**, with seats, and a crew already committed to
       that day is notified that it changed.
@@ -2123,7 +2135,8 @@ the decision is the one that is right.
   occupancy, and it is the same fact the checkout hold already showed the operator.
 - ~~**Is the sweeper worth having at all?**~~ **No** — settled 2026-09-04 (task 14.1). Lapsed is
   computed from the reserved time on every read and never stored (2.8.1); there is no `expired`
-  state, no scheduled relabelling and no paid-row race. The reaper is the only job (2.8.8).
+  state, no scheduled relabelling and no paid-row race. **Nor is there a reaper** — 2.8.8 builds the
+  abandonment surface instead, on the rule that the monitor comes before the destructive tool.
 - ~~**Does the balance freeze its tax?**~~ **Deferred with deposits.** 2.8.4 says frozen numbers are
   never recomputed and the dormant balance path recomputes tax from live settings. Nothing charges a
   balance today, so this is answered when deposits return, not before.

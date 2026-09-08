@@ -164,6 +164,25 @@ export async function processBookingWebhook(
   // own way books the same sale twice. The DEC-134 metadata guard travels with it.
   if (event.type === "payment_succeeded") return confirmBookingFromIntent(deps, event.data);
 
+  // A DECLINED CARD (14.8, criterion 11, `SPEC.md:2067`) — acked, and deliberately nothing else.
+  //
+  // The pending row stays exactly as it is. The customer is still inside their payment window,
+  // still holding the boat, and their retry lands on that same row (14.6, §2.8.5). Cancelling it
+  // here is the instinct a failed payment invites and it would be the bug: it takes the boat away
+  // from somebody standing at the till with a second card out. Lapsing is the clock's job, not
+  // this handler's — and if they walk away, §2.8.8's surface is where that shows up.
+  //
+  // Named rather than left to `parseEvent`'s null: acked-on-purpose and never-heard-of must not
+  // be the same signal.
+  if (event.type === "payment_failed") return { handled: true, outcome: "ignored" };
+
+  // Everything past here is a hosted `checkout.session.completed`. The union is closed and every
+  // other member returned above, so this narrows — but say it, because an event type added to the
+  // port and not handled here would otherwise arrive at `completed.metadata` and throw on a shape
+  // it never had.
+  if (event.type !== "checkout_completed") {
+    return { handled: false };
+  }
   const completed = event.data;
   // Dispatch on purpose (11.2b). A balance payment records against the existing reservation;
   // it must NEVER reach the booking path (no eventId → an orphan reservation).

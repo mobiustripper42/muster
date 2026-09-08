@@ -12,6 +12,7 @@ import { asId } from "../domain/ids.js";
 import type { PaymentEvent } from "../ports/payment.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
 import { createDeparturePaymentIntent } from "./create-departure-payment-intent.js";
+import { abandonedCheckouts } from "./abandonment.js";
 import { eventIdForSlot } from "./availability.js";
 
 /** The reservation id is the pending row's (random) id since 14.5 — find it by the intent id
@@ -790,5 +791,73 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
       const ev = await repo.getEvent(eventIdForSlot(SMALL, DATE, TIME));
       expect(ev!.durationMinutes).toBe(100);
     });
+  });
+});
+
+/**
+ * An abandoned checkout leaves a reservation row and NOTHING else (criterion 7, `SPEC.md:2059`).
+ *
+ * This is the negative half of the pending-row model and the half nothing else asserts. Everything
+ * a booking produces downstream — the `Event`, the customer record, the booking code, the
+ * confirmation message — is minted at CONFIRM, not at checkout. So a customer who reaches "Book &
+ * pay" and never completes must leave a row that occupies a boat until its window runs out, and no
+ * trace anywhere else.
+ *
+ * Getting this wrong is not a crash: it is a customer record and a booking code for somebody who
+ * never bought anything, discovered months later in a list nobody can explain.
+ */
+describe("an abandoned checkout leaves the row and nothing else (criterion 7)", () => {
+  it("writes a pending reservation, and no Event, customer, booking code or message", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+
+    // The checkout runs to completion on OUR side: the row is written and Stripe answers with an
+    // intent. What never happens is the payment — no webhook, no success page, no confirm.
+    const r = await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(r.ok).toBe(true);
+
+    const rows = await repo.listAllReservations();
+    expect(rows).toHaveLength(1);
+    const row = rows[0]!;
+    // The row exists and is holding a boat — that is the whole point of writing it before Stripe.
+    expect(row).toMatchObject({ status: "pending", eventId: null });
+    expect(row.reservedAt).toBeDefined();
+
+    // …and nothing downstream of a SALE exists.
+    expect(await repo.listEvents()).toHaveLength(0);
+    expect(await repo.listCustomers()).toHaveLength(0);
+    expect(await repo.listBookingCodesForReservation(row.id)).toHaveLength(0);
+  });
+
+  it("a DECLINED card changes none of that — still one row, still nothing else", async () => {
+    // The realistic abandonment. `4000000000000002` at the till: the intent is minted, the confirm
+    // fails at the provider, and Muster is never told (a decline is `payment_intent.payment_failed`,
+    // which 14.8 acks and ignores). The row must look exactly as it does above.
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+
+    const rows = await repo.listAllReservations();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("pending");
+    expect(await repo.listEvents()).toHaveLength(0);
+    expect(await repo.listCustomers()).toHaveLength(0);
+  });
+
+  it("the row is what the abandonment surface later reports (§2.8.8)", async () => {
+    // The join between this task's two halves: the row a walked-away checkout leaves is exactly
+    // the row the operator's screen counts, once its window has run out.
+    const repo = await seededRepo();
+    await createDeparturePaymentIntent(repo, new FakePaymentPort(), req, now);
+
+    const all = await repo.listAllReservations();
+    // Inside the window it is a customer still paying, not an abandonment.
+    expect(abandonedCheckouts(all, now())).toEqual([]);
+
+    // Half an hour later, with nothing having run and nothing having been relabelled, it is.
+    const later = "2026-07-04T12:30:00.000Z";
+    const abandoned = abandonedCheckouts(all, later);
+    expect(abandoned).toHaveLength(1);
+    expect(abandoned[0]!.paymentIntentCount).toBe(1); // reached the provider; the card is another matter
   });
 });

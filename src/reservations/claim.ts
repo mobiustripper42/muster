@@ -32,10 +32,9 @@ import type {
   Reservation,
   Vessel,
 } from "../domain/entities.js";
-import { zonedWallClockToInstant } from "../config/tenant.js";
 import type { OfferingId, VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
-import { isActiveMusterClaim, isOnScheduleGrid, isSlotBlocked, slotIdentity } from "./availability.js";
+import { hasDeparted, isActiveMusterClaim, isOnScheduleGrid, isSlotBlocked, slotIdentity } from "./availability.js";
 import { busyIntervalsFor, candidateHoldMinutes, hullIsBusy, minutesOfDay, pendingIntervalsFor } from "./hull-busy.js";
 import { isLivePending, pendingLiveSince } from "./pending.js";
 
@@ -166,14 +165,14 @@ export async function claimDepartureSlot(
   // `Event` in the past, `formShifts` picks it up, and the tick's past-trip guard skips it. The
   // trip is sold, has no crew, and never reaches the board.
   //
-  // Compared as an INSTANT. `date` + `time` are a vessel-local wall clock, so the comparison
-  // needs the zone: `zonedWallClockToInstant` does the two-pass DST fix, which is what makes the
-  // boundary right on a spring-forward morning rather than an hour out.
+  // `hasDeparted` is the DERIVER's predicate, imported rather than restated — criterion 5 says
+  // the calendar and the write refuse the same set, and one function cannot disagree with itself.
+  // The same reason `isOnScheduleGrid` and `isSlotBlocked` come from there too. It carries the
+  // wall-clock-to-instant conversion and the `<=` boundary; see its docstring for both.
   //
-  // `<=` and not `<`: a departure whose instant is exactly now is casting off, and "it is leaving
-  // right this second" is not a sale. Checked before any read or write, like the grid guard above
-  // — a refusal this cheap should cost one comparison, not a fleet read.
-  if (zonedWallClockToInstant(req.date, req.time).getTime() <= Date.parse(at)) {
+  // Checked before any read or write, like the grid guard above — a refusal this cheap should
+  // cost one comparison, not a fleet read.
+  if (hasDeparted(req.date, req.time, at)) {
     return { unbookable: "departed" };
   }
   const liveSince = pendingLiveSince(at);

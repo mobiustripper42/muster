@@ -151,6 +151,25 @@ export function isOnScheduleGrid(
   return schedule.departureTimes.includes(time);
 }
 
+/**
+ * Has this departure already left (issue #824, criterion 1)?
+ *
+ * `date` + `time` are a vessel-local WALL CLOCK; `asOf` is an instant. Comparing them needs the
+ * zone, and `zonedWallClockToInstant` does it with a two-pass DST fix — which is what makes the
+ * boundary right on a spring-forward morning instead of an hour out.
+ *
+ * `<=`, not `<`: a boat casting off at this exact second is not for sale.
+ *
+ * **Lives here, with the other shared guards, and is imported by the write.** `claimDepartureSlot`
+ * calls this same function rather than restating the expression, for the same reason it imports
+ * `isOnScheduleGrid` and `isSlotBlocked`: criterion 5 says the calendar and the write refuse the
+ * same set, and two copies of a rule are two things that can drift. The agreement test would
+ * catch the drift, but not having the drift is better than catching it.
+ */
+export function hasDeparted(date: string, time: string, asOf: string): boolean {
+  return zonedWallClockToInstant(date, time).getTime() <= Date.parse(asOf);
+}
+
 /** The physical boat-slot identity for a Muster event (DEC-125 guardrail). ONE Brew 3
  *  can hold exactly one departure at a given day+time — `source='muster'` is implicit
  *  (only Muster slots virtualize; Xola keeps its money in Xola, DEC-105). This is the
@@ -195,9 +214,10 @@ export interface VirtualSlot {
    *  them apart even though the customer surface collapses every one of them to "not available":
    *  - `booked` — a reservation exists. The admin calendar draws it with the customer's name.
    *  - `departed` — the trip has already left (issue #824). Its own state and NOT `unavailable`,
-   *    because the admin calendar counts `unavailable` as booked (`calendar-view.tsx:397`), so
-   *    reusing it would draw a phantom sold card on every past departure. A past empty slot is
-   *    neither sold, nor open, nor blocked, and the counters should count it nowhere.
+   *    because the admin calendar counts `unavailable` as booked (`calendar-view.tsx`, the
+   *    `counts` map and the status filter), so reusing it would draw a phantom sold card on every
+   *    past departure. A past empty slot is neither sold, nor open, nor blocked, and the counters
+   *    should count it nowhere.
    *  - `blocked` — an operator block (DEC-125), deliberate and liftable.
    *  - `held` — a live `pending` row AT THIS SLOT: somebody is at the checkout right now
    *    (§2.8.10). Distinct from `unavailable` because it clears itself in one payment window,
@@ -233,11 +253,12 @@ export interface DeriveVirtualAvailabilityInput {
  * A virtual slot's status, in precedence order (issue #928 — lifted out of two nested ternaries).
  *
  * `booked` first: a sale is a fact and the admin calendar draws it with the customer's name, on a
- * past trip as much as a future one. `departed` next, because a trip that has left cannot be
- * blocked or made busy in any way that matters. `blocked` before the rest: an operator's
- * deliberate blackout has to show as one, and `unavailable` is hidden on the grid where nothing
- * runs — ranking busy above it made a blackout disappear from both the calendar and the Blocked
- * count. Then `held` before `occupied`, being the more specific answer to the same question.
+ * past trip as much as a future one. `blocked` next: an operator's deliberate blackout has to show
+ * as one, and `unavailable` is hidden on the grid where nothing runs — ranking busy above it made
+ * a blackout disappear from both the calendar and the Blocked count. Then `held` before
+ * `occupied`, being the more specific answer to the same question. `departed` LAST, because it
+ * describes an EMPTY slot that has passed, not a passed slot of any kind — anything that actually
+ * happened on that hull outranks the fact that it happened in the past.
  *
  * Each caller passes only the flags its branch computed; the rest default to false. A materialized
  * slot can be `booked` and is never asked about blocks; a virtual one is the reverse.
@@ -250,16 +271,18 @@ function slotStatus(f: {
   occupied?: boolean;
 }): VirtualSlot["status"] {
   if (f.booked) return "booked";
-  // Departed outranks everything below it: once a trip has sailed, an operator block on it is
-  // moot and a hull "busy" over it is describing a window that has already closed. It does NOT
-  // outrank `booked` — a sale is a fact, and the calendar keeps drawing the customer's name on a
-  // trip that already ran.
-  if (f.departed) return "departed";
   if (f.blocked) return "blocked";
   // Before `occupied`, because it is the more specific answer to "why can't I sell this": a
   // pending row AT this slot, rather than the hull being busy from somewhere else.
   if (f.held) return "held";
   if (f.occupied) return "unavailable";
+  // LAST before `available`, because `departed` means "nothing was here, and it is too late now"
+  // — §2.10.2's wording is "nobody bought it and nobody now can". Ranked above `occupied` it
+  // swallowed real history: a XOLA charter earlier today takes the virtual branch (Xola events
+  // are never in `eventBySlot`), so it drew as an inert grey "Departed" card instead of the
+  // customer's name, and this morning's charters vanished off the operator's grid
+  // (/security-review's non-security note). A trip that ran is still a trip that ran.
+  if (f.departed) return "departed";
   return "available";
 }
 
@@ -452,13 +475,10 @@ export function deriveVirtualAvailability(
     }
   }
 
-  /** Has this departure already left? Vessel-local wall clock → instant, so the comparison is
-   *  DST-correct; `<=` because a trip casting off right now is not for sale (issue #824). The
-   *  write applies the identical rule in `claimDepartureSlot`, which is what makes criterion 5
-   *  ("the calendar and the write refuse the same set") true rather than hoped for. */
-  const hasDeparted = (date: string, time: string): boolean =>
-    input.asOf !== undefined &&
-    zonedWallClockToInstant(date, time).getTime() <= Date.parse(input.asOf);
+  /** This day's departed check, closed over the render's clock. `undefined` asOf ⇒ nothing has
+   *  departed, the same conservative rule the occupancy math gets. */
+  const departedAt = (date: string, time: string): boolean =>
+    input.asOf !== undefined && hasDeparted(date, time, input.asOf);
 
   /** Windows occupying this hull-day, minus the given event's own (pass none for a virtual slot). */
   const hullBusyExcept = (vesselId: VesselId, date: string, selfEventId?: string): BusyInterval[] =>
@@ -503,7 +523,7 @@ export function deriveVirtualAvailability(
               priceCents: materialized.price ?? basePrice,
               status: slotStatus({
                 booked,
-                departed: hasDeparted(date, time),
+                departed: departedAt(date, time),
                 held: heldSlots.has(slotIdentity(vesselId, date, time)),
                 occupied: collides,
               }),
@@ -535,7 +555,7 @@ export function deriveVirtualAvailability(
             capacity: vessel.coiMaxPax,
             priceCents: basePrice,
             status: slotStatus({
-              departed: hasDeparted(date, time),
+              departed: departedAt(date, time),
               blocked,
               held: heldSlots.has(identity),
               occupied,

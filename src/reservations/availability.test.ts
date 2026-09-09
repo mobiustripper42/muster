@@ -885,3 +885,50 @@ describe("deriveVirtualAvailability — a live pending row is `held` (§2.8.10)"
     expect(out[0]!.status).toBe("blocked");
   });
 });
+
+/**
+ * `departed` describes an EMPTY slot that has passed — never a slot something happened on.
+ *
+ * The first cut ranked it above `occupied`, and `/security-review` caught what that did: a XOLA
+ * charter earlier today takes the virtual branch (Xola events are never in `eventBySlot`, which is
+ * muster-only), so it drew as an inert grey "Departed" card instead of the customer's name and a
+ * link. This morning's charters vanished from the operator's grid.
+ *
+ * §2.10.2's own words are "nobody bought it and nobody now can" — the state is about an unsold
+ * slot. A trip that ran is still a trip that ran.
+ */
+describe("deriveVirtualAvailability — departed never swallows a real trip", () => {
+  const AFTER = "2026-07-04T18:00:00.000Z"; // 14:00 local, after the 13:30 departure
+
+  it("a XOLA charter earlier today still reads `unavailable`, not `departed`", () => {
+    const out = deriveVirtualAvailability({
+      ...base,
+      events: [ev("x-past", { source: "xola", time: "13:30" })],
+      asOf: AFTER,
+    });
+    expect(out[0]!.status).toBe("unavailable");
+  });
+
+  it("a BOOKED past trip still reads `booked`", () => {
+    const out = deriveVirtualAvailability({
+      ...base,
+      events: [ev("evt-past", { time: "13:30" })],
+      reservations: [res("r1", "evt-past")],
+      asOf: AFTER,
+    });
+    expect(out[0]!.status).toBe("booked");
+  });
+
+  it("a blocked past slot still reads `blocked` — the operator's act outlives the departure", () => {
+    const out = deriveVirtualAvailability({
+      ...base,
+      blocks: [{ id: asId<"BlockId">("blk"), kind: "vesselHold", vesselId: V, date: "2026-07-04", time: "13:30" }],
+      asOf: AFTER,
+    });
+    expect(out[0]!.status).toBe("blocked");
+  });
+
+  it("…and an EMPTY past slot is `departed` — the case the state is actually for", () => {
+    expect(deriveVirtualAvailability({ ...base, asOf: AFTER })[0]!.status).toBe("departed");
+  });
+});

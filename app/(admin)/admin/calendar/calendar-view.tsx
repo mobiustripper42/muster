@@ -387,7 +387,16 @@ export function dedupeOccupied(slots: readonly VirtualSlot[]): VirtualSlot[] {
   const seen = new Set<string>();
   const out: VirtualSlot[] = [];
   for (const s of [...slots].sort((a, b) => String(a.offeringId).localeCompare(String(b.offeringId)))) {
-    if (s.status === "booked" || s.status === "unavailable") {
+    // `held` and `departed` join the original two (14.9). All four describe ONE physical trip's
+    // state, so two offerings sharing a boat-time draw one card rather than two stacked identical
+    // ones — the defect this function exists to prevent. Only `available` and `blocked` stay
+    // per-offering: those ARE a real choice about which offering to sell or block.
+    if (
+      s.status === "booked" ||
+      s.status === "unavailable" ||
+      s.status === "held" ||
+      s.status === "departed"
+    ) {
       const physical = `${String(s.vesselId)}|${s.date}|${s.time}`;
       if (seen.has(physical)) continue;
       seen.add(physical);

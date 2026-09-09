@@ -44,6 +44,10 @@ const REASON_MESSAGES: Record<string, string> = {
   // The real UI can only submit a departure it rendered, so a human never sees this (issue #799);
   // it exists for the raw/scripted call that posts an off-grid or out-of-season slot.
   off_schedule: "That departure isn't on the schedule. Head back and pick a listed time.",
+  // Reachable by a real person, unlike `off_schedule`: they can be sitting on a checkout page for
+  // a departure that leaves in three minutes, and finish typing after it has gone (issue #824).
+  // So it reads as a thing that happened to them rather than as a validation complaint.
+  departed: "That departure has already left. Head back and pick a later time.",
   sold_out:
     "That departure was just taken while you were checking out. You have not been charged — pick another time.",
   waiver_required: "Please agree to the liability waiver to continue.",

@@ -183,9 +183,14 @@ export function slotKey(vesselId: string, date: string, time: string): string {
 }
 
 /**
- * Load + derive everything both routes need for one day. Mirrors /admin/blocks' six reads;
- * `holds`/`asOf` are omitted so no slot is ever `held` (operator vessel-holds already surface
- * as `blocked`). Returns `null` on a repo failure so each route renders its own notice.
+ * Load + derive everything both routes need for one day. Mirrors /admin/blocks' six reads.
+ *
+ * **`asOf` is passed since 14.9**, which is what lets a slot be `held` or `departed`. It was
+ * omitted while `held` meant a `checkout_holds` row, on the reasoning that operator vessel-holds
+ * already surface as `blocked` — but a customer standing at the checkout is not an operator block,
+ * and an operator looking at today's grid needs to know a boat is mid-sale before they hold it for
+ * a repair. `departed` needs the same clock (issue #824). Returns `null` on a repo failure so each
+ * route renders its own notice.
  */
 export async function loadCalendarData(sp: Search): Promise<CalendarData | null> {
   let offerings: Offering[];
@@ -257,6 +262,9 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
       blocks,
       events,
       reservations,
+      // One instant for the whole render — it decides both which pending rows are live and which
+      // departures have gone, so the two cannot disagree about what time it is (issue #713).
+      asOf: new Date().toISOString(),
     }).filter((s) => drawsOnCalendar(s, events)),
   );
 
@@ -836,6 +844,41 @@ export function CalendarGrid({
                         style={style}
                       >
                         Blocked
+                      </div>
+                    );
+                  }
+
+                  // A customer is at the checkout for this exact slot (14.9, §2.8.10), or the
+                  // departure has already left (issue #824). Both are INERT: the fallthrough
+                  // below draws an "open" card whose link takes the slot off the market, and
+                  // neither of these is open. Blocking a slot somebody is mid-purchase of does
+                  // not cancel their claim, and blocking a trip that already sailed means
+                  // nothing at all — so the card says what it is and does not invite a click.
+                  //
+                  // They are separate from `blocked` above rather than folded into it because a
+                  // dark card there is the operator's own act and undoable from here; neither of
+                  // these is either. `held` clears itself when the payment window runs out.
+                  if (s.status === "held" || s.status === "departed") {
+                    const departed = s.status === "departed";
+                    return (
+                      <div
+                        key={key}
+                        data-testid="cal-block"
+                        data-vessel={String(s.vesselId)}
+                        data-status={s.status}
+                        title={
+                          departed
+                            ? "This departure has already left."
+                            : "Somebody is at the checkout for this departure. It frees itself if they don't pay."
+                        }
+                        className={`absolute flex items-center justify-center overflow-hidden rounded-lg border text-[10px] ${
+                          departed
+                            ? "border-line border-dashed text-faint"
+                            : "border-accent/60 font-medium text-accent"
+                        }`}
+                        style={{ ...pos, background: "transparent" }}
+                      >
+                        {departed ? "Departed" : "Checking out"}
                       </div>
                     );
                   }

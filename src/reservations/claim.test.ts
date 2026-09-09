@@ -17,7 +17,7 @@ import {
   resolveHoldMinutes,
   HOLD_MINUTES_DEFAULT,
 } from "./claim.js";
-import { eventIdForSlot } from "./availability.js";
+import { deriveVirtualAvailability, eventIdForSlot } from "./availability.js";
 
 const SMALL = asId<"VesselId">("v-small"); // coiMaxPax 6
 const BIG = asId<"VesselId">("v-big"); //   coiMaxPax 12
@@ -638,5 +638,240 @@ describe("claimDepartureSlot — session reuse (#575)", () => {
       expect(String(otherTime.claimed.id)).not.toBe(String(first.claimed.id));
     }
     expect(await repo.listAllReservations()).toHaveLength(2);
+  });
+});
+
+/**
+ * A departure that has already sailed cannot be claimed (issue #824, SPEC §2.8 criterion 1:
+ * *"A trip that is off-grid, outside the offering's season, or already departed cannot be
+ * reserved — no row written, no payment created."*).
+ *
+ * Off-grid and out-of-season shipped with #799. **The past-departure half did not exist** — there
+ * was no clock check anywhere in this function, and the only browse-side guard is
+ * `sp.date >= today` on `/book`, which is DAY granularity: a departure that left at 10am is still
+ * on sale at 2pm on the same day, and a scripted caller was never gated at all.
+ *
+ * Under the pending-row model that is worse than a wasted click. The row confirms into an `Event`
+ * in the past, `formShifts` picks it up, and the tick's past-trip guard skips it — so the trip is
+ * sold, has no crew, and never reaches the board.
+ *
+ * Compared as an INSTANT, not a date. `date` + `time` are a vessel-local wall clock;
+ * `zonedWallClockToInstant` converts with a two-pass DST fix, so the boundary is right on a
+ * spring-forward morning rather than an hour out.
+ *
+ * NOW is 2026-07-04T12:00:00Z. The tenant zone is America/New_York (UTC-4 in July), so noon UTC
+ * is **08:00 local** — every departure below is on the same vessel-local day, and the ones that
+ * have "already sailed" are the ones before 08:00 local.
+ */
+describe("claimDepartureSlot — a departed trip is refused (issue #824, criterion 1)", () => {
+  /** The offering runs every departure this describe needs, all on DATE (a Saturday). */
+  async function repoWithTimes(times: string[]): Promise<InMemoryRepository> {
+    const repo = await seededRepo();
+    await repo.saveOffering(
+      offering({
+        schedule: {
+          seasonStart: "2026-06-01",
+          seasonEnd: "2026-08-31",
+          weekdays: [5],
+          departureTimes: times,
+        },
+      }),
+    );
+    return repo;
+  }
+
+  it("refuses a departure earlier the SAME DAY, and writes no row", async () => {
+    // The case `sp.date >= today` cannot catch: 06:00 local is 10:00 UTC, two hours before NOW,
+    // on today's date. This is the shape issue #824 is actually about.
+    const repo = await repoWithTimes(["06:00", TIME]);
+    expect(await claim(repo, { time: "06:00" })).toEqual({ unbookable: "departed" });
+    expect(await repo.listAllReservations()).toHaveLength(0);
+  });
+
+  it("refuses a departure on an earlier DAY", async () => {
+    const repo = await repoWithTimes([TIME]);
+    // 2026-06-27 is the Saturday before, inside the season.
+    expect(await claim(repo, { date: "2026-06-27" })).toEqual({ unbookable: "departed" });
+  });
+
+  it("still claims a departure later the same day — the guard doesn't over-reject", async () => {
+    // 13:30 local is 17:30 UTC, five and a half hours out. The commonest real booking there is.
+    const repo = await repoWithTimes([TIME]);
+    expect(claimedVessel(await claim(repo, {}))).toBe("v-small");
+  });
+
+  it("claims a departure that has not QUITE left — the boundary is the departure instant", async () => {
+    // 08:01 local = 12:01 UTC, one minute after NOW. Still sellable.
+    const repo = await repoWithTimes(["08:01"]);
+    expect(claimedVessel(await claim(repo, { time: "08:01" }))).toBe("v-small");
+  });
+
+  it("refuses the moment it leaves — a departure exactly at NOW has departed", async () => {
+    // 08:00 local = 12:00 UTC = NOW exactly. The boat is casting off; you cannot buy a seat on it.
+    // Inclusive rather than exclusive on purpose: "it is leaving right now" is not a sale.
+    const repo = await repoWithTimes(["08:00"]);
+    expect(await claim(repo, { time: "08:00" })).toEqual({ unbookable: "departed" });
+  });
+
+  it("is checked BEFORE any read or write — a departed slot touches nothing", async () => {
+    // Same posture as the #799 grid guard: a refusal this cheap should cost one comparison, not a
+    // fleet read. Proven by the boat being available to somebody else immediately afterwards.
+    const repo = await repoWithTimes(["06:00", TIME]);
+    await claim(repo, { time: "06:00" });
+    expect(await repo.listAllReservations()).toHaveLength(0);
+    expect(claimedVessel(await claim(repo, { time: TIME }))).toBe("v-small");
+  });
+
+  it("refuses a departed slot even when it is on the grid and in season", async () => {
+    // The three clauses of criterion 1 are independent. This one satisfies the other two and must
+    // still be refused — otherwise `off_schedule` is silently doing this guard's job for it.
+    const repo = await repoWithTimes(["06:00"]);
+    const res = await claim(repo, { time: "06:00" });
+    expect(res).toEqual({ unbookable: "departed" });
+    expect(res).not.toEqual({ unbookable: "off_schedule" });
+  });
+});
+
+/**
+ * Criterion 5 (`SPEC.md` §2.8): **"The calendar and the write refuse the same set of departures."**
+ *
+ * This is the one test in the tree that asserts the two sides agree, rather than testing each
+ * against its own expectations and hoping. It enumerates a day's departures through
+ * `deriveVirtualAvailability` — what `/book` shows a customer — and through `claimDepartureSlot`
+ * — what happens when they press the button — and asserts the refused sets are equal.
+ *
+ * **Why it needs its own test rather than following from the others.** Every disagreement this
+ * repo has had here was invisible to both sides' own suites, because each was correct in
+ * isolation. Issue #691: the write measured hull overlap, the read matched exact identity, and
+ * two overlapping bookings went through in silence. Issue #826: the same split for holds, so an
+ * off-grid row left `/book` advertising a departure the write then refused, and every buyer for
+ * that window was told it was "just taken". Issue #824: the write had no clock at all while the
+ * read gated on `date >= today`, so this morning's departure sold all afternoon.
+ *
+ * Each of those was one side knowing something the other didn't. Only a test that asks both the
+ * same question catches the next one.
+ */
+describe("the calendar and the write refuse the same set (criterion 5)", () => {
+  const DAY = "2026-07-04";
+  const TIMES = ["08:00", "10:00", "13:30", "16:00", "18:00"];
+  // 12:00 UTC is 08:00 local in America/New_York in July (UTC-4). So the 08:00 departure is
+  // leaving at exactly this instant — departed, by the `<=` boundary — and 10:00 local (14:00
+  // UTC) is still two hours out, along with everything after it.
+  const AT = "2026-07-04T12:00:00.000Z";
+
+  async function world(): Promise<InMemoryRepository> {
+    const repo = new InMemoryRepository();
+    await repo.saveVessel(vessel(SMALL, 6));
+    await repo.saveVessel(vessel(BIG, 12));
+    await repo.saveOffering(
+      offering({
+        tripLengthMinutes: 100,
+        holdMinutes: 120,
+        schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: TIMES },
+      }),
+    );
+    return repo;
+  }
+
+  /** The times `/book` would not sell — a departure with no `available` boat at that time. */
+  async function refusedByCalendar(repo: InMemoryRepository): Promise<string[]> {
+    const slots = deriveVirtualAvailability({
+      offerings: [(await repo.getOffering(OFF))!],
+      vessels: await repo.listVessels(),
+      dateRange: { start: DAY, end: DAY },
+      blocks: await repo.listBlocks(),
+      events: await repo.listEvents(),
+      reservations: await repo.listAllReservations(),
+      asOf: AT,
+    });
+    return TIMES.filter((t) => !slots.some((s) => s.time === t && s.status === "available"));
+  }
+
+  /** The times the write would not sell. Each asked on its own repo copy, because a claim that
+   *  WINS writes a row and would change the answer for every time after it. */
+  async function refusedByWrite(seed: (r: InMemoryRepository) => Promise<void>): Promise<string[]> {
+    const out: string[] = [];
+    for (const time of TIMES) {
+      const repo = await world();
+      await seed(repo);
+      const res = await claim(repo, { time, guestCount: 4 }, () => AT);
+      if (!("claimed" in res)) out.push(time);
+    }
+    return out;
+  }
+
+  it("agree on an empty day: the departed one, and only that", async () => {
+    const repo = await world();
+    expect(await refusedByCalendar(repo)).toEqual(["08:00"]);
+    expect(await refusedByWrite(async () => {})).toEqual(["08:00"]);
+  });
+
+  it("agree when a rival's pending row occupies a hull by OVERLAP, not identity (issue #826)", async () => {
+    // A pending row at 13:30 with 120 hold minutes runs to 15:30 — over the 16:00 departure? No:
+    // 13:30 + 120 = 15:30, and 16:00 starts after it. But the row's own 13:30 slot goes, and the
+    // BIG boat is still free at both, so nothing else changes. The point is that both sides
+    // measure the same interval on the same hull rather than one matching an exact triple.
+    const seed = async (repo: InMemoryRepository) => {
+      for (const v of [SMALL, BIG]) {
+        await repo.saveReservation({
+          id: asId<"ReservationId">(`p-${String(v)}`),
+          eventId: null,
+          source: "muster",
+          status: "pending",
+          customerName: "Hooper",
+          partySize: 2,
+          vesselId: v,
+          date: DAY,
+          time: "13:30",
+          offeringId: OFF,
+          reservedAt: "2026-07-04T11:55:00.000Z", // live at AT
+          holdMinutes: 120,
+          tripMinutes: 100,
+        });
+      }
+    };
+    const repo = await world();
+    await seed(repo);
+    expect(await refusedByCalendar(repo)).toEqual(await refusedByWrite(seed));
+  });
+
+  it("agree when a Xola trip occupies every hull over a departure (#615, #691)", async () => {
+    const seed = async (repo: InMemoryRepository) => {
+      for (const [i, v] of [SMALL, BIG].entries()) {
+        await repo.saveEvent({
+          id: asId<"EventId">(`x-${i}`),
+          vesselId: v,
+          date: DAY,
+          time: "15:00", // 15:00 + 100 min runs to 16:40, straight over the 16:00 departure
+          capacity: 12,
+          status: "scheduled",
+          source: "xola",
+        });
+      }
+    };
+    const repo = await world();
+    await seed(repo);
+    const byCalendar = await refusedByCalendar(repo);
+    expect(byCalendar).toContain("16:00");
+    expect(byCalendar).toEqual(await refusedByWrite(seed));
+  });
+
+  it("agree when the operator blocks a slot on every hull (DEC-125)", async () => {
+    const seed = async (repo: InMemoryRepository) => {
+      for (const v of [SMALL, BIG]) {
+        await repo.saveBlock({
+          id: asId<"BlockId">(`b-${String(v)}`),
+          kind: "vesselHold",
+          vesselId: v,
+          date: DAY,
+          time: "18:00",
+        });
+      }
+    };
+    const repo = await world();
+    await seed(repo);
+    const byCalendar = await refusedByCalendar(repo);
+    expect(byCalendar).toContain("18:00");
+    expect(byCalendar).toEqual(await refusedByWrite(seed));
   });
 });

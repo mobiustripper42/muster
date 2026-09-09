@@ -462,9 +462,15 @@ describe("deriveVirtualAvailability — a pending row occupies the hull (14.4, S
     expect(at(out, "15:15").status).not.toBe("available");
   });
 
-  it("…and is `unavailable`, not `booked` — nobody has paid", () => {
+  it("…and its own slot is `held`, not `booked` — nobody has paid", () => {
+    // `held` since 14.9 (§2.8.10): somebody is at the checkout for THIS slot, and that clears
+    // itself in one payment window. It read `unavailable` between 14.7 and 14.9, which was true
+    // but blunt — it is the word for a hull busy with somebody ELSE's trip.
     const out = deriveVirtualAvailability({ ...day, reservations: [pending("p0")], asOf: ASOF });
-    expect(at(out, "13:30").status).toBe("unavailable");
+    expect(at(out, "13:30").status).toBe("held");
+    // The 15:15 departure the same row overlaps is `unavailable`, not `held` — the distinction is
+    // WHERE the row is, and this is the assertion that pins the two apart.
+    expect(at(out, "15:15").status).toBe("unavailable");
   });
 
   it("the row's FROZEN hold minutes govern, not the offering's current value (criterion 2)", () => {
@@ -717,7 +723,8 @@ describe("deriveVirtualAvailability — what outranks a live pending row", () =>
       asOf: ASOF,
     });
     expect(out.find((s) => s.date === "2026-07-04")!.status).toBe("available");
-    expect(out.find((s) => s.date === "2026-07-11")!.status).toBe("unavailable");
+    // Its own slot on its own day — `held` since 14.9, not `unavailable`.
+    expect(out.find((s) => s.date === "2026-07-11")!.status).toBe("held");
   });
 });
 
@@ -749,5 +756,132 @@ describe("slot-identity helpers — the 12.1 guardrail contract", () => {
   it("eventIdForSlot is deterministic and slot-derived", () => {
     expect(String(eventIdForSlot(V, "2026-07-04", "13:30"))).toBe("slot_vessel-brew-2|2026-07-04|13:30");
     expect(eventIdForSlot(V, "2026-07-04", "13:30")).toBe(eventIdForSlot(V, "2026-07-04", "13:30"));
+  });
+});
+
+/**
+ * A departed trip is `departed`, on the calendar as well as at the write (issue #824,
+ * criterion 5: *"The calendar and the write refuse the same set of departures."*).
+ *
+ * Before this the write had no clock check at all and the only read-side guard was
+ * `sp.date >= today` on `/book` — day granularity, so this morning's 10am departure went on
+ * being advertised all afternoon.
+ *
+ * **`departed` is its own status and not `unavailable`, deliberately.** The admin calendar counts
+ * `unavailable` as booked (`calendar-view.tsx:397`, `:619`, `:720`), so reusing it would put a
+ * phantom sold card on every past departure — the exact defect #615/#691 fixed. A past empty slot
+ * is neither sold, nor open, nor blocked, and the counters should say so by counting it nowhere.
+ *
+ * Times are a vessel-local wall clock. In America/New_York in July (UTC-4), 13:30 local is
+ * 17:30 UTC — every `asOf` below is chosen against that.
+ */
+describe("deriveVirtualAvailability — a departed trip (issue #824)", () => {
+  const BEFORE = "2026-07-04T12:00:00.000Z"; // 08:00 local, 5.5 h before the 13:30 departure
+  const AFTER = "2026-07-04T18:00:00.000Z"; //  14:00 local, half an hour after it
+
+  it("is `departed` once its instant has passed", () => {
+    const out = deriveVirtualAvailability({ ...base, asOf: AFTER });
+    expect(out[0]!.status).toBe("departed");
+  });
+
+  it("is still `available` before it leaves", () => {
+    expect(deriveVirtualAvailability({ ...base, asOf: BEFORE })[0]!.status).toBe("available");
+  });
+
+  it("is NOT `unavailable` — that would count as booked on the operator's calendar", () => {
+    // The assertion that stops a well-meaning simplification: collapsing `departed` into
+    // `unavailable` puts a phantom sold card on every past departure.
+    expect(deriveVirtualAvailability({ ...base, asOf: AFTER })[0]!.status).not.toBe("unavailable");
+  });
+
+  it("a BOOKED past trip still reads `booked` — it is history, and it was sold", () => {
+    // Precedence: a sale outranks having sailed. The operator's calendar has to keep drawing the
+    // customer's name on a trip that already ran.
+    const out = deriveVirtualAvailability({
+      ...base,
+      events: [ev("evt-past", { time: "13:30" })],
+      reservations: [res("r1", "evt-past")],
+      asOf: AFTER,
+    });
+    expect(out[0]!.status).toBe("booked");
+  });
+
+  it("no asOf ⇒ nothing is departed, the same conservative rule pending rows get", () => {
+    // The deriver has one clock input. Without it, it cannot know, and guessing would hide slots.
+    expect(deriveVirtualAvailability({ ...base })[0]!.status).toBe("available");
+  });
+});
+
+/**
+ * A live pending row shows on the calendar as `held` (SPEC §2.8.10 `:1925`, and the §2.10.2
+ * slot-state table at `:2398`: *"Someone is at the checkout for this slot."*).
+ *
+ * 14.7 retired `held` along with `checkout_holds` — it meant a hold row, nothing produced it and
+ * nothing read it. It comes back here driven by the pending row, because `unavailable` conflates
+ * two facts an operator needs apart: *"a customer is mid-checkout, this clears in fifteen
+ * minutes"* and *"the boat is out on another trip."* That is the same conflation the
+ * `booked`/`unavailable` split already fixed once (#615, #691).
+ *
+ * The distinction is WHERE the row is: a pending row at THIS slot is `held`; a pending row
+ * elsewhere on the hull whose window overlaps this departure is `unavailable`, exactly as any
+ * other trip would be.
+ */
+describe("deriveVirtualAvailability — a live pending row is `held` (§2.8.10)", () => {
+  const ASOF = "2026-07-04T12:00:00.000Z";
+  const pend = (over: Partial<Reservation> = {}): Reservation => ({
+    id: asId<"ReservationId">("p-held"),
+    eventId: null,
+    source: "muster",
+    customerName: "Hooper",
+    partySize: 4,
+    status: "pending",
+    vesselId: V,
+    date: "2026-07-04",
+    time: "13:30",
+    offeringId: asId<"OfferingId">("off-1"),
+    reservedAt: "2026-07-04T11:55:00.000Z", // 5 min before ASOF — live
+    holdMinutes: 120,
+    tripMinutes: 100,
+    ...over,
+  });
+
+  it("marks the slot the customer is checking out for as `held`", () => {
+    const out = deriveVirtualAvailability({ ...base, reservations: [pend()], asOf: ASOF });
+    expect(out[0]!.status).toBe("held");
+  });
+
+  it("a LAPSED row leaves the slot available — held is a live state, not a stored one", () => {
+    const out = deriveVirtualAvailability({
+      ...base,
+      reservations: [pend({ reservedAt: "2026-07-04T11:30:00.000Z" })], // 30 min ago
+      asOf: ASOF,
+    });
+    expect(out[0]!.status).toBe("available");
+  });
+
+  it("no asOf ⇒ not held, the same conservative rule the occupancy math gets", () => {
+    expect(deriveVirtualAvailability({ ...base, reservations: [pend()] })[0]!.status).toBe(
+      "available",
+    );
+  });
+
+  it("a booking outranks a held slot", () => {
+    const out = deriveVirtualAvailability({
+      ...base,
+      events: [ev("evt-b", { time: "13:30" })],
+      reservations: [res("r1", "evt-b"), pend()],
+      asOf: ASOF,
+    });
+    expect(out[0]!.status).toBe("booked");
+  });
+
+  it("a block outranks a held slot", () => {
+    const out = deriveVirtualAvailability({
+      ...base,
+      blocks: [{ id: asId<"BlockId">("blk"), kind: "vesselHold", vesselId: V, date: "2026-07-04", time: "13:30" }],
+      reservations: [pend()],
+      asOf: ASOF,
+    });
+    expect(out[0]!.status).toBe("blocked");
   });
 });

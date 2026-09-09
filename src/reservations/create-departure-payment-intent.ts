@@ -75,6 +75,7 @@ export type DeparturePaymentIntentStart =
         | "not_live"
         | "invalid_guest_count"
         | "off_schedule"
+        | "departed"
         | "sold_out"
         | "waiver_required"
         | "gratuity_required";

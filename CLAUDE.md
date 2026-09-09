@@ -56,11 +56,13 @@ Project coding conventions — typing, structure, data fetching, auth, error han
 
 Two things the gate cannot check, which is why they are here:
 
-**Search before you write, every time.** Name the subject, run `grep -rli "<subject>" docs/decisions/`, and **say what came back** in the pull request — *"returned DEC-<id>; this supersedes it"*, or *"nothing on rate limiting; new id."* That sentence is the whole control: a session that would have to write "DEC-<id> covers deposits and this is not that" cannot do it when it's false.
+**Search before you write, every time.** Name the subject, run `grep -rli --exclude-dir=archive "<subject>" docs/decisions/`, and **say what came back** in the pull request — *"returned DEC-<id>; this supersedes it"*, or *"nothing on rate limiting; new id."* That sentence is the whole control: a session that would have to write "DEC-<id> covers deposits and this is not that" cannot do it when it's false.
 
-**A change of mind is a new record, not an edit to the old one** (DEC-J004). The new record carries `supersedes: [DEC-<id>]`; the old one flips to `status: superseded`. Amending in place is retired — records grow, the cap is 2,000 bytes, and the carve-out that let amendments escape it also let a record quoting the convention escape every other rule. Two decisions that merely relate carry a plain **see also**.
+**A change of mind is a new record, not an edit to the old one** (DEC-J005). The new record carries `supersedes: [DEC-<id>]`; the old one flips to `status: superseded`. Amending in place is retired — records grow, the cap is 2,000 bytes, and the carve-out that let amendments escape it also let a record quoting the convention escape every other rule. Two decisions that merely relate carry a plain **see also**.
 
 **Records written before schema v1 are frozen**, listed by fingerprint in `docs/decisions-baseline.txt`. Editing one fails the build; the fix is to convert it to v1, splitting it if it turns out to be several decisions. The list is generated once at adoption by `scripts/gen-decisions-baseline.mjs` and never regenerated.
+
+**A record that is retired but still cited moves to `docs/decisions/archive/`.** It leaves `DECISIONS.md`, stops coming back in the search above, and keeps resolving — so the successor that says *"supersedes DEC-<id>"* stays true. That is why retirement is a move rather than a delete: a citation to a deleted record points at nothing. Use it when the index has grown too long to read, or when a record turns out never to have been a decision. Archiving does **not** unfreeze anything — a frozen record stays frozen in `archive/`.
 
 **Don't cite a decision you only saw in the index.** The index carries titles, not holdings.
 

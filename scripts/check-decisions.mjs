@@ -22,6 +22,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { load as parseYaml } from 'js-yaml'
 import {
   BASELINE_PATH,
+  archivedIds,
   // Imported solely to be RE-EXPORTED at the `export {}` block near the end of this file,
   // which the rule does not count as a use for a `.mjs` module (#908). It is not dead: the
   // generator imports `fingerprint` from here.
@@ -157,8 +158,16 @@ const MAX_BYTES = 2000
  */
 export const RECORD_DIRS = [DIR, `${DIR}/archive`]
 
+/**
+ * The record dirs that are NOT the indexed one — what a citation resolver has to add on top of the
+ * index. Named rather than spelled `RECORD_DIRS.filter(d => d !== DIR)` at each call site, because
+ * there are two of them in two files and the filter is the part that would be got wrong once.
+ */
+export const ARCHIVE_DIRS = RECORD_DIRS.filter((d) => d !== DIR)
+
 export {
   BASELINE_PATH,
+  archivedIds,
   fingerprint,
   frontmatterBlock,
   frozenRecords,
@@ -559,15 +568,13 @@ export function check() {
    *
    * This is why archiving rather than deletion is the retirement path: a citation to a deleted
    * record genuinely points at nothing, while a citation to an archived one still lands on a file.
+   *
+   * The scan itself is `archivedIds` in `lib/records.mjs`, shared with `check-docs`. It was inline
+   * here first, and that is exactly how the two gates came apart: this one resolved citations
+   * inside records, `check-docs` resolved the same ids in every other document, and only this one
+   * was widened.
    */
-  const resolvable = new Set(decisions.keys())
-  for (const dir of RECORD_DIRS) {
-    if (dir === DIR || !existsSync(dir)) continue
-    for (const f of readdirSync(dir).filter((f) => f.startsWith('DEC-') && f.endsWith('.md'))) {
-      const id = idOf(frontmatterBlock(readFileSync(`${dir}/${f}`, 'utf8')))
-      if (id) resolvable.add(id)
-    }
-  }
+  const resolvable = new Set([...decisions.keys(), ...archivedIds(ARCHIVE_DIRS)])
 
   /**
    * Every decision id mentioned in a decision file or the index resolves to a real decision.

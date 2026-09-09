@@ -2402,17 +2402,24 @@ that one trip's price or time, or a customer reaches the checkout and a `pending
 written for it (§2.8.1). So a season is a few dozen rows rather than thousands, and editing an
 offering's schedule recomputes what is open with nothing to rewrite.
 
-**A slot the operator's calendar draws is in one of five states**, and the words are fixed:
+**A slot the operator's calendar draws is in one of six states**, and the words are fixed:
 
 | State | Meaning |
 |---|---|
 | `open` | For sale. Nothing is written. |
 | `sold` | This slot was bought — a `booked` reservation on it. |
 | `held` | Someone is at the checkout for this slot — a live `pending` reservation (2.8.10). |
+| `departed` | The trip has already left (criterion 1). Nobody bought it and nobody now can. |
 | `busy` | Nobody bought this slot; the boat is out on another trip that overlaps it. |
 | `blocked` | An operator block covers it (2.10.3). |
 
-The customer's calendar collapses the last four into "not for sale" and never says which. The
+`departed` is its own word rather than a shade of `busy`, for the reason the whole table exists:
+the operator's screen counts these, and `busy` is counted as sold. A past empty departure that
+borrowed that word would draw a phantom sale on every slot nobody bought, which is the defect the
+`sold`/`busy` split was made to fix. It is neither sold, nor open, nor blocked, and it should be
+counted nowhere.
+
+The customer's calendar collapses the last five into "not for sale" and never says which. The
 operator's does not, because `sold` and `busy` are different questions — who bought it, and
 which trip is using the boat — and the operator asks both.
 

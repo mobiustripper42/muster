@@ -15,10 +15,10 @@ const event = (time: string, status = "scheduled") => ({ vesselId: V, date: DATE
 
 describe("drawsOnCalendar", () => {
   it("draws every ordinary status untouched", () => {
-    // `held` was a fourth status until 14.7 dropped `checkout_holds`; the deriver cannot emit it
-    // any more, so asserting it drew was asserting nothing. `slot()` takes a plain string, which
-    // is why typecheck never flagged it.
-    for (const st of ["available", "booked", "blocked"]) {
+    // `held` came back at 14.9 driven by the pending row, and `departed` arrived with it — both
+    // must draw, because the operator's grid is where "somebody is buying this" and "this already
+    // sailed" have to be visible. Only `unavailable` is conditional, below.
+    for (const st of ["available", "booked", "blocked", "held", "departed"]) {
       expect(drawsOnCalendar(slot("17:30", st), [])).toBe(true);
     }
   });

@@ -37,7 +37,8 @@ import {
   pendingIntervalsFor,
   type BusyInterval,
 } from "./hull-busy.js";
-import { pendingLiveSince } from "./pending.js";
+import { zonedWallClockToInstant } from "../config/tenant.js";
+import { isLivePending, pendingLiveSince } from "./pending.js";
 
 export interface EventAvailability {
   eventId: EventId;
@@ -150,6 +151,25 @@ export function isOnScheduleGrid(
   return schedule.departureTimes.includes(time);
 }
 
+/**
+ * Has this departure already left (issue #824, criterion 1)?
+ *
+ * `date` + `time` are a vessel-local WALL CLOCK; `asOf` is an instant. Comparing them needs the
+ * zone, and `zonedWallClockToInstant` does it with a two-pass DST fix — which is what makes the
+ * boundary right on a spring-forward morning instead of an hour out.
+ *
+ * `<=`, not `<`: a boat casting off at this exact second is not for sale.
+ *
+ * **Lives here, with the other shared guards, and is imported by the write.** `claimDepartureSlot`
+ * calls this same function rather than restating the expression, for the same reason it imports
+ * `isOnScheduleGrid` and `isSlotBlocked`: criterion 5 says the calendar and the write refuse the
+ * same set, and two copies of a rule are two things that can drift. The agreement test would
+ * catch the drift, but not having the drift is better than catching it.
+ */
+export function hasDeparted(date: string, time: string, asOf: string): boolean {
+  return zonedWallClockToInstant(date, time).getTime() <= Date.parse(asOf);
+}
+
 /** The physical boat-slot identity for a Muster event (DEC-125 guardrail). ONE Brew 3
  *  can hold exactly one departure at a given day+time — `source='muster'` is implicit
  *  (only Muster slots virtualize; Xola keeps its money in Xola, DEC-105). This is the
@@ -190,19 +210,25 @@ export interface VirtualSlot {
    *  The party fare (base + extras × extraGuestPrice + gratuity, DEC-124) is booking-time,
    *  NOT computed here. */
   priceCents: number;
-  /** Three ways a slot is not sellable, and they are NOT interchangeable:
+  /** Five ways a slot is not sellable, and they are NOT interchangeable — the operator needs
+   *  them apart even though the customer surface collapses every one of them to "not available":
    *  - `booked` — a reservation exists. The admin calendar draws it with the customer's name.
-   *  - `unavailable` — the HULL is committed over this departure: another trip that overlaps it
-   *    (#615, #691), or a live `pending` row from a customer at Stripe (§2.8.3). Nobody bought
-   *    this slot; it simply cannot run. Calling it `booked` put phantom bookings on the
-   *    operator's calendar — two cards on one hull where one trip was sold.
+   *  - `departed` — the trip has already left (issue #824). Its own state and NOT `unavailable`,
+   *    because the admin calendar counts `unavailable` as booked (`calendar-view.tsx`, the
+   *    `counts` map and the status filter), so reusing it would draw a phantom sold card on every
+   *    past departure. A past empty slot is neither sold, nor open, nor blocked, and the counters
+   *    should count it nowhere.
    *  - `blocked` — an operator block (DEC-125), deliberate and liftable.
-   *  The customer surface collapses all three to "not available"; the operator's does not.
-   *
-   *  A fourth, `held`, meant a live `checkout_holds` row and went with that table at 14.7. It
-   *  was never distinguished downstream — `buildSlotRows` counts `available` and nothing else —
-   *  and a customer at Stripe now reaches `unavailable` through the hull check instead. */
-  status: "available" | "booked" | "blocked" | "unavailable";
+   *  - `held` — a live `pending` row AT THIS SLOT: somebody is at the checkout right now
+   *    (§2.8.10). Distinct from `unavailable` because it clears itself in one payment window,
+   *    where a foreign trip does not. It meant a `checkout_holds` row until 14.7 dropped that
+   *    table; it is driven by the reservation now.
+   *  - `unavailable` — the HULL is committed over this departure by something that is not this
+   *    slot: another trip overlapping it (#615, #691), or a live pending row at a DIFFERENT time
+   *    on the same boat (§2.8.3). Nobody bought this slot; it simply cannot run. Calling it
+   *    `booked` put phantom bookings on the operator's calendar — two cards on one hull where
+   *    one trip was sold. */
+  status: "available" | "held" | "departed" | "booked" | "blocked" | "unavailable";
   /** Set when a materialized `Event` backs this slot (an override or a booking). */
   eventId?: EventId;
 }
@@ -226,19 +252,37 @@ export interface DeriveVirtualAvailabilityInput {
 /**
  * A virtual slot's status, in precedence order (issue #928 — lifted out of two nested ternaries).
  *
- * `booked` first: a sale is a fact and the admin calendar draws it with the customer's name.
- * `blocked` next: an operator's deliberate blackout has to show as one, and `unavailable` is
- * hidden on the grid where nothing runs — ranking busy above it made a blackout disappear from
- * both the calendar and the Blocked count. `occupied` last of the three: the hull is committed by
- * another trip or a live pending row, which is unsellable but nobody's doing.
+ * `booked` first: a sale is a fact and the admin calendar draws it with the customer's name, on a
+ * past trip as much as a future one. `blocked` next: an operator's deliberate blackout has to show
+ * as one, and `unavailable` is hidden on the grid where nothing runs — ranking busy above it made
+ * a blackout disappear from both the calendar and the Blocked count. Then `held` before
+ * `occupied`, being the more specific answer to the same question. `departed` LAST, because it
+ * describes an EMPTY slot that has passed, not a passed slot of any kind — anything that actually
+ * happened on that hull outranks the fact that it happened in the past.
  *
  * Each caller passes only the flags its branch computed; the rest default to false. A materialized
  * slot can be `booked` and is never asked about blocks; a virtual one is the reverse.
  */
-function slotStatus(f: { booked?: boolean; blocked?: boolean; occupied?: boolean }): VirtualSlot["status"] {
+function slotStatus(f: {
+  booked?: boolean;
+  departed?: boolean;
+  blocked?: boolean;
+  held?: boolean;
+  occupied?: boolean;
+}): VirtualSlot["status"] {
   if (f.booked) return "booked";
   if (f.blocked) return "blocked";
+  // Before `occupied`, because it is the more specific answer to "why can't I sell this": a
+  // pending row AT this slot, rather than the hull being busy from somewhere else.
+  if (f.held) return "held";
   if (f.occupied) return "unavailable";
+  // LAST before `available`, because `departed` means "nothing was here, and it is too late now"
+  // — §2.10.2's wording is "nobody bought it and nobody now can". Ranked above `occupied` it
+  // swallowed real history: a XOLA charter earlier today takes the virtual branch (Xola events
+  // are never in `eventBySlot`), so it drew as an inert grey "Departed" card instead of the
+  // customer's name, and this morning's charters vanished off the operator's grid
+  // (/security-review's non-security note). A trip that ran is still a trip that ran.
+  if (f.departed) return "departed";
   return "available";
 }
 
@@ -417,6 +461,25 @@ export function deriveVirtualAvailability(
     }
   }
 
+  // Slots a customer is at the checkout for RIGHT NOW — a live pending row at this exact
+  // identity (§2.8.10). Exact identity is right here and overlap is right for occupancy: `held`
+  // answers "who is buying THIS slot", where `unavailable` answers "is this hull free", and the
+  // same row supplies both — its own slot reads `held`, every other departure it overlaps reads
+  // `unavailable`. No `asOf`, no live rows, same conservative rule as the occupancy math.
+  const heldSlots = new Set<string>();
+  if (input.asOf !== undefined) {
+    const liveSince = pendingLiveSince(input.asOf);
+    for (const r of reservations) {
+      if (!isLivePending(r, liveSince) || !r.vesselId || !r.date || !r.time) continue;
+      heldSlots.add(slotIdentity(r.vesselId, r.date, r.time));
+    }
+  }
+
+  /** This day's departed check, closed over the render's clock. `undefined` asOf ⇒ nothing has
+   *  departed, the same conservative rule the occupancy math gets. */
+  const departedAt = (date: string, time: string): boolean =>
+    input.asOf !== undefined && hasDeparted(date, time, input.asOf);
+
   /** Windows occupying this hull-day, minus the given event's own (pass none for a virtual slot). */
   const hullBusyExcept = (vesselId: VesselId, date: string, selfEventId?: string): BusyInterval[] =>
     (busyByHullDay.get(`${String(vesselId)}|${date}`) ?? [])
@@ -458,11 +521,17 @@ export function deriveVirtualAvailability(
               time,
               capacity: materialized.capacity,
               priceCents: materialized.price ?? basePrice,
-              status: slotStatus({ booked, occupied: collides }),
+              status: slotStatus({
+                booked,
+                departed: departedAt(date, time),
+                held: heldSlots.has(slotIdentity(vesselId, date, time)),
+                occupied: collides,
+              }),
               eventId: materialized.id,
             });
             continue;
           }
+          const identity = slotIdentity(vesselId, date, time);
           // No Muster event backs this identity (the materialized branch returned above), so
           // every window here belongs to another trip.
           // Measured by the offering's HOLD minutes, not its trip time (SPEC §2.8.3, "same rule
@@ -485,7 +554,12 @@ export function deriveVirtualAvailability(
             time,
             capacity: vessel.coiMaxPax,
             priceCents: basePrice,
-            status: slotStatus({ blocked, occupied }),
+            status: slotStatus({
+              departed: departedAt(date, time),
+              blocked,
+              held: heldSlots.has(identity),
+              occupied,
+            }),
           });
         }
       }

@@ -34,7 +34,7 @@ import type {
 } from "../domain/entities.js";
 import type { OfferingId, VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
-import { isActiveMusterClaim, isOnScheduleGrid, isSlotBlocked, slotIdentity } from "./availability.js";
+import { hasDeparted, isActiveMusterClaim, isOnScheduleGrid, isSlotBlocked, slotIdentity } from "./availability.js";
 import { busyIntervalsFor, candidateHoldMinutes, hullIsBusy, minutesOfDay, pendingIntervalsFor } from "./hull-busy.js";
 import { isLivePending, pendingLiveSince } from "./pending.js";
 
@@ -113,7 +113,7 @@ export type PendingRowBuilder = (
 export type DepartureClaimResult =
   | { claimed: Reservation; reused: boolean }
   | { soldOut: true }
-  | { unbookable: "offering_missing" | "not_live" | "invalid_guest_count" | "off_schedule" };
+  | { unbookable: "offering_missing" | "not_live" | "invalid_guest_count" | "off_schedule" | "departed" };
 
 /**
  * Claim the first free fitting boat of a departure by writing this checkout's pending row on it
@@ -151,10 +151,30 @@ export async function claimDepartureSlot(
     return { unbookable: "off_schedule" };
   }
 
-  // One clock for the whole claim: the same instant decides which pending rows are live for the
-  // reads below and for the write CAS, so a row can't be live for one and dead for the other
-  // (issue #713).
+  // One clock for the whole claim: the same instant decides whether this departure has sailed,
+  // which pending rows are live for the reads below, and the write CAS — so nothing can be
+  // departed for one and future for another (issue #713's rule, extended to the new guard).
   const at = now();
+
+  // The trip must not have LEFT (issue #824, criterion 1's third clause). Off-grid and
+  // out-of-season shipped with #799; this half did not exist, so a departure that sailed at 10am
+  // was still sellable at 2pm — and the only guard anywhere was `sp.date >= today` on `/book`,
+  // which is day granularity and browse-side only, so a scripted caller was never gated at all.
+  //
+  // Under the pending-row model that is worse than a wasted click: the row confirms into an
+  // `Event` in the past, `formShifts` picks it up, and the tick's past-trip guard skips it. The
+  // trip is sold, has no crew, and never reaches the board.
+  //
+  // `hasDeparted` is the DERIVER's predicate, imported rather than restated — criterion 5 says
+  // the calendar and the write refuse the same set, and one function cannot disagree with itself.
+  // The same reason `isOnScheduleGrid` and `isSlotBlocked` come from there too. It carries the
+  // wall-clock-to-instant conversion and the `<=` boundary; see its docstring for both.
+  //
+  // Checked before any read or write, like the grid guard above — a refusal this cheap should
+  // cost one comparison, not a fleet read.
+  if (hasDeparted(req.date, req.time, at)) {
+    return { unbookable: "departed" };
+  }
   const liveSince = pendingLiveSince(at);
 
   const [vessels, blocks, events, reservations] = await Promise.all([

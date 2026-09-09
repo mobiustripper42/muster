@@ -898,11 +898,11 @@ to a calm monitor that exposes controls on demand.
 ### View structure / states to render
 - **Shift header:** boat · date · trips (1/3/5pm) · **per-trip** pax chips · overall crewing-state
   badge (Filling / Crewed / At-Risk) · the **fills-by deadline**, **rendered "deadline"** on the
-  cockpit (DEC-038; the concept stays "fills by" in code/decisions).
+  cockpit (the concept stays "fills by" in code/decisions).
   *(Correction: the deadline anchors to **departure − 48h** (DEC-031), **not** to the staffing horizon
   (departure − 7d, DEC-022/062). These are two instants five days apart and the cockpit renders both,
   stacked — `staffing starts:` then `deadline:`. DEC-027 §4 pulled them apart in as many words: "the
-  staffing horizon is when asks start, not a fill deadline." The doc absorbed DEC-038's **label** change
+  staffing horizon is when asks start, not a fill deadline." The doc absorbed the **label** change
   and kept the wrong **anchor**.)*
   *(Correction: the aggregate "aboard total" is computed but rendered nowhere — deliberately dropped,
   "add back if missed". Per-trip chips are what ships.)*
@@ -1017,7 +1017,7 @@ removed.
       specified the horizon-blind inline re-ask that DEC-128 removed after it misfired in production.)*
 - [ ] Manual override places any person **rated for the role** into a seat regardless of rank
       (authority backstop, bounded by DEC-064/DEC-096).
-- [ ] The **deadline** rendered on the cockpit (DEC-038) is the **fills-by** instant —
+- [ ] The **deadline** rendered on the cockpit is the **fills-by** instant —
       departure − 48h (DEC-031) — and is distinct from the **staffing horizon** line above it
       (departure − 7d, DEC-022). *(Split out of the previous criterion, which conflated the two and was
       therefore un-tickable against code that is correct and settled.)*
@@ -1103,7 +1103,7 @@ missing **captain** with six. Right in spirit, wrong in letter and arity.)*
 Each row carries enough to act without opening it:
 - **What's missing** — 1 captain / 1 mate / both.
 - **Time to trip.** *(The fills-by/horizon deadline is **not** shown on the board — it lives on the
-  cockpit only. DEC-038. A board row no longer implies the automation has given up: within the
+  cockpit only. A board row no longer implies the automation has given up: within the
   deadline a still-worked uncrewed shift boards too, DEC-065.)*
 - **Escalation transparency** — proof the system tried: "asked 6 mates · 4 declined · 2 silent ·
   pool widened · nudged Bob · exhausted." So Eric trusts it gave up for real reasons, not laziness.

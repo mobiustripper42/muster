@@ -208,7 +208,6 @@ cross-reference left, and it points at the spec, never at another decision.
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred
-- DEC-038 — Pilot-walkthrough UX/copy revisions (operator review of the slice-1 surfaces)
 - DEC-055 — Transient feedback params are stripped post-render by a contained client island (#121)
 - DEC-085 — Shift Builder — responsive dual-form-factor over one no-JS core
 - DEC-086 — Vessel + role identity palette — color that encodes information

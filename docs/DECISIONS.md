@@ -40,7 +40,6 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-001 — Policy/mechanism split
 - DEC-002 — The availability oracle is a synchronous rule engine
 - DEC-003 — Crew rules collapse into one composite satisfiability rule
-- DEC-014 — Locked-spec + future-ideas discipline
 - DEC-DATA-1 — Muster keeps a service layer; Supabase (if used) is managed Postgres, not the architecture
 - DEC-023 — The engine advances via an explicit `tick(repo, now)` operation; no scheduler in v1
 - DEC-054 — Operator engine pause/resume — edge-gated, typed-port-backed, default-running (#124)
@@ -114,12 +113,10 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-157 — Hours round at the edge rather than truncate, through one shared rule (#758)
 
 ### Xola ingest & import
-- DEC-011 — 2026 coexistence — CSV bridge is disposable; Xola API bolt-on killed
 - DEC-015 — Xola import — verified source, grain, identity keys, and quarantined Land→Map→Reconcile architecture
 - DEC-016 — BrewBoat worked example corrected — real fleet; scope ≠ current holdings; test data invented
 - DEC-017 — Manifest contact — email is the spine, phone via email-join, phone nullable
 - DEC-029 — "Changed since you reviewed it" is a pure derivation — `max(reservation.updatedAt) > shift.lockedAt`
-- DEC-035 — Xola import surface — import→formShifts chaining, re-import idempotency, upload security
 - DEC-036 — Live Xola API import — Land adapter behind existing Map/Reconcile; supersedes DEC-011's API kill
 - DEC-037 — Task #73 (5.4) splits — xlsx import surface first (5.4a), Xola API Land adapter fast-follow (5.4b); review surface stays deferred
 - DEC-040 — Xola live-API import — build resolution + sync strategy (5.4b; resolves DEC-036)
@@ -140,7 +137,6 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-050 — The channel port widens with a `sendNotification` sibling to `sendAsk`
 - DEC-051 — Messaging membership is derived, not snapshotted
 - DEC-052 — Crew-to-crew DMs are operator-visible for v1
-- DEC-053 — Two sender numbers — scheduling vs doorbell — on the crew 10DLC campaign
 - DEC-058 — Canonical messaging subject = the existing `AuthSubject` kind, widened; doorbell rings on membership, not visibility
 - DEC-060 — Doorbell window defaults — batch/cancel 90 s, presence-staleness 5 min (the 6.3 spike)
 - DEC-068 — Presence enters the doorbell decider as a per-(subject,thread) three-state verdict; v1 fills it coarsely

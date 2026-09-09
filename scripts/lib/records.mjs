@@ -91,6 +91,38 @@ export function legacyVerdict(id, text, baseline) {
  * Takes its directories rather than importing them, so a caller that has no business knowing about
  * `docs/decisions/archive` does not acquire one.
  */
+/**
+ * The ids of records sitting in the given directories — the archive dirs, in practice.
+ *
+ * AN ARCHIVED RECORD STILL EXISTS; it is only unindexed. `gen-decisions-index`' `load()` reads the
+ * record directory non-recursively, and that non-recursion is the whole mechanism by which
+ * `archive/` shortens an index too long to read. It is the wrong set for anything resolving a
+ * CITATION, and every gate that resolves one has to widen with this.
+ *
+ * It lives here rather than in either gate because there are TWO of them and they diverged.
+ * `check-decisions` resolves `DEC-xxx` inside record files; `check-docs` resolves the same ids in
+ * every other document. Only the first was taught about `archive/`, so a project could archive a
+ * record, see `check:decisions` go green, and be stopped by `check:docs` — measured in muster,
+ * where archiving `DEC-038` left one gate green at 164 records and the other red with six
+ * findings, four in `SPEC.md` and two in `FUTURE_IDEAS.md`. One shared function is what stops a
+ * third caller repeating it.
+ *
+ * Takes its directories rather than importing them, the same as `frozenRecords` above and for the
+ * same reason: a caller with no business knowing about `docs/decisions/archive` does not acquire
+ * one by calling this.
+ */
+export function archivedIds(dirs) {
+  const out = new Set()
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue
+    for (const f of readdirSync(dir).filter((n) => n.startsWith('DEC-') && n.endsWith('.md'))) {
+      const id = idOf(frontmatterBlock(readFileSync(`${dir}/${f}`, 'utf8')))
+      if (id) out.add(id)
+    }
+  }
+  return out
+}
+
 export function frozenRecords(dirs, baselinePath = BASELINE_PATH) {
   const baseline = loadBaseline(baselinePath)
   const out = new Set()

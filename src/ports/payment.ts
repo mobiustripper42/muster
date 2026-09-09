@@ -152,16 +152,32 @@ export interface DisputeUpdated {
 }
 
 /**
- * The verified-webhook event union (12.5, DEC-134; refunds #616; disputes issue #723).
- * `checkout_completed` drives the hosted flows (balance + post-gratuity); `payment_succeeded`
- * drives the inline-Elements booking; `refund_recorded` reconciles a refund back into the
- * ledger — including one the operator issued in the STRIPE DASHBOARD, which Muster could not
- * see at all before; `dispute_updated` does the same job for a chargeback, which is money
- * leaving the account with nobody in Muster having pressed anything.
+ * A verified `payment_intent.payment_failed` event (14.8, criterion 11) — a declined card.
+ *
+ * Carried as a NAMED member rather than left to fall out of `parseEvent` as `null`, because
+ * "ignored on purpose" and "unrecognised" must not be the same signal. The handler does nothing
+ * with it (see the spine), and `declineCode` exists so the day somebody does want to act on one,
+ * the reason is already in hand rather than requiring a port change first.
+ */
+export interface PaymentFailed {
+  paymentIntentId: string;
+  /** Provider's decline reason (`card_declined`, `insufficient_funds`, …), when it sends one. */
+  declineCode?: string;
+}
+
+/**
+ * The verified-webhook event union (12.5, DEC-134; refunds #616; disputes issue #723;
+ * declines 14.8). `checkout_completed` drives the hosted flows (balance + post-gratuity);
+ * `payment_succeeded` drives the inline-Elements booking; `refund_recorded` reconciles a refund
+ * back into the ledger — including one the operator issued in the STRIPE DASHBOARD, which Muster
+ * could not see at all before; `dispute_updated` does the same job for a chargeback, which is
+ * money leaving the account with nobody in Muster having pressed anything; `payment_failed` is
+ * acked and deliberately does nothing.
  */
 export type PaymentEvent =
   | { type: "checkout_completed"; data: CheckoutCompleted }
   | { type: "payment_succeeded"; data: PaymentSucceeded }
+  | { type: "payment_failed"; data: PaymentFailed }
   | { type: "refund_recorded"; data: RefundRecorded }
   | { type: "dispute_updated"; data: DisputeUpdated };
 

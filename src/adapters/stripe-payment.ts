@@ -274,6 +274,20 @@ export class StripePaymentPort implements PaymentPort {
         },
       };
     }
+    if (event.type === "payment_intent.payment_failed") {
+      // A declined card (14.8, criterion 11). Parsed and named so the spine can ignore it on
+      // purpose; returning `null` here would ack it too, but as an unrecognised event, and
+      // "we decided to do nothing" would be indistinguishable from "we have never heard of this".
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const code = pi.last_payment_error?.decline_code ?? pi.last_payment_error?.code;
+      return {
+        type: "payment_failed",
+        data: {
+          paymentIntentId: pi.id,
+          ...(code !== undefined && code !== null ? { declineCode: code } : {}),
+        },
+      };
+    }
     return null;
   }
 }

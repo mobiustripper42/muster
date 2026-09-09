@@ -985,3 +985,76 @@ describe("processBookingWebhook — charge.dispute.* records the chargeback (iss
     expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({ status: "disputed" });
   });
 });
+
+/**
+ * A declined card is an ordinary event, and the correct response to it is nothing — criterion 11,
+ * *"A `payment_intent.payment_failed` does **not** expire the reservation."*
+ *
+ * Stripe sends `payment_intent.payment_failed` on every decline, and this endpoint must ack it so
+ * Stripe stops retrying. It must NOT do anything else. The pending row stays exactly as it is: the
+ * customer is still inside their payment window, still holding the boat, and 14.6 means their
+ * retry lands on that same row. Cancelling it here — the instinct a failed payment invites — would
+ * take the boat away from a customer who is still standing at the till with a second card out.
+ *
+ * Before 14.8 this fell into the same unparsed-event bucket as every unknown Stripe type. That
+ * acked, which is right, but by accident rather than by decision — and nothing named the event, so
+ * nothing would have noticed a future handler being wired to it.
+ */
+describe("processBookingWebhook — payment_intent.payment_failed is acked and ignored (criterion 11)", () => {
+  const failed = (pi = PI): string =>
+    JSON.stringify({
+      type: "payment_failed",
+      data: { paymentIntentId: pi, declineCode: "card_declined" },
+    });
+
+  it("acks the event and reports it ignored", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, failed(), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "ignored" });
+  });
+
+  it("leaves the pending row untouched — the customer is still paying", async () => {
+    // The whole point. Their window is still open and their retry reuses this row (14.6, §2.8.7).
+    const repo = new InMemoryRepository();
+    const row = await seedPending(repo);
+    const { deps } = makeDeps(repo);
+    const before = await repo.getReservation(row.id);
+
+    await processBookingWebhook(deps, failed(), FAKE_SIGNATURE);
+
+    expect(await repo.getReservation(row.id)).toEqual(before);
+  });
+
+  it("books nothing, charges nothing, refunds nothing and alerts nobody", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps, alert, confirm } = makeDeps(repo);
+
+    await processBookingWebhook(deps, failed(), FAKE_SIGNATURE);
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(alert).not.toHaveBeenCalled();
+    expect(await repo.listEvents()).toHaveLength(0);
+  });
+
+  it("is ignored with the RESERVATIONS flag off too — no money moved, so there is nothing to say", async () => {
+    // Contrast with a SUCCEEDED charge under the same flag, which alerts loudly because money HAS
+    // moved and somebody has to look. A decline moved none.
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(
+      { ...deps, reservationsEnabled: false },
+      failed(),
+      FAKE_SIGNATURE,
+    );
+
+    expect(r).toMatchObject({ handled: true, outcome: "ignored" });
+    expect(alert).not.toHaveBeenCalled();
+  });
+});

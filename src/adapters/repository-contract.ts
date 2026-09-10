@@ -863,6 +863,23 @@ export function runRepositoryContract(
       expect(got.paymentIntentIds).toEqual(["pi_declined", "pi_paid"]);
     });
 
+    it("recordCheckoutAttempt: an answer the buyer CLEARED is cleared on the row, not carried forward (#946)", async () => {
+      // The branch the two adapters express in opposite idioms — `delete` on one side, a NULL
+      // parameter on the other — and therefore the one they would silently drift on. It is a real
+      // path: `actions.ts` drops `email` entirely when the field is submitted empty, so a buyer
+      // who typed an address, got declined, and cleared it before retrying takes it.
+      //
+      // Note the asymmetry this pins: `invoice` and `updatedAt` two columns above COALESCE (an
+      // attempt without them leaves the frozen ones standing), because a missing invoice is a
+      // builder defect rather than an answer. A missing email IS an answer.
+      const { email: _cleared, ...withoutEmail } = firstAttempt();
+      await repo.saveReservation(firstAttempt());
+      await repo.recordCheckoutAttempt({ ...withoutEmail, updatedAt: NOW }, "pi_paid");
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.email).toBeUndefined();
+      expect(got.phone).toBe("+15550001111"); // the one they DID resubmit is untouched
+    });
+
     it("recordCheckoutAttempt: leaves the WORLD's facts frozen — durations, waiver version, reserved time, slot (DEC-161, §2.8.7)", async () => {
       await repo.saveReservation(firstAttempt());
       await repo.recordCheckoutAttempt(

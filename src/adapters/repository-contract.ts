@@ -790,6 +790,147 @@ export function runRepositoryContract(
       expect(await repo.getReservationByPaymentIntentId("pi_other")).toBeNull();
     });
 
+    // ── recordCheckoutAttempt — the retry re-freeze (14.6, issue #946) ──────────
+    // One row per checkout (§2.8.5), so a declined card is a second ATTEMPT against the row the
+    // first one wrote. The buyer may have changed their answers between the two — corrected a
+    // mistyped phone, added the friend who just said yes — and the invoice and the Stripe charge
+    // are rebuilt from the new ones. Before #946 the row was not, so the money and the manifest
+    // disagreed about the same booking.
+    //
+    // The rule this block pins: **the customer's answers get re-stated; the world's facts stay
+    // frozen.** The second half is DEC-161 / criterion 20 — an operator editing the offering while
+    // a card is being typed must not change what this booking meant.
+    const INVOICE_1 = {
+      fareCents: 50000,
+      extrasCents: 0,
+      taxCents: 4000,
+      taxRateBps: 800,
+      serviceFeeCents: 1500,
+      serviceFeeBps: 300,
+      gratuityCents: 10000,
+      gratuityBps: 2000,
+      totalCents: 65500,
+    };
+    /** What the builder hands back on the retry: same id and reserved time, new answers. */
+    const INVOICE_2 = { ...INVOICE_1, extrasCents: 12000, totalCents: 77500 };
+    const firstAttempt = () =>
+      pendingRow({
+        customerName: "Hooper",
+        partySize: 4,
+        email: "hooper@example.com",
+        phone: "+15550001111",
+        waiverConsentAt: "2026-06-01T11:58:00.000Z",
+        waiverVersion: "v1",
+        // Two minutes before `NOW`: the first attempt is in the past, so an assertion that
+        // `reservedAt` did not move to `NOW` can actually fail. Left at the fixture's default it
+        // was already `NOW` and the criterion-§2.8.7 case asserted nothing.
+        reservedAt: "2026-06-01T11:58:00.000Z",
+        holdMinutes: 120,
+        tripMinutes: 100,
+        holderToken: "tok-A",
+        paymentIntentIds: ["pi_declined"],
+        invoice: INVOICE_1,
+        updatedAt: "2026-06-01T11:58:00.000Z",
+      });
+
+    it("recordCheckoutAttempt: re-states the customer's answers — name, party, email, phone, consent, invoice (#946)", async () => {
+      await repo.saveReservation(firstAttempt());
+      await repo.recordCheckoutAttempt(
+        pendingRow({
+          ...firstAttempt(),
+          customerName: "Matt Hooper",
+          partySize: 6,
+          email: "matt@example.com",
+          // The one that hurts most: phone is identity (DEC-132) and where the booking link is
+          // texted, so a mistype fixed on the retry must land or the manage link goes to a
+          // stranger.
+          phone: "+15550002222",
+          waiverConsentAt: "2026-06-01T12:00:00.000Z",
+          invoice: INVOICE_2,
+          updatedAt: NOW,
+        }),
+        "pi_paid",
+      );
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.customerName).toBe("Matt Hooper");
+      expect(got.partySize).toBe(6);
+      expect(got.email).toBe("matt@example.com");
+      expect(got.phone).toBe("+15550002222");
+      expect(got.waiverConsentAt).toBe("2026-06-01T12:00:00.000Z");
+      expect(got.invoice).toEqual(INVOICE_2);
+      expect(got.updatedAt).toBe(NOW);
+      // Additive, oldest first: the superseded intent still resolves to this row (§2.8.5).
+      expect(got.paymentIntentIds).toEqual(["pi_declined", "pi_paid"]);
+    });
+
+    it("recordCheckoutAttempt: an answer the buyer CLEARED is cleared on the row, not carried forward (#946)", async () => {
+      // The branch the two adapters express in opposite idioms — `delete` on one side, a NULL
+      // parameter on the other — and therefore the one they would silently drift on. It is a real
+      // path: `actions.ts` drops `email` entirely when the field is submitted empty, so a buyer
+      // who typed an address, got declined, and cleared it before retrying takes it.
+      //
+      // Note the asymmetry this pins: `invoice` and `updatedAt` two columns above COALESCE (an
+      // attempt without them leaves the frozen ones standing), because a missing invoice is a
+      // builder defect rather than an answer. A missing email IS an answer.
+      const { email: _cleared, ...withoutEmail } = firstAttempt();
+      await repo.saveReservation(firstAttempt());
+      await repo.recordCheckoutAttempt({ ...withoutEmail, updatedAt: NOW }, "pi_paid");
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.email).toBeUndefined();
+      expect(got.phone).toBe("+15550001111"); // the one they DID resubmit is untouched
+    });
+
+    it("recordCheckoutAttempt: leaves the WORLD's facts frozen — durations, waiver version, reserved time, slot (DEC-161, §2.8.7)", async () => {
+      await repo.saveReservation(firstAttempt());
+      await repo.recordCheckoutAttempt(
+        pendingRow({
+          ...firstAttempt(),
+          // Everything below is what an attempt built against a CHANGED world would carry. None of
+          // it may land: the durations decide what the hull owes this booking, the waiver version
+          // is server-authoritative, and moving `reservedAt` would let a resubmit park the boat
+          // forever.
+          holdMinutes: 240,
+          tripMinutes: 200,
+          waiverVersion: "v2",
+          reservedAt: NOW,
+          updatedAt: NOW,
+        }),
+        "pi_paid",
+      );
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.holdMinutes).toBe(120);
+      expect(got.tripMinutes).toBe(100);
+      expect(got.waiverVersion).toBe("v1");
+      expect(got.reservedAt).toBe("2026-06-01T11:58:00.000Z");
+      expect(got.holderToken).toBe("tok-A");
+      expect(String(got.vesselId)).toBe(String(VESSEL));
+      expect(got.time).toBe("14:00");
+    });
+
+    it("recordCheckoutAttempt: a BOOKED row takes the payment id and NOTHING else (the 14.6 concurrent-confirm guard)", async () => {
+      // The race this guard exists for: the retry's read lands before a concurrent confirm commits
+      // and its write after. A full-row write would revert a just-booked, PAID row to `pending`
+      // with a null Event — an orphaned booking. The append is the one part safe to run on it.
+      await repo.saveReservation({
+        ...firstAttempt(),
+        status: "booked",
+        eventId: asId<"EventId">("evt-booked"),
+      });
+      await repo.recordCheckoutAttempt(
+        pendingRow({ ...firstAttempt(), customerName: "Nobody", partySize: 99, invoice: INVOICE_2, updatedAt: NOW }),
+        "pi_late",
+      );
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.status).toBe("booked");
+      expect(String(got.eventId)).toBe("evt-booked");
+      expect(got.customerName).toBe("Hooper");
+      expect(got.partySize).toBe(4);
+      expect(got.invoice).toEqual(INVOICE_1);
+      expect(got.updatedAt).toBe("2026-06-01T11:58:00.000Z");
+      // …but findable by the late id, which is the whole reason the append is unconditional.
+      expect(got.paymentIntentIds).toEqual(["pi_declined", "pi_late"]);
+    });
+
     it("savePendingIfHullFree: writes the row on a free hull-day — pending, no Event (§2.8.2)", async () => {
       const res = await repo.savePendingIfHullFree(pendingRow(), SINCE);
       expect(res.result).toBe("won");

@@ -759,6 +759,67 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     expect(row!.reservedAt).toBe(NOW); // reserved time still untouched
   });
 
+  it("a retry with a CORRECTED PHONE lands on the row — the manage link goes where they last typed (#946)", async () => {
+    // The sequence: mistype your number, card declines, fix the number, pay. Before #946 the row
+    // kept the mistyped one — and phone is identity (DEC-132) and where
+    // `sendReservationConfirmation` texts the manage link, so the booking's link went to whoever
+    // owns the number that was typed wrong.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, { ...req, phone: "+12165550100" }, now);
+
+    const again = await createDeparturePaymentIntent(repo, pay, { ...req, phone: "+12165550148" }, now);
+    expect(again.ok).toBe(true);
+
+    const rows = await pendingRows(repo);
+    expect(rows).toHaveLength(1); // the same row, reused
+    expect(rows[0]!.phone).toBe("+12165550148");
+  });
+
+  it("a retry with a CHANGED PARTY SIZE leaves the row and the charge agreeing (#946)", async () => {
+    // 4 → 6 still fits the small boat, so the retry reuses the row rather than being refused —
+    // which is what made this the common case rather than the rare one. The invoice and the
+    // Stripe charge repriced for 6; the row said 4, and six people arrived against a manifest
+    // for four.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering({ includedGuestCount: 4 }));
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now); // 4 guests, no extras
+    const [first] = await pendingRows(repo);
+    expect(first!.invoice!.extrasCents).toBe(0);
+
+    const again = await createDeparturePaymentIntent(repo, pay, { ...req, guestCount: 6 }, now);
+    expect(again.ok).toBe(true);
+
+    const rows = await pendingRows(repo);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.partySize).toBe(6); // the manifest
+    expect(rows[0]!.invoice!.extrasCents).toBe(10000); // and the money: two over the included 4
+    expect(pay.intents[1]!.metadata.guestCount).toBe("6"); // and what Stripe was asked for
+  });
+
+  it("a retry's re-freeze does NOT re-read the offering's durations (criterion 20, DEC-161)", async () => {
+    // The other half of the same write. The builder recomputes hold and trip minutes from the
+    // CURRENT offering on every attempt, so if the re-freeze wrote them, an operator lengthening
+    // a trip while a card is being typed would change what the hull owes this booking — the exact
+    // thing DEC-161 froze at the first write.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering({ tripLengthMinutes: 100 }));
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    const [before] = await pendingRows(repo);
+    const frozen = { hold: before!.holdMinutes, trip: before!.tripMinutes };
+
+    await repo.saveOffering(tripOffering({ tripLengthMinutes: 240 })); // the edit lands mid-checkout
+    const again = await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(again.ok).toBe(true);
+
+    const [row] = await pendingRows(repo);
+    expect(row!.tripMinutes).toBe(frozen.trip);
+    expect(row!.holdMinutes).toBe(frozen.hold);
+  });
+
   describe("criterion 20 — an operator edit after checkout starts changes nothing about this booking", () => {
     async function startThenEdit(edit: Partial<Offering>) {
       const repo = await seededRepo();

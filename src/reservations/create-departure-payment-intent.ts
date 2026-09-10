@@ -185,14 +185,23 @@ export async function createDeparturePaymentIntent(
       time: req.time,
       offeringId: offering!.id,
       reservedAt: prior?.reservedAt ?? at,
-      holdMinutes: candidateHoldMinutes(offering!),
-      tripMinutes: offering!.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
+      // Both durations and the waiver version come from the PRIOR row on a retry, never re-read
+      // from the offering (DEC-161, criterion 20): an operator lengthening a trip while a card is
+      // being typed must not change what the hull owes this booking. `recordCheckoutAttempt` does
+      // not write these columns either, so the freeze holds even if this line were wrong — but a
+      // returned row that disagrees with the stored one is the trap that produced #946, and the
+      // next person to add a column to that write would inherit it.
+      holdMinutes: prior?.holdMinutes ?? candidateHoldMinutes(offering!),
+      tripMinutes: prior?.tripMinutes ?? offering!.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
       invoice,
       ...(req.holderToken !== undefined ? { holderToken: req.holderToken } : {}),
       ...(req.email !== undefined ? { email: req.email } : {}),
       ...(req.phone !== undefined ? { phone: req.phone } : {}),
+      // Consent is re-stated every attempt — the buyer ticked the box again, and that instant is
+      // the record of it. The VERSION is not: it is what they agreed to the first time, and
+      // re-reading it would silently re-date the agreement to a document they never saw.
       waiverConsentAt,
-      waiverVersion,
+      waiverVersion: prior?.waiverVersion ?? waiverVersion,
       updatedAt: at,
     };
   };
@@ -282,7 +291,7 @@ export async function createDeparturePaymentIntent(
   // invoice re-freezes only while the row is still `pending`, so a retry whose read landed before
   // a concurrent confirm cannot revert the just-booked, paid row to pending (@code-review).
   // `updatedAt` is the claim's clock, the same instant the row was written or re-priced under.
-  await repo.appendPaymentIntentToPending(pending.id, invoice, intent.paymentIntentId, pending.updatedAt!);
+  await repo.recordCheckoutAttempt(pending, intent.paymentIntentId);
   return { ok: true, clientSecret: intent.clientSecret, paymentIntentId: intent.paymentIntentId };
 }
 

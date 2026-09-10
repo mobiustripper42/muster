@@ -22,7 +22,6 @@ import type {
   AuthSubjectKind,
   Block,
   BookingCode,
-  BookingInvoice,
   Credential,
   CrewMember,
   CrewStatus,
@@ -1783,22 +1782,41 @@ export class PostgresRepository implements Repository {
     return rows[0] ? toReservation(rows[0]) : null;
   }
 
-  async appendPaymentIntentToPending(
-    reservationId: ReservationId,
-    invoice: BookingInvoice,
-    paymentIntentId: string,
-    now: string,
-  ): Promise<void> {
+  async recordCheckoutAttempt(attempt: Reservation, paymentIntentId: string): Promise<void> {
     // Append the id unconditionally (additive — a superseded id stays findable, §2.8.5); re-freeze
-    // invoice + updated_at ONLY while `pending`. Never writes `status`/`event_id`, so a retry
+    // the customer's answers ONLY while `pending`. Never writes `status`/`event_id`, so a retry
     // whose read preceded a concurrent confirm cannot revert the just-booked row to pending.
+    //
+    // Every `case when status = 'pending'` below is that same guard, spelled out per column rather
+    // than hoisted into a `where` clause — because the append above must run on a booked row and
+    // none of these may.
     await this.#pool.query(
       `update reservations
           set payment_intent_ids = array_append(coalesce(payment_intent_ids, '{}'::text[]), $2::text),
-              booking_invoice = case when status = 'pending' then $3::jsonb else booking_invoice end,
-              updated_at = case when status = 'pending' then $4 else updated_at end
+              booking_invoice = case when status = 'pending'
+                                     then coalesce($3::jsonb, booking_invoice) else booking_invoice end,
+              updated_at = case when status = 'pending'
+                                then coalesce($4, updated_at) else updated_at end,
+              customer_name = case when status = 'pending' then $5 else customer_name end,
+              party_size = case when status = 'pending' then $6 else party_size end,
+              email = case when status = 'pending' then $7 else email end,
+              phone = case when status = 'pending' then $8 else phone end,
+              waiver_consent_at = case when status = 'pending' then $9 else waiver_consent_at end
         where id = $1`,
-      [reservationId, paymentIntentId, JSON.stringify(invoice), now],
+      [
+        attempt.id,
+        paymentIntentId,
+        // `coalesce` on these two, not a bare assignment: an attempt arriving without an invoice
+        // must leave the frozen one standing rather than null it. The three optional ANSWERS below
+        // are the opposite — a cleared email is an answer, so NULL lands.
+        attempt.invoice ? JSON.stringify(attempt.invoice) : null,
+        attempt.updatedAt ?? null,
+        attempt.customerName,
+        attempt.partySize,
+        attempt.email ?? null,
+        attempt.phone ?? null,
+        attempt.waiverConsentAt ?? null,
+      ],
     );
   }
 

@@ -17,7 +17,6 @@ import type {
   AuthSubjectKind,
   Block,
   BookingCode,
-  BookingInvoice,
   CalendarFeed,
   Gratuity,
   GustoIdentity,
@@ -359,23 +358,32 @@ export interface Repository {
   getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null>;
 
   /**
-   * Record a retry's PaymentIntent against an existing checkout row (14.6). APPENDS `payment
-   * IntentId` to `paymentIntentIds` unconditionally — additive, so a superseded id stays findable
-   * (§2.8.5) — and re-freezes `invoice` + `updatedAt` ONLY while the row is still `pending`.
+   * Land one checkout attempt on its pending row (14.6, issue #946). APPENDS `paymentIntentId` to
+   * `paymentIntentIds` unconditionally — additive, so a superseded id stays findable (§2.8.5) —
+   * and re-freezes the customer's answers ONLY while the row is still `pending`.
    *
-   * **Never writes `status` or `eventId`.** A retry's read (`getLivePendingByHolderToken`) can
-   * land before a concurrent confirm commits and its write after, so a bare full-row upsert would
-   * revert a just-booked, PAID row to `pending` with a null Event — an orphaned booking. This is
-   * the guarded write every comparable mutation in the repo uses (the flip's `where status=
-   * 'pending'`, `markPaymentDisputed`'s refunded-row guard); the append is the one part safe to
-   * run on a booked row.
+   * **The rule: the customer's answers get re-stated; the world's facts stay frozen.**
+   *
+   * Written from `attempt` while pending: `customerName`, `partySize`, `email`, `phone`,
+   * `waiverConsentAt`, `invoice`, `updatedAt`. Every one of them is something the buyer can change
+   * between a declined card and the next submit, and before #946 none of them landed — the invoice
+   * and the Stripe charge repriced for the new answers while the row kept the first attempt's.
+   * Six people arrived against a manifest for four; a corrected phone number left the booking link
+   * texted to whoever owns the mistyped one (phone is identity, DEC-132).
+   *
+   * NOT written, and each for its own reason: `id` and `reservedAt` (§2.8.7 — a resubmit must not
+   * park the hull by pushing its window forward); `vesselId`, `date`, `time`, `offeringId` (the
+   * reuse is matched on the slot, so they cannot differ); `holderToken` (the match key);
+   * `holdMinutes`, `tripMinutes` and `waiverVersion` (DEC-161 / criterion 20 — frozen at the first
+   * write so an operator edit landing mid-checkout cannot change what this booking meant).
+   *
+   * **Never writes `status` or `eventId`.** A retry's read can land before a concurrent confirm
+   * commits and its write after, so a bare full-row upsert would revert a just-booked, PAID row to
+   * `pending` with a null Event — an orphaned booking. This is the guarded write every comparable
+   * mutation in the repo uses (the flip's `where status='pending'`, `markPaymentDisputed`'s
+   * refunded-row guard); the append is the one part safe to run on a booked row.
    */
-  appendPaymentIntentToPending(
-    reservationId: ReservationId,
-    invoice: BookingInvoice,
-    paymentIntentId: string,
-    now: string,
-  ): Promise<void>;
+  recordCheckoutAttempt(attempt: Reservation, paymentIntentId: string): Promise<void>;
 
   // ── Refund lease — the refund mutex (#726) ─────────────────────────────────
   /**

@@ -10,7 +10,6 @@
 
 import type {
   AddOn,
-  BookingInvoice,
   Customer,
   Admin,
   Ask,
@@ -94,6 +93,19 @@ import type { FailureWindow, Repository } from "../ports/repository.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
+
+/**
+ * Set an OPTIONAL field to `value`, or remove it when `value` is undefined.
+ *
+ * The one operation `exactOptionalPropertyTypes` makes awkward to write inline: a spread can say
+ * "this value" or "leave it alone", never "absent". A Postgres adapter writing the same field says
+ * it in one word — `set email = $n` with a NULL parameter — so without this the two adapters drift
+ * on exactly the case nobody tests, a field the caller cleared.
+ */
+function assign<T, K extends keyof T>(target: T, key: K, value: T[K] | undefined): void {
+  if (value === undefined) delete target[key];
+  else target[key] = value;
+}
 
 /** Upsert `subjectKey → at` into a threadId→(subjectKey→ISO) store (latest-wins). */
 const upsertThreadState = (
@@ -752,23 +764,38 @@ export class InMemoryRepository implements Repository {
     return hit ? clone(hit) : null;
   }
 
-  async appendPaymentIntentToPending(
-    reservationId: ReservationId,
-    invoice: BookingInvoice,
-    paymentIntentId: string,
-    now: string,
-  ): Promise<void> {
-    const row = this.#reservations.get(reservationId);
+  async recordCheckoutAttempt(attempt: Reservation, paymentIntentId: string): Promise<void> {
+    const row = this.#reservations.get(attempt.id);
     if (!row) return;
     // Append is always safe (additive); status/eventId are NEVER touched, so a concurrent confirm
-    // that already flipped this row to booked is not reverted. Invoice + updatedAt re-freeze only
-    // while still pending.
+    // that already flipped this row to booked is not reverted. The customer's answers re-freeze
+    // only while still pending.
     const paymentIntentIds = [...(row.paymentIntentIds ?? []), paymentIntentId];
-    const next =
-      row.status === "pending"
-        ? { ...row, invoice, updatedAt: now, paymentIntentIds }
-        : { ...row, paymentIntentIds };
-    this.#reservations.set(reservationId, clone(next));
+    if (row.status !== "pending") {
+      this.#reservations.set(attempt.id, clone({ ...row, paymentIntentIds }));
+      return;
+    }
+    const next: Reservation = {
+      ...row,
+      paymentIntentIds,
+      // The customer's answers, re-stated (#946).
+      customerName: attempt.customerName,
+      partySize: attempt.partySize,
+      // Spread-if-present, never an explicit `undefined` (`exactOptionalPropertyTypes`) — and it
+      // is the right semantics anyway: an attempt that carries no invoice must leave the frozen
+      // one standing, which is what Postgres's `coalesce` does on the same write.
+      ...(attempt.invoice !== undefined ? { invoice: attempt.invoice } : {}),
+      ...(attempt.updatedAt !== undefined ? { updatedAt: attempt.updatedAt } : {}),
+    };
+    // The three OPTIONAL answers clear when the attempt omits them, rather than keeping the
+    // previous one — this is a re-statement of what the buyer last submitted, so a cleared email
+    // is an answer too. `delete` because a spread cannot express "absent" under
+    // `exactOptionalPropertyTypes`, and Postgres expresses the same thing as a plain assignment
+    // of NULL. The two adapters must agree on the empty case as well as the changed one.
+    assign(next, "email", attempt.email);
+    assign(next, "phone", attempt.phone);
+    assign(next, "waiverConsentAt", attempt.waiverConsentAt);
+    this.#reservations.set(attempt.id, clone(next));
   }
 
   // ── Refund lease (#726) ───────────────────────────────────────────────────

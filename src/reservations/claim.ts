@@ -273,10 +273,12 @@ export async function claimDepartureSlot(
       vesselIsAvailable(mine.vesselId)
     ) {
       // No write here: the row already exists and already occupies the hull, so criterion 2 is
-      // satisfied without touching the table. The builder re-freezes the invoice (a changed tip
-      // reprices) and carries the id and reserved time through — a resubmit must not park the
-      // hull by pushing its window forward (§2.8.7). The caller lands the re-freeze on the row
-      // with `appendPaymentIntentToPending`, a guarded write that a concurrent confirm survives.
+      // satisfied without touching the table. The builder re-states the customer's answers — a
+      // changed tip, a corrected phone, a bigger party — and carries the id, the reserved time
+      // and both frozen durations through: a resubmit must not park the hull by pushing its
+      // window forward (§2.8.7), and an operator edit mid-checkout must not change what this
+      // booking meant (DEC-161). The caller lands the re-freeze on the row with
+      // `recordCheckoutAttempt`, a guarded write that a concurrent confirm survives (#946).
       return { claimed: await buildRow(mine.vesselId, mine, at), reused: true };
     }
     // A row that no longer qualifies is LEFT ALONE to lapse, never cancelled here. Releasing was

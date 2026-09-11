@@ -44,10 +44,7 @@ export function CandidateRow({ vm, c }: { vm: SeatCardVM; c: CandidateVM }) {
         {c.action === "assign" && (
           <form action={assignTo} className="inline-flex">
             <HiddenIds vm={vm} crewId={c.id} />
-            <MiniButton
-              label="Ask to fill"
-              title="Name them into this seat — they get the ask; their yes still needs your confirm"
-            />
+            <MiniButton label="Ask to fill" />
           </form>
         )}
         {c.action === "nudge" && (

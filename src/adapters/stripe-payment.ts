@@ -132,8 +132,17 @@ function disputeState(status: Stripe.Dispute.Status): DisputeState {
   // The lookup widens deliberately. `status` may be `OtherString` — a string Stripe invented
   // after this deploy — so the index signature has to admit a miss; the real key/value types stay
   // enforced on the literal above, where they are checkable.
-  const mapped = (DISPUTE_STATE as Record<string, DisputeState | undefined>)[status];
-  return mapped ?? "unknown";
+  //
+  // `Object.hasOwn` rather than a bare index, and it is not ceremony (`/security-review`). A plain
+  // object literal inherits from `Object.prototype`, so `DISPUTE_STATE["__proto__"]` is an object
+  // and `DISPUTE_STATE["toString"]` is a function — both truthy, so `?? "unknown"` would not fire
+  // and a non-`DisputeState` would escape. Downstream that is not a crash but something worse:
+  // `DISPUTE_LEDGER_WRITE[state]` misses, nothing is written, and the operator is texted the
+  // generic "DISPUTE OPENED" instead of the line saying we got a status we cannot read. The
+  // `switch` this replaced had no such hole, so without this guard the rewrite would have been a
+  // quiet regression on the one path that exists to be loud.
+  if (!Object.hasOwn(DISPUTE_STATE, status)) return "unknown";
+  return (DISPUTE_STATE as Record<string, DisputeState>)[status] ?? "unknown";
 }
 
 export class StripePaymentPort implements PaymentPort {

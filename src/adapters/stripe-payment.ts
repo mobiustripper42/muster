@@ -89,48 +89,51 @@ type _GuardBites = AssertNever<Exclude<NamedOnly<Hypothetical>, HandledDisputeSt
 /**
  * Stripe's eight named dispute statuses → the four Muster's ledger can act on (issue #723).
  *
- * **Both halves are still here, one moved.** The compile-time guarantee is the
- * `_AllNamedDisputeStatusesHandled` assertion above — it cannot live in the `default` branch any
- * more, because the union is open. The runtime half is the `default` branch itself: an
- * unrecognised string writes nothing rather than returning `undefined`, which is the defect #723
- * was actually filed for.
+ * **A map rather than a switch, and the type annotation is the whole reason.**
+ * `Record<HandledDisputeStatus, DisputeState>` is checked in both directions: omit a member and
+ * it is a missing-property error, add one Stripe does not have and it is an excess-property
+ * error. So this object IS the coverage — the list of statuses we handle and the handling of them
+ * cannot be edited apart.
+ *
+ * That coupling is why the switch went. A switch plus a separate `HandledDisputeStatus` list let
+ * the two drift: a future bump that failed `_AllNamedDisputeStatusesHandled` could be made green
+ * by adding the new literal to the list alone, leaving no `case` for it and sending a real
+ * chargeback silently to `unknown` (`@code-review`, and it reproduced this). The old
+ * `const unreachable: never = status` never had that hole, because it keyed off the switch's own
+ * narrowing — so replacing it with a hand-kept list was a downgrade until this map closed it.
  *
  * The `warning_*` family is a retrieval request: the card network is asking a question and no
  * funds have been withdrawn. Mapping those to `live` would zero out revenue on a booking that
  * was never actually charged back, which is a false alarm the operator would learn to ignore —
  * and the alarms here are the whole feature.
  */
+const DISPUTE_STATE: Readonly<Record<HandledDisputeStatus, DisputeState>> = {
+  warning_needs_response: "inquiry",
+  warning_under_review: "inquiry",
+  warning_closed: "inquiry",
+  needs_response: "live",
+  under_review: "live",
+  won: "won",
+  prevented: "won",
+  lost: "lost",
+};
+
 function disputeState(status: Stripe.Dispute.Status): DisputeState {
-  switch (status) {
-    case "warning_needs_response":
-    case "warning_under_review":
-    case "warning_closed":
-      return "inquiry";
-    case "needs_response":
-    case "under_review":
-      return "live";
-    case "won":
-    case "prevented":
-      return "won";
-    case "lost":
-      return "lost";
-    default:
-      // **The RUN-time half, and the exhaustive switch alone did not have it.** The union is a
-      // claim the pinned SDK makes at build time about a string that arrives over the wire months
-      // later: Stripe adds a status, this deploy has not been bumped, and the switch matches
-      // nothing. It returned `undefined` — which is not a `DisputeState`, wrote nothing to the
-      // ledger, and fell through to the alert branch announcing "DISPUTE OPENED".
-      //
-      // That is the defect issue #723 was filed for: a compile-time guarantee assumed to cover a
-      // runtime path. `unknown` writes nothing, which is the right default for a state we cannot
-      // interpret, and says so out loud.
-      //
-      // The `const unreachable: never = status` that used to sit here is gone — not weakened.
-      // `OtherString` made it uncompilable, and the guarantee moved to
-      // `_AllNamedDisputeStatusesHandled` above, which is strictly better: it fails on a new
-      // NAMED status without also failing on the open member that is now permanent.
-      return "unknown";
-  }
+  // **The RUN-time half, and the exhaustive switch alone did not have it.** The union is a claim
+  // the pinned SDK makes at build time about a string that arrives over the wire months later:
+  // Stripe adds a status, this deploy has not been bumped, and nothing matches. The old code
+  // returned `undefined` — which is not a `DisputeState`, wrote nothing to the ledger, and fell
+  // through to the alert branch announcing "DISPUTE OPENED".
+  //
+  // That is the defect issue #723 was filed for: a compile-time guarantee assumed to cover a
+  // runtime path. `unknown` writes nothing, which is the right default for a state we cannot
+  // interpret, and says so out loud.
+  //
+  // The lookup widens deliberately. `status` may be `OtherString` — a string Stripe invented
+  // after this deploy — so the index signature has to admit a miss; the real key/value types stay
+  // enforced on the literal above, where they are checkable.
+  const mapped = (DISPUTE_STATE as Record<string, DisputeState | undefined>)[status];
+  return mapped ?? "unknown";
 }
 
 export class StripePaymentPort implements PaymentPort {

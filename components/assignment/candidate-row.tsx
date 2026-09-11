@@ -44,10 +44,15 @@ export function CandidateRow({ vm, c }: { vm: SeatCardVM; c: CandidateVM }) {
         {c.action === "assign" && (
           <form action={assignTo} className="inline-flex">
             <HiddenIds vm={vm} crewId={c.id} />
-            <MiniButton
-              label="Ask to fill"
-              title="Name them into this seat — they get the ask; their yes still needs your confirm"
-            />
+            {/* No `title` (#555). It read "Name them into this seat — they get the ask;
+                their yes still needs your confirm", and both halves were false: this
+                action sends an ask (`assignFromPool` → `assignPerson`, `lean.ts:241`)
+                rather than naming anyone in, and a crew "In" has auto-confirmed since
+                DEC-061. Deleted rather than reworded — "Ask to fill" already says what
+                the button does, and a replacement sentence is one more claim to keep
+                true. This one went stale the day DEC-061 landed and nothing noticed,
+                because no gate reads prose. */}
+            <MiniButton label="Ask to fill" />
           </form>
         )}
         {c.action === "nudge" && (

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.0] - 2026-09-10 — Phase 14
+- 44 pts shipped across 8 sessions in the window (throughput 18.8 pts/calendar-week, drift +3)
+- The pending row is the claim: three states, a nullable `eventId`, the row written before any
+  Stripe call, and `checkout_holds` gone
+- See `docs/RETROSPECTIVES.md` for the full retro
+
 ## [1.1.5] - 2026-09-08
 
 **Eleven days and 61 PRs since [1.1.4], and the promote is the story.** `production` sat 187 commits

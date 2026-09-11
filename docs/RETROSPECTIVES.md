@@ -3,6 +3,126 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 14 — 2026-09-10 — Reservations: the pending row
+
+**Points:** 44 shipped / 41 planned-and-delivered / 39 originally pokered
+**Span:** 16.4 days (2026-08-25T02:21Z → 2026-09-10T12:21Z)
+**Throughput:** 18.8 pts/calendar-week ← headline · companion: 2 active weeks, 22.0 pts/active-week
+**Estimate calibration:** 2 tasks re-estimated, net drift **+3 pts**
+**Sessions:** 8 files in the window   **PRs merged:** 30 in the window
+**Issues:** 13 closed, 0 open at close; 1 added mid-phase (3 pts, ~7%)
+
+> **The session and PR counts belong to the window, not to this phase.** Lane A ran concurrently
+> throughout. Neither number is Phase 14's alone and neither is used in any rate above.
+
+**Three closed issues carry no `points:` label** and are excluded from the 44, per the skill's
+never-guess rule: [#824](https://github.com/mobiustripper42/muster/issues/824),
+[#825](https://github.com/mobiustripper42/muster/issues/825),
+[#826](https://github.com/mobiustripper42/muster/issues/826). All three were pre-existing bugs
+closed **by** planned tasks rather than separate work — #826 turned out to have been closed already
+by 14.7, which is why 14.9's deliverable became the proof rather than a fix.
+
+### Phase throughput line
+| Phase | Date | Points | Span(d) | Throughput | Re-est'd | Net drift | Sessions | PRs |
+|-------|------|--------|---------|------------|----------|-----------|----------|-----|
+| 14 | 2026-09-10 | 44 | 16.4 | 18.8 pts/wk | 2 | +3 | 8* | 30* |
+
+`*` window counts — see the note above.
+
+### What worked
+- *(verbatim)* "we stopped and held scope before letting phase 14 run out of control ... we build
+  what we said we were going to in a timely fashion"
+
+### What didn't
+- *(verbatim)* "i don't have much to add here, it's sometimes hard to me to remember specifics, but
+  overall tasks got completed, bugs got found. as far as the phased plan goes it worked"
+
+### Changes for next phase
+- *(verbatim)* "continue to stick with the plan, it's working"
+
+### Scope changes
+- **1 issue added mid-phase, 3 points — ~7% of everything delivered.**
+  [#946](https://github.com/mobiustripper42/muster/issues/946), and it came out of a
+  `/security-review` finding on the confirm path rather than a drive-by ask. Set against Phase 12's
+  135 points / 65% / 49 unpokered issues, this is the cleanest phase this project has logged against
+  its own stated rule.
+- **Two re-estimates, both taken explicitly at build rather than absorbed.** 14.7 went 3 → 5 when 34
+  files turned out to reference `checkout_holds` instead of the 16 estimated; issue #946 went 2 → 3
+  when the retry re-freeze turned out to be every customer-supplied field, not just party size.
+- **Unbundled rather than folded in:** [#806](https://github.com/mobiustripper42/muster/issues/806)
+  (per-token cap) was split out of 14.7's deletion as its own security control and deferred, not
+  built. The abandonment reaper was **cut from the spec outright** at 14.1 rather than built — §2.8.8
+  became a monitor instead, on the operator's ruling that the destructive tool should not come first.
+- **Filed after the phase closed, all scheduled into Phase 15 or later:**
+  [#945](https://github.com/mobiustripper42/muster/issues/945) (override-Event write/read
+  disagreement, blocks 16.1), [#955](https://github.com/mobiustripper42/muster/issues/955) (SMS path
+  audit), [#957](https://github.com/mobiustripper42/muster/issues/957) (crewless bookings),
+  [#964](https://github.com/mobiustripper42/muster/issues/964) (declined-card reassurance),
+  [#951](https://github.com/mobiustripper42/muster/issues/951) (contrast).
+- **Phase 15 was re-planned in the phase's last session, 29 → 81 points**
+  ([PR #989](https://github.com/mobiustripper42/muster/pull/989), issues #969–#988), from an audit of
+  the Stripe integration against Stripe's own current documentation
+  ([issue #966](https://github.com/mobiustripper42/muster/issues/966)). It found six areas where the
+  code and Stripe's guidance disagree and one defect nobody had specced: a customer can be charged,
+  booked and never told, because `sendConfirmation` gates on a `booked` outcome that an uncaught
+  `recordPayment` above it can 500 into a permanent `already`. That growth happened at **planning**
+  time in pokered rows, not mid-phase — see the PM read below for why that distinction is the whole
+  question.
+
+### PM read
+
+**Pace.** 44 points in 16.4 days is 18.8 pts/calendar-week — slower on paper than Phase 12's 30.6,
+but that comparison flatters Phase 12 for the wrong reason: 65% of its total was 49 unpokered issues,
+which is exactly the throughput number Phase 12's own retro told you not to trust. The number that
+actually says something here is calibration: net drift +3 on 44 points (~7%), from two re-estimates —
+14.7 went 3→5, issue #946 went 2→3 — both caught and re-pokered explicitly before building rather
+than absorbed quietly. That's close to Phase 12's perfect-0 planned track and considerably tighter
+than Phase 13's +6 on 24 (25% over, both re-estimates in the same direction, on payroll-adjacent work
+that phase flagged as a pattern and this phase didn't repeat).
+
+**Scope.** 3 points added mid-phase, ~7% — one issue, #946, and even that came out of a
+`/security-review` finding on the confirm path rather than a drive-by ask. Set against Phase 12's 135
+points / 65% / 49 issues, none pokered, this is the cleanest phase this project has logged on its own
+stated rule. It reads as deliberate rather than lucky: issue #806 got explicitly unbundled from
+14.7's deletion instead of folded in quietly, and the abandonment reaper got cut from spec outright
+rather than built.
+
+**Pattern.** Three issues this phase — #936, #937, #926 — had a filed diagnosis that was simply wrong
+on inspection: not Brave, not broken env-var passing, and ten call sites undercounted at fourteen
+because a hand grep can't see what a lint rule can. Nothing shipped broken because every task refused
+to build the filed fix without reproducing it, but three in one phase says the *issue-writing* habit,
+not just the building habit, wants a "did you reproduce this" gate before something gets poker'd.
+Second pattern: `db/` is now a confirmed three-time blind spot — DEC-159's `xola-report.ts`, #934's
+`tick-dev.ts`, and this phase's own #904 finding it a third time before `typecheck:db` finally closed
+it. And on process: three PRs in session 102 got opened with a hand-typed `gh pr create` instead of
+through `/kill-this` — `@code-review` still ran on all three, so nothing shipped unreviewed, but it's
+the same shape of leak Phase 13's retro called structural (#661) rather than a vigilance problem.
+
+**On your answers.** "We stopped and held scope" checks out numerically — 7% versus 65% isn't a close
+call. "Not much to add" is fair for the building itself; less fair is that it undersells what the
+session files actually record, which is a phase that caught its own false claims constantly and wrote
+every one down. That's the answer to your own "hard to remember specifics," incidentally — the two
+session files are doing that job almost aggressively well at the transcript level, but nobody's going
+to re-read 750 lines to recall what Phase 14 was. This retro entry and the throughput table are the
+compressed layer built for that; if "what happened in 14" needs answering six months out, it should
+be answerable from this document, not the sessions underneath it.
+
+**Forward.** Phase 15 tripled before a single task started — 7 tasks/29 points to 20 tasks/81 points —
+and whether that's Phase 12's failure recurring or its cure depends on which axis you look at.
+Mechanism: it's the opposite. Every added task is a pokered `PROJECT_PLAN.md` row with an issue
+number, an acceptance criterion, and a named failing check (issues #969–#988) — not a pile of
+drive-bys referencing nothing. Volume: it's the same shape Phase 12 warned about — a plan growing 3x
+in one sitting is a lot of surface poker'd in a single pass, and pokering fast isn't the same
+guarantee as pokering right. The three-weeks-out test is whether 81 holds or drifts further once
+building starts: **watch for issues added mid-15 that aren't among #969–#988**; that's Phase 12's own
+tell, reapplied. Worth saying plainly — 81 points at this phase's 18.8 pts/week is close to a month of
+calendar time, on the surface where the failure mode is "customer got charged and nobody told them."
+The plan already names its own cut line if the month runs long: 15.3→15.4→15.6→15.8→15.10 is the
+29-point spine that closes money defects; the other 52 are guards and hygiene the plan itself labels
+as such, not a judgment call you'll have to make under pressure later.
+
+---
+
 ## Phase 12 — 2026-09-03 — Reservations: the real customer UI + flip new sales
 
 **Points:** 208 shipped / 73 planned-and-delivered (12.0–12.12) / 86 originally pokered

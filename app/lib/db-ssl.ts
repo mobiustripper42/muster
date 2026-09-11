@@ -35,21 +35,61 @@ VGeEZi5rAiEA0pCDFtdu+vqSvSk7tERO/X+/qpnl+scPffmN0ooeG6s=
 /** What `pg` accepts for `ssl`; a subset of node's TLS options is all we set. */
 export type DbSslConfig = { ca: string[]; rejectUnauthorized: true };
 
+/** Hosts that run a plain, TLS-less Postgres — the dev box, and nothing else. */
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
 /**
- * `undefined` means "leave `pg` alone" — local dev talks to a plain Postgres with no
- * TLS at all, and forcing an `ssl` object there breaks the connection outright.
- *
- * Everything else gets node's default roots **plus** Crunchy's, never Crunchy's
- * instead of node's. `ssl: { ca }` *replaces* the trust store, so substituting would
- * make this build unable to reach Neon — and the whole point is that one build talks
- * to both, so `DATABASE_URL` can be swapped independently of the deploy rather than
- * in lockstep with it.
+ * libpq ssl parameters. These must be **removed** from the connection string, not
+ * merely ignored: `pg` parses the connection string and merges the result OVER the
+ * caller's config (`pg/lib/connection-parameters.js`), and `pg-connection-string`
+ * sets `ssl` whenever `sslmode` is present. Leaving one in means the string wins and
+ * our `ca` never reaches the handshake — silently, with a green test suite.
  */
-export function sslConfigFor(connectionString: string): DbSslConfig | undefined {
-  const sslmode = /[?&]sslmode=([^&]+)/.exec(connectionString)?.[1];
-  if (sslmode === undefined || sslmode === "disable") return undefined;
-  return {
-    ca: [...tls.rootCertificates, CRUNCHY_TEAM_CA],
-    rejectUnauthorized: true,
-  };
+const SSL_PARAMS = ["sslmode", "sslrootcert", "sslcert", "sslkey", "sslpassword", "ssl"];
+
+const TRUST: DbSslConfig = {
+  // APPENDED to node's defaults, never substituted. `ssl: { ca }` replaces the trust
+  // store outright, so substituting would make this build unable to reach Neon — and
+  // the point is that one build talks to both, so `DATABASE_URL` can be swapped
+  // independently of the deploy rather than in lockstep with it.
+  ca: [...tls.rootCertificates, CRUNCHY_TEAM_CA],
+  rejectUnauthorized: true,
+};
+
+/**
+ * Build the `pg` client/pool config for a database URL: the connection string with
+ * every ssl parameter stripped, plus an explicit `ssl` that therefore survives.
+ *
+ * **TLS is decided by the host, not by `sslmode`.** The first cut keyed on the
+ * presence of an `sslmode` parameter, which fails open twice over: the real Crunchy
+ * connection string carries no `sslmode` at all and would have been read as "local
+ * dev, no TLS", and a string carrying `sslmode=no-verify` would have handed `pg`
+ * `rejectUnauthorized: false` — an encrypted channel to an unidentified peer.
+ *
+ * A URL that cannot be parsed **requires** TLS rather than skipping it. The safe
+ * value is the one you get by being wrong.
+ */
+export function pgConnectionConfig(url: string): {
+  connectionString: string;
+  ssl?: DbSslConfig;
+} {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+    // NON-fault, and deliberately silent (#854 exception): the only thing this catch
+    // could log is the malformed value, and that value is a connection string with a
+    // password in it. The failure is not discarded — it is handled, by requiring TLS.
+    // eslint-disable-next-line no-restricted-syntax -- logging the cause would log the credential
+  } catch {
+    return { connectionString: url, ssl: TRUST };
+  }
+
+  const sslmode = parsed.searchParams.get("sslmode");
+  for (const p of SSL_PARAMS) parsed.searchParams.delete(p);
+  const connectionString = parsed.toString();
+
+  // Local Postgres speaks no TLS; handing it an `ssl` object breaks the connection.
+  // `sslmode=disable` is the explicit escape hatch for a non-local plain server.
+  const plain = LOCAL_HOSTS.has(parsed.hostname) || sslmode === "disable";
+  return plain ? { connectionString } : { connectionString, ssl: TRUST };
 }

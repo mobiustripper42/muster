@@ -41,7 +41,6 @@ export function SubmitButton({
   className,
   name,
   value,
-  title,
   disabled,
   formAction,
   formNoValidate,
@@ -52,7 +51,6 @@ export function SubmitButton({
   className?: string;
   name?: string;
   value?: string;
-  title?: string;
   /** Disable for a reason of the caller's own (e.g. nothing has changed yet — see
    *  `DirtySubmit`). Additive: pending still disables regardless. */
   disabled?: boolean;
@@ -92,7 +90,6 @@ export function SubmitButton({
       type="submit"
       name={name}
       value={value}
-      title={title}
       formAction={formAction}
       formNoValidate={formNoValidate}
       aria-label={ariaLabel}

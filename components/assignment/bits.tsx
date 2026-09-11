@@ -20,11 +20,9 @@ export function HiddenIds({ vm, crewId }: { vm: SeatCardVM; crewId?: string }) {
 
 export function MiniButton({
   label,
-  title,
   glyph,
 }: {
   label: string;
-  title?: string;
   /** Decorative lead glyph (9.8) — aria-hidden; `label` stays the accessible name. */
   glyph?: string;
 }) {
@@ -32,7 +30,6 @@ export function MiniButton({
   // pending spinner + disabled double-tap guard for free.
   return (
     <SubmitButton
-      title={title}
       className="min-h-9 rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-accent hover:border-accent"
     >
       {glyph && <span aria-hidden="true">{glyph} </span>}

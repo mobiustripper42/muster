@@ -12,13 +12,11 @@
  */
 export function GuestTextButton({
   href,
-  phone,
   reservationId,
   shiftId,
   className,
 }: {
   href: string;
-  phone: string;
   reservationId: string;
   shiftId: string;
   className?: string;
@@ -26,7 +24,6 @@ export function GuestTextButton({
   return (
     <a
       href={href}
-      title={phone}
       className={className}
       onClick={() => {
         void fetch("/api/guest-contact", {

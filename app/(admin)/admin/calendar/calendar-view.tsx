@@ -875,11 +875,6 @@ export function CalendarGrid({
                         data-testid="cal-block"
                         data-vessel={String(s.vesselId)}
                         data-status={s.status}
-                        title={
-                          departed
-                            ? "This departure has already left."
-                            : "Somebody is at the checkout for this departure. It frees itself if they don't pay."
-                        }
                         className={`absolute flex items-center justify-center overflow-hidden rounded-lg border text-[10px] ${
                           departed
                             ? "border-line border-dashed text-faint"
@@ -912,10 +907,8 @@ export function CalendarGrid({
                       data-vessel={String(s.vesselId)}
                       data-status="available"
                       data-lane={laneCount > 1 ? `${lane + 1}/${laneCount}` : undefined}
-                      // Which offering a sliver belongs to is the thing 1/n width takes away. The
-                      // tint still says it against the legend; this says it in words on hover, and
-                      // it costs nothing when the card is full width.
-                      title={`open · ${shortTime(s.time)}${offering ? ` · ${offering.name}` : ""}`}
+                      // Which offering a sliver belongs to is the thing 1/n width takes away.
+                      // The tint says it against the legend.
                       className={`absolute flex items-center justify-center overflow-hidden rounded-lg border-2 border-dashed text-[10px] text-faint ${offeringOpenClass(
                         String(s.offeringId),
                       )}${ring}`}

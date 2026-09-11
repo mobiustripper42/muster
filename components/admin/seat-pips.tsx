@@ -80,7 +80,6 @@ export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
         {required.map((s, i) => (
           <span
             key={i}
-            title={`${s.roleName} · ${s.filled ? "filled" : "open"}`}
             className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase ${
               s.filled
                 ? `border-2 border-transparent text-white ${roleHueClass(s.roleName)}`
@@ -93,7 +92,6 @@ export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
         {trainees.map((s, i) => (
           <span
             key={`t-${i}`}
-            title={`${s.roleName} · trainee · ${s.filled ? "filled" : "open"}`}
             className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border border-dashed text-[10px] font-bold ${
               s.filled
                 ? "border-faint bg-faint text-white"

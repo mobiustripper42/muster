@@ -417,9 +417,7 @@ function ReconcileSection({
                     {/* Provenance is visible (§2.9.8): hours nobody tapped must never look
                         identical to hours they did. */}
                     {r.touchedByAdmin && (
-                      <span className="ml-2 text-xs text-muted" title="Entered or edited by the office">
-                        office-edited
-                      </span>
+                      <span className="ml-2 text-xs text-muted">office-edited</span>
                     )}
                   </td>
                   <td className="px-4 py-2 text-right font-mono text-muted">

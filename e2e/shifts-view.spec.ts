@@ -153,9 +153,16 @@ test.describe("board bundle — /admin/shifts (9.6)", () => {
     await page.goto("/admin/shifts");
 
     // Growler's captain seat is Confirmed → a filled pip; Firkin's is Bailed →
-    // an open (outline) pip. Pips are title-labeled, never state-colored.
-    await expect(page.locator('[title="captain · filled"]').first()).toBeVisible();
-    await expect(page.locator('[title="captain · open"]').first()).toBeVisible();
+    // an open (outline) pip. Never state-colored.
+    //
+    // Asserted against the `sr-only` seat summary rather than the pips' `title`
+    // attribute, which was deleted when tooltips left the app (operator, 2026-09-11).
+    // The summary is the better target anyway: the pips themselves are inside
+    // `aria-hidden="true"` (`seat-pips.tsx:79`), so this line is what a screen reader
+    // is actually given, and the old locator was asserting a string no assistive tech
+    // ever read.
+    await expect(page.getByText(/Seats:.*captain filled/).first()).toBeVisible();
+    await expect(page.getByText(/Seats:.*captain open/).first()).toBeVisible();
   });
 
   test("every row leads with its vessel identity dot (DEC-086)", async ({

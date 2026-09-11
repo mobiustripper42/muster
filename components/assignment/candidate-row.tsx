@@ -50,12 +50,8 @@ export function CandidateRow({ vm, c }: { vm: SeatCardVM; c: CandidateVM }) {
         {c.action === "nudge" && (
           <form action={nudgeOn} className="inline-flex">
             <HiddenIds vm={vm} crewId={c.id} />
-            {/* lean() is shift-level (first gap seat that fits) — say so. */}
-            <MiniButton
-              label="Nudge"
-              glyph="↗"
-              title="Direct nudge — asks them onto this shift's open seat"
-            />
+            {/* lean() is shift-level — the first gap seat that fits, not this row's seat. */}
+            <MiniButton label="Nudge" glyph="↗" />
           </form>
         )}
       </span>

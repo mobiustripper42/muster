@@ -155,10 +155,7 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
               <form key={p.id} action={leanOn} className="inline-flex">
                 <input type="hidden" name="shiftId" value={row.shiftId} />
                 <input type="hidden" name="crewMemberId" value={p.id} />
-                <SubmitButton
-                  className="min-h-9 rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-accent hover:border-accent"
-                  title={`Direct nudge — “I need you on this”`}
-                >
+                <SubmitButton className="min-h-9 rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-accent hover:border-accent">
                   <span aria-hidden="true">↗ </span>Nudge {p.name}
                 </SubmitButton>
               </form>
@@ -172,14 +169,12 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
             <div className="flex gap-2">
               <button
                 disabled
-                title="Disabled for now — customer-side cancellation cascades land with payments (parked, P3). Handle by phone."
                 className="cursor-not-allowed rounded-full border border-line px-2.5 py-1 text-xs text-faint"
               >
                 ↻ Reschedule
               </button>
               <button
                 disabled
-                title="Disabled for now — customer-side cancellation cascades land with payments (parked, P3). Handle by phone."
                 className="cursor-not-allowed rounded-full border border-line px-2.5 py-1 text-xs text-faint"
               >
                 ✕ Cancel…

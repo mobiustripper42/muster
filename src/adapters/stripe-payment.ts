@@ -23,13 +23,77 @@ import {
 } from "../ports/payment.js";
 
 /**
- * Stripe's eight dispute statuses → the four Muster's ledger can act on (issue #723).
+ * Every NAMED member of a Stripe string enum, with the open-ended one removed.
  *
- * **Exhaustive on purpose, with no `default`.** The parameter is the SDK's own
- * `Stripe.Dispute.Status` union, so when Stripe adds a ninth status the SDK bump fails
- * `typecheck` right here — one file, at build time — instead of silently taking a `default`
- * branch and mis-stating whether money is in the account. That is the compile-time guarantee
- * `countsAsPaid` was wrongly assumed to have before this issue.
+ * The SDK's string unions end in `OtherString` — `string & Record<never, never>`
+ * (`shared.d.ts:160`) — which exists so a status Stripe invents next year does not break
+ * consumers at the type level. It also means the union is **permanently open**, so the
+ * `const x: never = status` exhaustiveness idiom stops compiling the moment it appears: in a
+ * `default` branch `status` narrows to `OtherString`, not to `never`.
+ *
+ * This filter keeps the guarantee that idiom was for. `string extends 'won'` is false, so a
+ * literal survives; `string extends string & Record<never, never>` is true, so the open member
+ * maps to `never` and drops out. What remains is exactly the set Stripe has *named*, which is
+ * the set a human can be expected to have an opinion about.
+ */
+type NamedOnly<T> = T extends string ? (string extends T ? never : T) : never;
+
+/** Fails to compile unless `T` is `never`. The error names the offending literal. */
+type AssertNever<T extends never> = T;
+
+/** The dispute statuses this mapping handles by name. Paired with the switch below. */
+type HandledDisputeStatus =
+  | "warning_needs_response"
+  | "warning_under_review"
+  | "warning_closed"
+  | "needs_response"
+  | "under_review"
+  | "won"
+  | "prevented"
+  | "lost";
+
+/**
+ * **The compile-time half of issue #723's guard, rebuilt for an open union.**
+ *
+ * If Stripe adds a named dispute status and the SDK bump brings it in, this line fails
+ * `typecheck` with the new literal in the message — one file, at build time — instead of the
+ * ledger quietly mis-stating whether money is in the account. That is the guarantee
+ * `countsAsPaid` was wrongly assumed to have before #723.
+ *
+ * It replaced `const unreachable: never = status`, which did the same job until 22.6.x added
+ * `OtherString` to the union and made it impossible. **The bump is what surfaced that**, which is
+ * the tripwire in the constructor below earning its keep on its first outing: without the stated
+ * `apiVersion` the upgrade would have been green, and this guard would have been silently
+ * reduced to its runtime half.
+ */
+type _AllNamedDisputeStatusesHandled = AssertNever<
+  Exclude<NamedOnly<Stripe.Dispute.Status>, HandledDisputeStatus>
+>;
+
+/**
+ * **Proof that the line above bites**, and it is permanent rather than a one-off I ran once.
+ *
+ * `Hypothetical` is the union Stripe would ship if it added a status tomorrow: today's members,
+ * the open member, and one new name. The assertion must reject it — so `@ts-expect-error` passes
+ * only while the guard works, and the day it stops working TypeScript reports the directive as
+ * unused and `typecheck` fails. A guard nobody has watched fire may be asserting nothing; this is
+ * how it stays watched without deleting and restoring the real one to fake a failure.
+ *
+ * The open member is written out rather than imported: `OtherString` is internal to the SDK's
+ * `shared.d.ts` and not re-exported through the `Stripe` namespace.
+ */
+type Hypothetical = HandledDisputeStatus | "warning_new_network_thing" | (string & Record<never, never>);
+// @ts-expect-error — an unhandled NAMED status must fail this assertion
+type _GuardBites = AssertNever<Exclude<NamedOnly<Hypothetical>, HandledDisputeStatus>>;
+
+/**
+ * Stripe's eight named dispute statuses → the four Muster's ledger can act on (issue #723).
+ *
+ * **Both halves are still here, one moved.** The compile-time guarantee is the
+ * `_AllNamedDisputeStatusesHandled` assertion above — it cannot live in the `default` branch any
+ * more, because the union is open. The runtime half is the `default` branch itself: an
+ * unrecognised string writes nothing rather than returning `undefined`, which is the defect #723
+ * was actually filed for.
  *
  * The `warning_*` family is a retrieval request: the card network is asking a question and no
  * funds have been withdrawn. Mapping those to `live` would zero out revenue on a booking that
@@ -50,26 +114,22 @@ function disputeState(status: Stripe.Dispute.Status): DisputeState {
       return "won";
     case "lost":
       return "lost";
-    default: {
-      // **Both halves are needed, and an earlier cut had only the first.**
+    default:
+      // **The RUN-time half, and the exhaustive switch alone did not have it.** The union is a
+      // claim the pinned SDK makes at build time about a string that arrives over the wire months
+      // later: Stripe adds a status, this deploy has not been bumped, and the switch matches
+      // nothing. It returned `undefined` — which is not a `DisputeState`, wrote nothing to the
+      // ledger, and fell through to the alert branch announcing "DISPUTE OPENED".
       //
-      // The `never` assignment is the COMPILE-time half: widen `Stripe.Dispute.Status` by
-      // bumping the SDK and `status` stops being `never` here, so `typecheck` fails in this one
-      // file rather than the ledger quietly mis-stating whether money is in the account.
+      // That is the defect issue #723 was filed for: a compile-time guarantee assumed to cover a
+      // runtime path. `unknown` writes nothing, which is the right default for a state we cannot
+      // interpret, and says so out loud.
       //
-      // The `return` is the RUN-time half, and the exhaustive switch alone did not have it. The
-      // union is a claim the pinned SDK makes at build time about a string that arrives over the
-      // wire months later: Stripe adds a status, this deploy has not been bumped, and the switch
-      // matched nothing. It returned `undefined` — which is not a `DisputeState`, wrote nothing
-      // to the ledger, and fell through to the alert branch announcing "DISPUTE OPENED".
-      //
-      // That is the same shape as the defect this whole change exists to fix (issue #723): a
-      // compile-time guarantee assumed to cover a runtime path. `unknown` writes nothing, which
-      // is the right default for a state we cannot interpret, and says so out loud.
-      const unreachable: never = status;
-      void unreachable;
+      // The `const unreachable: never = status` that used to sit here is gone — not weakened.
+      // `OtherString` made it uncompilable, and the guarantee moved to
+      // `_AllNamedDisputeStatusesHandled` above, which is strictly better: it fails on a new
+      // NAMED status without also failing on the open member that is now permanent.
       return "unknown";
-    }
   }
 }
 
@@ -78,8 +138,28 @@ export class StripePaymentPort implements PaymentPort {
   readonly #webhookSecret: string;
 
   constructor(secretKey: string, webhookSecret: string) {
-    // apiVersion omitted → the SDK's pinned default (fine for a single test/live account).
-    this.#stripe = new Stripe(secretKey, { typescript: true });
+    // **This literal and the `stripe` range in `package.json` change together, or not at all.**
+    //
+    // Omitting `apiVersion` does NOT mean "the account's default" — it means the version compiled
+    // into whichever SDK is installed (`node_modules/stripe/esm/apiVersion.d.ts`), sent as the
+    // `Stripe-Version` header on every request. So before this line, upgrading the library for an
+    // unrelated reason — a security patch, say — silently moved the API version we talk to, with
+    // no diff anywhere to point at as the cause.
+    //
+    // Stating it makes that upgrade FAIL TO BUILD. `apiVersion?: LatestApiVersion` is
+    // `typeof ApiVersion` (`lib.d.ts:11,27`), a string-literal type, so a bump that moves the
+    // SDK's constant cannot typecheck until someone edits this line — and to edit it they have to
+    // read what changed between the two API versions. **That is the entire point: it is not a
+    // test of Stripe, it is a note to whoever bumps the library that they cannot walk past.**
+    //
+    // No runtime test guards it, deliberately. After a bump the SDK's default equals this literal,
+    // so `expect(ours).toBe(Stripe.API_VERSION)` is constant-vs-constant and stays green if the
+    // argument below is deleted. The typechecker fires exactly when they diverge, which is the
+    // only case that matters; a runtime assertion here would be coverage theatre.
+    this.#stripe = new Stripe(secretKey, {
+      typescript: true,
+      apiVersion: "2026-08-26.dahlia",
+    });
     this.#webhookSecret = webhookSecret;
   }
 

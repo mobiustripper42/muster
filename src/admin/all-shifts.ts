@@ -241,10 +241,22 @@ export async function deriveAllShifts(
     });
   }
 
-  rows.sort((a, b) =>
-    a.date !== b.date
-      ? a.date.localeCompare(b.date)
-      : (a.trips[0]?.time ?? "").localeCompare(b.trips[0]?.time ?? ""),
+  // Date, then earliest departure, then VESSEL — and the third key is not decoration
+  // (#991). `Array.prototype.sort` is stable, so without it two boats leaving at the same
+  // time on the same day kept whatever order `listShifts()` returned, which is
+  // `select * from shifts` with no `order by` (`postgres-repository.ts:1945`). That is
+  // physical row order: it moves when a row is updated, and it is completely different in
+  // a database restored from a dump than in one written over months. Two operators looking
+  // at the same Saturday saw opposite orders, which is how this was found.
+  //
+  // Vessel rather than shift id, deliberately: both are deterministic, but only one gives
+  // the operator the same boats in the same sequence every day. `vesselId` is also the
+  // DEC-086 hue key, so the colour order on the board stops moving too.
+  rows.sort(
+    (a, b) =>
+      a.date.localeCompare(b.date) ||
+      (a.trips[0]?.time ?? "").localeCompare(b.trips[0]?.time ?? "") ||
+      String(a.vesselId).localeCompare(String(b.vesselId)),
   );
   return rows;
 }

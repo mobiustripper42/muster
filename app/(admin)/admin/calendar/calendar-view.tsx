@@ -875,11 +875,6 @@ export function CalendarGrid({
                         data-testid="cal-block"
                         data-vessel={String(s.vesselId)}
                         data-status={s.status}
-                        title={
-                          departed
-                            ? "This departure has already left."
-                            : "Somebody is at the checkout for this departure. It frees itself if they don't pay."
-                        }
                         className={`absolute flex items-center justify-center overflow-hidden rounded-lg border text-[10px] ${
                           departed
                             ? "border-line border-dashed text-faint"

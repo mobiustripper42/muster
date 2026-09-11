@@ -384,7 +384,6 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       return (
                         <span
                           key={i}
-                          title={`No boat on this day takes ${guests}`}
                           className={`${base} border border-dashed border-line text-faint`}
                         >
                           {c.day}

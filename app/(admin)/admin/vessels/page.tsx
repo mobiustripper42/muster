@@ -285,11 +285,6 @@ function CrewRows({
               value={`remove-crew-${i}`}
               disabled={shown.length === 1}
               formNoValidate
-              title={
-                shown.length === 1
-                  ? "A boat needs at least one required crew role"
-                  : "Remove this role"
-              }
               className="min-h-[44px] min-w-[44px] rounded-lg border border-line px-2 text-sm text-muted disabled:cursor-not-allowed disabled:text-faint"
             >
               <span aria-hidden="true">✕</span>

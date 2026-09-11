@@ -102,7 +102,6 @@ export function ShiftManifest({
                     <span className="flex shrink-0 gap-1">
                       <a
                         href={tel(g.phone)}
-                        title={g.phone}
                         className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
                       >
                         <span aria-hidden="true">✆&nbsp;</span>Call
@@ -121,7 +120,6 @@ export function ShiftManifest({
                             mapUrl: PICKUP_MAP_URL,
                           }),
                         )}
-                        phone={g.phone}
                         reservationId={g.reservationId}
                         shiftId={shiftId}
                         className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"

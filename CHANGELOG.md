@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.1] - 2026-09-11
+
+Ships the Phase 14 close plus the first half of the move off Neon.
+
+- Carry Crunchy Bridge's team CA so one build can reach both Neon and Crunchy, making the `DATABASE_URL` swap independent of the deploy (issue #960, PR #990). Production still runs on Neon; this only makes Crunchy reachable.
+- Phase 14 close and retro — 44 points, throughput 18.8 pts/wk, estimate drift +3.
+- Re-plan Phase 15 from the Stripe-conformance audit (#966): 29 → 81 points.
+- Retry re-freeze — the customer's answers land on the row (#946).
+- Phase 14.9 — the calendar and the write refuse the same set.
+- Phase 14.8 — the monitor before the destructive tool.
+- Archive five decision records that stopped being decisions (164 → 159), and teach the citation resolver about `archive/`.
+
 ## [1.2.0] - 2026-09-10 — Phase 14
 - 44 pts shipped across 8 sessions in the window (throughput 18.8 pts/calendar-week, drift +3)
 - The pending row is the claim: three states, a nullable `eventId`, the row written before any

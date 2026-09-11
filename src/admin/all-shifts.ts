@@ -241,10 +241,23 @@ export async function deriveAllShifts(
     });
   }
 
-  rows.sort((a, b) =>
-    a.date !== b.date
-      ? a.date.localeCompare(b.date)
-      : (a.trips[0]?.time ?? "").localeCompare(b.trips[0]?.time ?? ""),
+  // Date, then earliest departure, then vessel name — and the third key is not decoration
+  // (#991). `Array.prototype.sort` is stable, so without it two boats leaving at the same
+  // time on the same day kept whatever order `listShifts()` returned, which is
+  // `select * from shifts` with no `order by` (`postgres-repository.ts:1945`). That is
+  // physical row order: it moves when a row is updated, and it is completely different in
+  // a database restored from a dump than in one written over months. The same Saturday
+  // rendered in opposite orders on two databases holding identical data, which is how
+  // this was found.
+  //
+  // Name, not id: it is what the operator reads, and the two have already come apart —
+  // `vessel-x-shore-1` is named "Darryl". Sorting on an id nobody sees would order the
+  // board by a naming scheme that left the screen years ago.
+  rows.sort(
+    (a, b) =>
+      a.date.localeCompare(b.date) ||
+      (a.trips[0]?.time ?? "").localeCompare(b.trips[0]?.time ?? "") ||
+      a.vesselName.localeCompare(b.vesselName),
   );
   return rows;
 }

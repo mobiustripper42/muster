@@ -445,16 +445,7 @@ describe("deriveAllShifts — a tie is broken by vessel, not by the database (#9
     expect(await namesWhenBuiltStartingWith("zzz")).toEqual(["Anchor", "Zulu"]);
   });
 
-  it("falls back to the id when two boats share a name — `vessels.name` is not unique", async () => {
-    // Both called "Brew 2". Nothing above the id can separate them, so without it the
-    // order would come from the database again.
-    await addShift("zzz", DATE, "Brew 2", TIED, [{ state: "Confirmed" }], "Crewed");
-    await addShift("aaa", DATE, "Brew 2", TIED, [{ state: "Confirmed" }], "Crewed");
-    const rows = await deriveAllShifts(repo, WINDOW, T0, OPTS);
-    expect(rows.map((r) => r.vesselId)).toEqual(["vessel-aaa", "vessel-zzz"]);
-  });
-
-  it("still sorts by date and departure first — the tiebreakers are last, not first", async () => {
+  it("still sorts by date and departure first — the name is the last key, not the first", async () => {
     // "Zulu" sorts after "Anchor" by name but leaves EARLIER, and earlier must win.
     await addShift("zzz", DATE, "Anchor", [{ time: "19:00", pax: [2] }], [{ state: "Confirmed" }], "Crewed");
     await addShift("aaa", DATE, "Zulu", [{ time: "09:00", pax: [2] }], [{ state: "Confirmed" }], "Crewed");

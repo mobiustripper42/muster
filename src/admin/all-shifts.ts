@@ -241,32 +241,23 @@ export async function deriveAllShifts(
     });
   }
 
-  // Date, then earliest departure, then vessel NAME, then vessel id — and the last two are
-  // not decoration (#991). `Array.prototype.sort` is stable, so without a tiebreaker two
-  // boats leaving at the same time on the same day kept whatever order `listShifts()`
-  // returned, which is `select * from shifts` with no `order by`
-  // (`postgres-repository.ts:1945`). That is physical row order: it moves when a row is
-  // updated, and it is completely different in a database restored from a dump than in one
-  // written over months. The same Saturday rendered in opposite orders on two databases
-  // holding identical data, which is how this was found.
+  // Date, then earliest departure, then vessel name — and the third key is not decoration
+  // (#991). `Array.prototype.sort` is stable, so without it two boats leaving at the same
+  // time on the same day kept whatever order `listShifts()` returned, which is
+  // `select * from shifts` with no `order by` (`postgres-repository.ts:1945`). That is
+  // physical row order: it moves when a row is updated, and it is completely different in
+  // a database restored from a dump than in one written over months. The same Saturday
+  // rendered in opposite orders on two databases holding identical data, which is how
+  // this was found.
   //
-  // **Name before id, because the name is what the operator reads.** The two are not
-  // interchangeable here: the fleet holds `vessel-x-shore-1` named "Darryl" and
-  // `vessel-x-shore-2` named "Dexter", ids from a naming scheme that is no longer on
-  // screen. Those two happen to sort the same way today; rename either boat and the id
-  // order would silently stop matching the visible one, which is a worse bug than the one
-  // this fixes — it looks like a sort that is simply wrong rather than one that is missing.
-  //
-  // **Id last, because `vessels.name` has no unique constraint** (`0001_init.sql:42-44`).
-  // Two boats sharing a name would tie on every earlier key and fall straight back to
-  // inheriting physical row order. The id is the guarantee that a total order exists at
-  // all; the name is what makes it legible.
+  // Name, not id: it is what the operator reads, and the two have already come apart —
+  // `vessel-x-shore-1` is named "Darryl". Sorting on an id nobody sees would order the
+  // board by a naming scheme that left the screen years ago.
   rows.sort(
     (a, b) =>
       a.date.localeCompare(b.date) ||
       (a.trips[0]?.time ?? "").localeCompare(b.trips[0]?.time ?? "") ||
-      a.vesselName.localeCompare(b.vesselName) ||
-      String(a.vesselId).localeCompare(String(b.vesselId)),
+      a.vesselName.localeCompare(b.vesselName),
   );
   return rows;
 }

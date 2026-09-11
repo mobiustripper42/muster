@@ -417,31 +417,48 @@ describe("deriveAllShifts — a tie is broken by vessel, not by the database (#9
   const TIED = [{ time: "17:30", pax: [2] }];
   const WINDOW = { from: "2026-07-01", to: "2026-07-31" };
 
-  /** Build both boats, `first` inserted first, and report the rendered order. */
-  async function orderWhenBuiltStartingWith(first: "alpha" | "zulu"): Promise<string[]> {
+  /**
+   * Two tied boats whose ID order and NAME order DISAGREE — `vessel-aaa` is named
+   * "Zulu" and `vessel-zzz` is named "Anchor". That is not contrived: the real fleet
+   * holds `vessel-x-shore-1` named "Darryl", an id from a naming scheme that is no
+   * longer on screen. Sorting by id would render Anchor below Zulu.
+   *
+   * `first` controls insertion order, which is the order the in-memory repository
+   * hands them back — the thing the output must NOT depend on.
+   */
+  async function namesWhenBuiltStartingWith(first: "aaa" | "zzz"): Promise<string[]> {
     const build = {
-      alpha: () => addShift("alpha", DATE, "Brew 4", TIED, [{ state: "Confirmed" }], "Crewed"),
-      zulu: () => addShift("zulu", DATE, "Brew 2", TIED, [{ state: "Confirmed" }], "Crewed"),
+      aaa: () => addShift("aaa", DATE, "Zulu", TIED, [{ state: "Confirmed" }], "Crewed"),
+      zzz: () => addShift("zzz", DATE, "Anchor", TIED, [{ state: "Confirmed" }], "Crewed"),
     } as const;
     await build[first]();
-    await build[first === "alpha" ? "zulu" : "alpha"]();
+    await build[first === "aaa" ? "zzz" : "aaa"]();
     const rows = await deriveAllShifts(repo, WINDOW, T0, OPTS);
-    return rows.map((r) => r.vesselId);
+    return rows.map((r) => r.vesselName);
   }
 
-  it("orders by vessel when the repository happens to return them that way already", async () => {
-    expect(await orderWhenBuiltStartingWith("alpha")).toEqual(["vessel-alpha", "vessel-zulu"]);
+  it("orders by the name the operator reads, not the id behind it", async () => {
+    expect(await namesWhenBuiltStartingWith("aaa")).toEqual(["Anchor", "Zulu"]);
   });
 
-  it("orders by vessel when the repository returns them the other way round", async () => {
-    expect(await orderWhenBuiltStartingWith("zulu")).toEqual(["vessel-alpha", "vessel-zulu"]);
+  it("orders the same way when the repository returns them the other way round", async () => {
+    expect(await namesWhenBuiltStartingWith("zzz")).toEqual(["Anchor", "Zulu"]);
   });
 
-  it("still sorts by date and departure first — the tiebreaker is last, not first", async () => {
-    // `zulu` sorts after `alpha` by vessel but leaves EARLIER, and earlier must win.
-    await addShift("alpha", DATE, "Brew 4", [{ time: "19:00", pax: [2] }], [{ state: "Confirmed" }], "Crewed");
-    await addShift("zulu", DATE, "Brew 2", [{ time: "09:00", pax: [2] }], [{ state: "Confirmed" }], "Crewed");
+  it("falls back to the id when two boats share a name — `vessels.name` is not unique", async () => {
+    // Both called "Brew 2". Nothing above the id can separate them, so without it the
+    // order would come from the database again.
+    await addShift("zzz", DATE, "Brew 2", TIED, [{ state: "Confirmed" }], "Crewed");
+    await addShift("aaa", DATE, "Brew 2", TIED, [{ state: "Confirmed" }], "Crewed");
     const rows = await deriveAllShifts(repo, WINDOW, T0, OPTS);
-    expect(rows.map((r) => r.vesselId)).toEqual(["vessel-zulu", "vessel-alpha"]);
+    expect(rows.map((r) => r.vesselId)).toEqual(["vessel-aaa", "vessel-zzz"]);
+  });
+
+  it("still sorts by date and departure first — the tiebreakers are last, not first", async () => {
+    // "Zulu" sorts after "Anchor" by name but leaves EARLIER, and earlier must win.
+    await addShift("zzz", DATE, "Anchor", [{ time: "19:00", pax: [2] }], [{ state: "Confirmed" }], "Crewed");
+    await addShift("aaa", DATE, "Zulu", [{ time: "09:00", pax: [2] }], [{ state: "Confirmed" }], "Crewed");
+    const rows = await deriveAllShifts(repo, WINDOW, T0, OPTS);
+    expect(rows.map((r) => r.vesselName)).toEqual(["Zulu", "Anchor"]);
   });
 });

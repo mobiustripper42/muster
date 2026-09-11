@@ -36,4 +36,4 @@ over PaymentIntents as a supported row, *ADVANCED INTEGRATION*.
 *Rejected: embedded Checkout.* Its form takes the client secret the server returns, so the session
 must exist before a card field renders. That buys either a boat claimed when someone merely opens
 the page, or a payable session outliving every visit that wanders off. It also wants a customer
-email, where our identity is the phone — a cost the two hosted sessions already pay.
+email, where our identity is the phone — a cost the hosted sessions pay after the sale.

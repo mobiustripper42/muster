@@ -40,7 +40,7 @@ async function seedEvents(repo: InMemoryRepository): Promise<void> {
   await repo.saveEvent(event("e1", PARTY, "2026-05-16", "15:30"));
   await repo.saveEvent(event("e2", PARTY, "2026-05-16", "19:30"));
   await repo.saveEvent(event("e3", PARTY, "2026-05-17", "13:30"));
-  // A zero-crew rental on its own day.
+  // The Duffy on its own day — one dock-hand seat, not zero.
   await repo.saveEvent(event("e4", DUFFY, "2026-06-27", "18:30"));
 }
 

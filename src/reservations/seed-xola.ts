@@ -26,12 +26,22 @@ import type { Event, Offering, Reservation, Vessel } from "../domain/entities.js
 import { asId } from "../domain/ids.js";
 import { reservationDemo } from "./seed-reservation.js";
 
-/** A vessel Muster knows about but NO offering sells — the #700 blind spot, on purpose. */
+/**
+ * A vessel Muster knows about but NO offering sells — the #700 blind spot, on purpose.
+ *
+ * It is **manned**, and that is not incidental. It carried `manning: []` until the operator's
+ * 2026-08-29 ruling made a boat with no required crew an error rather than a state
+ * (`src/builder/derive.ts:84`) — and this seed writes through `repo.saveVessel`, which does not
+ * pass `vessel-admin.ts:81`'s guard, so it was the one live producer of a state the app refuses.
+ * Paired with a scheduled event below, it poisoned every `formShifts` run against a database
+ * seeded with `db:seed:xola` — issue #957. The fixture's actual point is that no OFFERING covers
+ * this boat; its crew rule was never part of that.
+ */
 export const UNCOVERED_VESSEL: Vessel = {
   id: asId<"VesselId">("vessel-xola-only"),
   name: "Xola Only",
   coiMaxPax: 10,
-  manning: [],
+  manning: [{ roleTypeId: asId<"RoleTypeId">("role-captain"), count: 1 }],
 };
 
 /** One synthetic imported trip, and what it is here to prove. */

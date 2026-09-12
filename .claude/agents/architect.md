@@ -77,7 +77,8 @@ can pick up a shift. Both are **env-overridable, tuned per deploy without a code
 Fri/Sat/Sun asks onto one shared send instant.
 
 First tenant: **BrewBoat** — inspected party boats; manning is **per-vessel data** the deriver loops
-over (0/1/2/N), never a hardcoded pair (DEC-016). Zero-crew rentals are in scope.
+over (1/2/N), never a hardcoded pair (DEC-016). Every vessel has manning: a boat with no required
+crew is an error, not a state (`src/builder/derive.ts:84`).
 
 Roles you're designing for: **Eric** the operator (semi-retired; the design goal is *no
 babysitting*), **Drew** the owner (money/policy decisions), and **crew**.

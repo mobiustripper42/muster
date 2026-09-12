@@ -42,6 +42,19 @@ const gone = async (repo: InMemoryRepository, id: typeof SIDE_B) =>
   (await repo.getShift(id)) ?? null; // normalize undefined → null
 
 describe("mergeShift (DEC-083 inverse / DEC-084)", () => {
+  it("throws when the re-form could not form the day it just un-split (#957)", async () => {
+    // The merge half of the same #957 gap, and the worse one: `mergeShift` deletes side B's
+    // seats and its shift row BEFORE the re-form. A re-form that skips this vessel-day leaves
+    // side B destroyed and the canonical never re-derived, while `mergeAction` reports success
+    // because nothing threw. Side B's crew lose their seats and are told nothing.
+    const repo = await seedDay();
+    await splitShift(repo, CANON, "14:00");
+    const v = await repo.getVessel(PARTY);
+    await repo.saveVessel({ ...v!, manning: [] });
+
+    await expect(mergeShift(repo, CANON)).rejects.toThrow(/could not be re-formed/i);
+  });
+
   // C2.3-8, the merge half — see the matching pair in split.test.ts. The merge's
   // re-form re-births the surviving vessel-day shift, so the same clock rule applies:
   // horizon-aware with `now`, pure seat-fold without.

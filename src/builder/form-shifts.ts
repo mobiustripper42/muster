@@ -110,8 +110,39 @@ export interface FormResult {
    *
    * A non-empty `failures` means somebody has to look: these vessel-days have no shift,
    * or a stale one. Surfacing that to a person is #1001 — this field is what it reads.
+   *
+   * **Read the shape, not just the count.** Isolation turns a systemic failure into N entries
+   * rather than one abort: if the repo connection is down, every group fails the same way and
+   * this comes back with one row per vessel-day in the fleet. Many entries carrying the SAME
+   * error is one outage, not N data problems, and #1001 should say so rather than fan out that
+   * many leads. A handful of distinct errors is the case this field was built for.
    */
   failures: { vesselId: VesselId; date: string; error: unknown }[];
+}
+
+/**
+ * Throw if `form` failed to form the one vessel-day the caller was acting on (#957).
+ *
+ * **Why this exists.** `formShifts` re-derives the WHOLE fleet, so its callers divide into two
+ * kinds, and per-group isolation is right for one and wrong for the other. The fleet-wide callers
+ * — the booking webhook, cancel, the cron tick, the Xola pull — want every healthy vessel-day
+ * formed and a list of the ones that weren't; that is the whole point of #957. But the operator
+ * commands (`splitShift`, `mergeShift`) re-form the fleet to act on ONE day, and they report
+ * success to a person. Those two used to inherit "abort loudly" for free from the old whole-loop
+ * `try`; isolation removes it, and removing it silently is how `split_ok=1` appears over a day
+ * that never split. They have to ask explicitly, which is this.
+ *
+ * The distinction is not "which module" — it is whether the caller makes a claim about one
+ * vessel-day. A new caller that does must call this; one that reports counts must not.
+ */
+export function assertDayFormed(form: FormResult, vesselId: VesselId, date: string): void {
+  const failure = form.failures.find((f) => f.vesselId === vesselId && f.date === date);
+  if (failure) {
+    throw new Error(
+      `Vessel-day ${vesselId} ${date} could not be re-formed: ${String(failure.error)}`,
+      { cause: failure.error },
+    );
+  }
 }
 
 /**

@@ -10,7 +10,7 @@
 
 import type { Repository } from "../ports/repository.js";
 import type { ShiftId } from "../domain/ids.js";
-import { formShifts } from "./form-shifts.js";
+import { assertDayFormed, formShifts } from "./form-shifts.js";
 import type { FormResult } from "./form-shifts.js";
 
 /**
@@ -77,5 +77,12 @@ export async function splitShift(
   // stay on side A — now a shorter day (the later trips split off into `…-b`) — get a
   // "your shift changed" notice. Opting in from the command (not the idempotent
   // re-form) is the DEC-084 posture.
-  return formShifts(repo, { notifyTripChanges: true, ...(now ? { now } : {}) });
+  const form = await formShifts(repo, { notifyTripChanges: true, ...(now ? { now } : {}) });
+  // #957: `formShifts` no longer throws for a vessel-day it cannot form — it records it. Good
+  // for the fleet-wide callers, wrong here: the cut above is already persisted, so a re-form
+  // that skipped this day leaves the marker set and no `-b` row, and `splitAction` would report
+  // `split_ok=1` over a day that still shows one shift. Restores the loud abort this call used
+  // to inherit from the whole-loop `try`, for this day only.
+  assertDayFormed(form, shift.vesselId, shift.date);
+  return form;
 }

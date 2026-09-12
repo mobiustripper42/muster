@@ -14,7 +14,7 @@
 import type { Repository } from "../ports/repository.js";
 import type { ShiftId, CrewMemberId } from "../domain/ids.js";
 import { asId } from "../domain/ids.js";
-import { formShifts } from "./form-shifts.js";
+import { assertDayFormed, formShifts } from "./form-shifts.js";
 import type { FormResult } from "./form-shifts.js";
 
 export interface MergeResult {
@@ -95,6 +95,12 @@ export async function mergeShift(
   // dual-side person is netted out of `freed` and gets only the "changed" (they kept
   // the day). Opt-in from the command, not the idempotent re-form (DEC-084 posture).
   const form = await formShifts(repo, { notifyTripChanges: true, ...(now ? { now } : {}) });
+  // #957, and the sharper half of it: side B's seats and row are already deleted above. A
+  // re-form that skipped this vessel-day leaves side B destroyed and the canonical never
+  // re-derived, while `mergeAction` reports success because nothing threw — side B's crew
+  // lose their seats and are told nothing. One check, same vessel-day as side B by
+  // construction (groups are keyed vessel|date, and `…-b` shares both).
+  assertDayFormed(form, shift.vesselId, shift.date);
 
   return {
     form,

@@ -4,14 +4,12 @@ import {
   forwardNotices,
   type AssignmentChange,
 } from "@core/adapters/forward-notices.js";
-import { LogChannel } from "@core/adapters/log-channel.js";
-import { isProdDeploy } from "./flags";
 import type { Ask } from "@core/domain/entities.js";
 import type { FormResult } from "@core/builder/form-shifts.js";
 import { formNoticeChanges } from "@core/builder/form-notices.js";
 import { getRepo } from "./repo";
 import { OPERATOR_CREW_MEMBER_ID } from "./operator";
-import { makeTwilioChannel } from "./sms";
+import { makeSmsChannel } from "./sms";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
@@ -45,35 +43,11 @@ async function linkBase(): Promise<string> {
 }
 
 /**
- * The channel when Twilio is not configured (#934). It logs the message it would have
- * sent, magic link and all, and that is the whole of what replaced the outbox: three
- * queues, three tables and a screen whose only surviving job was letting a human read
- * a message nothing could deliver.
- *
- * Severity is the app's call, not the core's: `console.error` in production so sheepdog
- * ingests it (sheepdog issue 62), a plain log in dev where you are already watching the
- * terminal. Same split as `app/lib/unsent.ts` on the reservations side (#933).
- *
- * Exported because `doorbell.ts` needs the identical construction for its ring relay —
- * one place to change when the severity rule does.
+ * `logChannel` lived here until #955 and now lives in `sms.ts`, private. It was exported so
+ * `doorbell.ts` could build the identical fallback — which is the same instinct that produced
+ * nine different fallbacks at nine send sites. Nobody builds one now; `makeSmsChannel` hands you
+ * a channel that already writes somewhere.
  */
-export function logChannel(
-  repo: ReturnType<typeof getRepo>,
-  linkBase: string,
-  now?: () => Date,
-): LogChannel {
-  const prod = isProdDeploy();
-  return new LogChannel(repo, {
-    linkBase,
-    ...(now ? { now } : {}),
-    sink: prod ? (l) => console.error(l) : (l) => console.log(l),
-    // The link is a CREDENTIAL, and for `OPERATOR_CREW_MEMBER_ID` an admin one —
-    // `switchToAdmin` upgrades a crew session to admin with no re-auth. Minted in dev,
-    // where the log is a terminal you are watching; never in prod, where it is a stream
-    // that log-read access alone can reach. Same rule as `auth-delivery.ts:58`.
-    mintLink: !prod,
-  });
-}
 
 /**
  * Forward fired asks to the pilot outbox — the edge wiring's one line
@@ -88,7 +62,7 @@ export async function relayAsks(
   if (!asks || asks.length === 0) return;
   const repo = getRepo();
   const base = await linkBase();
-  const channel = makeTwilioChannel(repo, base) ?? logChannel(repo, base);
+  const { channel } = makeSmsChannel(repo, base);
   await forwardAsks(repo, channel, asks);
 }
 
@@ -105,7 +79,7 @@ export async function relayNotices(
   if (!changes || changes.length === 0) return;
   const repo = getRepo();
   const base = await linkBase();
-  const channel = makeTwilioChannel(repo, base) ?? logChannel(repo, base);
+  const { channel } = makeSmsChannel(repo, base);
   await forwardNotices(repo, channel, changes);
 }
 

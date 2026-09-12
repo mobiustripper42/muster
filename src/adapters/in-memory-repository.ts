@@ -798,6 +798,24 @@ export class InMemoryRepository implements Repository {
     this.#reservations.set(attempt.id, clone(next));
   }
 
+  async claimConfirmationSend(reservationId: ReservationId, atIso: string): Promise<boolean> {
+    const row = this.#reservations.get(reservationId);
+    if (!row) return false;
+    // Mirrors Postgres's `where confirmation_sent_at is null … returning id`: already set means
+    // somebody else holds the claim, so this caller must not send. Single-threaded here, so the
+    // read and the write cannot interleave — the atomicity the real adapter needs a statement for.
+    if (row.confirmationSentAt !== undefined) return false;
+    this.#reservations.set(reservationId, clone({ ...row, confirmationSentAt: atIso }));
+    return true;
+  }
+
+  async releaseConfirmationSend(reservationId: ReservationId): Promise<void> {
+    const row = this.#reservations.get(reservationId);
+    if (!row) return;
+    const { confirmationSentAt: _cleared, ...rest } = row;
+    this.#reservations.set(reservationId, clone(rest));
+  }
+
   // ── Refund lease (#726) ───────────────────────────────────────────────────
   // Lazy expiry against the caller's `nowIso`, then a presence check. The double enforces this one (unlike the phone/display-code uniques it
   // deliberately ignores) because the RESULT is semantic — `refundReservation` branches on

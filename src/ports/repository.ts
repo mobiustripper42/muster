@@ -385,6 +385,47 @@ export interface Repository {
    */
   recordCheckoutAttempt(attempt: Reservation, paymentIntentId: string): Promise<void>;
 
+  /**
+   * **Claim the right to send this customer their booking confirmation** (15.3, issue #971).
+   *
+   * Returns `true` only for the caller whose write transitioned the row from "nobody told" to
+   * "told at this instant". Every other caller gets `false` and must not send.
+   *
+   * **A claim, not a check, and that distinction is the whole point.** The first cut of 15.3 read
+   * the row and sent if the column was absent — and `@code-review` found that two callers race for
+   * every ordinary booking, not just on a provider redelivery: the signed webhook and
+   * `/book/success` (a public, repeatable GET) both run the same confirm, seconds apart by design.
+   * Both could pass a read-then-act check before either wrote, and both would send. The gate it
+   * replaced could not do that — `outcome === "booked"` was true only for the caller that won the
+   * atomic flip, so the database guaranteed one. This restores that guarantee at the send.
+   *
+   * The send is not idempotent, so the claim must be atomic: one statement, conditional on the
+   * column still being null. Same shape as `acquireRefundLease`, for the same reason.
+   *
+   * **Claim BEFORE sending, and `releaseConfirmationSend` on failure.** Claiming after would be
+   * the race above; claiming without releasing would record a send that never happened, which is
+   * the defect this task exists to fix wearing a better disguise.
+   *
+   * Unguarded on `status`: by the time anything confirms, the row is `booked`, and a later
+   * cancellation does not un-tell them.
+   */
+  claimConfirmationSend(reservationId: ReservationId, atIso: string): Promise<boolean>;
+
+  /**
+   * Give back a confirmation claim whose send did not happen (15.3, issue #971).
+   *
+   * Clears the instant, so the next caller — a provider redelivery, the success page, §2.8.9's
+   * reconciler — can claim and try again. Without it a failed send is permanently recorded as
+   * successful.
+   *
+   * The one case it cannot cover is the process dying between the claim and the send: the column
+   * is set, nobody was told, and no retry re-claims. That window is milliseconds wide where the
+   * one it replaced spanned the whole downstream block, and it is the residual §2.8.9 is asked to
+   * report — with the caveat that a claimed-but-unsent row looks told to that query, so the
+   * reconciler sees this residual only via the missing `Payment` row beside it.
+   */
+  releaseConfirmationSend(reservationId: ReservationId): Promise<void>;
+
   // ── Refund lease — the refund mutex (#726) ─────────────────────────────────
   /**
    * Claim the exclusive right to refund this reservation, or report that someone else holds it.

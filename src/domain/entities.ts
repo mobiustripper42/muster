@@ -769,6 +769,25 @@ export interface Reservation {
    */
   paymentIntentIds?: string[];
   /**
+   * When the booking confirmation was sent to this customer (15.3, issue #971). Absent means
+   * nobody has been told — or, on a row booked before this column existed, that we cannot prove
+   * they were.
+   *
+   * **It exists because control flow cannot answer the question.** Three paths reach confirm and
+   * each knows only its own history: the Stripe webhook, `/book/success` (a public repeatable GET
+   * running the same confirm), and §2.8.9's reconciler. The send was previously gated on a fresh
+   * `booked` outcome, so any failure between the flip committing and the send left the customer
+   * charged, booked and never told, with the redelivery resolving `already` and skipping it
+   * forever.
+   *
+   * **Set by a CLAIM before the send, not a mark after it** — `claimConfirmationSend` writes it
+   * conditionally on it being absent, so of two callers racing (the webhook and `/book/success`
+   * fire seconds apart on every booking) exactly one may send. A send that then fails gives the
+   * claim back. A process that dies between the two leaves it set with nobody told, which is the
+   * residual §2.8.9 reports.
+   */
+  confirmationSentAt?: string;
+  /**
    * How long the hull is committed for this departure, FROZEN from `Offering.holdMinutes` at
    * write time (DEC-161). This is what the row occupies the hull for (§2.8.3). Not the payment
    * window — that is `PAYMENT_WINDOW_MINUTES`, a setting, and confusingly the same word.

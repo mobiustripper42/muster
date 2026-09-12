@@ -65,7 +65,7 @@ function makeDeps(repo: InMemoryRepository, payments = new FakePaymentPort()) {
     repo, payments, now,
     reservationsEnabled: true,
     alertPaidButUnbooked: alert,
-    sendConfirmation: vi.fn(async () => {}),
+    sendConfirmation: vi.fn(async () => true),
     notifyCustomerSoldOut: vi.fn(async () => {}),
   };
   return { deps, alert, payments };

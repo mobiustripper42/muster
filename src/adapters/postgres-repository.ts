@@ -338,6 +338,7 @@ const toReservation = (r: any): Reservation => ({
   ...opt("holdMinutes", r.hold_minutes),
   ...opt("tripMinutes", r.trip_minutes),
   ...opt("invoice", r.booking_invoice),
+  ...opt("confirmationSentAt", r.confirmation_sent_at),
 });
 
 /**
@@ -372,6 +373,7 @@ const RESERVATION_COLUMNS = [
   "hold_minutes",
   "trip_minutes",
   "booking_invoice",
+  "confirmation_sent_at",
 ] as const;
 
 /** The values for `RESERVATION_COLUMNS`, same order. `eventId` overridable — the booking write
@@ -402,6 +404,7 @@ function reservationValues(r: Reservation, eventId: EventId | null = r.eventId):
     r.holdMinutes ?? null,
     r.tripMinutes ?? null,
     r.invoice ?? null,
+    r.confirmationSentAt ?? null,
   ];
 }
 
@@ -1817,6 +1820,31 @@ export class PostgresRepository implements Repository {
         attempt.phone ?? null,
         attempt.waiverConsentAt ?? null,
       ],
+    );
+  }
+
+  async claimConfirmationSend(reservationId: ReservationId, atIso: string): Promise<boolean> {
+    // **The claim is the `where … is null`, and `returning` is how we learn whether we won it.**
+    // One statement, so two callers racing — the signed webhook and `/book/success`, which fire
+    // seconds apart on every ordinary booking — cannot both come back true. The loser gets zero
+    // rows and must not send. A read-then-act version let both send (`@code-review`).
+    const { rowCount } = await this.#pool.query(
+      `update reservations
+          set confirmation_sent_at = $2
+        where id = $1
+          and confirmation_sent_at is null
+        returning id`,
+      [reservationId, atIso],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
+  async releaseConfirmationSend(reservationId: ReservationId): Promise<void> {
+    // Unconditional: only the caller that won the claim calls this, and only when its send did
+    // not happen. Clearing a column already null is a harmless no-op.
+    await this.#pool.query(
+      `update reservations set confirmation_sent_at = null where id = $1`,
+      [reservationId],
     );
   }
 

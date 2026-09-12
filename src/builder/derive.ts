@@ -26,8 +26,10 @@ import {
 
 /**
  * Required seats for a shift, derived by iterating the vessel's manning list.
- * One Open seat per manning unit; zero manning (e.g. a self-captained rental)
- * yields zero seats. Seat ids are deterministic so re-deriving is stable.
+ * One Open seat per manning unit. Seat ids are deterministic so re-deriving is stable.
+ *
+ * A vessel with no manning has none, which `deriveShiftState` below treats as an
+ * error rather than a state — see the note there.
  */
 export function deriveSeats(vessel: Vessel, shiftId: ShiftId): Seat[] {
   return vessel.manning.flatMap((m) =>

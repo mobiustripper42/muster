@@ -65,7 +65,11 @@ describe("deriveSeats", () => {
     expect(new Set(seats.map((s) => s.id)).size).toBe(4);
   });
 
-  it("yields zero seats for a zero-crew vessel (self-captained rental)", () => {
+  // `deriveSeats` stays a pure fold over whatever manning it is handed — it does not
+  // police the invariant. An empty list is refused upstream (`vessel-admin.ts:81`) and
+  // refused downstream (`deriveShiftState` throws); this pins that the fold itself just
+  // returns nothing rather than inventing a seat.
+  it("yields zero seats for an empty manning list", () => {
     expect(deriveSeats(vessel([]), SHIFT)).toHaveLength(0);
   });
 });

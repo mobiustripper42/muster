@@ -757,11 +757,12 @@ One boat, one day; the trips inside it batched; **required seats derived from CO
 1 captain + 1 mate — computed, not hand-entered). *(Correction, DEC-ROLE-1: vessel manning is a
 `{roleTypeId, count}` **list** the seat builder iterates — N lines, not a captain/mate pair.)*
 *(Correction, DEC-016: the "1 captain + 1 mate" figure is illustrative — the real fleet is 4 boats
-needing 2 crew each, and zero-crew rentals are in scope; the count is per-vessel data, 0/1/2/N.)*
-*(Scope of that claim, verified 2026-07-26: zero-crew is in scope **for the deriver** — an empty
-`manning` list yields zero seats and a vacuously `Crewed` shift, tested — but is **excluded at ingest**,
-where both self-captained Duffy resources sit in `EXCLUDED_RESOURCES`. So no zero-crew vessel-day forms
-in production today. The exclusion is deliberate, not a bug.)*
+needing 2 crew each; the count is per-vessel data, 1/2/N.)*
+*(Correction, operator's ruling 2026-08-29: **every vessel has manning.** A shift with no required
+seats is an error, not a state — `deriveShiftState` throws (`src/builder/derive.ts:80`), and #861
+made manning required at the vessel surface. This replaces an earlier note saying zero-crew was in
+scope for the deriver: it never reached production, because both self-captained Duffy resources sit
+in `EXCLUDED_RESOURCES` at ingest, and it is now refused outright rather than merely unreachable.)*
 Per-shift overrides: add a **required** working
 hand (big-pax day — gates `Crewed`); add a **supernumerary/trainee** seat (non-gating, pairing
 rule, **consumes a passenger slot** vs COI max-pax). Derived default is the COI minimum.
@@ -1632,7 +1633,9 @@ preselected.
 
 **Tipping cannot currently be turned off for an offering.** The admin form appears to allow it, but
 checkout falls back to the default tiers when an offering has no tip configuration, so no offering can
-be tip-free. A zero-crew rental is the case that will force this and there are none yet.
+be tip-free. This was previously filed as waiting on a zero-crew rental to force it; there is no such
+vessel and will not be (every vessel has manning — see the manning note above), so the gap stands on
+its own until an offering needs to be tip-free for some other reason.
 
 **Muster charges the full amount at booking** — fare, extras, tax, service fee and gratuity, in one
 payment, with nothing collected later. That whole total is the **amount due now**, frozen with

@@ -245,6 +245,7 @@ Where a competent default does the wrong thing in this repo.
 
 - **`git push` exception to the shell's "environment-changing commands":** the `/kill-this` ritual owns commit + push + PR — that's its job, no separate approval needed for the push inside it.
 - **`@ui-reviewer` is live** — `.claude/ui-context.md` exists and carries the brand tokens, surfaces, viewports and review checklist it hard-stops without. That file (brand tokens, surfaces, viewports, checklist) is authored with the first crew/admin surface.
+- **`.claude/output-styles/one-piece.md` is AHEAD of jig as of 2026-09-12** — being rewritten in place here, because a conversational style can only be evaluated by living in it. `node ../jig/scripts/drift.mjs .` reports it as `differs`; **muster is the newer copy.** Do not sync it down from jig until it has been harvested upstream. This has already gone wrong once the other way: jig's `37012b7` harvested a soundings edit that its own next sync would have silently overwritten, because "differs" reads as "the project is stale" — true for every other `logic` file and false for this one. `docs/AGENTS.md:74` still describes the previous mechanisms (turn-taking, one fact per sentence) and is stale for the same window. Both this line and that row go in the PR that pushes the style to jig.
 
 ### Concurrent lanes
 

@@ -592,6 +592,46 @@ describe("a native booking forms its own crewable shift (#614)", () => {
     expect(seats.map((s) => String(s.role)).sort()).toEqual([String(CAPTAIN), String(MATE)].sort());
   });
 
+  it("lands its shift even when another vessel in the fleet cannot form at all (#957)", async () => {
+    // **This is the app's one job, and it was broken.** The #614 test above proves a booking
+    // forms its shift in a clean fleet. It never had a broken vessel-day present, so it could
+    // not see #957: `formShifts` wrapped its whole group loop in one `try`, and the unmanned
+    // `vessel-xola-only` that `db:seed:xola` wrote aborted the run before most vessel-days were
+    // reached. A trip was sold, paid for, confirmed to the customer — and never reached the
+    // board, because an unrelated boat weeks away had no manning rule. Which bookings lost their
+    // shift was decided by iteration order, not by anything about the booking.
+    const repo = await slotWorld();
+
+    // The unmanned boat, with a scheduled trip so it forms a group, seeded BEFORE the booking.
+    // Groups follow `listEvents()` order, so this one is reached first and the booking's own
+    // vessel-day is downstream of the abort — exactly the shape that lost real shifts.
+    const BROKEN = asId<"VesselId">("vessel-unmanned-614");
+    await repo.saveVessel({ id: BROKEN, name: "Xola Only", coiMaxPax: 10, manning: [] });
+    await repo.saveEvent({
+      id: asId<"EventId">("evt-unmanned-614"),
+      vesselId: BROKEN,
+      date: "2026-08-15",
+      time: "09:00",
+      capacity: 10,
+      source: "xola",
+      status: "scheduled",
+    });
+
+    const { deps } = makeDeps(repo);
+    const r = await processBookingWebhook(deps, slotCharge(), FAKE_SIGNATURE);
+    expect(r).toMatchObject({ handled: true, outcome: "booked" });
+
+    // The whole point: the paid booking has a crewable shift on its own boat and day.
+    const booked = (await repo.listShifts()).find((s) => s.vesselId === VES);
+    expect(booked).toBeTruthy();
+    expect(booked).toMatchObject({ vesselId: VES, date: "2026-07-04" });
+    const seats = await repo.listSeatsForShift(booked!.id);
+    expect(seats.map((s) => String(s.role)).sort()).toEqual([String(CAPTAIN), String(MATE)].sort());
+
+    // The broken boat is still broken — isolated, not silently repaired.
+    expect((await repo.listShifts()).some((s) => s.vesselId === BROKEN)).toBe(false);
+  });
+
   it("relays and audits the re-form's crew transitions — they are NOT gated by notifyTripChanges", async () => {
     // The finding @code-review caught. The first cut discarded `formShifts`'s result, reasoning
     // that a newborn shift has nobody to notify. True of the shift being born, irrelevant to the

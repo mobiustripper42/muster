@@ -72,11 +72,20 @@ export interface WebhookDeps {
    */
   notifyCustomerSoldOut: (charge: SoldOutCharge) => Promise<void>;
   /**
-   * Email + SMS the customer their booking-management link (11.4, DEC-122). Fires ONLY on a
-   * fresh `booked` outcome — never on the idempotent `already` (Stripe redelivers
-   * `checkout.session.completed`; each redelivery resolves to `already`, and re-sending would
-   * re-notify the customer every retry). MUST be best-effort — a confirmation failure never
-   * throws here, so a committed booking never 500s the webhook (which would trigger a retry).
+   * Email + SMS the customer their booking-management link (11.4, §2.8.6).
+   *
+   * **Fires when the ROW says nobody has been told, not on a fresh `booked` outcome** (15.3,
+   * issue #971, DEC-169). It used to be outcome-gated, and the reasoning was sound but the
+   * mechanism was not: avoiding a re-send on every Stripe redelivery is right, inferring it from
+   * "is this delivery the first one" is not. Any failure between the flip committing and the send
+   * left the redelivery resolving `already` and the gate false forever — charged, booked, never
+   * told. `Reservation.confirmationSentAt` is the memory that replaced it.
+   *
+   * MUST be best-effort — a confirmation failure never throws here, so a committed booking never
+   * 500s the webhook (which would trigger a retry).
+   *
+   * The old text credited DEC-122. That record was retired on 2026-08-26 with every ruling
+   * adjudicated dead; the live authority is §2.8.6.
    */
   sendConfirmation: (reservation: Reservation) => Promise<void>;
   /**
@@ -401,7 +410,6 @@ export async function processBookingCharge(
   // `postgres-repository.test.ts`, which is the only place it can be proven.
   if (result.outcome === "booked" || result.outcome === "already") {
     const reservationId = result.reservation.id;
-    await recordPayment(deps, charge, kind, reservationId);
 
     // **Form the shift the booking just earned (#614).** `writeSlotBooking` writes the Event and
     // the Reservation and stops; nothing downstream created a Shift, so a Muster-native booking
@@ -458,16 +466,37 @@ export async function processBookingCharge(
         e,
       );
     }
-    // Confirm ONLY the fresh booking — never the idempotent `already` (a Stripe
-    // redelivery), or the customer gets re-texted on every retry (DEC-122).
-    if (result.outcome === "booked") {
-      // Structurally best-effort: the booking is committed, so a confirmation
-      // failure — from a channel OR from anything upstream in the injected dep —
-      // must never bubble to a 500 (Stripe would retry the whole webhook). The
-      // dep owns surfacing its own failure detail (DEC-122); here we only ensure
-      // it can't break the booking, whatever dep is wired in.
+    // **Gated on the ROW, not on the outcome (15.3, issue #971).**
+    //
+    // This was `if (result.outcome === "booked")`, whose comment read "never the idempotent
+    // `already` … or the customer gets re-texted on every retry". Avoiding the double send was
+    // right; inferring it from the outcome was not. Any failure between the flip committing and
+    // this line made Stripe redeliver, `confirmPendingRow` resolve `already`, and the gate false
+    // FOREVER — charged, booked, never told, nothing alerting.
+    //
+    // The outcome cannot answer "has this customer been told?" because it only describes what
+    // THIS delivery did, and three paths reach here: this webhook, `/book/success` (a public
+    // repeatable GET running the same confirm), and §2.8.9's reconciler. `confirmationSentAt`
+    // answers it for all three.
+    //
+    // Re-read rather than trusting `result.reservation`: on `already` that row was loaded before
+    // this delivery began, and a concurrent delivery may have sent and marked in between. The
+    // re-read is what keeps two simultaneous retries from both sending.
+    const beforeSend = await deps.repo.getReservation(reservationId);
+    if (beforeSend && beforeSend.confirmationSentAt === undefined) {
+      // Structurally best-effort: the booking is committed, so a confirmation failure — from a
+      // channel OR from anything upstream in the injected dep — must never bubble to a 500
+      // (Stripe would retry the whole webhook). The dep owns surfacing its own failure detail;
+      // here we only ensure it can't break the booking, whatever dep is wired in.
+      //
+      // **The mark is inside the `try`, after the send.** Marking first would make a failed send
+      // permanent, which is this defect wearing different clothes. Marking after means a send
+      // whose mark throws produces a second confirmation on the retry — the accepted direction
+      // (operator, 2026-09-12): told twice is annoying, never told is a person who paid for a
+      // boat and has no manage link.
       try {
-        await deps.sendConfirmation(result.reservation);
+        await deps.sendConfirmation(beforeSend);
+        await deps.repo.markConfirmationSent(reservationId, deps.now());
       } catch {
         // swallowed by contract — see above
       }
@@ -504,6 +533,25 @@ export async function processBookingCharge(
         createdAt: deps.now(),
       });
     }
+
+    // **The ledger goes LAST, and it still throws (15.3, DEC-169).**
+    //
+    // It used to run first, immediately after the flip, uncaught — so a Neon blip here 500'd the
+    // webhook before the confirmation was even attempted. The customer had paid, had a boat, and
+    // waited on a Stripe retry to be told.
+    //
+    // Ordering is free because every write after the flip is individually idempotent: `formShifts`
+    // is diff-gated, the confirmation is row-gated as of this task, `saveGratuity` and
+    // `savePayment` are both `on conflict (id) do nothing` on deterministic ids. So the rule is
+    // simply: the people first, the bookkeeping last.
+    //
+    // **Deliberately NOT wrapped.** A throw here is the right outcome — Stripe's three-day
+    // redelivery is the cheapest durable retry available and it is already wired, and
+    // `recordPayment` runs on `already` too, so the retry heals the row. Swallowing it would
+    // trade a self-healing gap for a permanently missing ledger row, and `balanceOwedCents` reads
+    // payments — a missing one makes a paid booking look unpaid.
+    await recordPayment(deps, charge, kind, reservationId);
+
     return { handled: true, outcome: result.outcome };
   }
 

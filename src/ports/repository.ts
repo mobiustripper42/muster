@@ -385,6 +385,25 @@ export interface Repository {
    */
   recordCheckoutAttempt(attempt: Reservation, paymentIntentId: string): Promise<void>;
 
+  /**
+   * Record that this customer has been sent their booking confirmation (15.3, issue #971).
+   *
+   * **First write wins.** An already-set instant is never overwritten, because the question the
+   * column answers is *when were they told*, and the answer is the first time — not the most
+   * recent redelivery that happened to look at it. Idempotent by construction, so a caller may
+   * run it as many times as Stripe retries.
+   *
+   * Called AFTER a successful send, not before. Marking first would make a failed send
+   * permanent, which is the defect this column exists to fix; marking after means a send whose
+   * mark fails can produce a second confirmation on the retry. That direction is deliberate — a
+   * customer told twice is annoyed, a customer never told has paid for a boat and has no manage
+   * link (operator, 2026-09-12).
+   *
+   * Unguarded on `status`, unlike `recordCheckoutAttempt`: by the time anything sends a
+   * confirmation the row is `booked`, and a cancellation afterwards does not un-tell them.
+   */
+  markConfirmationSent(reservationId: ReservationId, atIso: string): Promise<void>;
+
   // ── Refund lease — the refund mutex (#726) ─────────────────────────────────
   /**
    * Claim the exclusive right to refund this reservation, or report that someone else holds it.

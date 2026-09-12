@@ -1480,6 +1480,7 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > **Amended by DEC-163 — 2.8.7 and 2.8.8 exempt a `pending` row whose source is `admin` — no window, never swept**
 > **Amended by DEC-164 — 2.8.4 names `booking_invoice` as the frozen money and keeps anything with a time in it a column**
 > **Amended by DEC-165 — the acceptance criterion 'an imported Xola reservation … still occupies its hull' is restated as a payment-independence rule that outlives the importer**
+> **Amended by DEC-169 — 2.8.6's steps after the flip are ordered — formation and the confirmation precede the payment record — and are idempotent, not transactional**
 <!-- /amended-by-dec -->
 
 > **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
@@ -1758,19 +1759,38 @@ error. It:
 2. **materializes the `Event`** for that trip (2.8.2 left it unwritten), carrying the frozen price,
    capacity, hold minutes and trip time;
 3. moves the reservation to `booked` and fills in its `eventId`;
-4. records the payment, the customer record and the booking code;
-5. **forms the shift for that vessel-day, with trip-change notification on**;
-6. reports `booked`, `already booked`, or `lost`.
+4. **forms the shift for that vessel-day, with trip-change notification on**;
+5. **tells the customer**, unless the reservation already records that they were told;
+6. records the payment, the customer record and the booking code;
+7. reports `booked`, `already booked`, or `lost`.
 
 It is called from **the success page** the customer lands on after paying, **the
 `payment_intent.succeeded` webhook**, and **the reconciler** (2.8.9). All three run the same function.
 Stripe re-delivers events already handled elsewhere, so any second path that writes bookings its own
 way books the same sale twice.
 
-**Step 5 is not optional and is not somebody else's job.** A trip with no shift has no seats, no
-asks and no crew — the boat is sold and nobody is asked to run it. Notification on, because a booking
-onto a day that already carries a crewed shift lengthens somebody's committed day and they have to be
-told.
+**The order after step 3 is people first, bookkeeping last, and that is a rule rather than a
+preference** (DEC-169). Only steps 2 and 3 need the transaction — they arbitrate the hull, which is
+the one thing only the database can arbitrate. Everything after is individually idempotent, so the
+order is free to choose, and what it is chosen for is this: a failure in the bookkeeping must not
+delay telling the customer they have a boat. The payment record went first once, and a database blip
+there meant a paid customer waited on a provider retry to hear anything.
+
+Each step after 3 **still throws rather than swallowing**. The provider's own redelivery is the
+retry, and a step that hides its failure trades a gap that heals for a record that is permanently
+wrong.
+
+**Forming the shift is not optional and is not somebody else's job.** A trip with no shift has no
+seats, no asks and no crew — the boat is sold and nobody is asked to run it. Notification on, because
+a booking onto a day that already carries a crewed shift lengthens somebody's committed day and they
+have to be told.
+
+**Telling the customer is gated on the reservation, never on whether this call is the first one.**
+Three paths run this function and each knows only its own history, so "is this a fresh booking" is
+not the same question as "has this customer been told" — and answering the second with the first is
+how a customer ends up charged, booked and silent. The reservation records when the confirmation was
+sent; absent means not yet, including on a row written before that record existed. A customer told
+twice is the acceptable direction.
 
 **Step 2 is not a plain insert.** A slot's identity is unique per vessel-day-time regardless of status,
 so a previously cancelled booking's row still owns that identity. Inserting over it silently does
@@ -1912,7 +1932,11 @@ balance charge is created. The code path exists and is dormant.
 If deposits return, a balance charge is a payment against a booking that already exists, and it must
 never create or confirm a reservation; 2.8.6's "resolves to no reservation" is what keeps it out. It
 would also need its tax frozen rather than recomputed from live settings at billing time, which the
-freeze rule in 2.8.4 requires and the dormant path does not do.
+freeze rule in 2.8.4 requires and the dormant path does not do. And it would need to stop deriving
+what is owed purely from recorded payments: a booking whose payment record is briefly missing — 2.8.6
+writes it last, and any failure there leaves a gap until the provider retries — currently reads as
+owing the whole fare, so the balance link would bill a paid customer a second time in full. The
+existing chargeback guard does not cover that shape.
 
 **Blocks.** An operator's hold on a boat is its own thing with its own lifetime. It occupies a hull; it
 is not a reservation and does not become one.

@@ -10,6 +10,7 @@ import { asId } from "../domain/ids.js";
 import type { CheckoutCompleted } from "../ports/payment.js";
 import { eventIdForSlot } from "./availability.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
+import { confirmPendingRow } from "./write-booking.js";
 import { balanceOwedCents } from "./payment-config.js";
 
 const EVENT = asId<"EventId">("m-evt-1");
@@ -1056,5 +1057,115 @@ describe("processBookingWebhook — payment_intent.payment_failed is acked and i
 
     expect(r).toMatchObject({ handled: true, outcome: "ignored" });
     expect(alert).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * **A post-commit failure must not lose the confirmation forever (15.3, issue #971).**
+ *
+ * The chain this pins: the flip commits, then something after it throws, so the route 500s and
+ * Stripe redelivers. `confirmPendingRow` correctly resolves `already` on the second delivery —
+ * and the send was gated on `outcome === "booked"`, so it never ran. Not late. Never. The
+ * customer has paid, has a boat, and has no confirmation and no manage link, with nothing
+ * alerting.
+ *
+ * The ledger row is NOT part of this defect and that is worth stating, because it is what made
+ * the fix look bigger than it is: `recordPayment` runs on `already` as well as `booked`
+ * (`booking-webhook.ts:402`) and `savePayment` is `on conflict (id) do nothing` on a
+ * deterministic id, so the payment self-heals on redelivery. Only the send was unrecoverable,
+ * because only the send had no memory.
+ *
+ * `confirmation_sent_at` on the row is that memory. Three different paths reach confirm — this
+ * webhook, `/book/success` (a public repeatable GET), and §2.8.9's future reconciler — and none
+ * of them can know from its own control flow whether a customer has been told. The row can
+ * answer it for all three.
+ */
+describe("processBookingWebhook — a post-commit failure does not lose the confirmation (15.3)", () => {
+  /**
+   * Throws from the PAYMENT write — `recordPayment` at `booking-webhook.ts:404`, which sits after
+   * the flip commits, before the send, and is not caught.
+   *
+   * The gratuity write was the first choice and it does not reproduce: it runs *after*
+   * `sendConfirmation`, so injecting there leaves the confirmation already sent and the test fails
+   * on the wrong assertion. Establishing that is half the value of writing this first — the order
+   * is `recordPayment` → `formShifts` (caught) → `sendConfirmation` → gratuity, so the payment
+   * write is the only uncaught step ahead of the send.
+   *
+   * A `Proxy` rather than `Object.create(repo)`: the double keeps its state in `#private` fields,
+   * which are not reachable through a prototype chain on a different object — the first cut of
+   * this failed with "Cannot read private member #reservations from an object whose class did not
+   * declare it" instead of the error it was trying to inject. Methods are bound to the real
+   * instance so those fields resolve.
+   */
+  const brokenAfterCommit = (repo: InMemoryRepository): InMemoryRepository =>
+    new Proxy(repo, {
+      get(target, prop, receiver) {
+        if (prop === "savePayment") {
+          return async () => {
+            throw new Error("neon asleep");
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+  it("sends the confirmation on a redelivery when the first delivery failed after the commit", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+
+    // Delivery 1: the booking commits, then a write after it throws, so the route 500s.
+    const first = makeDeps(brokenAfterCommit(repo));
+    await expect(
+      processBookingWebhook(first.deps, bookingPi(), FAKE_SIGNATURE),
+    ).rejects.toThrow("neon asleep");
+    const toldOnFirst = first.confirm.mock.calls.length;
+
+    // Delivery 2: Stripe retries into a healthy world. The row is already `booked`.
+    const second = makeDeps(repo);
+    const r = await processBookingWebhook(second.deps, bookingPi(), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "already" });
+    // **Exactly once across BOTH deliveries** — not "on the second one". Which delivery does the
+    // telling is an implementation detail that the reorder changes, and asserting it would bake
+    // today's step order into the test. What must hold is that the customer is told, and not twice.
+    expect(toldOnFirst + second.confirm.mock.calls.length).toBe(1);
+  });
+
+  it("tells the customer when the process died after the flip and before anything else (the residual)", async () => {
+    // The case a reorder cannot reach, and the reason the row needs a memory at all: the flip
+    // commits and the invocation stops — a Vercel timeout, an OOM — so no send was attempted and
+    // no error was thrown either. Stripe redelivers into a row that is already `booked`.
+    //
+    // Simulated by flipping the row directly and then delivering the webhook, which is exactly
+    // the state a dead invocation leaves behind. Nothing about `recordPayment`'s position changes
+    // this one; only `confirmation_sent_at` can distinguish "already told" from "never got there".
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const flip = await confirmPendingRow(repo, { paymentIntentId: PI, priceCents: 50000 }, NOW);
+    expect(flip.outcome).toBe("booked");
+
+    const { deps, confirm } = makeDeps(repo);
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "already" });
+    expect(confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT re-send on an ordinary redelivery of an already-confirmed booking", async () => {
+    // The twin that must stay green, and the reason the gate existed at all: without the row's
+    // memory, "send whenever we see `already`" would text the customer on every Stripe retry.
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+
+    const first = makeDeps(repo);
+    await processBookingWebhook(first.deps, bookingPi(), FAKE_SIGNATURE);
+    expect(first.confirm).toHaveBeenCalledTimes(1);
+
+    const second = makeDeps(repo);
+    const r = await processBookingWebhook(second.deps, bookingPi(), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "already" });
+    expect(second.confirm).not.toHaveBeenCalled();
   });
 });

@@ -338,6 +338,7 @@ const toReservation = (r: any): Reservation => ({
   ...opt("holdMinutes", r.hold_minutes),
   ...opt("tripMinutes", r.trip_minutes),
   ...opt("invoice", r.booking_invoice),
+  ...opt("confirmationSentAt", r.confirmation_sent_at),
 });
 
 /**
@@ -372,6 +373,7 @@ const RESERVATION_COLUMNS = [
   "hold_minutes",
   "trip_minutes",
   "booking_invoice",
+  "confirmation_sent_at",
 ] as const;
 
 /** The values for `RESERVATION_COLUMNS`, same order. `eventId` overridable — the booking write
@@ -402,6 +404,7 @@ function reservationValues(r: Reservation, eventId: EventId | null = r.eventId):
     r.holdMinutes ?? null,
     r.tripMinutes ?? null,
     r.invoice ?? null,
+    r.confirmationSentAt ?? null,
   ];
 }
 
@@ -1817,6 +1820,18 @@ export class PostgresRepository implements Repository {
         attempt.phone ?? null,
         attempt.waiverConsentAt ?? null,
       ],
+    );
+  }
+
+  async markConfirmationSent(reservationId: ReservationId, atIso: string): Promise<void> {
+    // `coalesce` is the first-write-wins rule: an instant already recorded is the one that
+    // happened, and a later redelivery must not restamp it. That also makes this idempotent, so
+    // the caller can run it on every Stripe retry without branching.
+    await this.#pool.query(
+      `update reservations
+          set confirmation_sent_at = coalesce(confirmation_sent_at, $2)
+        where id = $1`,
+      [reservationId, atIso],
     );
   }
 

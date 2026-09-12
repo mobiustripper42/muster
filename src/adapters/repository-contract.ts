@@ -931,6 +931,47 @@ export function runRepositoryContract(
       expect(got.paymentIntentIds).toEqual(["pi_declined", "pi_late"]);
     });
 
+    // ── markConfirmationSent — the row remembers who was told (15.3, issue #971) ──
+    // The send is gated on this column rather than on a fresh `booked` outcome, because three
+    // paths reach confirm — the webhook, `/book/success`, and §2.8.9's reconciler — and none can
+    // know from its own control flow whether a customer has been told.
+    it("markConfirmationSent: records the instant, and FIRST write wins", async () => {
+      await repo.saveReservation(pendingRow({ status: "booked" }));
+      expect((await repo.getReservation(rid("pend-1")))!.confirmationSentAt).toBeUndefined();
+
+      await repo.markConfirmationSent(rid("pend-1"), "2026-06-01T12:00:00.000Z");
+      expect((await repo.getReservation(rid("pend-1")))!.confirmationSentAt).toBe(
+        "2026-06-01T12:00:00.000Z",
+      );
+
+      // A redelivery must not restamp it: the question is WHEN they were told, and the answer is
+      // the first time. Postgres says this with `coalesce`, the double with an early return, and
+      // this case is what keeps those two from drifting.
+      await repo.markConfirmationSent(rid("pend-1"), "2026-06-01T18:00:00.000Z");
+      expect((await repo.getReservation(rid("pend-1")))!.confirmationSentAt).toBe(
+        "2026-06-01T12:00:00.000Z",
+      );
+    });
+
+    it("markConfirmationSent: an unknown id is a no-op, not a throw", async () => {
+      // A confirmation for a row that is gone is not a crash — it is nothing to do. Throwing here
+      // would 500 a webhook over a booking that no longer exists.
+      await expect(repo.markConfirmationSent(rid("pend-nope"), NOW)).resolves.toBeUndefined();
+    });
+
+    it("reservations: confirmationSentAt round-trips, and is absent on a row that predates it", async () => {
+      await repo.saveReservation(
+        pendingRow({ id: rid("pend-told"), confirmationSentAt: "2026-06-01T12:00:00.000Z" }),
+      );
+      expect((await repo.getReservation(rid("pend-told")))!.confirmationSentAt).toBe(
+        "2026-06-01T12:00:00.000Z",
+      );
+      // Absent means "we cannot prove they were told", which the send treats as "not yet" — the
+      // migration deliberately does not backfill.
+      await repo.saveReservation(pendingRow({ id: rid("pend-untold") }));
+      expect((await repo.getReservation(rid("pend-untold")))!.confirmationSentAt).toBeUndefined();
+    });
+
     it("savePendingIfHullFree: writes the row on a free hull-day — pending, no Event (§2.8.2)", async () => {
       const res = await repo.savePendingIfHullFree(pendingRow(), SINCE);
       expect(res.result).toBe("won");

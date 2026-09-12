@@ -1,0 +1,28 @@
+-- 15.3 / issue #971 — the row remembers whether the customer was told.
+--
+-- The defect: `sendConfirmation` was gated on `outcome === "booked"`, so any failure between the
+-- flip committing and the send meant Stripe redelivered, `confirmPendingRow` resolved `already`,
+-- and that gate was false forever. Charged, booked, never told, nothing alerting.
+--
+-- Control flow cannot answer "has this customer been told?", because three different paths reach
+-- confirm and each knows only its own history: this webhook, `/book/success` (a public,
+-- repeatable GET running the same `processBookingCharge`), and §2.8.9's future reconciler. The
+-- row can answer it for all three, which is why this is a column and not a branch.
+--
+-- Nullable with no default and no backfill, deliberately. Rows booked before this deploy read
+-- NULL, which means "we do not know" — and the honest handling of that is the same as "not yet
+-- told", so a redelivery for an old booking may send a second confirmation. That is the accepted
+-- trade (operator, 2026-09-12): a customer told twice is annoyed, a customer never told has paid
+-- for a boat and has no manage link. Backfilling `now()` would assert we told people we cannot
+-- prove we told.
+--
+-- A timestamp rather than a boolean: the day someone says nobody contacted them, "when" is the
+-- question, and a boolean cannot answer it.
+-- **`text`, not `timestamptz`** — house style, same as `reserved_at` two migrations back ("ISO-8601
+-- UTC, house style"). The contract case caught the first cut of this: `pg` hydrates a `timestamptz`
+-- into a JS `Date` while the in-memory double holds the string it was given, so
+-- `expected 2026-06-01T12:00:00.000Z to be '2026-06-01T12:00:00.000Z'` — two adapters disagreeing
+-- about a type while agreeing about a value, which is exactly what DEC-020's identical-contract
+-- rule exists to surface. Every timestamp in this schema is written by `toISOString()`, so text
+-- round-trips verbatim and compares lexicographically in the right order.
+alter table reservations add column confirmation_sent_at text;

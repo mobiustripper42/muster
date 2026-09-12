@@ -70,9 +70,14 @@ export function bookingConfirmationBody(
 
 /**
  * Email + SMS the customer their confirmation. Best-effort per channel; never
- * throws. Call ONLY on a fresh `booked` outcome (never on an idempotent `already`
- * — Stripe redeliveries resolve to `already`, and re-sending would re-text the
- * customer on every retry; DEC-122).
+ * throws. **The caller decides whether to call it, and must gate on
+ * `Reservation.confirmationSentAt`** — not on a fresh `booked` outcome (15.3, issue #971,
+ * DEC-169). This function has no memory of its own and never did; the old instruction to gate on
+ * the outcome was what made a post-commit failure lose the confirmation permanently, because a
+ * Stripe redelivery resolves to `already` and that gate was then false forever.
+ *
+ * The old text credited DEC-122, which was retired on 2026-08-26 with every ruling adjudicated
+ * dead. The live authority is §2.8.6.
  */
 export async function sendBookingConfirmation(
   deps: ConfirmationDeps,

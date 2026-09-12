@@ -798,6 +798,15 @@ export class InMemoryRepository implements Repository {
     this.#reservations.set(attempt.id, clone(next));
   }
 
+  async markConfirmationSent(reservationId: ReservationId, atIso: string): Promise<void> {
+    const row = this.#reservations.get(reservationId);
+    if (!row) return;
+    // First write wins, matching Postgres's `coalesce` — the instant already recorded is the one
+    // that happened, and a redelivery must not restamp it.
+    if (row.confirmationSentAt !== undefined) return;
+    this.#reservations.set(reservationId, clone({ ...row, confirmationSentAt: atIso }));
+  }
+
   // ── Refund lease (#726) ───────────────────────────────────────────────────
   // Lazy expiry against the caller's `nowIso`, then a presence check. The double enforces this one (unlike the phone/display-code uniques it
   // deliberately ignores) because the RESULT is semantic — `refundReservation` branches on

@@ -203,6 +203,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-164 — The frozen money is one value on our own row
 - DEC-165 — Occupancy never reads a payment row
 - DEC-168 — The booking charge is a raw PaymentIntent, not a Checkout Session
+- DEC-169 — The ledger write is last and idempotent, not in the booking transaction
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred

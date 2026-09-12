@@ -56,7 +56,7 @@ const musterEvent = (over: Partial<Event> = {}): Event => ({
 
 function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort) {
   const alert = vi.fn(async (_m: string) => {});
-  const confirm = vi.fn(async (_r: unknown) => {});
+  const confirm = vi.fn(async (_r: unknown) => true);
   const soldOut = vi.fn(async (_c: unknown) => {});
   const deps: WebhookDeps = {
     repo,

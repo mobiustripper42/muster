@@ -42,6 +42,22 @@ async function seedDay(
 const ids = (arr?: readonly string[]) => (arr ?? []).map(String).sort();
 
 describe("splitShift (DEC-083)", () => {
+  it("throws when the re-form could not form the day it just cut (#957)", async () => {
+    // #957 made `formShifts` record a failed vessel-day on `FormResult.failures` instead of
+    // throwing, which is right for the fleet-wide callers and wrong for this one. `splitShift`
+    // writes `splitCutTime` BEFORE the re-form, so a re-form that skips this day leaves the cut
+    // persisted and no `-b` row — and `splitAction` reports `split_ok=1` because nothing threw.
+    // The operator is told the split worked while the board still shows one shift.
+    const repo = await seedDay();
+    // The vessel loses its manning rule between the board loading and Split being pressed —
+    // `deriveShiftState` throws on zero required seats (#582). `splitShift`'s own validation
+    // reads events, not manning, so it gets all the way to the re-form.
+    const v = await repo.getVessel(PARTY);
+    await repo.saveVessel({ ...v!, manning: [] });
+
+    await expect(splitShift(repo, CANON, "14:00")).rejects.toThrow(/could not be re-formed/i);
+  });
+
   it("splits a vessel-day into side A (before the cut) + side B (`-b`, at/after)", async () => {
     const repo = await seedDay();
     await splitShift(repo, CANON, "14:00");

@@ -22,7 +22,7 @@
  * (`refund-payment.ts`) against a figure they can edit; `quoteCancelRefund` below only computes
  * what the published terms suggest, for the confirm screen to prefill.
  */
-import { formShifts, PartialFormError, type FormResult } from "../builder/form-shifts.js";
+import { formShifts, type FormResult } from "../builder/form-shifts.js";
 import { logFormAudit } from "../oracle/audit-log.js";
 import { eventIdOfBooked, isBooked } from "../domain/entities.js";
 import type { CancelledBy, Payment } from "../domain/entities.js";
@@ -177,6 +177,15 @@ export async function cancelReservation(
       now: new Date(deps.now()),
       notifyTripChanges: true,
     });
+    // #957: a vessel-day that cannot derive no longer ends the run — it lands here, and every
+    // other vessel-day still formed. These days now have no shift, or a stale one, so somebody
+    // has to look. A log line is not somebody looking; raising it to a person is #1001.
+    if (form.failures.length > 0) {
+      console.error(
+        `[reservations] cancel ${reservationId}: ${form.failures.length} vessel-day(s) failed to form`,
+        form.failures.map((f) => ({ vesselId: f.vesselId, date: f.date, error: String(f.error) })),
+      );
+    }
     try {
       await deps.relayFormNotices?.(form);
     } catch (e) {
@@ -190,26 +199,16 @@ export async function cancelReservation(
       console.error("[reservations] cancel: form audit failed — the transition is unrecorded", e);
     }
   } catch (e) {
-    // The tick re-forms the SHIFTS, not the notices (#766) — the partial run's rows are durable,
-    // so the next run sees no diff and stays silent. This is the only chance these get relayed.
-    if (e instanceof PartialFormError) {
-      try {
-        await deps.relayFormNotices?.(e.partial);
-      } catch (relayErr) {
-        console.error("[reservations] cancel: partial-run notice relay failed", relayErr);
-      }
-      try {
-        // Both legs, matching the success path above and the webhook's `relayAndAudit` — DEC-118
-        // wants every crew transition in `audit_events`, and a partial run's are as durable as a
-        // complete one's. Relaying without auditing tells a crew member their day moved and
-        // leaves no record that it did.
-        await logFormAudit(deps.repo, e.partial, { kind: "engine" }, new Date(deps.now()));
-      } catch (auditErr) {
-        console.error("[reservations] cancel: partial-run audit failed", auditErr);
-      }
-    }
+    // Since #957 only a failure OUTSIDE the per-vessel-day loop reaches here — reading the event
+    // or shift set, not deriving any one day. Nothing formed, so there is nothing to relay or
+    // audit, and the old `PartialFormError` branch that did both has no case left to serve.
+    //
+    // The message no longer promises "the tick will re-form the shifts." That was false when it
+    // was written (#766: the failed run's rows are durable, so the next tick sees no diff and
+    // stays silent) and it is false now for a different reason — the tick calls this same
+    // function and fails the same way on the same unreadable repo.
     console.error(
-      `[reservations] formShifts after cancelling ${reservationId} failed — the tick will re-form the shifts`,
+      `[reservations] formShifts after cancelling ${reservationId} failed before forming anything`,
       e,
     );
   }

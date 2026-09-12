@@ -98,6 +98,51 @@ export interface FormResult {
     startBefore: string | null;
     startAfter: string | null;
   }[];
+  /**
+   * #957: vessel-days that could not be formed, one entry each. Every OTHER group in
+   * the same run still formed — that is the point of the field existing.
+   *
+   * **Why this replaced a throw.** The loop used to sit inside one `try`, so the first
+   * underivable vessel-day ended the run and every group ordered after it was skipped.
+   * A vessel with no manning rule six weeks out therefore cost a paid booking its crew
+   * shift, and which bookings lost one was decided by iteration order rather than by
+   * anything about the booking. One bad hull-day is now a row here, not a fleet outage.
+   *
+   * A non-empty `failures` means somebody has to look: these vessel-days have no shift,
+   * or a stale one. Surfacing that to a person is #1001 — this field is what it reads.
+   *
+   * **Read the shape, not just the count.** Isolation turns a systemic failure into N entries
+   * rather than one abort: if the repo connection is down, every group fails the same way and
+   * this comes back with one row per vessel-day in the fleet. Many entries carrying the SAME
+   * error is one outage, not N data problems, and #1001 should say so rather than fan out that
+   * many leads. A handful of distinct errors is the case this field was built for.
+   */
+  failures: { vesselId: VesselId; date: string; error: unknown }[];
+}
+
+/**
+ * Throw if `form` failed to form the one vessel-day the caller was acting on (#957).
+ *
+ * **Why this exists.** `formShifts` re-derives the WHOLE fleet, so its callers divide into two
+ * kinds, and per-group isolation is right for one and wrong for the other. The fleet-wide callers
+ * — the booking webhook, cancel, the cron tick, the Xola pull — want every healthy vessel-day
+ * formed and a list of the ones that weren't; that is the whole point of #957. But the operator
+ * commands (`splitShift`, `mergeShift`) re-form the fleet to act on ONE day, and they report
+ * success to a person. Those two used to inherit "abort loudly" for free from the old whole-loop
+ * `try`; isolation removes it, and removing it silently is how `split_ok=1` appears over a day
+ * that never split. They have to ask explicitly, which is this.
+ *
+ * The distinction is not "which module" — it is whether the caller makes a claim about one
+ * vessel-day. A new caller that does must call this; one that reports counts must not.
+ */
+export function assertDayFormed(form: FormResult, vesselId: VesselId, date: string): void {
+  const failure = form.failures.find((f) => f.vesselId === vesselId && f.date === date);
+  if (failure) {
+    throw new Error(
+      `Vessel-day ${vesselId} ${date} could not be re-formed: ${String(failure.error)}`,
+      { cause: failure.error },
+    );
+  }
 }
 
 /**
@@ -107,27 +152,12 @@ export interface FormResult {
  * backward-compatible with callers that don't carry a clock.
  */
 /**
- * A `formShifts` run that failed partway, carrying what it had already worked out (#766).
- *
- * **Why the partial result has to escape.** The loop below saves each vessel-day as it goes and
- * returns its notices at the end. A throw on a later group used to discard the whole in-memory
- * result — including `changedCrew` entries for groups that had already succeeded and whose shift
- * rows are durable. The tick's re-form is not a backstop for that: it reads the trip set the
- * failed run already wrote, sees no diff, and stays silent. The notice was not delayed, it was
- * gone, and a crew member never learned their day changed.
- *
- * `cause` is the original failure, unswallowed — a caller still needs to know the run broke.
+ * `PartialFormError` lived here until #957. It carried the partial result out of a run that
+ * threw (#766) — which was right about the problem and wrong about the remedy: the notices
+ * already computed do have to survive, but so does the rest of the fleet. Per-group isolation
+ * gives both, so the run always returns a complete `FormResult` and the failures ride on
+ * `FormResult.failures` instead of on an exception. Nothing throws for a bad vessel-day now.
  */
-export class PartialFormError extends Error {
-  readonly partial: FormResult;
-  override readonly cause: unknown;
-  constructor(cause: unknown, partial: FormResult) {
-    super(`formShifts failed partway through: ${String(cause)}`);
-    this.name = "PartialFormError";
-    this.cause = cause;
-    this.partial = partial;
-  }
-}
 
 // REFACTOR QUEUE — cognitive complexity 99, against a ceiling of 40 (#909).
 // Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
@@ -170,14 +200,21 @@ export async function formShifts(
     cancelledCrew: [],
     restoredCrew: [],
     changedCrew: [],
+    failures: [],
   };
 
-  // Wrapped so a throw carries `result` out rather than discarding it (#766). Deliberately the
-  // whole loop and nothing finer: the notices are pushed onto `result` as each group completes,
-  // so whatever is on it at the moment of the throw is exactly the set that is safe to relay.
-  try {
   for (const g of groups.values()) {
     const { vesselId, date } = g;
+    // #957: one vessel-day, one attempt. The `try` used to wrap the whole loop, so the first
+    // group that threw took every group after it with it — and group order is insertion order
+    // over `listEvents()`, which is unrelated to anything a caller cares about. Per group, the
+    // notices already pushed onto `result` still survive (#766's actual requirement) and the
+    // rest of the fleet still forms.
+    //
+    // The body below is deliberately NOT re-indented under this `try`, matching what #766 did
+    // with the outer one. Reindenting ~140 lines to add a wrapper buries four real changes in a
+    // whitespace diff, and there is no formatter in `verify` that would do it for us anyway.
+    try {
     const canonicalId = asId<"ShiftId">(`shift-${vesselId}-${date}`);
     const scheduled = g.events.filter((e) => e.status === "scheduled");
     const canonical = await repo.getShift(canonicalId);
@@ -319,9 +356,13 @@ export async function formShifts(
         });
       }
     }
-  }
-  } catch (e) {
-    throw new PartialFormError(e, result);
+    } catch (e) {
+      // Recorded, never rethrown: the caller gets a complete run plus the list of what
+      // it could not do. Whatever this group wrote before throwing stays written, the
+      // same as it did when the throw escaped — the difference is that the next group
+      // now gets its turn.
+      result.failures.push({ vesselId, date, error: e });
+    }
   }
 
   return result;

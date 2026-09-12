@@ -7,7 +7,7 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { Event, Seat } from "../domain/entities.js";
 import { BREWBOAT_TENANT, seedFleet } from "../import/resource-map.js";
-import { formShifts, PartialFormError } from "./form-shifts.js";
+import { formShifts } from "./form-shifts.js";
 
 const PARTY = asId<"VesselId">("vessel-brew-2"); // 2-crew (captain+mate), seeded by the fleet
 // Seeded manually — Duffys aren't in the crewed fleet's `RESOURCE_MAP`. It used to
@@ -16,6 +16,10 @@ const PARTY = asId<"VesselId">("vessel-brew-2"); // 2-crew (captain+mate), seede
 // checking it out, so it gets a dock-hand.
 const DUFFY = asId<"VesselId">("vessel-duffy-rental");
 const DOCKHAND = asId<"RoleTypeId">("role-dockhand");
+// A vessel that cannot derive at all: `deriveShiftState` throws on zero required
+// seats (#582), and `saveVessel` does not enforce the `crew_required` guard that
+// `vessel-admin.ts` applies — which is how `seed-xola.ts` produced a live one (#957).
+const UNMANNED = asId<"VesselId">("vessel-unmanned");
 
 const event = (id: string, vesselId: typeof PARTY, date: string, time: string): Event => ({
   id: asId<"EventId">(id),
@@ -71,6 +75,28 @@ describe("formShifts", () => {
     expect(seats).toHaveLength(1);
     expect(seats[0]?.role).toBe(DOCKHAND);
     expect(duffy?.state).toBe("Pending");
+  });
+
+  it("forms every other vessel-day when one cannot form at all (#957)", async () => {
+    // The defect: `formShifts` wrapped the WHOLE group loop in one try, so a single
+    // underivable vessel-day aborted the run and every group ordered after it was
+    // skipped. A paid booking six weeks earlier got no shift because an unrelated
+    // boat had no manning rule. Seeded FIRST so it is the first group the loop
+    // reaches — failing on the last group would prove nothing about isolation.
+    const repo = new InMemoryRepository();
+    await repo.saveVessel({ id: UNMANNED, name: "Unmanned", coiMaxPax: 6, manning: [] });
+    await repo.saveEvent(event("e0", UNMANNED, "2026-05-15", "10:00"));
+    await seedEvents(repo);
+
+    const result = await formShifts(repo);
+
+    // The bad day is reported on the result, not thrown out of the function.
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]).toMatchObject({ vesselId: UNMANNED, date: "2026-05-15" });
+    // ...and every healthy vessel-day still formed: party 05-16, party 05-17, duffy 06-27.
+    expect(result.shiftsCreated).toBe(3);
+    expect(await repo.getShift(asId(`shift-${PARTY}-2026-05-16`))).toBeTruthy();
+    expect(await repo.getShift(asId(`shift-${DUFFY}-2026-06-27`))).toBeTruthy();
   });
 
   it("is idempotent — re-form preserves a Confirmed seat and does not duplicate", async () => {
@@ -259,21 +285,20 @@ describe("formShifts — reconciliation (#20)", () => {
       return realSaveShift(shift);
     };
 
-    const err = await formShifts(repo, { notifyTripChanges: true }).then(
-      () => null,
-      (e: unknown) => e,
-    );
+    // #957 changed how this arrives, not whether it does: the run no longer throws, so the
+    // notices come back on a complete `FormResult` rather than on a `PartialFormError`.
+    const result = await formShifts(repo, { notifyTripChanges: true });
 
-    expect(err).toBeInstanceOf(PartialFormError);
-    const partial = (err as PartialFormError).partial;
-    // The point of the whole change: the notice survives the throw.
-    expect(partial.changedCrew).toHaveLength(1);
-    expect(partial.changedCrew[0]).toMatchObject({
+    // The point of #766, unchanged: the notice survives a failure elsewhere in the run.
+    expect(result.changedCrew).toHaveLength(1);
+    expect(result.changedCrew[0]).toMatchObject({
       shiftId: day1,
       crewMemberId: asId<"CrewMemberId">("cap"),
     });
-    // The original failure is not swallowed — a caller still learns the run broke, and why.
-    expect((err as PartialFormError).cause).toBe(boom);
+    // The original failure is not swallowed — a caller still learns which day broke, and why.
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]).toMatchObject({ vesselId: DUFFY, date: "2026-06-27" });
+    expect(result.failures[0]?.error).toBe(boom);
   });
 
   it("reports changed crew when a trip is added to a surviving shift (#350), transition-only", async () => {

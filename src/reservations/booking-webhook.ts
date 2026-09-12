@@ -24,7 +24,7 @@
  * LOUDLY ALERTS ALL ADMINS to refund manually. Refunds are always manual (Stripe dashboard)
  * except the DEC-109 residual-race auto-refund. Provider-agnostic + `FakePaymentPort`-testable.
  */
-import { formShifts, PartialFormError, type FormResult } from "../builder/form-shifts.js";
+import { formShifts, type FormResult } from "../builder/form-shifts.js";
 import { confirmBookingFromIntent } from "./confirm-booking.js";
 import { logFormAudit } from "../oracle/audit-log.js";
 import { eventIdOfBooked, isBooked } from "../domain/entities.js";
@@ -448,13 +448,26 @@ export async function processBookingCharge(
         notifyTripChanges: true,
       });
       await relayAndAudit(deps, form);
+      // #957: this is the bug's own site. One unmanned vessel six weeks out used to abort the
+      // whole run, so this booking's own vessel-day never formed — sold, paid, no crew, no row
+      // on the board. Those days now land here while every other vessel-day still forms. They
+      // still have no shift, so somebody has to look; making that reach a person is #1001.
+      if (form.failures.length > 0) {
+        console.error(
+          `[reservations] booking ${reservationId}: ${form.failures.length} vessel-day(s) failed to form`,
+          form.failures.map((f) => ({ vesselId: f.vesselId, date: f.date, error: String(f.error) })),
+        );
+      }
     } catch (e) {
-      // "The tick will re-form" is true of the shifts and FALSE of the notices (#766): the
-      // partial run's shift rows are durable, so the next tick sees no diff and says nothing.
-      // Relay what it worked out before giving up on the rest.
-      if (e instanceof PartialFormError) await relayAndAudit(deps, e.partial);
+      // Since #957 only a failure OUTSIDE the per-vessel-day loop reaches here — reading the
+      // event or shift set, not deriving any one day. Nothing formed, so there is nothing to
+      // relay, and the `PartialFormError` branch that used to relay it has no case left.
+      //
+      // The message no longer promises the tick will re-form. It was false about the notices
+      // when written (#766), and it is false about the shifts too: the tick calls this same
+      // function against this same repo and fails the same way.
       console.error(
-        `[reservations] formShifts after booking ${reservationId} failed - the tick will re-form the shifts, notices above were relayed`,
+        `[reservations] formShifts after booking ${reservationId} failed before forming anything`,
         e,
       );
     }

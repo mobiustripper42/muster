@@ -1776,9 +1776,12 @@ order is free to choose, and what it is chosen for is this: a failure in the boo
 delay telling the customer they have a boat. The payment record went first once, and a database blip
 there meant a paid customer waited on a provider retry to hear anything.
 
-Each step after 3 **still throws rather than swallowing**. The provider's own redelivery is the
-retry, and a step that hides its failure trades a gap that heals for a record that is permanently
-wrong.
+**The payment record throws rather than swallowing.** The provider's own redelivery is the retry,
+and hiding that failure would trade a gap that heals for a record that is permanently wrong.
+Formation and the confirmation are the opposite — both are best-effort and neither may bubble,
+because the boat is already sold and a notification failure must not unmake a booking. The
+difference is whether a retry can fix it: the ledger heals on redelivery, a text nobody received
+does not.
 
 **Forming the shift is not optional and is not somebody else's job.** A trip with no shift has no
 seats, no asks and no crew — the boat is sold and nobody is asked to run it. Notification on, because
@@ -1788,9 +1791,14 @@ have to be told.
 **Telling the customer is gated on the reservation, never on whether this call is the first one.**
 Three paths run this function and each knows only its own history, so "is this a fresh booking" is
 not the same question as "has this customer been told" — and answering the second with the first is
-how a customer ends up charged, booked and silent. The reservation records when the confirmation was
-sent; absent means not yet, including on a row written before that record existed. A customer told
-twice is the acceptable direction.
+how a customer ends up charged, booked and silent.
+
+The reservation records when the confirmation was sent, and a sender **claims** that record rather
+than reading it: one conditional write, so of several callers racing for one booking exactly one may
+send. Reading it and then sending is not enough, because the success page and the webhook arrive
+seconds apart on every ordinary booking and would both pass the read. A sender whose send then fails
+gives the claim back. Absent means not yet, including on a row written before the record existed,
+and a customer told twice is the acceptable direction.
 
 **Step 2 is not a plain insert.** A slot's identity is unique per vessel-day-time regardless of status,
 so a previously cancelled booking's row still owns that identity. Inserting over it silently does

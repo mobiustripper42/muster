@@ -1823,15 +1823,28 @@ export class PostgresRepository implements Repository {
     );
   }
 
-  async markConfirmationSent(reservationId: ReservationId, atIso: string): Promise<void> {
-    // `coalesce` is the first-write-wins rule: an instant already recorded is the one that
-    // happened, and a later redelivery must not restamp it. That also makes this idempotent, so
-    // the caller can run it on every Stripe retry without branching.
-    await this.#pool.query(
+  async claimConfirmationSend(reservationId: ReservationId, atIso: string): Promise<boolean> {
+    // **The claim is the `where … is null`, and `returning` is how we learn whether we won it.**
+    // One statement, so two callers racing — the signed webhook and `/book/success`, which fire
+    // seconds apart on every ordinary booking — cannot both come back true. The loser gets zero
+    // rows and must not send. A read-then-act version let both send (`@code-review`).
+    const { rowCount } = await this.#pool.query(
       `update reservations
-          set confirmation_sent_at = coalesce(confirmation_sent_at, $2)
-        where id = $1`,
+          set confirmation_sent_at = $2
+        where id = $1
+          and confirmation_sent_at is null
+        returning id`,
       [reservationId, atIso],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
+  async releaseConfirmationSend(reservationId: ReservationId): Promise<void> {
+    // Unconditional: only the caller that won the claim calls this, and only when its send did
+    // not happen. Clearing a column already null is a harmless no-op.
+    await this.#pool.query(
+      `update reservations set confirmation_sent_at = null where id = $1`,
+      [reservationId],
     );
   }
 

@@ -1085,11 +1085,17 @@ describe("processBookingWebhook — a post-commit failure does not lose the conf
    * Throws from the PAYMENT write — `recordPayment` at `booking-webhook.ts:404`, which sits after
    * the flip commits, before the send, and is not caught.
    *
-   * The gratuity write was the first choice and it does not reproduce: it runs *after*
-   * `sendConfirmation`, so injecting there leaves the confirmation already sent and the test fails
-   * on the wrong assertion. Establishing that is half the value of writing this first — the order
-   * is `recordPayment` → `formShifts` (caught) → `sendConfirmation` → gratuity, so the payment
-   * write is the only uncaught step ahead of the send.
+   * **The title says what this proves, and it is narrower than it looks** (`@code-review`). After
+   * 15.3's reorder the ledger write runs LAST, so nothing uncaught sits ahead of the send any
+   * more — the confirmation goes out on delivery 1 and the throw comes after it. So this is not
+   * "the redelivery recovers a lost send"; it is "a bookkeeping failure cannot cost the customer
+   * their confirmation, and the retry it causes does not produce a second one."
+   *
+   * It still bites against the pre-fix code, which is the point: there, `recordPayment` ran first
+   * and threw before the send was attempted, so the count across both deliveries was zero.
+   *
+   * The case where a send genuinely never happens is the next test — process death after the
+   * flip, which no ordering can reach.
    *
    * A `Proxy` rather than `Object.create(repo)`: the double keeps its state in `#private` fields,
    * which are not reachable through a prototype chain on a different object — the first cut of
@@ -1110,7 +1116,7 @@ describe("processBookingWebhook — a post-commit failure does not lose the conf
       },
     });
 
-  it("sends the confirmation on a redelivery when the first delivery failed after the commit", async () => {
+  it("still tells the customer when the bookkeeping fails, exactly once across both deliveries", async () => {
     const repo = new InMemoryRepository();
     await seedPending(repo);
 

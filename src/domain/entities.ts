@@ -780,8 +780,11 @@ export interface Reservation {
    * charged, booked and never told, with the redelivery resolving `already` and skipping it
    * forever.
    *
-   * Absent is treated as "not yet told", so a redelivery may send a second confirmation rather
-   * than risk sending none. That direction is the deliberate one.
+   * **Set by a CLAIM before the send, not a mark after it** — `claimConfirmationSend` writes it
+   * conditionally on it being absent, so of two callers racing (the webhook and `/book/success`
+   * fire seconds apart on every booking) exactly one may send. A send that then fails gives the
+   * claim back. A process that dies between the two leaves it set with nobody told, which is the
+   * residual §2.8.9 reports.
    */
   confirmationSentAt?: string;
   /**

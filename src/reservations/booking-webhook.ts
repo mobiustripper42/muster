@@ -466,39 +466,39 @@ export async function processBookingCharge(
         e,
       );
     }
-    // **Gated on the ROW, not on the outcome (15.3, issue #971).**
+    // **A CLAIM on the row, not a check of it (15.3, issue #971).**
     //
     // This was `if (result.outcome === "booked")`, whose comment read "never the idempotent
     // `already` … or the customer gets re-texted on every retry". Avoiding the double send was
     // right; inferring it from the outcome was not. Any failure between the flip committing and
-    // this line made Stripe redeliver, `confirmPendingRow` resolve `already`, and the gate false
-    // FOREVER — charged, booked, never told, nothing alerting.
+    // this line made the provider redeliver, `confirmPendingRow` resolve `already`, and the gate
+    // false FOREVER — charged, booked, never told, nothing alerting.
     //
-    // The outcome cannot answer "has this customer been told?" because it only describes what
+    // The outcome cannot answer "has this customer been told?", because it describes only what
     // THIS delivery did, and three paths reach here: this webhook, `/book/success` (a public
-    // repeatable GET running the same confirm), and §2.8.9's reconciler. `confirmationSentAt`
-    // answers it for all three.
+    // repeatable GET running the same confirm), and §2.8.9's reconciler.
     //
-    // Re-read rather than trusting `result.reservation`: on `already` that row was loaded before
-    // this delivery began, and a concurrent delivery may have sent and marked in between. The
-    // re-read is what keeps two simultaneous retries from both sending.
-    const beforeSend = await deps.repo.getReservation(reservationId);
-    if (beforeSend && beforeSend.confirmationSentAt === undefined) {
+    // **But a read-then-send is not enough either, and the first cut of this got that wrong.**
+    // The webhook and `/book/success` race for every ordinary booking — seconds apart, by design
+    // — so both could read "nobody told" before either wrote, and both would send. The gate this
+    // replaced could not do that: `outcome === "booked"` was true only for the caller that won
+    // the atomic flip. `claimConfirmationSend` restores that guarantee at the send instead of the
+    // flip: one conditional statement, one winner.
+    //
+    // **Claim, send, release on failure.** Releasing matters — a claim held over a send that
+    // never happened records a confirmation nobody received, which is this defect in better
+    // clothes. What release cannot cover is the process dying between the two; that window is
+    // milliseconds where the old one was the whole downstream block.
+    if (await deps.repo.claimConfirmationSend(reservationId, deps.now())) {
       // Structurally best-effort: the booking is committed, so a confirmation failure — from a
-      // channel OR from anything upstream in the injected dep — must never bubble to a 500
-      // (Stripe would retry the whole webhook). The dep owns surfacing its own failure detail;
-      // here we only ensure it can't break the booking, whatever dep is wired in.
-      //
-      // **The mark is inside the `try`, after the send.** Marking first would make a failed send
-      // permanent, which is this defect wearing different clothes. Marking after means a send
-      // whose mark throws produces a second confirmation on the retry — the accepted direction
-      // (operator, 2026-09-12): told twice is annoying, never told is a person who paid for a
-      // boat and has no manage link.
+      // channel OR from anything upstream in the injected dep — must never bubble to a 500 (the
+      // provider would retry the whole webhook).
       try {
-        await deps.sendConfirmation(beforeSend);
-        await deps.repo.markConfirmationSent(reservationId, deps.now());
+        await deps.sendConfirmation(result.reservation);
       } catch {
-        // swallowed by contract — see above
+        // Give the claim back so the next caller can try. Swallowed either way: a send that
+        // cannot happen must not unmake a booking that already has.
+        await deps.repo.releaseConfirmationSend(reservationId).catch(() => {});
       }
     }
 
@@ -509,7 +509,7 @@ export async function processBookingCharge(
     // deterministic id plus `on conflict (id) do nothing`, not the outcome gate — a
     // redelivery cannot double-record whichever branch it lands in. Gating on `booked`
     // (as the confirmation legitimately does) made the tip unrecoverable instead: if
-    // anything after the booking commit throws — `recordPayment` above, or this write —
+    // anything after the booking commit throws — this write, or the ledger record now BELOW it —
     // the webhook 500s, Stripe redelivers, `writeSlotBooking` short-circuits to `already`,
     // and the `booked` branch is false forever. The result was silent: `Payment.gratuityCents`
     // still nets out of the customer's balance, so nothing looks wrong, but `splitGratuity`

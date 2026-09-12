@@ -931,32 +931,55 @@ export function runRepositoryContract(
       expect(got.paymentIntentIds).toEqual(["pi_declined", "pi_late"]);
     });
 
-    // ── markConfirmationSent — the row remembers who was told (15.3, issue #971) ──
-    // The send is gated on this column rather than on a fresh `booked` outcome, because three
-    // paths reach confirm — the webhook, `/book/success`, and §2.8.9's reconciler — and none can
-    // know from its own control flow whether a customer has been told.
-    it("markConfirmationSent: records the instant, and FIRST write wins", async () => {
+    // ── claimConfirmationSend — one winner, not one reader (15.3, issue #971) ──
+    // The send gates on a CLAIM rather than on a fresh `booked` outcome, because three paths
+    // reach confirm — the webhook, `/book/success`, and §2.8.9's reconciler — and none can know
+    // from its own control flow whether a customer has been told. A read-then-send would let the
+    // webhook and the success page, which race on every ordinary booking, both send.
+    it("claimConfirmationSend: the first caller wins, every later one loses", async () => {
       await repo.saveReservation(pendingRow({ status: "booked" }));
-      expect((await repo.getReservation(rid("pend-1")))!.confirmationSentAt).toBeUndefined();
 
-      await repo.markConfirmationSent(rid("pend-1"), "2026-06-01T12:00:00.000Z");
+      expect(await repo.claimConfirmationSend(rid("pend-1"), "2026-06-01T12:00:00.000Z")).toBe(true);
       expect((await repo.getReservation(rid("pend-1")))!.confirmationSentAt).toBe(
         "2026-06-01T12:00:00.000Z",
       );
 
-      // A redelivery must not restamp it: the question is WHEN they were told, and the answer is
-      // the first time. Postgres says this with `coalesce`, the double with an early return, and
-      // this case is what keeps those two from drifting.
-      await repo.markConfirmationSent(rid("pend-1"), "2026-06-01T18:00:00.000Z");
+      // The whole point: a second caller must be told it did NOT win, so it does not send. And
+      // the recorded instant is the first one — the question is when they were told.
+      expect(await repo.claimConfirmationSend(rid("pend-1"), "2026-06-01T18:00:00.000Z")).toBe(false);
       expect((await repo.getReservation(rid("pend-1")))!.confirmationSentAt).toBe(
         "2026-06-01T12:00:00.000Z",
       );
     });
 
-    it("markConfirmationSent: an unknown id is a no-op, not a throw", async () => {
-      // A confirmation for a row that is gone is not a crash — it is nothing to do. Throwing here
-      // would 500 a webhook over a booking that no longer exists.
-      await expect(repo.markConfirmationSent(rid("pend-nope"), NOW)).resolves.toBeUndefined();
+    it("claimConfirmationSend: exactly one of two concurrent claims wins", async () => {
+      // The race this exists for, run as a race. Postgres decides it with `where … is null` in a
+      // single statement; the double is single-threaded, so it cannot interleave. Both must agree
+      // that precisely one caller may send.
+      await repo.saveReservation(pendingRow({ status: "booked" }));
+      const [a, b] = await Promise.all([
+        repo.claimConfirmationSend(rid("pend-1"), "2026-06-01T12:00:00.000Z"),
+        repo.claimConfirmationSend(rid("pend-1"), "2026-06-01T12:00:00.000Z"),
+      ]);
+      expect([a, b].filter(Boolean)).toHaveLength(1);
+    });
+
+    it("releaseConfirmationSend: gives the claim back so a retry can send", async () => {
+      // Without this a send that threw would be recorded as delivered forever — the defect this
+      // task fixes, wearing better clothes.
+      await repo.saveReservation(pendingRow({ status: "booked" }));
+      expect(await repo.claimConfirmationSend(rid("pend-1"), NOW)).toBe(true);
+
+      await repo.releaseConfirmationSend(rid("pend-1"));
+      expect((await repo.getReservation(rid("pend-1")))!.confirmationSentAt).toBeUndefined();
+      expect(await repo.claimConfirmationSend(rid("pend-1"), NOW)).toBe(true);
+    });
+
+    it("claimConfirmationSend: an unknown id loses rather than throwing", async () => {
+      // A confirmation for a row that is gone is nothing to do, not a crash — a throw here would
+      // 500 a webhook over a booking that no longer exists.
+      expect(await repo.claimConfirmationSend(rid("pend-nope"), NOW)).toBe(false);
+      await expect(repo.releaseConfirmationSend(rid("pend-nope"))).resolves.toBeUndefined();
     });
 
     it("reservations: confirmationSentAt round-trips, and is absent on a row that predates it", async () => {
@@ -966,7 +989,7 @@ export function runRepositoryContract(
       expect((await repo.getReservation(rid("pend-told")))!.confirmationSentAt).toBe(
         "2026-06-01T12:00:00.000Z",
       );
-      // Absent means "we cannot prove they were told", which the send treats as "not yet" — the
+      // Absent means "we cannot prove they were told", which the claim treats as claimable — the
       // migration deliberately does not backfill.
       await repo.saveReservation(pendingRow({ id: rid("pend-untold") }));
       expect((await repo.getReservation(rid("pend-untold")))!.confirmationSentAt).toBeUndefined();

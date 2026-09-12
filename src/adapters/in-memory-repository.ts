@@ -798,13 +798,22 @@ export class InMemoryRepository implements Repository {
     this.#reservations.set(attempt.id, clone(next));
   }
 
-  async markConfirmationSent(reservationId: ReservationId, atIso: string): Promise<void> {
+  async claimConfirmationSend(reservationId: ReservationId, atIso: string): Promise<boolean> {
+    const row = this.#reservations.get(reservationId);
+    if (!row) return false;
+    // Mirrors Postgres's `where confirmation_sent_at is null … returning id`: already set means
+    // somebody else holds the claim, so this caller must not send. Single-threaded here, so the
+    // read and the write cannot interleave — the atomicity the real adapter needs a statement for.
+    if (row.confirmationSentAt !== undefined) return false;
+    this.#reservations.set(reservationId, clone({ ...row, confirmationSentAt: atIso }));
+    return true;
+  }
+
+  async releaseConfirmationSend(reservationId: ReservationId): Promise<void> {
     const row = this.#reservations.get(reservationId);
     if (!row) return;
-    // First write wins, matching Postgres's `coalesce` — the instant already recorded is the one
-    // that happened, and a redelivery must not restamp it.
-    if (row.confirmationSentAt !== undefined) return;
-    this.#reservations.set(reservationId, clone({ ...row, confirmationSentAt: atIso }));
+    const { confirmationSentAt: _cleared, ...rest } = row;
+    this.#reservations.set(reservationId, clone(rest));
   }
 
   // ── Refund lease (#726) ───────────────────────────────────────────────────

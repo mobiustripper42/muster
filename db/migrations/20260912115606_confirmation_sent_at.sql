@@ -9,6 +9,10 @@
 -- repeatable GET running the same `processBookingCharge`), and §2.8.9's future reconciler. The
 -- row can answer it for all three, which is why this is a column and not a branch.
 --
+-- Written by a CLAIM — `update … where confirmation_sent_at is null returning id` — so of two
+-- callers racing for one booking exactly one is told it may send. A read-then-send let both send,
+-- because the webhook and the success page fire seconds apart on every ordinary booking.
+--
 -- Nullable with no default and no backfill, deliberately. Rows booked before this deploy read
 -- NULL, which means "we do not know" — and the honest handling of that is the same as "not yet
 -- told", so a redelivery for an old booking may send a second confirmation. That is the accepted

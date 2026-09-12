@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { formShifts, PartialFormError } from "@core/builder/form-shifts.js";
+import { formShifts } from "@core/builder/form-shifts.js";
 import { logFormAudit } from "@core/oracle/audit-log.js";
 import { tick, type TickResult } from "@core/builder/tick.js";
 import { getRepo } from "../../../lib/repo";
@@ -87,28 +87,21 @@ export async function GET(req: Request) {
     } catch (e) {
       console.error("tick: form audit failed — the transition is unrecorded", e);
     }
-  } catch (e) {
-    // A partial run still knows who to tell (#766). Its shift rows are already durable, so the
-    // next tick re-forms, sees no diff and stays silent — this is the only chance these notices
-    // get. Relayed before the log, and best-effort like every other leg here.
-    if (e instanceof PartialFormError) {
-      try {
-        await forwardFormNotices(e.partial);
-      } catch (relayErr) {
-        console.error("tick: partial-run notice relay failed — crew may not have been told", relayErr);
-      }
-      try {
-        // Audited like the success path above, and for the same reason: DEC-118 wants every crew
-        // add, drop and change in `audit_events`, and a partial run's transitions are as durable
-        // as a complete one's. Relaying without auditing would text somebody about a change with
-        // no record that it happened — found by code review, which noticed the webhook's
-        // `relayAndAudit` does both legs and this branch did one.
-        await logFormAudit(repo, e.partial, { kind: "engine" }, now);
-      } catch (auditErr) {
-        console.error("tick: partial-run audit failed — the transition is unrecorded", auditErr);
-      }
+    // #957: the tick was the thing #957 said would recover a failed booking-time re-form, and it
+    // never could — it called the same unscoped `formShifts`, reached the same bad vessel-day and
+    // threw the same way. Per-group isolation is what makes the tick a real backstop: every other
+    // vessel-day forms, and the ones that cannot land here. They still have no shift (#1001).
+    if (form.failures.length > 0) {
+      console.error(
+        `tick: ${form.failures.length} vessel-day(s) failed to form`,
+        form.failures.map((f) => ({ vesselId: f.vesselId, date: f.date, error: String(f.error) })),
+      );
     }
-    console.error("tick: formShifts failed — existing shifts still advance", e);
+  } catch (e) {
+    // Since #957 only a failure OUTSIDE the per-vessel-day loop reaches here — reading the event
+    // or shift set, not deriving any one day. Nothing formed, so there are no notices to relay,
+    // and the `PartialFormError` branch that relayed and audited them has no case left to serve.
+    console.error("tick: formShifts failed before forming anything — existing shifts still advance", e);
   }
 
   if (await repo.isEnginePaused()) {

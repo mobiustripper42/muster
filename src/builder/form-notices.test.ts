@@ -23,6 +23,7 @@ function form(over: Partial<FormResult>): FormResult {
     cancelledCrew: [],
     restoredCrew: [],
     changedCrew: [],
+    failures: [],
     ...over,
   };
 }

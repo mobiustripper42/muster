@@ -158,6 +158,7 @@ const NO_DIFF = { added: [], removed: [], startBefore: null, startAfter: null };
       cancelledCrew: [],
       restoredCrew: [],
       changedCrew: [],
+      failures: [],
       ...over,
     };
   }

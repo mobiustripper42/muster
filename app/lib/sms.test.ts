@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { makeSmsChannel } from "./sms";
 
@@ -16,8 +16,8 @@ import { makeSmsChannel } from "./sms";
  * constructor is no longer exported for a tenth site to find.
  *
  * `live` is the one distinction that survives, and it is NOT "should I send". It is "may I tell
- * a human this was sent" — `app/lib/unsent.ts:24-27` is explicit that a log line is not a send
- * and a caller must never report success off the back of one.
+ * a human this was sent" — DEC-170 is explicit that a log line is not a send and a caller must
+ * never report success off the back of one.
  */
 
 const TWILIO_VARS = [
@@ -67,6 +67,40 @@ describe("makeSmsChannel", () => {
     const { channel, live } = makeSmsChannel(repo(), BASE);
     expect(channel).toBeTruthy();
     expect(live).toBe(true);
+  });
+
+  it("does not mint a link on a production deploy, and redacts a booking code", async () => {
+    // `logChannel` moved from `channel.ts` to `sms.ts` in #955, and its `mintLink: !isProdDeploy()`
+    // came with it — untested at either address. This pins it at the new one, because the flag is
+    // what keeps a live crew credential out of a production log stream.
+    //
+    // The booking-code half is the finding `/security-review` raised on this branch: `mintLink`
+    // only ever governed the link this class MINTS, and a customer receipt arrives with its link
+    // already composed into the body, so the guard never saw it. It does now.
+    process.env.VERCEL_ENV = "production";
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((l: unknown) => {
+      errors.push(String(l));
+    });
+
+    try {
+      const { channel, live } = makeSmsChannel(repo(), BASE);
+      expect(live).toBe(false);
+      await channel.send({
+        to: { email: "mary@x.io", phone: "+15555550199" },
+        kind: "receipt",
+        body: `Your trip is confirmed. Manage it here: ${BASE}/b/0123456789ABCD`,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).not.toContain("0123456789ABCD");
+    expect(errors[0]).toContain("/b/<redacted>");
+    // Still a record: what did not go out, and to whom.
+    expect(errors[0]).toContain("Your trip is confirmed.");
+    expect(errors[0]).toContain("+15555550199");
   });
 
   it("treats a HALF-set Twilio config exactly like an unset one", async () => {

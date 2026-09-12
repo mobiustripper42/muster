@@ -9,11 +9,15 @@ import { stripTrailingSlashes } from "@core/config/base-url.js";
  * `relayAsks`/`runDoorbellTick`. The ONE place the app picks the channel +
  * the host-safe board link and hands the tick's new landings to the core sender.
  *
- * No relay fallback (DEC-095): with no live SMS the recipient IS the operator and
- * `/admin/at-risk` is the standing surface, so a Twilio-dark tick simply doesn't
- * send. No civil-hours gating (DEC-088 N/A — a Tier-3 "needs a human" signal is
- * urgent). Recipients are the active admins, not the `OPERATOR_CREW_MEMBER_ID`
- * singleton (#293) — the core sender fans out.
+ * **A Twilio-dark tick writes the alert to the console (DEC-170, superseding DEC-095's
+ * no-relay-fallback clause).** It used to send nothing, on the reasoning that the recipient is the
+ * operator and `/admin/at-risk` is the standing surface — but a board is a fallback for somebody
+ * looking at it, and the reason this alert exists is that nobody is.
+ *
+ * **The count it returns therefore includes logged alerts**, because `LogChannel` accepts every
+ * message. Read it as "reached a recipient's record", not "reached a phone". No civil-hours gating
+ * (DEC-088 N/A — a Tier-3 "needs a human" signal is urgent). Recipients are the active admins, not
+ * the `OPERATOR_CREW_MEMBER_ID` singleton (#293) — the core sender fans out.
  */
 export async function forwardBoardAlerts(landings: BoardLanding[] | undefined): Promise<number> {
   if (!landings || landings.length === 0) return 0;

@@ -89,6 +89,17 @@ export interface SendResult {
   deliveredAt: string;
   /** Adapter-specific handle (provider message id, log index, …) if any. */
   ref?: string;
+  /**
+   * **The message was written down, not transmitted (#955).** Set by `LogChannel` and by nothing
+   * else — omitted means it actually left the building.
+   *
+   * It exists because #955 made every send site fall back to a channel that always accepts, which
+   * turned "did not throw" into a useless proxy for "delivered". A caller that reports an outcome
+   * to a person has to be able to tell the two apart, and the adapter is the only thing that
+   * knows. Carrying it on the receipt rather than threading a flag down from the edge is what
+   * stops a future caller forgetting to pass it.
+   */
+  loggedOnly?: true;
 }
 
 /**

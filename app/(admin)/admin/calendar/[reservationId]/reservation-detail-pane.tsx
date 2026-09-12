@@ -181,9 +181,13 @@ export function actionMessage(
         emailState === "absent" && !opts.email ? "email" : "",
         smsState === "absent" && !opts.phone ? "phone" : "",
       ].filter(Boolean);
+      // `logged` (#955) lands here too, and for the operator it means the same thing as `absent`
+      // with a contact on file: the customer did not get it, so also call them. The two differ
+      // only in whether a recoverable record exists on the server, which is not their problem.
+      // Rendering it as "texted" is the exact defect `resend-booking-link.ts`'s header forbids.
       const untried = [
-        emailState === "absent" && opts.email ? `email (${opts.email})` : "",
-        smsState === "absent" && opts.phone ? `text (${opts.phone})` : "",
+        (emailState === "absent" || emailState === "logged") && opts.email ? `email (${opts.email})` : "",
+        (smsState === "absent" || smsState === "logged") && opts.phone ? `text (${opts.phone})` : "",
       ].filter(Boolean);
       const tail = [
         missing.length ? `No ${missing.join(" or ")} on this booking.` : "",
@@ -202,8 +206,18 @@ export function actionMessage(
         emailState === "sent" && opts.email ? `emailed ${opts.email}` : "",
         smsState === "sent" && opts.phone ? `texted ${opts.phone}` : "",
       ].filter(Boolean);
-      const head = sent.length ? `New link ${sent.join(" and ")}.` : "New link sent.";
-      return `${head} Their old link no longer works.`;
+      // #955: a `logged` channel wrote the message to the server and did not deliver it. On a
+      // reissue that is worse than on a resend — the old link is already dead, so a customer who
+      // is not told is locked out rather than merely uninformed.
+      const undelivered = [
+        emailState === "logged" && opts.email ? `email (${opts.email})` : "",
+        smsState === "logged" && opts.phone ? `text (${opts.phone})` : "",
+      ].filter(Boolean);
+      const head = sent.length ? `New link ${sent.join(" and ")}.` : "New link issued.";
+      const warn = undelivered.length
+        ? ` NOT delivered by ${undelivered.join(" or ")} — no channel configured here, so call them.`
+        : "";
+      return `${head} Their old link no longer works.${warn}`;
     }
     case "reissueErr":
       switch (value) {

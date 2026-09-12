@@ -11,7 +11,7 @@ import { isProdDeploy } from "./flags";
  *
  * Severity is the app's call, not the core's: `console.error` in production so sheepdog
  * ingests it (sheepdog issue 62), a plain log in dev where you are already watching the
- * terminal. Same split as `app/lib/unsent.ts` on the reservations side (#933).
+ * terminal.
  *
  * **Moved here from `channel.ts` in #955**, and not for tidiness: `makeSmsChannel` below has to
  * construct it, and `channel.ts` already imports this module. Leaving it there made the cycle.
@@ -99,7 +99,7 @@ function makeTwilioChannel(
  * that writes somewhere. There is no null, so there is no per-site decision about what null means.
  *
  * `live` is not "should I send" — you always send. It is **"may I tell a human this was sent."**
- * `app/lib/unsent.ts:24-27` states the rule: a log line is not a send, and a caller must never
+ * DEC-170 states the rule: a log line is not a send, and a caller must never
  * report success off the back of one. Only the two surfaces that report an outcome to a person
  * read this flag; `resendReservationLink` still returns `skipped` rather than `attempted`, so the
  * operator is never shown "Sent" for a message that only reached a terminal.

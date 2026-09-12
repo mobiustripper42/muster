@@ -40,6 +40,39 @@ function channel(opts: { throws?: boolean } = {}): ChannelPort & { sent: Outboun
   } as ChannelPort & { sent: OutboundMessage[] };
 }
 
+/** A channel that writes the message down instead of transmitting it — what `LogChannel` is. */
+function loggingChannel(): ChannelPort & { sent: OutboundMessage[] } {
+  const sent: OutboundMessage[] = [];
+  return {
+    sent,
+    async send(msg: OutboundMessage) {
+      sent.push(msg);
+      return { deliveredAt: "2026-09-12T00:00:00.000Z", ref: "logged-receipt", loggedOnly: true };
+    },
+  } as ChannelPort & { sent: OutboundMessage[] };
+}
+
+describe("resendBookingLink — a logged message is not a sent one (#955)", () => {
+  /**
+   * This file's own header names the defect: "the one unacceptable outcome is a green 'sent' over
+   * a message that never left the building." #955 made every send site fall back to a channel that
+   * always accepts, which reopened exactly that one layer down — `tryChannel` read "did not throw"
+   * as "delivered", so a Twilio-dark deploy rendered "texted +1555…" on the operator's screen for
+   * a message that only reached a console line.
+   *
+   * The channel says which it did, in its own receipt. Nothing has to be threaded from the edge
+   * and no caller can forget to pass a flag.
+   */
+  it("reports `logged`, not `sent`, when the channel only wrote the message down", async () => {
+    const email = channel();
+    const sms = loggingChannel();
+    const r = await resendBookingLink({ ...DEPS, email, sms }, reservation(), CODE);
+    expect(r).toEqual({ email: "sent", sms: "logged" });
+    // It still went to the channel — the message IS recorded, which is the whole point of #955.
+    expect(sms.sent).toHaveLength(1);
+  });
+});
+
 describe("resendBookingLink", () => {
   it("sends on both channels the reservation has, and reports both", async () => {
     const email = channel();

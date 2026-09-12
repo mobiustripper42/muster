@@ -124,7 +124,7 @@ export async function resendReservationLink(reservation: Reservation): Promise<R
   const email = emailEnv ? new EmailChannel(emailEnv) : undefined;
   // #955: this is the ONE site where `live` earns its existence. The send is unconditional now —
   // the body reaches the console whatever the config — but an operator is reading the result, and
-  // `unsent.ts:24-27` is the rule: a log line is not a send. So the outcome still reports
+  // DEC-170 states the rule: a log line is not a send. So the outcome still reports
   // `skipped`, never `attempted`, when nothing live was behind it. That distinction is the entire
   // reason `ResendOutcome` is a union, and it survives the refactor unchanged.
   const { channel: sms, live } = makeSmsChannel(repo, linkBase);

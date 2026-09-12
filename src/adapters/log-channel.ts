@@ -53,6 +53,10 @@ import type { NotificationMessage, NotificationPort } from "../ports/notificatio
 import type { Repository } from "../ports/repository.js";
 import { issueMagicLink, randomSecret } from "../auth/magic-link.js";
 import { stripTrailingSlashes } from "../config/base-url.js";
+import {
+  BOOKING_CODE_ALPHABET,
+  BOOKING_CODE_LENGTH,
+} from "../reservations/booking-code.js";
 
 export interface LogChannelOptions {
   /** The externally-reachable origin links are built on. Must be a trusted config value. */
@@ -68,6 +72,36 @@ export interface LogChannelOptions {
    * where the log is not a production stream.
    */
   mintLink?: boolean;
+}
+
+/**
+ * Strip a live `/b/<code>` out of a line bound for a production log (#955).
+ *
+ * **Why the `mintLink` guard did not already cover this.** That flag governs the CREW magic link
+ * this class mints, and a customer receipt arrives with its link already composed into `body` —
+ * so the guard never looked at it. The two are the same kind of secret: `booking-code.ts` calls a
+ * booking code a CREDENTIAL rather than an identifier, `app/b/[code]` resolves it with no session,
+ * and it never expires.
+ *
+ * **What changed to make it matter.** Before #955 a customer receipt reached this sink only when
+ * BOTH email and SMS were unconfigured. The deleted `app/lib/unsent.ts` weighed that and accepted
+ * it because the path was rare. Every send site now falls back here, so on a Twilio-dark
+ * production deploy with email working it is every confirmation and every recovery link — and the
+ * production sink is `console.error` precisely so a monitoring pipeline ingests it, which
+ * replicates the credential into a second store. Rare became routine; the accepted trade did not
+ * survive that.
+ *
+ * Redacting here rather than at the nine call sites is the same argument as `makeSmsChannel`
+ * itself: this is the one place a tenth caller cannot forget.
+ *
+ * The line stays useful. What did not go out and to whom both survive — only the secret goes.
+ */
+export function redactBookingCodes(line: string, mintLinks: boolean): string {
+  if (mintLinks) return line; // dev: the clickable link is the entire point of reading the line
+  return line.replace(
+    new RegExp(`/b/[${BOOKING_CODE_ALPHABET}]{${BOOKING_CODE_LENGTH}}`, "g"),
+    "/b/<redacted>",
+  );
 }
 
 export class LogChannel implements ChannelPort, NoticePort, NotificationPort {
@@ -125,12 +159,14 @@ export class LogChannel implements ChannelPort, NoticePort, NotificationPort {
     const who = message.to.crewMemberId ?? message.to.email ?? "unknown recipient";
     const phone = message.to.phone ?? "no phone on file";
     this.#sink(
-      `[channel:${kind}] NOT SENT — no channel configured. to=${who} / ${phone}\n${line}`,
+      `[channel:${kind}] NOT SENT — no channel configured. to=${who} / ${phone}\n${redactBookingCodes(line, this.#mintLinks)}`,
     );
 
     // `deliveredAt` is when the LINE was written, and the `ref` says so in words —
-    // nothing downstream should be able to mistake this for a transmission.
-    return { deliveredAt: now.toISOString(), ref: `logged-${kind}` };
+    // nothing downstream should be able to mistake this for a transmission. `loggedOnly` is the
+    // machine-readable half of that sentence (#955): the `ref` said it to a human reading a log,
+    // which left `resendBookingLink` reporting a green "sent" over a console line.
+    return { deliveredAt: now.toISOString(), ref: `logged-${kind}`, loggedOnly: true };
   }
 
   /**

@@ -26,9 +26,14 @@ import { outbound } from "./message-opener.js";
 /**
  * Text every active admin about money that moved without anyone deciding it should.
  *
- * Best-effort per recipient — one dead number cannot mute the rest — and returns how many
- * actually sent, so the caller can log the difference between "nobody to tell" and "told".
- * No recipients (or a Twilio-dark deploy, which the edge resolves before calling) ⇒ 0.
+ * Best-effort per recipient — one dead number cannot mute the rest — and returns how many the
+ * channel accepted, so the caller can log the difference between "nobody to tell" and "told".
+ * No recipients ⇒ 0.
+ *
+ * **Since #955 the edge no longer resolves a Twilio-dark deploy before calling** — it passes a
+ * channel that writes the alert down instead. So this count means "reached a recipient's record",
+ * not "reached a phone". `SendResult.loggedOnly` is what distinguishes the two, and only the
+ * operator-facing resend surface currently reads it.
  *
  * **Never throws.** Every caller is a Stripe webhook, where an exception is a 500 and a 500 is
  * a redelivery loop. An alert that fails must degrade to the caller's log line, not take the

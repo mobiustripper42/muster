@@ -759,7 +759,7 @@ One boat, one day; the trips inside it batched; **required seats derived from CO
 *(Correction, DEC-016: the "1 captain + 1 mate" figure is illustrative — the real fleet is 4 boats
 needing 2 crew each; the count is per-vessel data, 1/2/N.)*
 *(Correction, operator's ruling 2026-08-29: **every vessel has manning.** A shift with no required
-seats is an error, not a state — `deriveShiftState` throws (`src/builder/derive.ts:80`), and #861
+seats is an error, not a state — `deriveShiftState` throws (`src/builder/derive.ts:84`), and #861
 made manning required at the vessel surface. This replaces an earlier note saying zero-crew was in
 scope for the deriver: it never reached production, because both self-captained Duffy resources sit
 in `EXCLUDED_RESOURCES` at ingest, and it is now refused outright rather than merely unreachable.)*

@@ -94,7 +94,7 @@ function piEvent(paymentIntentId: string, amountReceivedCents: number, metadata:
 
 function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new FakePaymentPort()) {
   const alert = vi.fn(async (_m: string) => {});
-  const confirm = vi.fn(async (_r: unknown) => {});
+  const confirm = vi.fn(async (_r: unknown) => true);
   const soldOut = vi.fn(async (_c: unknown) => {});
   const deps: WebhookDeps = { repo, payments, now, reservationsEnabled: true, alertPaidButUnbooked: alert, sendConfirmation: confirm, notifyCustomerSoldOut: soldOut };
   return { deps, alert, confirm, soldOut, payments };

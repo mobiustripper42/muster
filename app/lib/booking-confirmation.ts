@@ -29,23 +29,37 @@ import { stripTrailingSlashes } from "@core/config/base-url.js";
  */
 export async function sendReservationConfirmation(
   reservation: Reservation,
-): Promise<void> {
-  // Structural best-effort (DEC-122): the booking is already committed, so NOTHING
-  // in here — a channel send, a misconfigured env, a repo/pool hiccup — may throw
-  // back to the webhook (a 500 → Stripe retries the whole event). The whole body
-  // is wrapped; the core webhook also guards its call, so the promise holds at both
-  // layers. Failures are logged here (this layer has the context), never rethrown.
+): Promise<boolean> {
+  // Structural best-effort: the booking is already committed, so NOTHING in here — a channel
+  // send, a misconfigured env, a repo/pool hiccup — may throw back to the webhook (a 500 → the
+  // provider retries the whole event). The whole body is wrapped; failures are logged here, where
+  // the context is, and never rethrown.
+  //
+  // **It returns whether the customer was actually told (15.3, issue #971), and that is load
+  // bearing rather than informational.** The caller claims the right to send before calling and
+  // records the claim on the reservation; if this never reported failure, a carrier outage would
+  // leave every booking marked as told with nobody having been told — the defect 15.3 fixes,
+  // re-entered through a different door. `/security-review` caught exactly that: the release path
+  // was dead code because this function swallowed everything and returned `void`, so the recovery
+  // the port documented could not happen.
+  //
+  // `false` covers "deliberately not sent" as well as "tried and failed" — MESSAGING off, an
+  // unset `APP_BASE_URL`, no channel configured. That is the right answer for all of them: none
+  // of those customers has been told, and a deployment where confirmations silently are not
+  // going out is exactly what §2.8.9's reconciler should be reporting.
+  //
+  // The old text credited DEC-122, retired 2026-08-26. The live authority is §2.8.6.
   try {
     // MESSAGING kill-flag — future-proofs #390 (not yet on this branch). A hard
     // "false" silences every send; anything else (incl. unset) leaves sends on.
-    if (process.env.MESSAGING === "false") return;
+    if (process.env.MESSAGING === "false") return false;
 
     const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL);
     if (!linkBase) {
       if (isProdDeploy()) {
         console.error("[reservations] confirmation skipped — set APP_BASE_URL");
       }
-      return;
+      return false;
     }
 
     const repo = getRepo();
@@ -71,7 +85,7 @@ export async function sendReservationConfirmation(
         { phone: reservation.phone ?? undefined, email: reservation.email ?? undefined },
         bookingConfirmationBody(reservation, bookingUrl(linkBase, code)),
       );
-      return;
+      return false;
     }
 
     // Mint (or reuse) the code BEFORE composing the message — there is no link to send without
@@ -93,10 +107,12 @@ export async function sendReservationConfirmation(
       reservation,
       bookingCode,
     );
+    return true;
   } catch (e) {
     console.error(
       `[reservations] confirmation errored for ${reservation.id} — ${e instanceof Error ? e.message : e}`,
     );
+    return false;
   }
 }
 

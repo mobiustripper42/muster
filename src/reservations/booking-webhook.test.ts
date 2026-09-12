@@ -93,7 +93,7 @@ const bookingPi = (
 
 function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new FakePaymentPort()) {
   const alert = vi.fn(async (_message: string) => {});
-  const confirm = vi.fn(async (_reservation: unknown) => {});
+  const confirm = vi.fn(async (_reservation: unknown) => true);
   const soldOut = vi.fn(async (_c: unknown) => {});
   const deps: WebhookDeps = {
     repo,
@@ -1156,6 +1156,45 @@ describe("processBookingWebhook — a post-commit failure does not lose the conf
 
     expect(r).toMatchObject({ handled: true, outcome: "already" });
     expect(confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives the claim back when the send reports it did not happen, so a retry sends", async () => {
+    // **This is the case `/security-review` found unreachable in the first cut.** The wired dep
+    // (`app/lib/booking-confirmation.ts`) wraps its whole body and never throws, so a `catch`-only
+    // release could never fire — a carrier outage would claim the row, send nothing, and leave the
+    // booking marked as told forever. Which is 15.3's own defect, re-entered by another door.
+    //
+    // So the dep reports delivery instead, `false` covering both "tried and failed" and
+    // "deliberately not sent" (messaging off, no channel configured). This drives that path.
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+
+    const down = makeDeps(repo);
+    down.confirm.mockResolvedValue(false); // the carrier is down
+    await processBookingWebhook(down.deps, bookingPi(), FAKE_SIGNATURE);
+    expect(down.confirm).toHaveBeenCalledTimes(1);
+    // The claim was released, so the row does NOT claim the customer was told.
+    expect((await repo.getReservation(PEND))!.confirmationSentAt).toBeUndefined();
+
+    // The carrier comes back and the provider redelivers.
+    const up = makeDeps(repo);
+    await processBookingWebhook(up.deps, bookingPi(), FAKE_SIGNATURE);
+    expect(up.confirm).toHaveBeenCalledTimes(1);
+    expect((await repo.getReservation(PEND))!.confirmationSentAt).toBeDefined();
+  });
+
+  it("a send that THROWS is treated as not-sent, even though the dep promises not to", async () => {
+    // Belt for a dep that breaks its own contract. Without it a throw would skip the release and
+    // the row would keep a claim over a send that never happened.
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+
+    const { deps, confirm } = makeDeps(repo);
+    confirm.mockRejectedValue(new Error("channel exploded"));
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "booked" });
+    expect((await repo.getReservation(PEND))!.confirmationSentAt).toBeUndefined();
   });
 
   it("does NOT re-send on an ordinary redelivery of an already-confirmed booking", async () => {

@@ -312,7 +312,7 @@ if (!dbUp) {
         payments,
         now: NOW,
         alertPaidButUnbooked: alert,
-        sendConfirmation: vi.fn(async (_r: unknown) => {}),
+        sendConfirmation: vi.fn(async (_r: unknown) => true),
         notifyCustomerSoldOut: soldOut,
       };
       return { deps, alert, soldOut, payments };

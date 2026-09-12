@@ -87,7 +87,16 @@ export interface WebhookDeps {
    * The old text credited DEC-122. That record was retired on 2026-08-26 with every ruling
    * adjudicated dead; the live authority is §2.8.6.
    */
-  sendConfirmation: (reservation: Reservation) => Promise<void>;
+  /**
+   * **Returns whether the customer was actually told.** `false` covers both "tried and failed"
+   * and "deliberately not sent" — no channel configured, messaging switched off — because from
+   * the row's point of view those are the same fact: nobody has been told.
+   *
+   * The caller claims the right to send before calling this and gives the claim back on `false`,
+   * so a `void` return would make that release unreachable and a carrier outage would mark every
+   * booking as told with nobody told (`/security-review`). Still must never THROW.
+   */
+  sendConfirmation: (reservation: Reservation) => Promise<boolean>;
   /**
    * Relay a re-form's crew notices — "you're off" (`cancelledCrew`) and "you're on"
    * (`restoredCrew`), DEC-084/#244. Injected because the channel wiring lives in `app/`.
@@ -493,13 +502,18 @@ export async function processBookingCharge(
       // Structurally best-effort: the booking is committed, so a confirmation failure — from a
       // channel OR from anything upstream in the injected dep — must never bubble to a 500 (the
       // provider would retry the whole webhook).
+      let told = false;
       try {
-        await deps.sendConfirmation(result.reservation);
+        told = await deps.sendConfirmation(result.reservation);
       } catch {
-        // Give the claim back so the next caller can try. Swallowed either way: a send that
-        // cannot happen must not unmake a booking that already has.
-        await deps.repo.releaseConfirmationSend(reservationId).catch(() => {});
+        // The dep's contract says it never throws; this is the belt for a dep that breaks it.
+        told = false;
       }
+      // **Give the claim back when nobody was told**, so the next caller — a provider redelivery,
+      // the success page, §2.8.9's reconciler — can claim and try. Holding a claim over a send
+      // that did not happen records a confirmation the customer never received, which is this
+      // task's own defect wearing better clothes.
+      if (!told) await deps.repo.releaseConfirmationSend(reservationId).catch(() => {});
     }
 
     // Record the PRE-gratuity (DEC-124) — crew money, keyed to the event pool. Slot

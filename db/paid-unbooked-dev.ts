@@ -130,7 +130,10 @@ try {
     payments,
     now: () => new Date().toISOString(),
     alertPaidButUnbooked: async (m) => void alerts.push(m),
-    sendConfirmation: async () => {},
+    // `true` = "the customer was told" (15.3). This script exercises the paid-but-unbooked
+    // alert, not the confirmation, so reporting success keeps the claim on the row and stops the
+    // seeded booking from looking like one nobody was told about.
+    sendConfirmation: async () => true,
     notifyCustomerSoldOut: async (c) => void notices.push(String(c.metadata.email ?? "(no email)")),
   };
 

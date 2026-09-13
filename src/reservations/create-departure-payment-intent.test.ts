@@ -672,7 +672,31 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
       gratuityCents: 15980,
       gratuityBps: 2000,
       totalCents: 49900 + 30000 + 5793 + 2397 + 15980,
+      // The whole quote above; what the deposit charge actually asks for below (15.4). This stays
+      // a `toEqual` rather than a `toMatchObject` precisely so a component silently appearing
+      // fails here.
+      amountDueNowCents: 19975 + 5793 + 2397 + 15980,
     });
+  });
+
+  it("freezes the amount actually asked of Stripe onto the invoice (15.4)", async () => {
+    // The one number the row did not carry. `totalCents` is the whole quote; in deposit mode the
+    // charge is a share of the fare plus ALL the tax and fee plus the whole tip, and nothing
+    // persisted said what that came to — the charge was recomputed from live `config` AFTER the
+    // invoice was frozen. Deposit mode is the only configuration where this can fail: under
+    // `full` the two numbers are equal, so a test written there would pass against a bug that
+    // returns the wrong field. `seededRepo` is deposit/25%.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering({ includedGuestCount: 2 }));
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, { ...req, guestCount: 8 }, now);
+    const [row] = await pendingRows(repo);
+    // fare 79900 → deposit 25% = 19975, + tax 5793 + fee 2397 (both in full) + tip 15980.
+    expect(row!.invoice!.amountDueNowCents).toBe(19975 + 5793 + 2397 + 15980);
+    // What Stripe was actually asked for, and the row, are one number.
+    expect(pay.intents[0]!.amountCents).toBe(row!.invoice!.amountDueNowCents);
+    // And it is NOT the quote — the assertion that makes deposit mode the discriminating case.
+    expect(row!.invoice!.amountDueNowCents).not.toBe(row!.invoice!.totalCents);
   });
 
   it("the row exists even when Stripe throws — written BEFORE the provider call (criterion 2)", async () => {

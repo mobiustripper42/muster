@@ -820,6 +820,18 @@ export interface BookingInvoice {
   gratuityBps: number;
   /** Sum of the five cents fields — the trip's price, not necessarily what was charged now. */
   totalCents: number;
+  /**
+   * What was asked of the provider for THIS charge, frozen at the same instant as the components
+   * above (15.4). Under `depositMode: "full"` it equals `totalCents`; under `"deposit"` it is the
+   * deposit share of the fare plus tax and service fee in full plus the whole gratuity, and the
+   * remainder is collected later against this same invoice.
+   *
+   * **It is here because it cannot be recomputed from the row.** Every other field is a component
+   * or a rate; this one needs `depositMode`/`depositPercent`, which live in live `PaymentConfig`
+   * and are not frozen anywhere. Recomputing it after an operator changed the deposit share means
+   * a number that disagrees with the charge Stripe actually took.
+   */
+  amountDueNowCents: number;
 }
 
 /** Who ended a booking (#724). The refund policy branches on it — see `refund-terms.ts`. */

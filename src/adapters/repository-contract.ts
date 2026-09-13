@@ -748,6 +748,10 @@ export function runRepositoryContract(
             gratuityCents: 10400,
             gratuityBps: 2000,
             totalCents: 68120,
+            // Deliberately NOT `totalCents`: a deposit-mode charge (25% of the 52000 fare, plus
+            // tax and fee in full, plus the whole tip). Equal to the total, this case would pass
+            // against an adapter that dropped the field and rebuilt it from the components.
+            amountDueNowCents: 29120,
           },
         }),
       );
@@ -772,6 +776,7 @@ export function runRepositoryContract(
         gratuityCents: 10400,
         gratuityBps: 2000,
         totalCents: 68120,
+        amountDueNowCents: 29120,
       });
     });
 
@@ -810,9 +815,18 @@ export function runRepositoryContract(
       gratuityCents: 10000,
       gratuityBps: 2000,
       totalCents: 65500,
+      // Deposit-mode charge, so it differs from `totalCents` (15.4) — the two `toEqual`s below
+      // then cover the new field in both directions: it must be re-frozen on a pending retry and
+      // must NOT move on a booked row.
+      amountDueNowCents: 28000,
     };
     /** What the builder hands back on the retry: same id and reserved time, new answers. */
-    const INVOICE_2 = { ...INVOICE_1, extrasCents: 12000, totalCents: 77500 };
+    const INVOICE_2 = {
+      ...INVOICE_1,
+      extrasCents: 12000,
+      totalCents: 77500,
+      amountDueNowCents: 31000,
+    };
     const firstAttempt = () =>
       pendingRow({
         customerName: "Hooper",

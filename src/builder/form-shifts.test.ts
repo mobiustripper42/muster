@@ -99,6 +99,68 @@ describe("formShifts", () => {
     expect(await repo.getShift(asId(`shift-${DUFFY}-2026-06-27`))).toBeTruthy();
   });
 
+  it("writes nothing when a re-form changes nothing (#998)", async () => {
+    // `formOneShift` ended with an unconditional `saveShift`, so every run rewrote every
+    // vessel-day it visited whether or not anything had moved. One booking was measured
+    // rewriting twelve unrelated rows (#957), and the 15-minute tick does it across every
+    // vessel-day that has ever existed. Counting the calls, not inspecting the code: a claim
+    // about a write that nothing counts is a claim nobody can check.
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+
+    let writes = 0;
+    const realSaveShift = repo.saveShift.bind(repo);
+    repo.saveShift = async (shift) => {
+      writes++;
+      return realSaveShift(shift);
+    };
+
+    const second = await formShifts(repo);
+    expect(writes).toBe(0);
+    // `shiftsUpdated` counts CHANGES now, not writes — the same number by a truer definition.
+    expect(second.shiftsUpdated).toBe(0);
+    // The rows are still there and still correct: skipped, not dropped.
+    expect((await repo.listShifts()).length).toBe(3);
+  });
+
+  it("still writes, and still notifies, when a re-form DOES change something (#998)", async () => {
+    // The other half, and the one that matters more. The notice diff lives inside the same
+    // `if (existing)` branch as the write, so a conditional that skips the branch rather than
+    // the write would stop telling crew their day moved — silently, and only on days that
+    // actually changed, which is the only case anyone would have noticed.
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+
+    const shiftId = asId<"ShiftId">(`shift-${PARTY}-2026-05-16`);
+    const seat = (await repo.listSeatsForShift(shiftId))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap"),
+    });
+    // A third trip on that day — the committed day genuinely moved.
+    await repo.saveEvent(event("e1c", PARTY, "2026-05-16", "17:00"));
+
+    let writes = 0;
+    const realSaveShift = repo.saveShift.bind(repo);
+    repo.saveShift = async (shift) => {
+      writes++;
+      return realSaveShift(shift);
+    };
+
+    const second = await formShifts(repo, { notifyTripChanges: true });
+    // Exactly the one day that changed, and no others.
+    expect(writes).toBe(1);
+    expect(second.shiftsUpdated).toBe(1);
+    expect(second.changedCrew).toHaveLength(1);
+    expect(second.changedCrew[0]).toMatchObject({
+      shiftId,
+      crewMemberId: asId<"CrewMemberId">("cap"),
+    });
+  });
+
   it("is idempotent — re-form preserves a Confirmed seat and does not duplicate", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
@@ -111,7 +173,11 @@ describe("formShifts", () => {
 
     const second = await formShifts(repo);
     expect(second.shiftsCreated).toBe(0);
-    expect(second.shiftsUpdated).toBe(3);
+    // Was 3 before #998, when this counted WRITES and every visited vessel-day got one. It counts
+    // CHANGES now, and exactly one day changed: confirming the seat moved this shift's derived
+    // state from Pending to Filling. The other two vessel-days were untouched and are no longer
+    // rewritten — which is the same fact the old 3 was reporting, by a definition that was true.
+    expect(second.shiftsUpdated).toBe(1);
     expect(second.seatsCreated).toBe(0); // no duplicate seats
 
     const after = await repo.listSeatsForShift(shiftId);
@@ -275,6 +341,13 @@ describe("formShifts — reconciliation (#20)", () => {
     });
     // A new trip on day1 — the same change the #350 test above asserts is reported.
     await repo.saveEvent(event("e1b", PARTY, "2026-05-16", "17:00"));
+
+    // The Duffy day has to CHANGE for the stub below to fire at all: since #998 an unchanged
+    // vessel-day is not written, so a `saveShift` that throws is never reached on one. Adding a
+    // trip there is the smallest thing that makes the write happen, and it leaves the scenario
+    // this test is about untouched — a LATER group failing after an earlier one's notice was
+    // already computed.
+    await repo.saveEvent(event("e4b", DUFFY, "2026-06-27", "20:00"));
 
     // Fail on the Duffy vessel-day, which is seeded LAST, so day1's notice is computed and
     // pushed before the throw. Failing on the first group would prove nothing.
@@ -519,6 +592,31 @@ describe("formShifts — reconciliation (#20)", () => {
     // Same events, still scheduled — a plain re-pull, nothing changed.
     await formShifts(repo);
 
+    expect((await repo.getShift(day1))?.state).toBe("Completed");
+  });
+
+  it("re-forming a Completed shift is a genuine no-op, not a preserve-then-write (#998)", async () => {
+    // The guard above works by rebuilding the row with `Completed` put back and writing it. That
+    // is correct and was never free: a shift that ran keeps being rewritten by every pull and
+    // every tick, forever, to say the same thing. The conditional write makes preserving it cost
+    // nothing, which is what lets the tick stay cheap as completed days accumulate — the set that
+    // only ever grows.
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+    const shift = await repo.getShift(day1);
+    await repo.saveShift({ ...shift!, state: "Completed" });
+
+    let writes = 0;
+    const realSaveShift = repo.saveShift.bind(repo);
+    repo.saveShift = async (s) => {
+      writes++;
+      return realSaveShift(s);
+    };
+
+    await formShifts(repo);
+
+    expect(writes).toBe(0);
     expect((await repo.getShift(day1))?.state).toBe("Completed");
   });
 

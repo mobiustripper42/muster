@@ -37,6 +37,12 @@ import type { EventId } from "../domain/ids.js";
 
 export interface FormResult {
   shiftsCreated: number;
+  /**
+   * Existing vessel-days whose row actually CHANGED this run (#998) — not how many were visited.
+   * It counted writes until the write became conditional, and every visited day got one, so the
+   * two numbers were equal for a reason that had nothing to do with what the field means. A steady
+   * re-pull now reports 0. Surfaces in one place: `app/api/cron/xola-pull/route.ts`.
+   */
   shiftsUpdated: number;
   seatsCreated: number;
   /** Surplus `Open` required seats removed after a manning shrink. */
@@ -368,6 +374,32 @@ export async function formShifts(
   return result;
 }
 
+/**
+ * Would writing `next` over `prev` change anything? (#998)
+ *
+ * **Field by field, never a deep equal.** Both sides omit an absent optional rather than setting
+ * it to `null` — the literal above uses conditional spreads, and `postgres-repository.ts`'s `opt()`
+ * drops the key when the column is null — so a structural compare would happen to work today and
+ * break the first time an adapter normalises differently. An explicit list also fails LOUDLY when
+ * `Shift` gains a field: the new one is unlisted, this returns true on a day where it changed, and
+ * the write is skipped. Which is the same failure the literal above already has, and the reason
+ * both places carry the same warning.
+ *
+ * `eventIds` compares order-independently. The literal sorts and the adapter returns stored order,
+ * so they agree today only because every write went through the literal. Free not to depend on it.
+ */
+function sameShift(prev: Shift, next: Shift): boolean {
+  return (
+    prev.id === next.id &&
+    prev.vesselId === next.vesselId &&
+    prev.date === next.date &&
+    prev.state === next.state &&
+    prev.earliestStart === next.earliestStart &&
+    prev.splitCutTime === next.splitCutTime &&
+    idSetEq(prev.eventIds.map(String), next.eventIds.map(String))
+  );
+}
+
 /** Set-equality on two id lists (order-independent; ids are unique, no dups). */
 const idSetEq = (a: string[], b: string[]): boolean =>
   a.length === b.length && new Set([...a, ...b]).size === a.length;
@@ -516,6 +548,15 @@ async function formOneShift(
   // `earliestScheduledStart` always yields an instant and the watermark is never written as
   // "unknown". That is why `Shift.earliestStart` is `string | undefined` with no null case.
   const startAfter = earliestScheduledStart(scheduled)?.toISOString();
+  /**
+   * **Rebuilt from scratch, never spread from `existing`** — merge clears `splitCutTime`, and a
+   * spread would resurrect it on the next form.
+   *
+   * **So every `Shift` field must be added HERE and in `sameShift` below, or it is silently
+   * erased.** That was already true of this literal; #998's conditional write makes the erasure
+   * *intermittent* rather than constant, which is harder to debug rather than easier — a field
+   * that vanishes only on days something else moved.
+   */
   const shift: Shift = {
     id: shiftId,
     vesselId,
@@ -525,9 +566,20 @@ async function formOneShift(
     ...(startAfter ? { earliestStart: startAfter } : {}),
     ...(extra?.splitCutTime ? { splitCutTime: extra.splitCutTime } : {}),
   };
-  await repo.saveShift(shift);
+  // #998: write only what moved. This was unconditional, so every run rewrote every vessel-day it
+  // visited — one booking rewrote twelve unrelated rows (#957), and the tick does it across every
+  // vessel-day that has ever existed. What makes even a bounded sweep cheap rather than merely
+  // smaller (DEC-167: the cost is the product of cadence and work, and nothing displays it).
+  //
+  // The notice diff below is deliberately OUTSIDE this guard. It reads `existing` against `shift`
+  // on its own terms, and an unchanged pair produces no diff anyway — so "skip the write" and
+  // "emit nothing" coincide without being wired together. Skipping the whole branch instead would
+  // have stopped telling crew their day moved, on exactly the days it did.
+  const changed = !existing || !sameShift(existing, shift);
+  if (changed) await repo.saveShift(shift);
   if (existing) {
-    result.shiftsUpdated++;
+    // Counts CHANGES now, not writes. `xola-pull/route.ts` is the only place it surfaces.
+    if (changed) result.shiftsUpdated++;
     // #350: the shift SURVIVES (we're past the all-cancelled return) and existed
     // before. If its scheduled trip set actually CHANGED — a trip added, or one of
     // several cancelled — its assigned crew's committed day moved, so relay each a

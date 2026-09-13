@@ -60,6 +60,11 @@ export async function GET(req: Request) {
       reservationsNewlyCancelled: r.import.reservationsNewlyCancelled,
       eventsCreated: r.import.eventsCreated,
       shiftsCreated: r.form.shiftsCreated,
+      // #998: this counts vessel-days that CHANGED, not rows written. It used to be the same
+      // number for a duller reason — every visited vessel-day was rewritten whether or not
+      // anything had moved, so it reported how many the pull walked. A steady re-pull now reports
+      // 0 rather than the size of the fleet, which is the answer the field was always meant to
+      // give. The only place it surfaces.
       shiftsUpdated: r.form.shiftsUpdated,
     });
   } catch (e) {

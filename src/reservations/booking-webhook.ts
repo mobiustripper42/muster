@@ -460,10 +460,21 @@ export async function processBookingCharge(
     // Audit is called here (core); the notice relay rides a dep, because the channel wiring lives
     // in `app/` and core cannot import it — the same seam `sendConfirmation` uses.
     try {
-      const form = await formShifts(deps.repo, {
-        now: new Date(deps.now()),
-        notifyTripChanges: true,
-      });
+      // #999: the one vessel-day this booking landed on. Read off the EVENT — `Reservation`'s
+      // slot fields are optional (a Xola row carries none) and the event is what formation keys
+      // on. `confirmPendingRow` has already materialised it (§2.8.2), so it is there.
+      //
+      // **This is the call the comment above argued must stay unscoped, and the argument is now
+      // answered elsewhere.** An unscoped re-form here was how a crew member dropped from an
+      // UNRELATED shift got told — real, and no longer this call's job: the cron tick's
+      // `reformWindow` sweeps and relays on the same contract. Narrowing here without that pass
+      // in place WOULD have silently stopped those notices.
+      const bookedEvent = await deps.repo.getEvent(eventIdOfBooked(result.reservation));
+      const form = await formShifts(
+        deps.repo,
+        bookedEvent ? [{ vesselId: bookedEvent.vesselId, date: bookedEvent.date }] : [],
+        { now: new Date(deps.now()), notifyTripChanges: true },
+      );
       await relayAndAudit(deps, form);
       // #957: this is the bug's own site. One unmanned vessel six weeks out used to abort the
       // whole run, so this booking's own vessel-day never formed — sold, paid, no crew, no row

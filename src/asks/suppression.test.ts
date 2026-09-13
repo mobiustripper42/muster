@@ -10,9 +10,9 @@ import type { CrewMemberId, SeatId, VesselId } from "../domain/ids.js";
 import type { CrewMember, Event, Vessel } from "../domain/entities.js";
 import { buildAskSuppression } from "./suppression.js";
 import { assignPerson, manualOverride, recordResponse } from "./ask-loop.js";
-import { formShifts } from "../builder/form-shifts.js";
 import { tick } from "../builder/tick.js";
 import { poolExhaustedFor } from "../oracle/oracle.js";
+import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
 
 const CAP = asId<"RoleTypeId">("role-captain");
 const UTC = "UTC";
@@ -59,7 +59,7 @@ describe("buildAskSuppression — working window (#341 / DEC-129)", () => {
   async function confirmedShift(): Promise<void> {
     const v = await vessel("boat-a");
     await event(v, "ea", "2026-07-01", "15:00");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     await manualOverride(repo, await seatOf(`shift-${v}-2026-07-01`), await captain("liam"), new Date("2026-06-25T00:00:00Z"));
   }
 
@@ -83,7 +83,7 @@ describe("buildAskSuppression — working window (#341 / DEC-129)", () => {
   it("an Open (uncommitted) seat contributes nobody", async () => {
     const v = await vessel("boat-a");
     await event(v, "ea", "2026-07-01", "15:00");
-    await formShifts(repo); // seat Open, nobody assigned
+    await formAllVesselDaysForTest(repo); // seat Open, nobody assigned
     const s = await buildAskSuppression(repo, new Date("2026-07-01T15:30:00Z"), UTC);
     expect(s.working.size).toBe(0);
   });
@@ -93,7 +93,7 @@ describe("buildAskSuppression — decline cooldown (#342 / DEC-130)", () => {
   it("maps a declined ask to the declined shift's vessel-date", async () => {
     const v = await vessel("boat-a");
     await event(v, "ea", "2026-07-01", "13:00");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const seat = await seatOf(`shift-${v}-2026-07-01`);
     const dana = await captain("dana");
     const ask = await assignPerson(repo, seat, dana, new Date("2026-06-25T00:00:00Z"));
@@ -115,7 +115,7 @@ describe("#341 on-shift suppression through tick (DEC-129)", () => {
     const vb = await vessel("boat-b");
     await event(va, "ea", "2026-07-01", "15:00");
     await event(vb, "eb", "2026-07-08", "15:00");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     await manualOverride(repo, await seatOf(`shift-${va}-2026-07-01`), await captain("liam"), new Date("2026-06-25T00:00:00Z"));
     return { seatB: await seatOf(`shift-${vb}-2026-07-08`) };
   }
@@ -160,7 +160,7 @@ describe("#342 same-day decline cooldown through tick (DEC-130)", () => {
     const vb = await vessel("boat-b");
     await event(va, "ea", "2026-07-01", "13:00");
     await event(vb, "eb", "2026-07-01", "17:00");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     await captain("dana");
     const anchor = await captain("anchor");
     if (opts.withEvan) await captain("evan");
@@ -190,7 +190,7 @@ describe("#342 same-day decline cooldown through tick (DEC-130)", () => {
     const vc = await vessel("boat-c");
     await event(va, "ea", "2026-07-01", "13:00");
     await event(vc, "ec", "2026-07-02", "13:00"); // horizon 06-25, fills-by 06-30 → drip at 06-27
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const dana = await captain("dana");
     const seatA = await seatOf("shift-boat-a-2026-07-01");
     const ask = await assignPerson(repo, seatA, dana, new Date("2026-06-26T00:00:00Z"));
@@ -210,7 +210,7 @@ describe("precedence — urgent blast (DEC-129 hard, even under urgency)", () =>
     const vw = await vessel("boat-w");
     await event(vu, "eu", "2026-07-03", "15:00");
     await event(vw, "ew", "2026-07-01", "15:00");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     await manualOverride(repo, await seatOf("shift-boat-w-2026-07-01"), await captain("wendy"), new Date("2026-06-25T00:00:00Z"));
     await captain("free");
     const seatU = await seatOf("shift-boat-u-2026-07-03");

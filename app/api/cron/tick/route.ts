@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { formShifts } from "@core/builder/form-shifts.js";
+import { reformWindow } from "@core/builder/form-shifts.js";
 import { logFormAudit } from "@core/oracle/audit-log.js";
 import { tick, type TickResult } from "@core/builder/tick.js";
 import { getRepo } from "../../../lib/repo";
@@ -72,7 +72,10 @@ export async function GET(req: Request) {
   // was silent.
   let shiftsFormed = 0;
   try {
-    const form = await formShifts(repo, { now, notifyTripChanges: true });
+    // #999: the repair pass. This is the ONE caller that does not know what changed, so it is the
+    // one that asks what might have — and it is what lets every other caller name its own
+    // vessel-day without any crew transition going unrelayed.
+    const form = await reformWindow(repo, now);
     shiftsFormed = form.createdShiftIds.length;
     // Relay + audit like every other `formShifts` caller. `cancelledCrew`/`restoredCrew` are NOT
     // gated by `notifyTripChanges`, and after DEC-126 this and the booking webhook are the only

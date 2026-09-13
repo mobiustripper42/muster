@@ -8,7 +8,6 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import { seedFleet } from "../import/resource-map.js";
 import { refreshShiftState } from "../asks/ask-loop.js";
-import { formShifts } from "./form-shifts.js";
 import {
   addOverrideSeat,
   removeOverrideSeat,
@@ -16,6 +15,7 @@ import {
   unstaffTraineeSeat,
 } from "./manning.js";
 import { bailWithDerivedLateness, vacateSeat } from "../asks/ask-loop.js";
+import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
 
 const PARTY = asId<"VesselId">("vessel-brew-2"); // 2-crew (captain + mate), fleet-seeded
 const DAY = "2026-07-18";
@@ -34,7 +34,7 @@ async function seedShift(): Promise<InMemoryRepository> {
     capacity: 16,
     source: "xola", status: "scheduled",
   });
-  await formShifts(repo);
+  await formAllVesselDaysForTest(repo);
   return repo;
 }
 
@@ -48,7 +48,7 @@ describe("manning override (8.5)", () => {
     expect((await repo.listSeatsForShift(CANON)).length).toBe(before + 1);
 
     // Re-form (Xola re-import) must NOT prune the override seat.
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const seats = await repo.listSeatsForShift(CANON);
     expect(seats.find((s) => s.id === seat.id)).toBeTruthy();
     expect(seats.length).toBe(before + 1);
@@ -74,7 +74,7 @@ describe("manning override (8.5)", () => {
     const repo = await seedShift();
     const seat = await addOverrideSeat(repo, CANON, "supernumerary", CAPTAIN);
     expect(seat.kind).toBe("supernumerary");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     expect(
       (await repo.listSeatsForShift(CANON)).find((s) => s.id === seat.id),
     ).toBeTruthy();

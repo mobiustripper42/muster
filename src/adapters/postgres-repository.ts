@@ -51,6 +51,7 @@ import type {
   Shift,
   Subject,
   Vessel,
+  VesselDay,
 } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { subjectKey } from "../domain/subject.js";
@@ -81,6 +82,7 @@ import type {
 import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { AuditEvent } from "../domain/audit.js";
 import type { SeatState } from "../domain/states.js";
+import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type {
   ImportRun,
@@ -1168,6 +1170,46 @@ export class PostgresRepository implements Repository {
   async listEvents(): Promise<Event[]> {
     const { rows } = await this.#pool.query("select * from events");
     return rows.map(toEvent);
+  }
+  async listEventsForVesselDays(days: readonly VesselDay[]): Promise<Event[]> {
+    // Empty scope ⇒ empty result, and it returns BEFORE the query (#999). `in ()` is a syntax
+    // error in Postgres, but the reason to guard is the other one: a caller with nothing to form
+    // must form nothing, and the shape that degrades to "select everything" is the bug this whole
+    // change removes.
+    if (days.length === 0) return [];
+    // Two parallel arrays unnested into a join, rather than N `or` pairs: one plan whatever the
+    // scope size, and no statement-text churn for the query cache. Both statuses — an
+    // all-cancelled vessel-day must still be visited so its shift derives to `Cancelled`.
+    const { rows } = await this.#pool.query(
+      `select e.* from events e
+         join unnest($1::text[], $2::text[]) as d(vessel_id, date)
+           on e.vessel_id = d.vessel_id and e.date = d.date`,
+      [days.map((d) => String(d.vesselId)), days.map((d) => d.date)],
+    );
+    return rows.map(toEvent);
+  }
+  async listActiveVesselDays(fromDate: string, toDate: string): Promise<VesselDay[]> {
+    // The union is the design, not an optimisation. The events half looks forward inside the
+    // window; the shifts half has NO lower date bound, so a vessel-day that went bad and then
+    // aged past the window is still repaired rather than stranded — which is the moment the
+    // breakage would otherwise become permanent and stop being reported. Excluding terminal rows
+    // is what drains it: every visit either re-derives a live day or makes the row terminal.
+    //
+    // The terminal set is PASSED, not spelled in the SQL. `TERMINAL_SHIFT_STATES` is the one
+    // definition (`domain/states.ts`), and a hand-written `not in ('Completed','Cancelled')` here
+    // is a second spelling that a new terminal state would silently leave behind — the exact
+    // defect class `flags.ts` documents from #588 ("two spellings of one guard, and only one of
+    // them ever gets fixed"). The in-memory adapter reads the same constant.
+    const { rows } = await this.#pool.query(
+      `select vessel_id, date from events where date between $1 and $2
+       union
+       select vessel_id, date from shifts where state <> all($3::text[])`,
+      [fromDate, toDate, [...TERMINAL_SHIFT_STATES]],
+    );
+    return rows.map((r: { vessel_id: string; date: string }) => ({
+      vesselId: asId<"VesselId">(r.vessel_id),
+      date: r.date,
+    }));
   }
   async cancelEventIfUnclaimed(id: EventId): Promise<boolean> {
     // Release the hull (#616), conditionally. The mirror of `saveBookingIfSlotFree`: that one

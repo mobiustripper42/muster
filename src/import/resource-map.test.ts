@@ -14,10 +14,10 @@
 
 import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import { formShifts } from "../builder/form-shifts.js";
 import { asId } from "../domain/ids.js";
 import { importRecords, type RawReservationRecord } from "./import-reservations.js";
 import { resolveResource, seedFleet, X_SHORE_1, X_SHORE_2 } from "./resource-map.js";
+import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
 
 describe("X Shore — two hulls, captain-only, 6 pax", () => {
   it("the two Xola resources resolve to two DIFFERENT vessels", () => {
@@ -58,7 +58,7 @@ describe("X Shore — two hulls, captain-only, 6 pax", () => {
       status: "booked",
     };
     await importRecords(repo, [rec]);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     const shiftId = asId<"ShiftId">(`shift-${resolved.vessel.vesselId}-2026-09-06`);
     const seats = await repo.listSeatsForShift(shiftId);

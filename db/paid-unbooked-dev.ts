@@ -58,6 +58,12 @@ if (existsSync(".env.local")) {
 
 const args = process.argv.slice(2);
 const lost = args.includes("--lost");
+/** `--name "<whatever>"` — the booking name. Free text at the real checkout, which is only
+ *  trimmed and checked non-empty, so this is what an attacker can actually send. Exists so the
+ *  operator can see for themselves that a name shaped like an instruction cannot forge the
+ *  operator alert (15.5, `/security-review`). */
+const nameFlag = args.indexOf("--name");
+const customerName = nameFlag >= 0 ? (args[nameFlag + 1] ?? "Test Customer") : "Test Customer";
 const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 
 // Local-DB guard (mirrors db:seed:reservation): this writes synthetic rows.
@@ -94,7 +100,7 @@ try {
       eventId: null,
       source: "muster",
       status: "pending",
-      customerName: "Test Customer",
+      customerName,
       email: "test-customer@example.test",
       partySize: 6,
       vesselId: asId<"VesselId">("vessel-brew-2"),
@@ -164,7 +170,7 @@ try {
         priceCents: "50000",
         kind: "full",
         taxCents: "3625",
-        customerName: "Test Customer",
+        customerName,
         email: "test-customer@example.test",
       },
     },

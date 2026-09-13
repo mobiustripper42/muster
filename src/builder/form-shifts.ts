@@ -20,7 +20,8 @@
  *    `Completed` shift — the trip ran — is never resurrected and re-cancelled.
  */
 
-import type { Event, Seat, Shift } from "../domain/entities.js";
+import type { Event, Seat, Shift, VesselDay } from "../domain/entities.js";
+import { addDays, vesselDateOf } from "../config/tenant.js";
 import { asId } from "../domain/ids.js";
 import type { VesselId, ShiftId, CrewMemberId } from "../domain/ids.js";
 import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
@@ -165,32 +166,95 @@ export function assertDayFormed(form: FormResult, vesselId: VesselId, date: stri
  * `FormResult.failures` instead of on an exception. Nothing throws for a bad vessel-day now.
  */
 
+/** How far ahead the repair pass looks. One staffing horizon plus a month of slack. */
+export const REFORM_WINDOW_LEAD_DAYS = 45;
+
+/**
+ * The scheduled **repair** pass (#999) — a backstop, not a discovery pass over history.
+ *
+ * **Why this is its own function rather than `formShifts` with a wide argument.** Two names make
+ * "I am repairing whatever drifted" and "I am forming the day I just changed" different acts. One
+ * function whose behaviour depends on which shape of scope you handed it is a function nobody can
+ * read a call site of.
+ *
+ * **Its set is a union, and the second half is the load-bearing one.** Vessel-days with events in
+ * `[today−1, today+45]`, plus every vessel-day holding a shift that is not yet terminal — with no
+ * lower date bound at all. Bound it by date alone and a vessel-day that goes bad and then ages past
+ * the window is never repaired: the window moves on, and the breakage becomes permanent at exactly
+ * the moment it stops being reported. The unbounded half drains itself, because every visit either
+ * re-derives a live day or makes its row terminal.
+ *
+ * **This is also what lets every other caller narrow.** The booking webhook and cancel used to
+ * re-form the fleet so a crew member dropped from an UNRELATED shift would still be told; that job
+ * is this function's now, and it relays on the same contract. Scoping those callers without this
+ * pass in place would have stopped those notices silently.
+ */
+export async function reformWindow(
+  repo: Repository,
+  now: Date,
+  opts?: { leadDays?: number; notifyTripChanges?: boolean },
+): Promise<FormResult> {
+  // **Vessel-local, never a UTC slice (DEC-032).** The first cut did
+  // `new Date(now + offset).toISOString().slice(0,10)`, which is the failure DEC-032 was written
+  // to forbid, inside the one function whose job is to catch what everything else missed. Eastern
+  // runs four hours behind UTC, so from 8pm local until midnight the UTC date is already tomorrow
+  // and `today − 1` evaluates to local TODAY — the backward slack silently gone for four hours a
+  // day. A vessel-day whose formation failed outright has NO shift row, so the unbounded half
+  // cannot rescue it either; it is reachable by the date half or by nothing, and once local
+  // midnight passes it never re-enters the window.
+  //
+  // `addDays` walks the date STRING, so it cannot drift across a DST boundary the way adding
+  // 86,400,000 milliseconds does.
+  const today = vesselDateOf(now);
+  const days = await repo.listActiveVesselDays(
+    addDays(today, -1),
+    addDays(today, REFORM_WINDOW_LEAD_DAYS),
+  );
+  // `notifyTripChanges: true` sits AFTER the spread on purpose: this is the call the #765 guard
+  // calls the most important one to keep flagged, and a caller passing the key — even as
+  // `undefined` — must not be able to turn the crew notices off.
+  return formShifts(repo, days, { now, ...opts, notifyTripChanges: true });
+}
+
 // REFACTOR QUEUE — cognitive complexity 99, against a ceiling of 40 (#909).
 // Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
 // ratchets down as the list shrinks, so this disable is meant to be deleted.
 // eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 99
 export async function formShifts(
   repo: Repository,
+  days: readonly VesselDay[],
   opts?: { now?: Date; leadDays?: number; notifyTripChanges?: boolean },
 ): Promise<FormResult> {
-  // Group by vessel + day across ALL events (not just `scheduled`): a group whose
-  // events have all cancelled must still be revisited so its shift can derive to
-  // `Cancelled` (SPEC §5 reconciliation). The scheduled/cancelled split happens
-  // per group below.
+  // **Every vessel-day named here is visited, and no other is (#999).** The scope is REQUIRED and
+  // positional so it cannot be forgotten: a caller states what it covers rather than re-deriving
+  // the fleet. An empty list forms nothing — it is never a sweep, which is the one degenerate
+  // reading that would put the old behaviour back on the path nobody tests.
+  //
+  // **Why scoping is safe at all.** Formation consumes exactly one kind of fact — an `Event` row —
+  // and an `Event` row changes only on a write path. The passage of time creates no trips, so a
+  // vessel-day nobody wrote to cannot need re-forming. The caller that did the write knows which
+  // days it touched.
+  //
+  // **A caller passes every vessel-day it TOUCHED, not every one it wrote.** Moving a booking from
+  // one boat to another writes the new day and empties the old one; pass both, or the old boat
+  // keeps a shift for a trip that left. `reformWindow` is the backstop when somebody forgets, not
+  // the plan.
+  const wanted = new Map<string, VesselDay>();
+  for (const d of days) wanted.set(`${String(d.vesselId)}|${d.date}`, d);
+
+  // Seed a group per REQUESTED vessel-day, empty. A day with no events at all still has to be
+  // visited: its shift may exist and need deriving to `Cancelled` (DEC-043 — the events relocated
+  // or all cancelled). Seeding from the request rather than from the data is what makes "asked
+  // for" and "visited" the same set.
   const groups = new Map<string, { vesselId: VesselId; date: string; events: Event[] }>();
-  for (const e of await repo.listEvents()) {
-    const key = `${e.vesselId}|${e.date}`;
-    const g = groups.get(key);
-    if (g) g.events.push(e);
-    else groups.set(key, { vesselId: e.vesselId, date: e.date, events: [e] });
+  for (const [key, d] of wanted) {
+    groups.set(key, { vesselId: d.vesselId, date: d.date, events: [] });
   }
-  // DEC-043: an existing shift whose every event has RELOCATED (a reassigned boat)
-  // or vanished now has no events in its vessel+day — seed it with an empty set so
-  // the loop below derives it to `Cancelled`, instead of orphaning a ghost shift on
-  // the old boat. (The new boat's vessel+day forms its own shift from the events.)
-  for (const s of await repo.listShifts()) {
-    const key = `${s.vesselId}|${s.date}`;
-    if (!groups.has(key)) groups.set(key, { vesselId: s.vesselId, date: s.date, events: [] });
+  // Events across ALL statuses, not just `scheduled`: a group whose events have all cancelled must
+  // still derive to `Cancelled` (SPEC §5 reconciliation). The scheduled/cancelled split happens
+  // per group below. The read is keyed, so this is the slice — not the fleet filtered down.
+  for (const e of await repo.listEventsForVesselDays([...wanted.values()])) {
+    groups.get(`${String(e.vesselId)}|${e.date}`)?.events.push(e);
   }
 
   const result: FormResult = {

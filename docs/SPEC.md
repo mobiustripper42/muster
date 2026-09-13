@@ -838,11 +838,18 @@ too: the `locked_at` column is dropped by migration `0022`, `src/builder/lock.ts
 ### Acceptance criteria
 - [ ] Importing/refreshing events produces proposed shifts grouped one-boat-one-day, with required
       seats derived from COI — no manual grouping step.
+- [ ] A formation run covers a **stated set of vessel-days**, not the whole fleet. *(DEC-171: every
+      caller passes the vessel-days it touched — the booking its own, the split its own — and the
+      scheduled tick runs a bounded repair pass for the days nobody claimed. Formation reads only
+      `Event` rows and those change only on a write, so a day nobody wrote to cannot need re-forming.
+      An empty set forms nothing.)*
 - [ ] Splitting a shift partitions the vessel-day's trips across two shifts at the chosen cut; merging
       is the inverse. *(Precision, DEC-083: the partition is re-derived from the vessel-day's **live**
-      scheduled trips on every pull, not frozen from the original's trip set — which is what lets a new
-      Xola trip auto-land on the correct side and a cancelled one land on neither. So after any booking
-      change the two sides' union is deliberately **not** the original's set.)*
+      scheduled trips whenever that vessel-day is formed, not frozen from the original's trip set —
+      which is what lets a new trip auto-land on the correct side and a cancelled one land on neither.
+      So after any booking change the two sides' union is deliberately **not** the original's set.
+      This read "on every pull" until DEC-171; the pull was only ever the caller that happened to
+      trigger it, and it is the one caller that leaves with Xola.)*
 - [ ] Overriding to add a required hand changes the gate for `Crewed`; adding a supernumerary seat
       does **not** gate `Crewed` and **decrements** available pax against COI max.
       *(Verdict 2026-07-26/27: **first clause met in the domain layer, second clause unreachable.**

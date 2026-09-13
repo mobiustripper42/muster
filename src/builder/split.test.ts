@@ -9,8 +9,8 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { Event } from "../domain/entities.js";
 import { seedFleet } from "../import/resource-map.js";
-import { formShifts } from "./form-shifts.js";
 import { splitShift } from "./split.js";
+import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
 
 const PARTY = asId<"VesselId">("vessel-brew-2"); // 2-crew (captain + mate), fleet-seeded
 const DAY = "2026-07-18";
@@ -35,7 +35,7 @@ async function seedDay(
   await seedFleet(repo);
   await repo.saveEvent(ev("am", times[0]));
   await repo.saveEvent(ev("pm", times[1]));
-  await formShifts(repo);
+  await formAllVesselDaysForTest(repo);
   return repo;
 }
 
@@ -138,7 +138,7 @@ describe("splitShift (DEC-083)", () => {
     await splitShift(repo, CANON, "14:00");
     await repo.saveEvent(ev("noon", "12:00")); // morning
     await repo.saveEvent(ev("late", "20:00")); // evening
-    const r = await formShifts(repo);
+    const r = await formAllVesselDaysForTest(repo);
 
     expect(ids((await repo.getShift(CANON))?.eventIds)).toEqual(ids(["am", "noon"]));
     expect(ids((await repo.getShift(SIDE_B))?.eventIds)).toEqual(ids(["late", "pm"]));
@@ -149,7 +149,7 @@ describe("splitShift (DEC-083)", () => {
   it("a steady re-form (no trip change) reports no split-day change", async () => {
     const repo = await seedDay();
     await splitShift(repo, CANON, "14:00");
-    expect((await formShifts(repo)).splitDaysChanged).toEqual([]);
+    expect((await formAllVesselDaysForTest(repo)).splitDaysChanged).toEqual([]);
   });
 
   it("collapse persists the split (no auto-dissolve); the cut survives to resurrect", async () => {
@@ -158,17 +158,17 @@ describe("splitShift (DEC-083)", () => {
 
     // Cancel side B's only trip → Cancelled husk, but the split stays.
     await repo.saveEvent(ev("pm", "17:00", "cancelled"));
-    const r1 = await formShifts(repo);
+    const r1 = await formAllVesselDaysForTest(repo);
     expect((await repo.getShift(SIDE_B))?.state).toBe("Cancelled");
     expect((await repo.getShift(CANON))?.splitCutTime).toBe("14:00"); // NOT dissolved
     expect(r1.splitDaysChanged).toContain(String(CANON)); // collapse flagged
 
     // Still cancelled next pull → no re-fire (the husk reads as empty).
-    expect((await formShifts(repo)).splitDaysChanged).toEqual([]);
+    expect((await formAllVesselDaysForTest(repo)).splitDaysChanged).toEqual([]);
 
     // The evening trip returns → side B resurrects on the correct side, flagged.
     await repo.saveEvent(ev("pm", "17:00", "scheduled"));
-    const r3 = await formShifts(repo);
+    const r3 = await formAllVesselDaysForTest(repo);
     expect((await repo.getShift(SIDE_B))?.state).not.toBe("Cancelled");
     expect(ids((await repo.getShift(SIDE_B))?.eventIds)).toEqual([String(asId("pm"))]);
     expect(r3.splitDaysChanged).toContain(String(CANON));
@@ -256,7 +256,7 @@ describe("splitShift (DEC-083)", () => {
       await confirmInto(repo, SIDE_B, "crew-solo", 1);
       await cancelEvent(repo, "pm"); // side B's only trip → B collapses
 
-      const r = await formShifts(repo);
+      const r = await formAllVesselDaysForTest(repo);
       expect((await repo.getShift(SIDE_B))?.state).toBe("Cancelled");
       expect((await repo.getShift(CANON))?.state).not.toBe("Cancelled");
       // The who-got-dropped math (#226's hazard class): dual survives on A.
@@ -273,7 +273,7 @@ describe("splitShift (DEC-083)", () => {
       await confirmInto(repo, CANON, "crew-a-only", 1);
       await cancelEvent(repo, "am"); // side A's only trip → A collapses
 
-      const r = await formShifts(repo);
+      const r = await formAllVesselDaysForTest(repo);
       expect((await repo.getShift(CANON))?.state).toBe("Cancelled");
       expect((await repo.getShift(SIDE_B))?.state).not.toBe("Cancelled");
       expect(r.cancelledCrew).toEqual([
@@ -290,7 +290,7 @@ describe("splitShift (DEC-083)", () => {
       await cancelEvent(repo, "am");
       await cancelEvent(repo, "pm");
 
-      const r = await formShifts(repo);
+      const r = await formAllVesselDaysForTest(repo);
       const got = r.cancelledCrew
         .map((c) => `${c.shiftId}|${c.crewMemberId}`)
         .sort();
@@ -315,7 +315,7 @@ describe("splitShift (DEC-083)", () => {
       });
       await cancelEvent(repo, "pm");
 
-      const r = await formShifts(repo);
+      const r = await formAllVesselDaysForTest(repo);
       expect(r.cancelledCrew).toEqual([
         { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-claimant") },
       ]);
@@ -327,9 +327,9 @@ describe("splitShift (DEC-083)", () => {
       await confirmInto(repo, SIDE_B, "crew-solo", 0);
       await cancelEvent(repo, "pm");
 
-      const r1 = await formShifts(repo);
+      const r1 = await formAllVesselDaysForTest(repo);
       expect(r1.cancelledCrew).toHaveLength(1);
-      const r2 = await formShifts(repo);
+      const r2 = await formAllVesselDaysForTest(repo);
       expect(r2.cancelledCrew).toEqual([]);
     });
 
@@ -339,7 +339,7 @@ describe("splitShift (DEC-083)", () => {
       await confirmInto(repo, SIDE_B, "crew-solo", 0);
       // Collapse side B → crew-solo told "you're off" (the cancel side).
       await cancelEvent(repo, "pm");
-      const rCollapse = await formShifts(repo);
+      const rCollapse = await formAllVesselDaysForTest(repo);
       expect((await repo.getShift(SIDE_B))?.state).toBe("Cancelled");
       expect(rCollapse.cancelledCrew).toEqual([
         { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-solo") },
@@ -349,13 +349,13 @@ describe("splitShift (DEC-083)", () => {
       // The pm trip returns → side B re-forms live with crew-solo still assigned on
       // the husk → reported for the matching "you're on", keyed to CANON.
       await reviveEvent(repo, "pm");
-      const r = await formShifts(repo);
+      const r = await formAllVesselDaysForTest(repo);
       expect((await repo.getShift(SIDE_B))?.state).not.toBe("Cancelled");
       expect(r.restoredCrew).toEqual([
         { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-solo") },
       ]);
       // A steady live re-pull must NOT re-fire (transition-only).
-      expect((await formShifts(repo)).restoredCrew).toEqual([]);
+      expect((await formAllVesselDaysForTest(repo)).restoredCrew).toEqual([]);
     });
 
     it("resurrection nets a continuous dual-sider (#244): reviving side A never tells someone still working side B 'you're on'", async () => {
@@ -366,7 +366,7 @@ describe("splitShift (DEC-083)", () => {
       await confirmInto(repo, CANON, "crew-a-only", 1);
       // Side A collapses — dual survives on B (never told "off"); a-only is told off.
       await cancelEvent(repo, "am");
-      const rCollapse = await formShifts(repo);
+      const rCollapse = await formAllVesselDaysForTest(repo);
       expect(rCollapse.cancelledCrew).toEqual([
         { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-a-only") },
       ]);
@@ -374,7 +374,7 @@ describe("splitShift (DEC-083)", () => {
       // Side A's trip returns: a-only genuinely comes back ("you're on"); dual, who
       // worked B throughout and was never told "off", is netted out — no false "on".
       await reviveEvent(repo, "am");
-      const r = await formShifts(repo);
+      const r = await formAllVesselDaysForTest(repo);
       expect(r.restoredCrew).toEqual([
         { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-a-only") },
       ]);
@@ -387,11 +387,11 @@ describe("splitShift (DEC-083)", () => {
       await confirmInto(repo, SIDE_B, "crew-dual", 0);
       // Pull 1: side A collapses — dual survives on B, no notice.
       await cancelEvent(repo, "am");
-      expect((await formShifts(repo)).cancelledCrew).toEqual([]);
+      expect((await formAllVesselDaysForTest(repo)).cancelledCrew).toEqual([]);
       // Pull 2: side B collapses too — dual is NOW genuinely off the day.
       // Side A (Cancelled) must not shield them as a "survivor."
       await cancelEvent(repo, "pm");
-      expect((await formShifts(repo)).cancelledCrew).toEqual([
+      expect((await formAllVesselDaysForTest(repo)).cancelledCrew).toEqual([
         { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-dual") },
       ]);
     });

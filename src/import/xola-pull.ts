@@ -27,6 +27,7 @@ import {
 import { formShifts } from "../builder/form-shifts.js";
 import type { FormResult } from "../builder/form-shifts.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
+import { asId } from "../domain/ids.js";
 import type { VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { importRecords } from "./import-reservations.js";
@@ -179,7 +180,36 @@ export async function pullXola(
   // notifyTripChanges (#350): the import is the one caller that should relay "your
   // shift changed" to a shift's assigned crew — a real Xola booking moved their day.
   // The manual split/merge commands re-form too but carry their own notice story.
-  const formed = await formShifts(repo, {
+  // #999: the window this pull covered. The importer is the ONE writer that can relocate an event
+  // to a different boat (`import-reservations.ts`), so it is also the one caller whose scope must
+  // include a vessel-day it may have EMPTIED — the old boat, which has a shift and now no trips.
+  // `listActiveVesselDays` covers it: that day still holds a non-terminal shift, so it is in the
+  // set regardless of where its events went, and derives to `Cancelled` on this same run.
+  //
+  // This whole call leaves with Xola (DEC-126). Until then it is the widest legitimate scope in
+  // the codebase, and it is still a stated one rather than "everything that has ever existed".
+  // **Every vessel-day this pull TOUCHED, which is two sets, not one.**
+  //
+  // The days it wrote come from the records themselves — `window` sizes the /orders FETCH, and a
+  // trip can land outside it (the fixtures do exactly that). Scoping to the window alone would
+  // import an event and then not form its shift, leaving the boat sold and uncrewed until the tick
+  // caught it. The caller knows what it wrote; it passes that.
+  //
+  // Plus the window's active days, because the importer is the ONE writer that can relocate an
+  // event to a different boat. The day it EMPTIED is not in `records` — nothing points at it any
+  // more — but it still holds a non-terminal shift, so `listActiveVesselDays` returns it and this
+  // same run derives it to `Cancelled` instead of orphaning a ghost on the old hull (DEC-043).
+  const touched = new Map<string, { vesselId: VesselId; date: string }>();
+  for (const d of await repo.listActiveVesselDays(window.start, window.end)) {
+    touched.set(`${String(d.vesselId)}|${d.date}`, d);
+  }
+  for (const r of records) {
+    if (r.vesselId) {
+      const vesselId = asId<"VesselId">(r.vesselId);
+      touched.set(`${r.vesselId}|${r.date}`, { vesselId, date: r.date });
+    }
+  }
+  const formed = await formShifts(repo, [...touched.values()], {
     now,
     leadDays: horizonLeadDays,
     notifyTripChanges: true,

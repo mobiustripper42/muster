@@ -14,8 +14,8 @@ import type { Vessel } from "../domain/entities.js";
 import type { CrewMemberId, RoleTypeId, SeatId } from "../domain/ids.js";
 import { asId } from "../domain/ids.js";
 import { claimSeat, releaseSelfClaim } from "../asks/claim.js";
-import { formShifts } from "./form-shifts.js";
 import { tick } from "./tick.js";
+import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 const MATE = asId<"RoleTypeId">("role-mate");
@@ -77,7 +77,7 @@ describe("cascade coexistence (DEC-078, §2.7.5)", () => {
   it("a seat self-claimed during Pending is skipped by the cascade at the horizon crossing", async () => {
     const cap = await crew("cap", CAPTAIN);
     const mate = await crew("mate", MATE);
-    await formShifts(repo, { now: BEFORE }); // Pending shift, captain + mate Open seats
+    await formAllVesselDaysForTest(repo, { now: BEFORE }); // Pending shift, captain + mate Open seats
     const capSeat = await seatFor(CAPTAIN);
     const mateSeat = await seatFor(MATE);
 
@@ -104,7 +104,7 @@ describe("cascade coexistence (DEC-078, §2.7.5)", () => {
     const cap = await crew("cap", CAPTAIN);
     const cap2 = await crew("cap2", CAPTAIN); // the re-ask candidate the tick will pick
     await crew("mate", MATE);
-    await formShifts(repo, { now: BEFORE });
+    await formAllVesselDaysForTest(repo, { now: BEFORE });
     const capSeat = await seatFor(CAPTAIN);
     expect((await claimSeat(repo, cap, capSeat, BEFORE)).code).toBeNull();
 
@@ -131,7 +131,7 @@ describe("cascade coexistence (DEC-078, §2.7.5)", () => {
   it("the system abstains during Pending, but a crew pull is orthogonal and still works", async () => {
     const cap = await crew("cap", CAPTAIN);
     await crew("mate", MATE);
-    await formShifts(repo, { now: BEFORE });
+    await formAllVesselDaysForTest(repo, { now: BEFORE });
     const capSeat = await seatFor(CAPTAIN);
 
     // §1.1: before the horizon the SYSTEM abstains — a tick fires no asks.

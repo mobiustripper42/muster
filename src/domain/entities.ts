@@ -930,6 +930,22 @@ export interface Payment {
 
 // ── Shift + Seat ────────────────────────────────────────────────────────────
 
+/**
+ * One boat on one day — the grain shift formation has always worked at (#999).
+ *
+ * `formShifts` keys every group on vessel + day and mints `shift-{vessel}-{date}` from it; a split
+ * partitions that same day by time (DEC-083) rather than splitting the key. Naming it lets a
+ * caller **state** which vessel-days its run covers instead of re-deriving the whole fleet, which
+ * is what the scope change rests on.
+ *
+ * `date` is a vessel-local ISO date (DEC-032), never an instant — the same string `Shift.date` and
+ * `Event.date` carry.
+ */
+export interface VesselDay {
+  readonly vesselId: VesselId;
+  readonly date: string;
+}
+
 export interface Shift {
   id: ShiftId;
   vesselId: VesselId;

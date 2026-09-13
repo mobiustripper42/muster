@@ -9,9 +9,9 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { Event } from "../domain/entities.js";
 import { seedFleet } from "../import/resource-map.js";
-import { formShifts } from "./form-shifts.js";
 import { splitShift } from "./split.js";
 import { mergeShift } from "./merge.js";
+import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
 
 const PARTY = asId<"VesselId">("vessel-brew-2"); // 2-crew (captain + mate), fleet-seeded
 const DAY = "2026-07-18";
@@ -33,7 +33,7 @@ async function seedDay(): Promise<InMemoryRepository> {
   await seedFleet(repo);
   await repo.saveEvent(ev("am", "11:00"));
   await repo.saveEvent(ev("pm", "17:00"));
-  await formShifts(repo);
+  await formAllVesselDaysForTest(repo);
   return repo;
 }
 

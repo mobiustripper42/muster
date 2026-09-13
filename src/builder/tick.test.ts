@@ -8,7 +8,6 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { CrewMemberId, SeatId } from "../domain/ids.js";
 import type { CrewMember, Event, Shift, Vessel } from "../domain/entities.js";
-import { formShifts } from "./form-shifts.js";
 import { resolveShiftStateOnRead, tick } from "./tick.js";
 import {
   bail,
@@ -18,6 +17,7 @@ import {
   recordResponse,
 } from "../asks/ask-loop.js";
 import { SYSTEM_ACTOR_ID } from "../oracle/reliability-log.js";
+import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 const MATE = asId<"RoleTypeId">("role-mate");
@@ -99,7 +99,7 @@ describe("tick — horizon advance", () => {
   it("births a past-horizon shift into Filling and fires Tier-1 asks", async () => {
     await seedVesselEvent();
     await addCaptain("cap-1");
-    await formShifts(repo); // Pending, one Open captain seat
+    await formAllVesselDaysForTest(repo); // Pending, one Open captain seat
 
     const r = await tick(repo, AFTER);
 
@@ -118,7 +118,7 @@ describe("tick — horizon advance", () => {
   it("never works a shift whose trip has already departed (#147, DEC-062)", async () => {
     await seedVesselEvent();
     await addCaptain("cap-1");
-    await formShifts(repo); // Pending, one Open captain seat
+    await formAllVesselDaysForTest(repo); // Pending, one Open captain seat
 
     // `now` is AFTER the 2026-07-01 trip start — its horizon is long crossed, so
     // without the past-trip guard the shift would broadcast and (post-DEC-061)
@@ -136,7 +136,7 @@ describe("tick — horizon advance", () => {
   it("leaves a pre-horizon shift Pending and asks no one", async () => {
     await seedVesselEvent();
     await addCaptain("cap-1");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     const r = await tick(repo, BEFORE);
 
@@ -149,7 +149,7 @@ describe("tick — horizon advance", () => {
   it("marks a past-horizon shift AtRisk when the pool is exhausted", async () => {
     await seedVesselEvent();
     // No eligible crew at all → empty pool.
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     const r = await tick(repo, AFTER);
 
@@ -163,7 +163,7 @@ describe("tick — horizon advance", () => {
 
   it("board landing is surfaced ONCE — a second tick on an unchanged board re-blasts nobody (DEC-095)", async () => {
     await seedVesselEvent();
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const first = await tick(repo, AFTER);
     expect(first.boardLandings).toHaveLength(1);
 
@@ -177,7 +177,7 @@ describe("tick — horizon advance", () => {
   it("is idempotent — a second tick after birth advances nothing", async () => {
     await seedVesselEvent();
     await addCaptain("cap-1");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     await tick(repo, AFTER); // born Filling, seat Asked
 
     const second = await tick(repo, AFTER);
@@ -206,7 +206,7 @@ describe("tick — horizon advance", () => {
       source: "xola", status: "scheduled",
     });
     const cap = await addCaptain("cap-1");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     // Confirm cap-1 into seat 1; leave seat 2 Open.
     const seats = await repo.listSeatsForShift(SHIFT);
     await repo.saveSeat({ ...seats[0]!, state: "Confirmed", assignedCrewMemberId: cap });
@@ -238,7 +238,7 @@ describe("tick — horizon advance", () => {
       capacity: 12,
       source: "xola", status: "scheduled",
     });
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     const r = await tick(repo, AFTER);
 
@@ -251,7 +251,7 @@ describe("tick — horizon advance", () => {
   it("never resurrects a Cancelled or Completed shift", async () => {
     await seedVesselEvent();
     await addCaptain("cap-1");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const shift = await repo.getShift(SHIFT);
     await repo.saveShift({ ...(shift as Shift), state: "Cancelled" });
 
@@ -279,7 +279,7 @@ describe("tick — Tier-2 stall escalation (DEC-024)", () => {
   async function bornThenSilent() {
     await seedVesselEvent();
     await addCaptain("cap-1");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     await tick(repo, AFTER); // born Filling, cap-1 asked
     await expireAsks(repo, await seatId(), T1, HOUR); // cap-1 ghosts → seat Open
   }
@@ -335,7 +335,7 @@ describe("tick — Tier-2 stall escalation (DEC-024)", () => {
 describe("tick — board-landing detection (DEC-026)", () => {
   it("records one board_landed per (shift, reason); a re-tick stays quiet", async () => {
     await seedVesselEvent();
-    await formShifts(repo); // no crew at all → exhausted → resolved AtRisk
+    await formAllVesselDaysForTest(repo); // no crew at all → exhausted → resolved AtRisk
 
     const r1 = await tick(repo, AFTER);
     expect(r1.boardLanded).toBe(1);
@@ -357,7 +357,7 @@ describe("tick — board-landing detection (DEC-026)", () => {
     // their ids. Without reason in the mint this was a Postgres pkey collision
     // the in-memory adapter silently swallowed.
     await seedVesselEvent();
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const seats = await repo.listSeatsForShift(SHIFT);
     await repo.saveSeat({ ...seats[0]!, state: "Bailed" });
 
@@ -377,7 +377,7 @@ describe("tick — board-landing detection (DEC-026)", () => {
 
   it("re-pings when a NEW reason appears (landed core, later regresses)", async () => {
     await seedVesselEvent();
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     await tick(repo, AFTER); // lands: core
 
     // The shift later regresses — a required seat rests Bailed.
@@ -391,7 +391,7 @@ describe("tick — board-landing detection (DEC-026)", () => {
   it("a near-term uncrewed shift lands even while worked (DEC-065); a Crewed one never does", async () => {
     await seedVesselEvent();
     await addCaptain("cap-1");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     // Born Filling with a live ask out, uncrewed, ~39h to the trip (inside the
     // 48h fills-by). DEC-065: a live ask no longer hides it — the operator IS
@@ -414,7 +414,7 @@ describe("tick — completion sweep (#570)", () => {
   /** Crew the shift's single captain seat and confirm it, as of `AFTER`. */
   async function crewIt(): Promise<{ crew: CrewMemberId; seat: SeatId }> {
     const crew = await addCaptain("cap-1");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     await tick(repo, AFTER); // births Filling + fires the ask
     const seatId = (await repo.listSeatsForShift(SHIFT))[0]!.id;
     const asks = await repo.listAsksForSeat(seatId);
@@ -489,7 +489,7 @@ describe("tick — completion sweep (#570)", () => {
   it("leaves a departed shift nobody crewed alone — no +5 for an empty boat", async () => {
     await seedVesselEvent();
     await addCaptain("cap-1");
-    await formShifts(repo); // Pending, seat Open, never filled
+    await formAllVesselDaysForTest(repo); // Pending, seat Open, never filled
 
     const r = await tick(repo, DEPARTED);
 
@@ -527,7 +527,7 @@ describe("tick — completion sweep (#570)", () => {
 describe("resolveShiftStateOnRead (DEC-023 corollary)", () => {
   it("resolves past-horizon exhaustion to AtRisk even when the badge is stale", async () => {
     await seedVesselEvent();
-    await formShifts(repo); // persisted: Pending; no crew, past horizon
+    await formAllVesselDaysForTest(repo); // persisted: Pending; no crew, past horizon
 
     expect(await resolveShiftStateOnRead(repo, SHIFT, AFTER)).toBe("AtRisk");
     expect((await repo.getShift(SHIFT))!.state).toBe("Pending"); // untouched
@@ -544,7 +544,7 @@ describe("tick — silent-ask sweep (#151, DEC-067)", () => {
   it("expires an unanswered ask past the timeout: stamps it silent + logs ask_ignored", async () => {
     await seedVesselEvent();
     const cap = await addCaptain("cap-1");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     // Tick 1 (~39h out, inside fills-by → urgent-blasts the lone captain): seeds the ask.
     await tick(repo, AFTER, { silentTimeoutMinutes: 60 });
@@ -567,7 +567,7 @@ describe("tick — silent-ask sweep (#151, DEC-067)", () => {
   it("leaves an ask still inside the timeout untouched", async () => {
     await seedVesselEvent();
     const cap = await addCaptain("cap-1");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     await tick(repo, AFTER, { silentTimeoutMinutes: 120 });
     // 30 min later, well within the 120-min timeout: the ask stays live.
@@ -584,7 +584,7 @@ describe("tick — silent-ask sweep (#151, DEC-067)", () => {
     await seedVesselEvent();
     const a = await addCaptain("cap-1");
     const b = await addCaptain("cap-2");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     // Urgent blast at AFTER asks both captains; cap-1 accepts → seat Claimed.
     await tick(repo, AFTER, { silentTimeoutMinutes: 60 });
@@ -610,7 +610,7 @@ describe("tick — silent-ask sweep (#151, DEC-067)", () => {
     await seedVesselEvent();
     await addCaptain("cap-1");
     await addCaptain("cap-2");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     await tick(repo, DRIP, { silentTimeoutMinutes: 60 }); // seeds ONE top-ranked ask
     const seatId = (await repo.listSeatsForShift(SHIFT))[0]!.id;
@@ -648,7 +648,7 @@ describe("tick — Tier-1 drip (DEC-063)", () => {
   async function seededShift(nCrew: number): Promise<void> {
     await seedVesselEvent();
     for (let i = 1; i <= nCrew; i++) await addCaptain(`cap-${i}`);
-    await formShifts(repo); // Pending, one Open captain seat
+    await formAllVesselDaysForTest(repo); // Pending, one Open captain seat
   }
 
   it("seeds ONE ask (top-ranked), not the whole pool", async () => {
@@ -729,7 +729,7 @@ describe("tick — Tier-1 drip (DEC-063)", () => {
     await addCaptain("cap-2");
     await addMate("mate-1");
     await addMate("mate-2");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     const seatRole = async (role: typeof CAPTAIN | typeof MATE) =>
       (await repo.listSeatsForShift(SHIFT)).find((s) => s.role === role)!.id;
@@ -776,7 +776,7 @@ describe("tick — civil send window (DEC-088)", () => {
   it("defers sends outside the window but still advances state (Pending → Filling, zero asks)", async () => {
     await seedVesselEvent();
     await addCaptain("cpt-a");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     const r = await tick(repo, NIGHT, civil);
     expect(await shiftState()).toBe("Filling"); // the runway is untouched…
@@ -788,7 +788,7 @@ describe("tick — civil send window (DEC-088)", () => {
   it("the first in-window tick fires what the night deferred — no queue needed", async () => {
     await seedVesselEvent();
     await addCaptain("cpt-a");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     await tick(repo, NIGHT, civil);
 
     const r = await tick(repo, MORNING, civil);
@@ -799,7 +799,7 @@ describe("tick — civil send window (DEC-088)", () => {
   it("boundaries are half-open [start, end): 08:00 fires, 20:00 does not", async () => {
     await seedVesselEvent();
     await addCaptain("cpt-a");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     expect((await tick(repo, CLOSE, civil)).asksFired).toBe(0);
     expect((await tick(repo, MORNING, civil)).asksFired).toBe(1);
   });
@@ -808,7 +808,7 @@ describe("tick — civil send window (DEC-088)", () => {
     await seedVesselEvent();
     const a = await addCaptain("cpt-a");
     await addCaptain("cpt-b");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const seat = (await repo.listSeatsForShift(SHIFT))[0]!;
     await manualOverride(repo, seat.id, a, AFTER); // Confirmed
 
@@ -833,7 +833,7 @@ describe("tick — civil send window (DEC-088)", () => {
     await seedVesselEvent();
     await addCaptain("cpt-a");
     await addCaptain("cpt-b");
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     // Fire in-window, then let the timeout elapse into the night.
     await tick(repo, MORNING, civil);
     const lateNight = new Date("2026-06-30T22:30:00.000Z"); // 2.5h later, outside
@@ -882,7 +882,7 @@ describe("tick — one boat per day: same-day boats spread across people (#393)"
         status: "scheduled",
       });
     }
-    await formShifts(repo); // one Pending captain-seat shift per boat
+    await formAllVesselDaysForTest(repo); // one Pending captain-seat shift per boat
   }
 
   it("two boats on one day seed two different captains, not the top one twice", async () => {

@@ -666,6 +666,78 @@ export function runRepositoryContract(
       expect((await repo.listEvents())[0]!.durationMinutes).toBe(240);
     });
 
+    /**
+     * The two keyed reads that let `formShifts` state which vessel-days it covers (#999).
+     *
+     * Pinned in the contract rather than against one adapter because the whole point is that
+     * in-memory and Postgres agree: a scoped formation run that returns a different set on
+     * Postgres than it does in the tests is a production-only bug in the engine's core loop.
+     */
+    it("vessel-days: listEventsForVesselDays returns BOTH statuses for the days asked for (#999)", async () => {
+      // The cancelled one is load-bearing, not thoroughness. A vessel-day whose every event has
+      // cancelled must still be VISITED so its shift derives to `Cancelled` — a read that filtered
+      // to `scheduled` would silently leave a dead shift live on the board forever.
+      await repo.saveEvent(event({ id: asId<"EventId">("evt-live"), time: "09:00" }));
+      await repo.saveEvent(
+        event({ id: asId<"EventId">("evt-dead"), time: "11:00", status: "cancelled" }),
+      );
+      // Same boat, a different day — must NOT come back.
+      await repo.saveEvent(event({ id: asId<"EventId">("evt-other-day"), date: "2026-07-02" }));
+      // Same day, a different boat — must NOT come back.
+      await repo.saveEvent(
+        event({ id: asId<"EventId">("evt-other-boat"), vesselId: asId<"VesselId">("vessel-y") }),
+      );
+
+      const got = await repo.listEventsForVesselDays([{ vesselId: VESSEL, date: "2026-07-01" }]);
+      expect(got.map((e) => String(e.id)).sort()).toEqual(["evt-dead", "evt-live"]);
+    });
+
+    it("vessel-days: listEventsForVesselDays takes many days, and none is not all (#999)", async () => {
+      await repo.saveEvent(event({ id: asId<"EventId">("evt-a"), date: "2026-07-01" }));
+      await repo.saveEvent(event({ id: asId<"EventId">("evt-b"), date: "2026-07-05" }));
+      await repo.saveEvent(event({ id: asId<"EventId">("evt-c"), date: "2026-07-09" }));
+
+      const two = await repo.listEventsForVesselDays([
+        { vesselId: VESSEL, date: "2026-07-01" },
+        { vesselId: VESSEL, date: "2026-07-09" },
+      ]);
+      expect(two.map((e) => String(e.id)).sort()).toEqual(["evt-a", "evt-c"]);
+
+      // An empty scope means "no vessel-days", never "every vessel-day". Getting this backwards
+      // turns a caller with nothing to form into a full-fleet sweep — the exact thing #999 removes.
+      expect(await repo.listEventsForVesselDays([])).toEqual([]);
+    });
+
+    it("vessel-days: listActiveVesselDays unions a date window with every non-terminal shift (#999)", async () => {
+      // The window half: events inside it, by date.
+      await repo.saveEvent(event({ id: asId<"EventId">("evt-in"), date: "2026-07-05" }));
+      await repo.saveEvent(event({ id: asId<"EventId">("evt-late"), date: "2026-08-20" }));
+
+      // The shift half, and the correction this test exists for: a shift that has aged PAST the
+      // window is still repaired, as long as it is not terminal. Without this a vessel-day that
+      // goes bad and then ages out is never fixed — the window moves on without it, and the
+      // failure becomes permanent at exactly the moment it stops being reported.
+      await repo.saveShift({
+        id: asId<"ShiftId">("shift-old-live"),
+        vesselId: VESSEL,
+        date: "2025-01-01",
+        state: "Filling",
+        eventIds: [],
+      });
+      // ...and a terminal one from the same era must NOT come back, or the set never drains.
+      await repo.saveShift({
+        id: asId<"ShiftId">("shift-old-done"),
+        vesselId: VESSEL,
+        date: "2025-01-02",
+        state: "Completed",
+        eventIds: [],
+      });
+
+      const days = await repo.listActiveVesselDays("2026-07-01", "2026-07-31");
+      const keys = days.map((d) => `${d.vesselId}|${d.date}`).sort();
+      expect(keys).toEqual([`${VESSEL}|2025-01-01`, `${VESSEL}|2026-07-05`]);
+    });
+
     it("reservations: source round-trips (DEC-106)", async () => {
       await repo.saveReservation(reservation({ source: "muster" }));
       expect(

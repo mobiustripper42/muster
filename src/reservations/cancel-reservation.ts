@@ -173,10 +173,21 @@ export async function cancelReservation(
   // trip set, which lands in `changedCrew`, which was gated off. The crew member kept a shift
   // whose shape moved under them — plausibly a different call time — and heard nothing.
   try {
-    const form = await formShifts(deps.repo, {
-      now: new Date(deps.now()),
-      notifyTripChanges: true,
-    });
+    // #999: the one vessel-day this cancel touched. Read off the EVENT, not the reservation —
+    // `Reservation.vesselId` and `.date` are optional (a Xola row has neither), while the event is
+    // the row formation actually keys on. It still exists: cancelling sets a status, it does not
+    // delete.
+    //
+    // **This narrows what the call relays, and that is the change.** Until now an unscoped re-form
+    // here was how a crew member dropped from an UNRELATED shift got told. That job moves to the
+    // tick's `reformWindow`, which sweeps and relays on the same contract — so nothing stops
+    // firing, it fires from the pass that exists for it.
+    const cancelled = await deps.repo.getEvent(eventId);
+    const form = await formShifts(
+      deps.repo,
+      cancelled ? [{ vesselId: cancelled.vesselId, date: cancelled.date }] : [],
+      { now: new Date(deps.now()), notifyTripChanges: true },
+    );
     // #957: a vessel-day that cannot derive no longer ends the run — it lands here, and every
     // other vessel-day still formed. These days now have no shift, or a stale one, so somebody
     // has to look. A log line is not somebody looking; raising it to a person is #1001.

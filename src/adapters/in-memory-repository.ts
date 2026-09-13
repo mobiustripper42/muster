@@ -42,6 +42,7 @@ import type {
   Shift,
   Subject,
   Vessel,
+  VesselDay,
 } from "../domain/entities.js";
 import { subjectKey } from "../domain/subject.js";
 import type {
@@ -72,6 +73,7 @@ import type {
 import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { AuditEvent } from "../domain/audit.js";
 import type { SeatState } from "../domain/states.js";
+import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
@@ -476,6 +478,30 @@ export class InMemoryRepository implements Repository {
   }
   async listEvents(): Promise<Event[]> {
     return [...this.#events.values()].map(clone);
+  }
+  async listEventsForVesselDays(days: readonly VesselDay[]): Promise<Event[]> {
+    // Both statuses, deliberately (#999): an all-cancelled vessel-day must still be visited so its
+    // shift derives to `Cancelled`. An empty `days` yields nothing, never everything.
+    const wanted = new Set(days.map((d) => `${String(d.vesselId)}|${d.date}`));
+    return [...this.#events.values()]
+      .filter((e) => wanted.has(`${String(e.vesselId)}|${e.date}`))
+      .map(clone);
+  }
+  async listActiveVesselDays(fromDate: string, toDate: string): Promise<VesselDay[]> {
+    const out = new Map<string, VesselDay>();
+    const add = (vesselId: VesselId, date: string) => {
+      out.set(`${String(vesselId)}|${date}`, { vesselId, date });
+    };
+    for (const e of this.#events.values()) {
+      if (e.date >= fromDate && e.date <= toDate) add(e.vesselId, e.date);
+    }
+    // No lower date bound on this half, on purpose: a vessel-day that goes bad and then ages past
+    // the window would otherwise never be repaired. Terminal rows are excluded so the set drains —
+    // every visit either re-derives a live day or makes it terminal, after which it stops coming back.
+    for (const s of this.#shifts.values()) {
+      if (!TERMINAL_SHIFT_STATES.has(s.state)) add(s.vesselId, s.date);
+    }
+    return [...out.values()];
   }
   async cancelEventIfUnclaimed(id: EventId): Promise<boolean> {
     // Single-threaded JS ⇒ trivially atomic; the Postgres adapter enforces the same under real

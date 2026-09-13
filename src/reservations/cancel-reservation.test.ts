@@ -7,8 +7,8 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { Payment, Reservation } from "../domain/entities.js";
 import { seedFleet } from "../import/resource-map.js";
-import { formShifts } from "../builder/form-shifts.js";
 import { cancelReservation, quoteCancelRefund } from "./cancel-reservation.js";
+import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
 
 const VESSEL = asId<"VesselId">("vessel-brew-2"); // 2-crew, seeded by the fleet
 const EVENT = asId<"EventId">("slot_vessel-brew-2|2026-08-20|17:00");
@@ -75,7 +75,7 @@ describe("cancelReservation", () => {
   it("collapses the shift and reports the crew who are now off", async () => {
     const repo = await seeded();
     // A formed, crewed shift on the day being cancelled.
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const shiftId = asId<"ShiftId">(`shift-${VESSEL}-2026-08-20`);
     const seats = await repo.listSeatsForShift(shiftId);
     expect(seats.length).toBeGreaterThan(0);
@@ -120,7 +120,7 @@ describe("cancelReservation", () => {
       source: "muster",
       price: 50000,
     });
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const shiftId = asId<"ShiftId">(`shift-${VESSEL}-2026-08-20`);
     const seats = await repo.listSeatsForShift(shiftId);
     await repo.saveSeat({

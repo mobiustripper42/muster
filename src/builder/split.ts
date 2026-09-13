@@ -77,7 +77,13 @@ export async function splitShift(
   // stay on side A — now a shorter day (the later trips split off into `…-b`) — get a
   // "your shift changed" notice. Opting in from the command (not the idempotent
   // re-form) is the DEC-084 posture.
-  const form = await formShifts(repo, { notifyTripChanges: true, ...(now ? { now } : {}) });
+  // #999: exactly the vessel-day being split. Both sides live on it — DEC-083 partitions a day by
+  // TIME, so `{id}-b` shares the vessel and the date with its canonical and needs no second entry.
+  const form = await formShifts(
+    repo,
+    [{ vesselId: shift.vesselId, date: shift.date }],
+    { notifyTripChanges: true, ...(now ? { now } : {}) },
+  );
   // #957: `formShifts` no longer throws for a vessel-day it cannot form — it records it. Good
   // for the fleet-wide callers, wrong here: the cut above is already persisted, so a re-form
   // that skipped this day leaves the marker set and no `-b` row, and `splitAction` would report

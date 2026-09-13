@@ -71,6 +71,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-130 — Same-day decline cooldown — a "no" quiets that date's cross-shift auto-asks (soft, valved) (#341→#342)
 - DEC-145 — Completion is swept by the tick, and a self-claim scores
 - DEC-146 — A filled seat retires its outstanding asks
+- DEC-171 — A formation run states which vessel-days it covers
 
 ### Staffing engine — asks, escalation, At-Risk board & cockpit
 - DEC-006 — Escalation Tiers 1–3 are degrees of automation, not states

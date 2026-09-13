@@ -294,7 +294,11 @@ export interface ConfirmOptions {
 
 
 /**
- * The DEC-109 residual-race compensation: what happens to the buyer whose payment landed second.
+ * The residual-race compensation (`docs/SPEC.md` §2.8.7): what happens to the buyer whose payment
+ * landed second. Cited to the spec on purpose — the surrounding comments in this file all say
+ * "DEC-109", and that record is `status: withdrawn`, a signpost whose own ruling reads "Retired.
+ * The spec replaced the checkout hold with the pending reservation." New code should not grow the
+ * pile of citations to a retired decision; §2.8.7 is the live answer.
  *
  * Extracted from `processBookingCharge` in 15.5, and not only for the complexity ceiling it
  * crossed — this is one coherent job with its own rules (refund, tell them, tell the office) and

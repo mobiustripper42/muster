@@ -154,6 +154,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-095 — Operator At-Risk alert — the deferred delivery half of DEC-026, NOT a fourth outbound lane
 - DEC-158 — A change notice names what moved — the SMS carries a subset, the app carries all of it
 - DEC-170 — An unconfigured channel always writes to the console — for every audience
+- DEC-172 — An unformed shift alerts every tick, with no dedup
 
 ### Crew self-serve, auth & admin identity
 - DEC-010 — Crew auth is magic-link passwordless; crew don't self-register

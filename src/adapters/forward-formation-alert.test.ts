@@ -1,0 +1,149 @@
+/**
+ * A vessel-day that fails to form texts the office (#1001).
+ *
+ * **The failure this closes is a sold trip with nobody on it.** Since #957 a bad vessel-day no
+ * longer aborts the run — it lands in `FormResult.failures` and the tick writes a `console.error`.
+ * A log line is not somebody finding out. Nobody reads a log that prints the same thing every
+ * fifteen minutes; you go and read it after someone has already told you a boat had no crew.
+ *
+ * **No dedup, and that is the decision, not an omission.** The operator's ruling 2026-09-13: one
+ * text about an unformed shift is a drop-everything, so the repeats are self-limiting — and if it
+ * ever floods, the flood IS the report. A stateful alert is one that can go quiet at the wrong
+ * moment, which is exactly what this issue's title complains about.
+ */
+import { describe, expect, it } from "vitest";
+import type { Admin, CrewMember } from "../domain/entities.js";
+import { asId } from "../domain/ids.js";
+import type { OutboundMessage } from "../ports/channel.js";
+import { FakeChannel } from "./fake-channel.js";
+import { forwardFormationAlert } from "./forward-formation-alert.js";
+import { InMemoryRepository } from "./in-memory-repository.js";
+
+const NOW = "2026-09-13T12:00:00.000Z";
+const LINK = "https://muster.example/admin/shifts";
+const BREW3 = asId<"VesselId">("vessel-brew-3");
+
+async function seedAdmin(
+  repo: InMemoryRepository,
+  id: string,
+  opts: { active?: boolean; phone?: string } = {},
+): Promise<void> {
+  const { active = true, phone = "+12165550001" } = opts;
+  const crew: CrewMember = {
+    id: asId<"CrewMemberId">(id),
+    name: id,
+    phone,
+    ratings: [],
+    status: "active",
+    reliabilityScore: null,
+  };
+  await repo.saveCrewMember(crew);
+  const admin: Admin = {
+    id,
+    handle: id,
+    name: id,
+    active,
+    createdAt: NOW,
+    deactivatedAt: active ? null : NOW,
+  };
+  await repo.saveAdmin(admin);
+}
+
+const failure = (date: string) => ({
+  vesselId: BREW3,
+  date,
+  error: new Error("Shift has no required seats — the vessel has no manning rule (#582)."),
+});
+
+describe("forwardFormationAlert (#1001)", () => {
+  it("names the boat and the date, so the operator knows where to look", async () => {
+    // The whole point. "Formation failed" tells you something is wrong; "Brew 3 on Sat Sep 13"
+    // tells you which trip has nobody on it, which is the only thing you can act on.
+    const repo = new InMemoryRepository();
+    await repo.saveVessel({ id: BREW3, name: "Brew 3", coiMaxPax: 12, manning: [] });
+    await seedAdmin(repo, "eric");
+    const channel = new FakeChannel();
+
+    const sent = await forwardFormationAlert(repo, channel, [failure("2026-09-13")], LINK);
+
+    expect(sent).toBe(1);
+    const body = (channel.sent[0] as OutboundMessage).body;
+    expect(body).toContain("Brew 3");
+    expect(body).toContain("Sun, Sep 13");
+    expect((channel.sent[0] as OutboundMessage).kind).toBe("admin_alert");
+  });
+
+  it("sends nothing when nothing failed", async () => {
+    // A healthy tick is silent. An alert that fires on a good day is one you stop reading.
+    const repo = new InMemoryRepository();
+    await seedAdmin(repo, "eric");
+    const channel = new FakeChannel();
+
+    expect(await forwardFormationAlert(repo, channel, [], LINK)).toBe(0);
+    expect(channel.sent).toHaveLength(0);
+  });
+
+  it("texts every active admin, once per failed vessel-day", async () => {
+    // Two admins, two bad days: four messages. Collapsing the days into one summary would tell
+    // the operator a number instead of a boat, and the boat is the actionable half.
+    const repo = new InMemoryRepository();
+    await repo.saveVessel({ id: BREW3, name: "Brew 3", coiMaxPax: 12, manning: [] });
+    await seedAdmin(repo, "eric");
+    await seedAdmin(repo, "drew", { phone: "+12165550002" });
+    await seedAdmin(repo, "retired", { active: false });
+    const channel = new FakeChannel();
+
+    const sent = await forwardFormationAlert(
+      repo,
+      channel,
+      [failure("2026-09-13"), failure("2026-09-14")],
+      LINK,
+    );
+
+    expect(sent).toBe(4);
+    const phones = new Set(channel.sent.map((m) => m.to.phone));
+    expect(phones).toEqual(new Set(["+12165550001", "+12165550002"]));
+  });
+
+  it("one dead number cannot mute the rest", async () => {
+    // Same posture as the money alert: best-effort per recipient. An admin whose carrier rejects
+    // must not swallow the alert for everyone else, on the one message that means a boat is uncrewed.
+    const repo = new InMemoryRepository();
+    await repo.saveVessel({ id: BREW3, name: "Brew 3", coiMaxPax: 12, manning: [] });
+    await seedAdmin(repo, "bad", { phone: "+15550000000" });
+    await seedAdmin(repo, "good", { phone: "+12165550002" });
+    const channel = new FakeChannel();
+    const real = channel.send.bind(channel);
+    channel.send = async (m: OutboundMessage) => {
+      if (m.to.phone === "+15550000000") throw new Error("carrier rejected");
+      return real(m);
+    };
+
+    expect(await forwardFormationAlert(repo, channel, [failure("2026-09-13")], LINK)).toBe(1);
+  });
+
+  it("never throws — the tick's own response must survive a dead repo", async () => {
+    // It runs inside the cron route beside the engine's own work. An alert that throws turns
+    // "one vessel-day did not form" into "the tick failed", which is strictly worse.
+    const repo = new InMemoryRepository();
+    repo.listAdmins = async () => {
+      throw new Error("pool exhausted");
+    };
+    const channel = new FakeChannel();
+
+    expect(await forwardFormationAlert(repo, channel, [failure("2026-09-13")], LINK)).toBe(0);
+  });
+
+  it("still names the vessel id when the vessel row cannot be read", async () => {
+    // Degrade to the id rather than to silence: an unreadable vessel is not a reason to stop
+    // telling somebody a boat has no crew, and the id is still enough to find it.
+    const repo = new InMemoryRepository();
+    await seedAdmin(repo, "eric");
+    const channel = new FakeChannel();
+
+    const sent = await forwardFormationAlert(repo, channel, [failure("2026-09-13")], LINK);
+
+    expect(sent).toBe(1);
+    expect((channel.sent[0] as OutboundMessage).body).toContain(String(BREW3));
+  });
+});

@@ -8,10 +8,10 @@
 
 import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import { formShifts } from "../builder/form-shifts.js";
 import { asId } from "../domain/ids.js";
 import { importRecords, type RawReservationRecord } from "./import-reservations.js";
 import { seedFleet } from "./resource-map.js";
+import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
 
 describe("importRecords — event-id-keyed Map+Reconcile (DEC-043)", () => {
   const BREW = "Brew Boat Party Boats with Captain";
@@ -105,11 +105,11 @@ describe("importRecords — event-id-keyed Map+Reconcile (DEC-043)", () => {
     await seedFleet(repo); // vessel manning so formShifts can derive seats
 
     await importRecords(repo, [booked("r1")]);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     expect((await repo.getShift(SHIFT_ID))?.state).not.toBe("Cancelled");
 
     await importRecords(repo, [cancelled("r1")]);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     expect((await repo.getShift(SHIFT_ID))?.state).toBe("Cancelled");
   });
 

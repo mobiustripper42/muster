@@ -153,7 +153,13 @@ try {
 
   // Build both the production way: formShifts → canonical `shift-{vessel}-{date}`
   // ids + engine-derived seats (so a later split partitions + preserves crew cleanly).
-  await formShifts(repo);
+  // #999: its own two seeded vessel-days, named. This used to be a global form, which is why the
+  // header warned to run it on a clean database — it would re-derive every shift you had. It
+  // cannot any more, so that warning is now about the split itself and nothing else.
+  await formShifts(repo, [
+    { vesselId: VESSEL, date: gapDate },
+    { vesselId: VESSEL2, date: tightDate },
+  ]);
   const gapShift = asId<"ShiftId">(`shift-${VESSEL}-${gapDate}`);
   const tightShift = asId<"ShiftId">(`shift-${VESSEL2}-${tightDate}`);
 

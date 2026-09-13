@@ -42,8 +42,13 @@ function filesUnder(dir: string): string[] {
  * Adding a file here is a deliberate act; forgetting the flag is not.
  */
 const SILENT_BY_DESIGN: Record<string, string> = {
-  "src/builder/form-shifts.ts": "the definition itself",
+  // `src/builder/form-shifts.ts` used to sit here as "the definition itself". It no longer needs
+  // the exemption and must not have one: since #999 the file also holds `reformWindow`, whose call
+  // is the scheduled repair pass and the single most important one to keep flagged. The declaration
+  // is skipped by the `function` check above, so the only hit left in this file is a real call.
   "db/seed-split-dev.ts": "a dev seed — builds a world from nothing, no crew to tell",
+  "src/builder/form-all-test-support.ts":
+    "test-only (#999) — never imported by production; its callers are specs with no crew to tell",
 };
 
 /**
@@ -108,7 +113,21 @@ describe("every formShifts caller opts into the change notice (#765)", () => {
     const files = sites.map((s) => s.file);
     expect(files).toContain("src/reservations/booking-webhook.ts");
     expect(files).toContain("src/reservations/cancel-reservation.ts");
-    expect(files).toContain("app/api/cron/tick/route.ts");
+    // The cron tick reached formation directly until #999 and now goes through `reformWindow`, so
+    // it is no longer a `formShifts` call site. The guard follows it rather than dropping it: the
+    // route must still reach formation, and `reformWindow`'s own call is checked like any other
+    // (its file is no longer exempt).
+    expect(files).toContain("src/builder/form-shifts.ts");
+  });
+
+  it("the cron tick still reaches formation, through reformWindow (#999)", () => {
+    // Losing the tick from the list above would otherwise look like a clean pass. It is the only
+    // caller that does not know what changed, so it is the one whose absence is invisible — a
+    // route that quietly stopped forming would be found by nothing else here.
+    const route = stripComments(
+      readFileSync(join(ROOT, "app/api/cron/tick/route.ts"), "utf8"),
+    );
+    expect(route).toMatch(/\breformWindow\s*\(/);
   });
 
   it("reads code, not the comments about the code", () => {

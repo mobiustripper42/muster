@@ -44,6 +44,7 @@ import type {
   Shift,
   Subject,
   Vessel,
+  VesselDay,
 } from "../domain/entities.js";
 import type {
   AddOnId,
@@ -281,6 +282,36 @@ export interface Repository {
   saveEvent(event: Event): Promise<void>;
   getEvent(id: EventId): Promise<Event | null>;
   listEvents(): Promise<Event[]>;
+  /**
+   * Every event on the named vessel-days, **both statuses** (#999).
+   *
+   * **Cancelled ones are load-bearing, not thoroughness.** A vessel-day whose every event has
+   * cancelled must still be visited so its shift derives to `Cancelled`; a read that filtered to
+   * `scheduled` would leave a dead shift live on the board with nothing to correct it.
+   *
+   * **An empty `days` returns nothing, never everything.** That default is the whole safety
+   * property of a scoped formation run: a caller with nothing to form must form nothing, not
+   * sweep the fleet.
+   *
+   * Keyed like `listTimePunchesBetween` below — the engine asks for the slice it is acting on,
+   * rather than reading the world and filtering in memory.
+   */
+  listEventsForVesselDays(days: readonly VesselDay[]): Promise<Event[]>;
+  /**
+   * The vessel-days a repair pass must cover (#999) — a union of two halves that answer different
+   * questions:
+   *
+   * - **Events dated in `[fromDate, toDate]`.** The forward-looking half: days that have trips.
+   * - **Every vessel-day holding a shift that is not `Completed` or `Cancelled`**, with no lower
+   *   date bound at all.
+   *
+   * The second half is not belt-and-braces. Bound the repair pass by date alone and a vessel-day
+   * that goes bad and then ages past the window is never repaired — the window moves on, and the
+   * breakage becomes permanent at the moment it stops being reported. The unbounded half is
+   * self-draining: every visit either re-derives a live day or makes its row terminal, after
+   * which it never appears again. On a healthy system it costs nothing.
+   */
+  listActiveVesselDays(fromDate: string, toDate: string): Promise<VesselDay[]>;
   /**
    * Cancel a Muster event **iff no active Muster reservation still holds it** (#616) — the
    * write that releases the hull. Returns `true` if this call cancelled it, `false` if it was

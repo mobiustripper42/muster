@@ -4,7 +4,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { FAKE_SIGNATURE, FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import { formShifts } from "../builder/form-shifts.js";
 import type { Event, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { CheckoutCompleted } from "../ports/payment.js";
@@ -12,6 +11,7 @@ import { eventIdForSlot } from "./availability.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
 import { confirmPendingRow } from "./write-booking.js";
 import { balanceOwedCents } from "./payment-config.js";
+import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
 
 const EVENT = asId<"EventId">("m-evt-1");
 const NOW = () => "2026-07-12T00:00:00.000Z";
@@ -679,7 +679,7 @@ describe("a native booking forms its own crewable shift (#614)", () => {
       source: "muster",
       price: 49900,
     });
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const shift = (await repo.listShifts())[0]!;
     const seat = (await repo.listSeatsForShift(shift.id))[0]!;
     await repo.saveSeat({

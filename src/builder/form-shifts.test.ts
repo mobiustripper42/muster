@@ -8,6 +8,7 @@ import { asId } from "../domain/ids.js";
 import type { Event, Seat } from "../domain/entities.js";
 import { BREWBOAT_TENANT, seedFleet } from "../import/resource-map.js";
 import { formShifts } from "./form-shifts.js";
+import { formAllVesselDaysForTest } from "./form-all-test-support.js";
 
 const PARTY = asId<"VesselId">("vessel-brew-2"); // 2-crew (captain+mate), seeded by the fleet
 // Seeded manually — Duffys aren't in the crewed fleet's `RESOURCE_MAP`. It used to
@@ -52,7 +53,7 @@ describe("formShifts", () => {
   it("groups same-vessel-same-day events into one shift and derives seats", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    const result = await formShifts(repo);
+    const result = await formAllVesselDaysForTest(repo);
 
     expect(result.shiftsCreated).toBe(3); // party 05-16, party 05-17, duffy 06-27
     const partyDay1 = await repo.getShift(asId(`shift-${PARTY}-2026-05-16`));
@@ -69,7 +70,7 @@ describe("formShifts", () => {
     // required crew is now an error rather than a state.
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const duffy = await repo.getShift(asId(`shift-${DUFFY}-2026-06-27`));
     const seats = await repo.listSeatsForShift(duffy!.id);
     expect(seats).toHaveLength(1);
@@ -88,7 +89,7 @@ describe("formShifts", () => {
     await repo.saveEvent(event("e0", UNMANNED, "2026-05-15", "10:00"));
     await seedEvents(repo);
 
-    const result = await formShifts(repo);
+    const result = await formAllVesselDaysForTest(repo);
 
     // The bad day is reported on the result, not thrown out of the function.
     expect(result.failures).toHaveLength(1);
@@ -99,6 +100,38 @@ describe("formShifts", () => {
     expect(await repo.getShift(asId(`shift-${DUFFY}-2026-06-27`))).toBeTruthy();
   });
 
+  it("forms every vessel-day it was asked for, and NO others (#999)", async () => {
+    // **The property the whole scope change rests on, and the one worth not taking on trust.**
+    // Once `formShifts` states which vessel-days it covers, the failure mode stops being "it did
+    // too much" and becomes "a caller forgot one" — which is silent, because a vessel-day that
+    // was never visited looks exactly like one that had nothing to do.
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+
+    const partyDay1 = { vesselId: PARTY, date: "2026-05-16" };
+    const result = await formShifts(repo, [partyDay1]);
+
+    // The day asked for formed.
+    expect(result.shiftsCreated).toBe(1);
+    expect(await repo.getShift(asId(`shift-${PARTY}-2026-05-16`))).toBeTruthy();
+    // The two it was NOT asked for were not touched — not formed, not counted, not visited.
+    expect(await repo.getShift(asId(`shift-${PARTY}-2026-05-17`))).toBeFalsy();
+    expect(await repo.getShift(asId(`shift-${DUFFY}-2026-06-27`))).toBeFalsy();
+  });
+
+  it("an empty scope forms nothing — it is never a whole-fleet sweep (#999)", async () => {
+    // The degenerate case is the dangerous one. A caller that computes an empty scope must form
+    // nothing; a signature where "no days" quietly means "every day" reintroduces the entire
+    // defect class this change removes, and would do it on the path nobody tests.
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+
+    const result = await formShifts(repo, []);
+
+    expect(result.shiftsCreated).toBe(0);
+    expect(await repo.listShifts()).toEqual([]);
+  });
+
   it("writes nothing when a re-form changes nothing (#998)", async () => {
     // `formOneShift` ended with an unconditional `saveShift`, so every run rewrote every
     // vessel-day it visited whether or not anything had moved. One booking was measured
@@ -107,7 +140,7 @@ describe("formShifts", () => {
     // about a write that nothing counts is a claim nobody can check.
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     let writes = 0;
     const realSaveShift = repo.saveShift.bind(repo);
@@ -116,7 +149,7 @@ describe("formShifts", () => {
       return realSaveShift(shift);
     };
 
-    const second = await formShifts(repo);
+    const second = await formAllVesselDaysForTest(repo);
     expect(writes).toBe(0);
     // `shiftsUpdated` counts CHANGES now, not writes — the same number by a truer definition.
     expect(second.shiftsUpdated).toBe(0);
@@ -131,7 +164,7 @@ describe("formShifts", () => {
     // actually changed, which is the only case anyone would have noticed.
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     const shiftId = asId<"ShiftId">(`shift-${PARTY}-2026-05-16`);
     const seat = (await repo.listSeatsForShift(shiftId))[0]!;
@@ -150,7 +183,7 @@ describe("formShifts", () => {
       return realSaveShift(shift);
     };
 
-    const second = await formShifts(repo, { notifyTripChanges: true });
+    const second = await formAllVesselDaysForTest(repo, { notifyTripChanges: true });
     // Exactly the one day that changed, and no others.
     expect(writes).toBe(1);
     expect(second.shiftsUpdated).toBe(1);
@@ -164,14 +197,14 @@ describe("formShifts", () => {
   it("is idempotent — re-form preserves a Confirmed seat and does not duplicate", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     const shiftId = asId<"ShiftId">(`shift-${PARTY}-2026-05-16`);
     const seats = await repo.listSeatsForShift(shiftId);
     const confirmed: Seat = { ...seats[0]!, state: "Confirmed" };
     await repo.saveSeat(confirmed);
 
-    const second = await formShifts(repo);
+    const second = await formAllVesselDaysForTest(repo);
     expect(second.shiftsCreated).toBe(0);
     // Was 3 before #998, when this counted WRITES and every visited vessel-day got one. It counts
     // CHANGES now, and exactly one day changed: confirming the seat moved this shift's derived
@@ -214,10 +247,10 @@ describe("formShifts — reconciliation (#20)", () => {
   it("prunes a surplus Open seat when manning shrinks", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     await shrinkPartyToCaptainOnly(repo);
-    const r = await formShifts(repo);
+    const r = await formAllVesselDaysForTest(repo);
 
     // Both party-day shifts (05-16, 05-17) lose their now-surplus mate seat.
     expect(r.seatsPruned).toBe(2);
@@ -231,7 +264,7 @@ describe("formShifts — reconciliation (#20)", () => {
   it("does not strand an occupied surplus seat — surfaces it instead", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     // Confirm the mate on 05-16; leave 05-17's mate Open.
     const mate = (await repo.listSeatsForShift(day1)).find((s) => s.role === MATE)!;
@@ -242,7 +275,7 @@ describe("formShifts — reconciliation (#20)", () => {
     });
 
     await shrinkPartyToCaptainOnly(repo);
-    const r = await formShifts(repo);
+    const r = await formAllVesselDaysForTest(repo);
 
     // 05-16 mate is Confirmed → stranded (kept); 05-17 mate is Open → pruned.
     expect(r.seatsStranded).toBe(1);
@@ -255,11 +288,11 @@ describe("formShifts — reconciliation (#20)", () => {
   it("cancels a shift whose every event has been cancelled", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     await cancelEvent(repo, "e1");
     await cancelEvent(repo, "e2"); // both 05-16 events gone
-    const r = await formShifts(repo);
+    const r = await formAllVesselDaysForTest(repo);
 
     expect(r.shiftsCancelled).toBe(1);
     expect((await repo.getShift(day1))?.state).toBe("Cancelled");
@@ -268,7 +301,7 @@ describe("formShifts — reconciliation (#20)", () => {
   it("reports the cancelled shift's assigned crew (DEC-084), transition-only", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     // Confirm a crew member onto one of the shift's seats.
     const seat = (await repo.listSeatsForShift(day1))[0]!;
     await repo.saveSeat({
@@ -279,21 +312,21 @@ describe("formShifts — reconciliation (#20)", () => {
 
     await cancelEvent(repo, "e1");
     await cancelEvent(repo, "e2");
-    const r1 = await formShifts(repo);
+    const r1 = await formAllVesselDaysForTest(repo);
     expect(r1.shiftsCancelled).toBe(1);
     expect(r1.cancelledCrew).toEqual([
       { shiftId: day1, crewMemberId: asId<"CrewMemberId">("cap") },
     ]);
 
     // A re-pull of the ALREADY-cancelled shift must NOT re-report (transition-only).
-    const r2 = await formShifts(repo);
+    const r2 = await formAllVesselDaysForTest(repo);
     expect(r2.cancelledCrew).toEqual([]);
   });
 
   it("reports resurrected crew (#244) when a cancelled shift comes back — transition-only", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     // Confirm a crew member onto a seat, then cancel the whole shift out from
     // under them — the seat assignment survives on the Cancelled husk.
     const seat = (await repo.listSeatsForShift(day1))[0]!;
@@ -304,7 +337,7 @@ describe("formShifts — reconciliation (#20)", () => {
     });
     await cancelEvent(repo, "e1");
     await cancelEvent(repo, "e2");
-    const rCancel = await formShifts(repo);
+    const rCancel = await formAllVesselDaysForTest(repo);
     expect((await repo.getShift(day1))?.state).toBe("Cancelled");
     expect(rCancel.restoredCrew).toEqual([]); // cancel is not a resurrection
 
@@ -312,14 +345,14 @@ describe("formShifts — reconciliation (#20)", () => {
     // reported for the matching "you're on" notice (the silent re-confirm, closed).
     await reviveEvent(repo, "e1");
     await reviveEvent(repo, "e2");
-    const r = await formShifts(repo);
+    const r = await formAllVesselDaysForTest(repo);
     expect((await repo.getShift(day1))?.state).not.toBe("Cancelled");
     expect(r.restoredCrew).toEqual([
       { shiftId: day1, crewMemberId: asId<"CrewMemberId">("cap") },
     ]);
 
     // A steady live re-pull must NOT re-report (transition-only).
-    const r2 = await formShifts(repo);
+    const r2 = await formAllVesselDaysForTest(repo);
     expect(r2.restoredCrew).toEqual([]);
   });
 
@@ -332,7 +365,7 @@ describe("formShifts — reconciliation (#20)", () => {
     // told their day changed.
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const seat = (await repo.listSeatsForShift(day1))[0]!;
     await repo.saveSeat({
       ...seat,
@@ -360,7 +393,7 @@ describe("formShifts — reconciliation (#20)", () => {
 
     // #957 changed how this arrives, not whether it does: the run no longer throws, so the
     // notices come back on a complete `FormResult` rather than on a `PartialFormError`.
-    const result = await formShifts(repo, { notifyTripChanges: true });
+    const result = await formAllVesselDaysForTest(repo, { notifyTripChanges: true });
 
     // The point of #766, unchanged: the notice survives a failure elsewhere in the run.
     expect(result.changedCrew).toHaveLength(1);
@@ -377,7 +410,7 @@ describe("formShifts — reconciliation (#20)", () => {
   it("reports changed crew when a trip is added to a surviving shift (#350), transition-only", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     // Confirm a crew member onto day1 (the 05-16 shift, trips e1 + e2).
     const seat = (await repo.listSeatsForShift(day1))[0]!;
     await repo.saveSeat({
@@ -389,7 +422,7 @@ describe("formShifts — reconciliation (#20)", () => {
     // A new booking adds a third trip to the same vessel-day — the import case.
     // The import opts into the notice (`notifyTripChanges`).
     await repo.saveEvent(event("e1b", PARTY, "2026-05-16", "17:00"));
-    const r1 = await formShifts(repo, { notifyTripChanges: true });
+    const r1 = await formAllVesselDaysForTest(repo, { notifyTripChanges: true });
     // `toMatchObject`, not `toEqual`: the entry carries the diff too (#740), asserted in
     // its own tests below. Here the subject is WHO is reported, which #350 owns.
     expect(r1.changedCrew).toHaveLength(1);
@@ -402,12 +435,12 @@ describe("formShifts — reconciliation (#20)", () => {
     expect(r1.restoredCrew).toEqual([]);
 
     // A re-pull with no trip-set change must NOT re-report (diff-gated).
-    const r2 = await formShifts(repo, { notifyTripChanges: true });
+    const r2 = await formAllVesselDaysForTest(repo, { notifyTripChanges: true });
     expect(r2.changedCrew).toEqual([]);
 
     // A partial cancellation that leaves the shift LIVE also reports "changed".
     await cancelEvent(repo, "e1b");
-    const r3 = await formShifts(repo, { notifyTripChanges: true });
+    const r3 = await formAllVesselDaysForTest(repo, { notifyTripChanges: true });
     expect((await repo.getShift(day1))?.state).not.toBe("Cancelled");
     expect(r3.changedCrew).toHaveLength(1);
     expect(r3.changedCrew[0]).toMatchObject({
@@ -419,7 +452,7 @@ describe("formShifts — reconciliation (#20)", () => {
   it("does NOT report changed crew without the opt-in — the notice is command-driven (#350)", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const seat = (await repo.listSeatsForShift(day1))[0]!;
     await repo.saveSeat({
       ...seat,
@@ -429,7 +462,7 @@ describe("formShifts — reconciliation (#20)", () => {
     // Same trip-set change, but a caller that doesn't opt in (a silent re-form) fires
     // no notice — only the explicit commands (import/split/merge) pass the flag.
     await repo.saveEvent(event("e1b", PARTY, "2026-05-16", "17:00"));
-    const r = await formShifts(repo); // no notifyTripChanges
+    const r = await formAllVesselDaysForTest(repo); // no notifyTripChanges
     expect(r.changedCrew).toEqual([]);
   });
 
@@ -453,7 +486,7 @@ describe("formShifts — reconciliation (#20)", () => {
   it("a retime that keeps the event id now tells the crew, with the times (#740)", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const seat = (await repo.listSeatsForShift(day1))[0]!;
     await repo.saveSeat({
       ...seat,
@@ -464,7 +497,7 @@ describe("formShifts — reconciliation (#20)", () => {
     // Same event, same day, moved 15:30 → 08:00. The crew member's call time moves
     // by seven and a half hours; the event-id set does not move at all.
     await repo.saveEvent(event("e1", PARTY, "2026-05-16", "08:00"));
-    const r = await formShifts(repo, { notifyTripChanges: true });
+    const r = await formAllVesselDaysForTest(repo, { notifyTripChanges: true });
 
     expect((await repo.getEvent(asId<"EventId">("e1")))?.time).toBe("08:00");
     expect((await repo.getShift(day1))?.eventIds).toEqual(["e1", "e2"]);
@@ -486,7 +519,7 @@ describe("formShifts — reconciliation (#20)", () => {
     // id set, or the cron tick re-announces the same retime every 15 minutes forever.
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const seat = (await repo.listSeatsForShift(day1))[0]!;
     await repo.saveSeat({
       ...seat,
@@ -495,9 +528,9 @@ describe("formShifts — reconciliation (#20)", () => {
     });
 
     await repo.saveEvent(event("e1", PARTY, "2026-05-16", "08:00"));
-    expect((await formShifts(repo, { notifyTripChanges: true })).changedCrew).toHaveLength(1);
-    expect((await formShifts(repo, { notifyTripChanges: true })).changedCrew).toEqual([]);
-    expect((await formShifts(repo, { notifyTripChanges: true })).changedCrew).toEqual([]);
+    expect((await formAllVesselDaysForTest(repo, { notifyTripChanges: true })).changedCrew).toHaveLength(1);
+    expect((await formAllVesselDaysForTest(repo, { notifyTripChanges: true })).changedCrew).toEqual([]);
+    expect((await formAllVesselDaysForTest(repo, { notifyTripChanges: true })).changedCrew).toEqual([]);
   });
 
   it("a trip added carries WHICH trip was added (#740)", async () => {
@@ -505,7 +538,7 @@ describe("formShifts — reconciliation (#20)", () => {
     // "something moved". The diff was computed and dropped on the floor.
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const seat = (await repo.listSeatsForShift(day1))[0]!;
     await repo.saveSeat({
       ...seat,
@@ -516,7 +549,7 @@ describe("formShifts — reconciliation (#20)", () => {
     // Added EARLIER than the existing 15:30, so the call time moves too — both halves
     // of the diff in one change, which is the case the SMS has to fit into one segment.
     await repo.saveEvent(event("e1b", PARTY, "2026-05-16", "09:00"));
-    const r = await formShifts(repo, { notifyTripChanges: true });
+    const r = await formAllVesselDaysForTest(repo, { notifyTripChanges: true });
 
     expect(r.changedCrew).toHaveLength(1);
     const c = r.changedCrew[0]!;
@@ -528,7 +561,7 @@ describe("formShifts — reconciliation (#20)", () => {
   it("a trip cancelled off a surviving shift carries WHICH trip was removed (#740)", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const seat = (await repo.listSeatsForShift(day1))[0]!;
     await repo.saveSeat({
       ...seat,
@@ -537,7 +570,7 @@ describe("formShifts — reconciliation (#20)", () => {
     });
 
     await cancelEvent(repo, "e2"); // 19:30 goes; 15:30 survives, so the shift lives
-    const r = await formShifts(repo, { notifyTripChanges: true });
+    const r = await formAllVesselDaysForTest(repo, { notifyTripChanges: true });
 
     expect((await repo.getShift(day1))?.state).not.toBe("Cancelled");
     expect(r.changedCrew).toHaveLength(1);
@@ -554,7 +587,7 @@ describe("formShifts — reconciliation (#20)", () => {
     await seedEvents(repo);
     // Cancel 05-17's lone event before it was ever formed.
     await cancelEvent(repo, "e3");
-    const r = await formShifts(repo);
+    const r = await formAllVesselDaysForTest(repo);
 
     expect(r.shiftsCancelled).toBe(0);
     expect(await repo.getShift(asId(`shift-${PARTY}-2026-05-17`))).toBeNull();
@@ -563,13 +596,13 @@ describe("formShifts — reconciliation (#20)", () => {
   it("never re-cancels a Completed shift (the trip ran)", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const shift = await repo.getShift(day1);
     await repo.saveShift({ ...shift!, state: "Completed" });
 
     await cancelEvent(repo, "e1");
     await cancelEvent(repo, "e2");
-    const r = await formShifts(repo);
+    const r = await formAllVesselDaysForTest(repo);
 
     expect(r.shiftsCancelled).toBe(0);
     expect((await repo.getShift(day1))?.state).toBe("Completed");
@@ -585,12 +618,12 @@ describe("formShifts — reconciliation (#20)", () => {
     // `shift_completed` for everyone who worked it.
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const shift = await repo.getShift(day1);
     await repo.saveShift({ ...shift!, state: "Completed" });
 
     // Same events, still scheduled — a plain re-pull, nothing changed.
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     expect((await repo.getShift(day1))?.state).toBe("Completed");
   });
@@ -603,7 +636,7 @@ describe("formShifts — reconciliation (#20)", () => {
     // only ever grows.
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
     const shift = await repo.getShift(day1);
     await repo.saveShift({ ...shift!, state: "Completed" });
 
@@ -614,7 +647,7 @@ describe("formShifts — reconciliation (#20)", () => {
       return realSaveShift(s);
     };
 
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     expect(writes).toBe(0);
     expect((await repo.getShift(day1))?.state).toBe("Completed");
@@ -625,23 +658,23 @@ describe("formShifts — reconciliation (#20)", () => {
     await seedEvents(repo);
     // 05-16 events; horizon = earliest (15:30) − 7d = 2026-05-09T15:30Z.
     const past = new Date("2026-05-10T00:00:00.000Z");
-    await formShifts(repo, { now: past });
+    await formAllVesselDaysForTest(repo, { now: past });
     expect((await repo.getShift(day1))?.state).toBe("Filling"); // born working
 
     // Without a clock, birth stays Pending (backward-compatible).
     const repo2 = new InMemoryRepository();
     await seedEvents(repo2);
-    await formShifts(repo2);
+    await formAllVesselDaysForTest(repo2);
     expect((await repo2.getShift(day1))?.state).toBe("Pending");
   });
 
   it("keeps a partially-cancelled shift live, dropping only the cancelled event", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
-    await formShifts(repo);
+    await formAllVesselDaysForTest(repo);
 
     await cancelEvent(repo, "e1"); // e2 still scheduled
-    const r = await formShifts(repo);
+    const r = await formAllVesselDaysForTest(repo);
 
     expect(r.shiftsCancelled).toBe(0);
     const shift = await repo.getShift(day1);

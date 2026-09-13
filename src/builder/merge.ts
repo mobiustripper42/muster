@@ -94,7 +94,13 @@ export async function mergeShift(
   // notice. The dropped side-B crew get their "you're off" via `freedCrew` above; a
   // dual-side person is netted out of `freed` and gets only the "changed" (they kept
   // the day). Opt-in from the command, not the idempotent re-form (DEC-084 posture).
-  const form = await formShifts(repo, { notifyTripChanges: true, ...(now ? { now } : {}) });
+  // #999: the one vessel-day being un-split. Side B shared it by construction (DEC-083 splits by
+  // time, not by key), so tearing it down above touched no other day.
+  const form = await formShifts(
+    repo,
+    [{ vesselId: shift.vesselId, date: shift.date }],
+    { notifyTripChanges: true, ...(now ? { now } : {}) },
+  );
   // #957, and the sharper half of it: side B's seats and row are already deleted above. A
   // re-form that skipped this vessel-day leaves side B destroyed and the canonical never
   // re-derived, while `mergeAction` reports success because nothing threw — side B's crew

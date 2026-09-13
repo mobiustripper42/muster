@@ -4,10 +4,12 @@
  *
  * The two ways a customer's card is charged and no booking exists:
  *
- *   --lost        the residual race (DEC-109): their 15-minute hold expired mid-payment, a rival
- *                 took the freed slot and paid first, then their payment landed. Expected:
- *                 AUTO-REFUND + a "sold out while you were paying" notice to the customer, and
- *                 NO operator alert — nothing needs a human.
+ *   --lost        the residual race (`docs/SPEC.md` §2.8.7): their 15-minute hold expired
+ *                 mid-payment, a rival took the freed slot and paid first, then their payment
+ *                 landed. Expected: AUTO-REFUND + a "sold out while you were paying" notice to
+ *                 the customer, and ONE operator alert that does NOT ask for a manual refund
+ *                 (15.5 — nothing needs a human, but a customer was charged for a trip they did
+ *                 not get, and how often that happens is the evidence deciding issue #1012).
  *   --unbookable  the anomaly (default): the charge names an event that isn't there. Deliberately
  *                 NOT auto-refunded — expected: a loud REFUND MANUALLY alert for the operator.
  *
@@ -171,8 +173,14 @@ try {
   for (const a of alerts) console.log(`                   ${a}`);
   console.log(`  orphan payment   ${orphan ? "YES — BUG" : "none (correct)"}`);
 
+  // On `--lost` the operator IS alerted now (15.5) — one informational alert, which must NOT ask
+  // for a manual refund, because the auto-refund already ran. This assertion read
+  // `alerts.length === 0` until 15.5 and would have reported the new behaviour as a failure; the
+  // script is outside `verify`, so nothing but running it would have said so.
+  const informationalAlert =
+    alerts.length === 1 && !alerts[0]!.includes("REFUND MANUALLY");
   const ok = lost
-    ? payments.refunds.length === 1 && notices.length === 1 && alerts.length === 0 && !orphan
+    ? payments.refunds.length === 1 && notices.length === 1 && informationalAlert && !orphan
     : alerts.length === 1 && !orphan;
   console.log(
     ok

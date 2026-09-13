@@ -110,12 +110,14 @@ Read by `/kill-this` Step 3.5 and matched against the branch diff. On a hit the 
 
 | Trigger | Paths |
 |---|---|
-| **Money moving** | `app/api/webhooks/stripe/`, `src/adapters/stripe-payment.ts`, `src/ports/payment.ts`, `src/reservations/create-departure-payment-intent.ts`, `src/reservations/payment-config.ts`, `src/reservations/refund-payment.ts`, `src/reservations/refund-terms.ts`, `src/reservations/cancel-reservation.ts` |
+| **Money moving** | `app/api/webhooks/stripe/`, `src/adapters/stripe-payment.ts`, `src/ports/payment.ts`, `src/reservations/booking-webhook.ts`, `src/reservations/create-departure-payment-intent.ts`, `src/reservations/payment-config.ts`, `src/reservations/refund-payment.ts`, `src/reservations/refund-terms.ts`, `src/reservations/cancel-reservation.ts` |
 | **Money computed** | `app/(admin)/admin/payroll/**` (incl. the `gusto.csv` and `tips.csv` exports), `app/(admin)/admin/time-clock/**`, `app/(admin)/admin/shift/[shiftId]/**`, `app/(admin)/admin/shifts/**`, `app/(crew)/crew/shift/[shiftId]/**` |
 | **Auth / capability URL** | `app/lib/auth.ts`, `app/lib/auth-delivery.ts`, `app/(crew)/crew/auth/`, `app/api/calendar/[token]/**`, `app/b/**`, `src/auth/**`, `src/reservations/booking-code.ts`, `src/reservations/ensure-booking-code.ts` |
 | **Data-changing migration** | a file under `db/migrations/` containing `drop`, `alter … type`, `update`, or `delete`. An additive `add column` does **not** trigger |
 
 **`refund-payment.ts` was missing until #726** — the one module in the repo that hands real money *back*, absent from a list defined as "money moving". It was caught by asking the skill's own fallback question (does a number this produces reach someone's statement?) rather than by the table, which is the failure mode a path list has: it can only name what someone thought of. When a money change doesn't match a row, add the row in the same PR.
+
+**`booking-webhook.ts` joined at 15.5**, and it is the most embarrassing omission of the three: it is the file that *calls* the refund on a residual-race loss and decides whether a payment becomes a booking at all. `app/api/webhooks/stripe/` was listed, but that route is a thin edge over this module, so a diff touching only the core money logic matched nothing. The route was mistaken for the handler.
 
 **`refund-terms.ts` and `cancel-reservation.ts` joined at #797**, for the same reason one row up and with the same lesson: `refund-payment.ts` *moves* the money, but these two *decide the number*, and #797 was a defect entirely inside the deciding half — the moving half was correct throughout. A diff that changed only these two would have matched no row while changing what every cancelled customer is paid.
 

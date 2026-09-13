@@ -399,7 +399,11 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
       idempotencyKey: "refund_pi_fake_2",
     });
     expect(soldOut).toHaveBeenCalledOnce();
-    expect(alert).not.toHaveBeenCalled();
+    // The office hears about it too (15.5) — informational, since the refund already ran. The
+    // amount is the one the loser was actually charged, read off the charge.
+    expect(alert).toHaveBeenCalledOnce();
+    expect(String(alert.mock.calls[0]![0])).toContain("$275.70");
+    expect(String(alert.mock.calls[0]![0])).not.toMatch(/REFUND MANUALLY/);
 
     // NO ledger row for the loser (#613). #522 sweep 1 wrote one and marked it `refunded`, to
     // stop refunded money reading as collected revenue — the right goal via a row Postgres

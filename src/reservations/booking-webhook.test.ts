@@ -306,12 +306,100 @@ describe("processBookingWebhook", () => {
     expect(payments.refunds).toHaveLength(1);
     expect(payments.refunds[0]!.idempotencyKey).toBe("refund_pi_1");
     expect(soldOut).toHaveBeenCalledOnce();
-    // No operator alert: this path resolves itself.
-    expect(alert).not.toHaveBeenCalled();
+    // The operator IS told, as of 15.5 — the path resolves itself, but a customer was still
+    // charged for a trip they did not get. Asserted properly in its own case below; here it is
+    // pinned only as "informational, not an action request".
+    expect(alert).toHaveBeenCalledOnce();
+    expect(String(alert.mock.calls[0]![0])).not.toMatch(/REFUND MANUALLY/);
     expect(confirm).not.toHaveBeenCalled(); // no booking → no confirmation
     expect(await repo.listPaymentsForReservation(PEND)).toHaveLength(0);
     // The row is not booked — it stayed pending.
     expect((await repo.getReservation(PEND))!.status).toBe("pending");
+  });
+
+  /** A losing charge carrying NO contact in its metadata at all — what 15.7 leaves behind once
+   *  the metadata keys are deleted. The contact must come off the row or it comes from nowhere. */
+  const strippedPi = (): string =>
+    JSON.stringify({
+      type: "payment_succeeded",
+      data: {
+        paymentIntentId: PI,
+        amountReceivedCents: 53625,
+        currency: "usd",
+        metadata: { purpose: "booking", priceCents: "50000" },
+      },
+    });
+
+  /** Seed a rival into the slot so the flip's whole-boat mutex loses. */
+  async function seedRival(repo: InMemoryRepository): Promise<void> {
+    await repo.saveEvent(musterEvent({ id: SLOT }));
+    await repo.saveReservation({
+      id: asId<"ReservationId">("r-rival"),
+      eventId: SLOT,
+      source: "muster",
+      customerName: "Rival",
+      partySize: 4,
+      status: "booked",
+    });
+  }
+
+  it("tells the sold-out customer using the ROW's contact, with no contact in the charge at all", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    await seedRival(repo);
+    const { deps, soldOut } = makeDeps(repo, new FakePaymentPort());
+
+    await processBookingWebhook(deps, strippedPi(), FAKE_SIGNATURE);
+
+    // Exactly this shape: no `metadata` on the argument at all, so there is no parameter left
+    // through which a Stripe-supplied contact could reach the notice.
+    expect(soldOut.mock.calls[0]![0]).toEqual({
+      chargeRef: PI,
+      contact: { customerName: "Mary", email: "m@x.io", phone: "216-555-0148" },
+    });
+  });
+
+  it("alerts the admins EVERY time a loser is charged and refunded, not only when the refund fails", async () => {
+    // This is a defect report, not a courtesy. A customer was charged for a trip they did not get
+    // and waits days for the money back; the operator has to know it happened at all, because the
+    // number of times it happens is the evidence that decides whether the payment flow changes.
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    await seedRival(repo);
+    const payments = new FakePaymentPort();
+    const { deps, alert } = makeDeps(repo, payments);
+
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    expect(r).toEqual({ handled: true, outcome: "lost" });
+    expect(payments.refunds).toHaveLength(1);
+
+    expect(alert).toHaveBeenCalledOnce();
+    const body = String(alert.mock.calls[0]![0]);
+    // It must say the money went back, or it reads as an unresolved emergency.
+    expect(body).toMatch(/refunded/i);
+    // And it must not tell the operator to do anything — this one is already handled.
+    expect(body).not.toMatch(/REFUND MANUALLY/);
+    // Who it was, off the row.
+    expect(body).toContain("Mary");
+  });
+
+  it("names the customer from the ROW when the auto-refund fails, not from the charge", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    await seedRival(repo);
+    const payments = new FakePaymentPort();
+    payments.refund = async () => {
+      throw new Error("stripe: refund unavailable");
+    };
+    const { deps, alert } = makeDeps(repo, payments);
+
+    await processBookingWebhook(deps, strippedPi(), FAKE_SIGNATURE);
+
+    expect(alert).toHaveBeenCalledOnce();
+    const body = String(alert.mock.calls[0]![0]);
+    expect(body).toContain("Mary"); // the row, since the charge carries no name
+    expect(body).toContain("party of 6"); // partySize off the row too
+    expect(body).toMatch(/REFUND MANUALLY/); // this one IS an action
   });
 
   it("a throwing sendConfirmation never breaks the committed booking (best-effort, DEC-122)", async () => {

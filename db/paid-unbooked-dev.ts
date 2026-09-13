@@ -134,7 +134,8 @@ try {
     // alert, not the confirmation, so reporting success keeps the claim on the row and stops the
     // seeded booking from looking like one nobody was told about.
     sendConfirmation: async () => true,
-    notifyCustomerSoldOut: async (c) => void notices.push(String(c.metadata.email ?? "(no email)")),
+    // The contact comes off the reservation row now (15.5), not the charge metadata.
+    notifyCustomerSoldOut: async (c) => void notices.push(c.contact.email ?? "(no email)"),
   };
 
   const body = JSON.stringify({

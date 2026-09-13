@@ -7,7 +7,7 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { Event, Seat } from "../domain/entities.js";
 import { BREWBOAT_TENANT, seedFleet } from "../import/resource-map.js";
-import { formShifts } from "./form-shifts.js";
+import { formShifts, reformWindow } from "./form-shifts.js";
 import { formAllVesselDaysForTest } from "./form-all-test-support.js";
 
 const PARTY = asId<"VesselId">("vessel-brew-2"); // 2-crew (captain+mate), seeded by the fleet
@@ -98,6 +98,31 @@ describe("formShifts", () => {
     expect(result.shiftsCreated).toBe(3);
     expect(await repo.getShift(asId(`shift-${PARTY}-2026-05-16`))).toBeTruthy();
     expect(await repo.getShift(asId(`shift-${DUFFY}-2026-06-27`))).toBeTruthy();
+  });
+
+  it("reformWindow's back edge is a VESSEL-LOCAL day, not a UTC one (#999, DEC-032)", async () => {
+    // **The repair pass computing its own window in UTC is the bug DEC-032 exists to forbid**, and
+    // it would sit inside the one function whose whole job is to catch what everything else missed.
+    //
+    // Eastern is UTC-4 in summer, so from 8pm local until midnight the UTC calendar date is already
+    // tomorrow. Slice an instant's ISO string in that window and `today − 1` evaluates to Eastern
+    // TODAY — the one day of backward slack silently disappears.
+    //
+    // That is not a near-miss. A vessel-day whose formation failed outright has NO shift row, so
+    // the union's unbounded half cannot find it either — that half only returns days that already
+    // hold a shift. It is reachable by the date half or by nothing. And once local midnight passes
+    // the reference point moves on, so it never re-enters the window: a paid booking on that day
+    // stays uncrewed forever, which is the exact failure #957 and #999 exist to close.
+    const repo = new InMemoryRepository();
+    await seedFleet(repo);
+    // 2026-07-05 01:30Z is 2026-07-04 21:30 Eastern. Vessel-local yesterday is 2026-07-03.
+    const eveningEastern = new Date("2026-07-05T01:30:00.000Z");
+    await repo.saveEvent(event("e-yday", PARTY, "2026-07-03", "18:00"));
+
+    const result = await reformWindow(repo, eveningEastern);
+
+    expect(result.shiftsCreated).toBe(1);
+    expect(await repo.getShift(asId(`shift-${PARTY}-2026-07-03`))).toBeTruthy();
   });
 
   it("forms every vessel-day it was asked for, and NO others (#999)", async () => {

@@ -21,6 +21,7 @@
  */
 
 import type { Event, Seat, Shift, VesselDay } from "../domain/entities.js";
+import { addDays, vesselDateOf } from "../config/tenant.js";
 import { asId } from "../domain/ids.js";
 import type { VesselId, ShiftId, CrewMemberId } from "../domain/ids.js";
 import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
@@ -193,10 +194,26 @@ export async function reformWindow(
   now: Date,
   opts?: { leadDays?: number; notifyTripChanges?: boolean },
 ): Promise<FormResult> {
-  const day = (offset: number): string =>
-    new Date(now.getTime() + offset * 86_400_000).toISOString().slice(0, 10);
-  const days = await repo.listActiveVesselDays(day(-1), day(REFORM_WINDOW_LEAD_DAYS));
-  return formShifts(repo, days, { now, notifyTripChanges: true, ...opts });
+  // **Vessel-local, never a UTC slice (DEC-032).** The first cut did
+  // `new Date(now + offset).toISOString().slice(0,10)`, which is the failure DEC-032 was written
+  // to forbid, inside the one function whose job is to catch what everything else missed. Eastern
+  // runs four hours behind UTC, so from 8pm local until midnight the UTC date is already tomorrow
+  // and `today − 1` evaluates to local TODAY — the backward slack silently gone for four hours a
+  // day. A vessel-day whose formation failed outright has NO shift row, so the unbounded half
+  // cannot rescue it either; it is reachable by the date half or by nothing, and once local
+  // midnight passes it never re-enters the window.
+  //
+  // `addDays` walks the date STRING, so it cannot drift across a DST boundary the way adding
+  // 86,400,000 milliseconds does.
+  const today = vesselDateOf(now);
+  const days = await repo.listActiveVesselDays(
+    addDays(today, -1),
+    addDays(today, REFORM_WINDOW_LEAD_DAYS),
+  );
+  // `notifyTripChanges: true` sits AFTER the spread on purpose: this is the call the #765 guard
+  // calls the most important one to keep flagged, and a caller passing the key — even as
+  // `undefined` — must not be able to turn the crew notices off.
+  return formShifts(repo, days, { now, ...opts, notifyTripChanges: true });
 }
 
 // REFACTOR QUEUE — cognitive complexity 99, against a ceiling of 40 (#909).

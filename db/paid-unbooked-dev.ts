@@ -47,6 +47,7 @@ import {
   paymentIdFor,
   type WebhookDeps,
 } from "../src/reservations/booking-webhook.js";
+import { soldOutNoticeBody } from "../src/reservations/sold-out-notice.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 if (existsSync(".env.local")) {
@@ -77,6 +78,7 @@ const payments = new FakePaymentPort();
 
 const alerts: string[] = [];
 const notices: string[] = [];
+const noticeBodies: string[] = [];
 
 const paymentIntentId = `pi_${stamp}`;
 
@@ -136,8 +138,14 @@ try {
     // alert, not the confirmation, so reporting success keeps the claim on the row and stops the
     // seeded booking from looking like one nobody was told about.
     sendConfirmation: async () => true,
-    // The contact comes off the reservation row now (15.5), not the charge metadata.
-    notifyCustomerSoldOut: async (c) => void notices.push(c.contact.email ?? "(no email)"),
+    // The contact comes off the reservation row now (15.5), not the charge metadata. The BODY is
+    // composed here rather than only the recipient recorded: this script is how a person checks
+    // the customer-facing copy, and printing an email address proves the plumbing while showing
+    // nothing of what the customer actually reads.
+    notifyCustomerSoldOut: async (c) => {
+      notices.push(c.contact.email ?? "(no email)");
+      noticeBodies.push(soldOutNoticeBody(c.contact.customerName));
+    },
   };
 
   const body = JSON.stringify({
@@ -172,6 +180,13 @@ try {
   console.log(`  operator alerts  ${alerts.length}`);
   for (const a of alerts) console.log(`                   ${a}`);
   console.log(`  orphan payment   ${orphan ? "YES — BUG" : "none (correct)"}`);
+  // The message a HUMAN reads, printed verbatim after the summary — the only way to check the
+  // copy without producing a real race. This is the one that used to claim "You have NOT been
+  // charged" while the customer's statement said otherwise for days (15.5).
+  for (const b of noticeBodies) {
+    console.log(`\n  --- what the customer is sent ---`);
+    for (const line of b.split("\n")) console.log(`  ${line}`);
+  }
 
   // On `--lost` the operator IS alerted now (15.5) — one informational alert, which must NOT ask
   // for a manual refund, because the auto-refund already ran. This assertion read

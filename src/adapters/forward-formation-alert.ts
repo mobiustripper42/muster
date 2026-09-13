@@ -68,21 +68,56 @@ export async function forwardFormationAlert(
   }
   if (recipients.length === 0) return 0;
 
-  let sent = 0;
+  /**
+   * **Group by cause first — many vessel-days sharing one error is ONE outage (#1001).**
+   *
+   * `FormResult.failures`' own docstring sets this obligation: *"Many entries carrying the SAME
+   * error is one outage, not N data problems, and #1001 should say so rather than fan out that
+   * many leads."* Per-group isolation (#957) is what turns a dead connection into one entry per
+   * vessel-day in the fleet rather than one abort, so without this a pool outage texts every admin
+   * once per boat — burying the single fact that matters under its own symptoms.
+   *
+   * This is NOT the no-dedup case DEC-172 settled. That one is the same vessel-day repeating
+   * across ticks, where the repeats are self-limiting because you go and fix it. This is many
+   * different days inside ONE tick, all saying the same thing.
+   *
+   * Distinct causes still fan out. Two boats broken two ways are two leads, and collapsing them
+   * would hide one.
+   */
+  const byCause = new Map<string, FormationFailure[]>();
   for (const f of failures) {
-    // Degrade to the id rather than to silence: an unreadable vessel row is not a reason to stop
-    // telling somebody a boat has no crew, and the id is still enough to find it.
-    let name = String(f.vesselId);
-    try {
-      const vessel = await repo.getVessel(f.vesselId);
-      if (vessel?.name) name = vessel.name;
-    } catch {
-      // keep the id
+    const key = String(f.error);
+    const group = byCause.get(key);
+    if (group) group.push(f);
+    else byCause.set(key, [f]);
+  }
+
+  let sent = 0;
+  for (const [cause, group] of byCause) {
+    let body: string;
+    if (group.length > 1) {
+      // One message naming the scale and the shared cause. No vessel is named because no vessel is
+      // the problem — naming the first of forty would point at the wrong thing.
+      body = outbound(
+        "admin",
+        `${group.length} vessel-days failed to form with the same error - likely one outage, not ${group.length} problems: ${cause}`,
+      );
+    } else {
+      const f = group[0]!;
+      // Degrade to the id rather than to silence: an unreadable vessel row is not a reason to stop
+      // telling somebody a boat has no crew, and the id is still enough to find it.
+      let name = String(f.vesselId);
+      try {
+        const vessel = await repo.getVessel(f.vesselId);
+        if (vessel?.name) name = vessel.name;
+      } catch {
+        // keep the id
+      }
+      body = outbound(
+        "admin",
+        `${name} on ${fmtDate(f.date)} has NO crew shift - formation failed. Nobody has been asked to work it.`,
+      );
     }
-    const body = outbound(
-      "admin",
-      `${name} on ${fmtDate(f.date)} has NO crew shift - formation failed. Nobody has been asked to work it.`,
-    );
     for (const r of recipients) {
       try {
         await channel.send({

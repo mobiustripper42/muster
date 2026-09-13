@@ -30,10 +30,15 @@ import type { ChannelPort } from "../ports/channel.js";
 import { bookingUrl } from "./booking-code.js";
 
 /**
- * What happened on one channel. `absent` is deliberately distinct from both others: it means
+ * What happened on one channel. `absent` is deliberately distinct from the others: it means
  * there was nothing to try, which is neither a success to report nor a failure to chase.
+ *
+ * `logged` is the #955 addition and it is the one this file's header is about. Every send site now
+ * falls back to a channel that always accepts, so "did not throw" stopped meaning "delivered". A
+ * logged message is recorded and recoverable and did NOT reach the customer, and an operator
+ * standing at the screen has to be told which one happened.
  */
-export type ChannelOutcome = "sent" | "failed" | "absent";
+export type ChannelOutcome = "sent" | "logged" | "failed" | "absent";
 
 export interface ResendResult {
   email: ChannelOutcome;
@@ -92,12 +97,14 @@ async function tryChannel(
 ): Promise<ChannelOutcome> {
   if (!channel || !contact) return "absent";
   try {
-    await channel.send({
+    const result = await channel.send({
       to: label === "email" ? { email: contact } : { phone: contact },
       kind: "receipt",
       body: ctx.body,
     });
-    return "sent";
+    // #955: the adapter says which it did. Reading "did not throw" as "delivered" was safe only
+    // while an unconfigured channel was absent rather than logging.
+    return result?.loggedOnly ? "logged" : "sent";
   } catch (e) {
     ctx.deps.onFailure?.(
       `${label} booking-link resend to reservation ${ctx.reservation.id} failed: ${

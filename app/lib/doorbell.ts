@@ -1,6 +1,5 @@
 import { doorbellTick } from "@core/builder/doorbell-tick.js";
 import { forwardNotifications } from "@core/adapters/forward-notifications.js";
-import { logChannel } from "./channel";
 import { makeDoorbellRules } from "@core/messaging/doorbell-decider.js";
 import {
   DOORBELL_BATCH_WINDOW_MS,
@@ -9,7 +8,7 @@ import {
 } from "@core/config/tenant.js";
 import { getPresence, getRepo } from "./repo";
 import { OPERATOR_CREW_MEMBER_ID } from "./operator";
-import { makeTwilioChannel } from "./sms";
+import { makeSmsChannel } from "./sms";
 import { messagingEnabled } from "./flags";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
 
@@ -50,10 +49,9 @@ export async function runDoorbellTick(now: Date): Promise<{
     throw new Error("APP_BASE_URL must be set in production — ring links would dead-link to localhost");
   }
   const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL ?? "http://localhost:3000");
-  // Twilio configured (9.4, DEC-MSG-1) ⇒ rings go out as real SMS; unset ⇒ the
-  // operator-relay ring outbox stays (DEC-073). Same constructor-swap as channel.ts.
-  const channel =
-    makeTwilioChannel(repo, linkBase) ?? logChannel(repo, linkBase, () => now);
+  // Twilio configured (9.4, DEC-MSG-1) ⇒ rings go out as real SMS; unset ⇒ the console
+  // (#934/#955). The clock is passed through so a logged ring carries the tick's `now`.
+  const { channel } = makeSmsChannel(repo, linkBase, () => now);
   const relayed = await forwardNotifications(repo, channel, r.rings);
   return { threadsSwept: r.threadsSwept, rings: r.rings.length, relayed };
 }

@@ -27,7 +27,7 @@ import { recoverBookingLink } from "@core/reservations/recover-booking-link.js";
 import type { RecoveryRow } from "@core/reservations/find-booking.js";
 import { readEmailEnv } from "../../lib/auth-delivery";
 import { getRepo } from "../../lib/repo";
-import { makeTwilioChannel } from "../../lib/sms";
+import { makeSmsChannel } from "../../lib/sms";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 export async function requestBookingLink(formData: FormData): Promise<void> {
@@ -44,14 +44,17 @@ export async function requestBookingLink(formData: FormData): Promise<void> {
         const repo = getRepo();
         const emailEnv = readEmailEnv();
         const email = emailEnv ? new EmailChannel(emailEnv) : undefined;
-        const sms = makeTwilioChannel(repo, linkBase) ?? undefined;
+        // #955: always a channel. This used to be `?? undefined` and then spread away below, so a
+        // Twilio-dark deploy sent a customer nothing and recorded nothing — on the one screen
+        // whose entire job is recovering a booking they have already lost the link to.
+        const { channel: sms } = makeSmsChannel(repo, linkBase);
 
         await recoverBookingLink(
           {
             repo,
             linkBase,
             ...(email ? { email } : {}),
-            ...(sms ? { sms } : {}),
+            sms,
             now: () => new Date().toISOString(),
             today: vesselDateOf(new Date()),
             onFailure: (detail) => console.error(`[reservations] ${detail}`),

@@ -1,21 +1,15 @@
 import { EmailChannel } from "@core/adapters/email-channel.js";
 import type { Reservation } from "@core/domain/entities.js";
-import {
-  bookingConfirmationBody,
-  sendBookingConfirmation,
-} from "@core/reservations/booking-confirmation.js";
-import { bookingUrl } from "@core/reservations/booking-code.js";
+import { sendBookingConfirmation } from "@core/reservations/booking-confirmation.js";
 import { ensureBookingCode } from "@core/reservations/ensure-booking-code.js";
 import {
   resendBookingLink,
-  resendBookingLinkBody,
   type ResendResult,
 } from "@core/reservations/resend-booking-link.js";
 import { readEmailEnv } from "./auth-delivery";
 import { isProdDeploy } from "./flags";
 import { getRepo } from "./repo";
-import { makeTwilioChannel } from "./sms";
-import { logUnsent } from "./unsent";
+import { makeSmsChannel } from "./sms";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
@@ -65,28 +59,23 @@ export async function sendReservationConfirmation(
     const repo = getRepo();
     const emailEnv = readEmailEnv();
     const email = emailEnv ? new EmailChannel(emailEnv) : undefined;
-    const sms = makeTwilioChannel(repo, linkBase) ?? undefined;
-    if (!email && !sms) {
-      // #933: log the body that would have gone out, rather than the fact that one
-      // didn't. This is the outbox's replacement — in dev it is the only way to read
-      // (and click) a confirmation, and in prod it is the only record of what the
-      // customer never received.
-      //
-      // The code is minted HERE rather than six lines down because there is no
-      // manage URL without one, and the URL is the part worth reading. That is an
-      // extra idempotent write on this path — `ensureBookingCode` reuses a live code
-      // and its own docstring calls a booking without one exactly the case that
-      // should get one.
-      const code = await ensureBookingCode(repo, reservation.id, () =>
-        new Date().toISOString(),
-      );
-      logUnsent(
-        "reservations:confirm",
-        { phone: reservation.phone ?? undefined, email: reservation.email ?? undefined },
-        bookingConfirmationBody(reservation, bookingUrl(linkBase, code)),
-      );
-      return false;
-    }
+    // #955, defect 1 — the bug this refactor was named for. This read
+    // `makeTwilioChannel(...) ?? undefined` and then gated the fallback on `!email && !sms`. With
+    // email configured and Twilio dark, `email` was defined, so the fallback was skipped — and
+    // `sendBookingConfirmation` then skipped the SMS leg too, because it guards on `deps.sms`.
+    // No send, no log, no `onFailure`. The customer's text evaporated with no record anywhere.
+    //
+    // Worse in production than in dev: email is optional at `/book` because phone is the identity
+    // (DEC-132), so a customer who gave only a phone number got nothing at all, and the one place
+    // that would have recorded it required BOTH channels to be missing.
+    //
+    // A configured email can never suppress the SMS leg now. They are separate legs to separate
+    // addresses, and `sms` is always present.
+    //
+    // The `logUnsent` block that stood here went with the same change: it minted the code early,
+    // composed the body by hand and wrote it to the console, which is exactly what the log channel
+    // below now does for every audience in one place.
+    const { channel: sms, live } = makeSmsChannel(repo, linkBase);
 
     // Mint (or reuse) the code BEFORE composing the message — there is no link to send without
     // one. A failure here is caught by the outer wrapper and logged: the booking is already
@@ -98,7 +87,7 @@ export async function sendReservationConfirmation(
       {
         linkBase,
         ...(email ? { email } : {}),
-        ...(sms ? { sms } : {}),
+        sms,
         // Low-severity: the booking succeeded; only the notice failed → resend when
         // convenient. Distinct from the urgent paid-but-unbooked refund alert.
         onFailure: (detail) =>
@@ -107,7 +96,18 @@ export async function sendReservationConfirmation(
       reservation,
       bookingCode,
     );
-    return true;
+    // **The #955/#971 seam, and the one place this merge was not mechanical.** 15.3 made this
+    // return whether the customer was actually TOLD, and the caller records that on the
+    // reservation — so `true` here with nobody told is the precise defect 15.3 exists to prevent.
+    //
+    // #955 made `sms` always present, which would have turned this into an unconditional `true`:
+    // a Twilio-dark deploy with no email would mark every booking as confirmed-sent on the
+    // strength of a console line. The channel reports whether it can actually transmit, so ask it.
+    //
+    // An email SEND failure still reads as told, exactly as it did before this branch —
+    // `sendBookingConfirmation` returns void and reports failures through `onFailure`. Narrowing
+    // that is 15.3's ground, not this issue's.
+    return Boolean(email) || live;
   } catch (e) {
     console.error(
       `[reservations] confirmation errored for ${reservation.id} — ${e instanceof Error ? e.message : e}`,
@@ -148,20 +148,12 @@ export async function resendReservationLink(reservation: Reservation): Promise<R
   const repo = getRepo();
   const emailEnv = readEmailEnv();
   const email = emailEnv ? new EmailChannel(emailEnv) : undefined;
-  const sms = makeTwilioChannel(repo, linkBase) ?? undefined;
-  if (!email && !sms) {
-    // #933, the resend half of "once for send, once for resend". The return value is
-    // deliberately UNCHANGED: this still reports `skipped`, never `attempted`, so the
-    // operator is never shown "Sent" for a message that was only written to a log.
-    // That distinction is the entire reason `ResendOutcome` is a union.
-    const code = await ensureBookingCode(repo, reservation.id, () => new Date().toISOString());
-    logUnsent(
-      "reservations:resend",
-      { phone: reservation.phone ?? undefined, email: reservation.email ?? undefined },
-      resendBookingLinkBody(reservation, bookingUrl(linkBase, code)),
-    );
-    return { kind: "skipped", reason: "no_channels" };
-  }
+  // #955: this is the ONE site where `live` earns its existence. The send is unconditional now —
+  // the body reaches the console whatever the config — but an operator is reading the result, and
+  // DEC-170 states the rule: a log line is not a send. So the outcome still reports
+  // `skipped`, never `attempted`, when nothing live was behind it. That distinction is the entire
+  // reason `ResendOutcome` is a union, and it survives the refactor unchanged.
+  const { channel: sms, live } = makeSmsChannel(repo, linkBase);
 
   // Reuses the live code; mints only if there is none (an imported booking, or one whose
   // confirmation predates codes). A resend is NOT a reissue — see `resend-booking-link.ts`.
@@ -171,11 +163,12 @@ export async function resendReservationLink(reservation: Reservation): Promise<R
     {
       linkBase,
       ...(email ? { email } : {}),
-      ...(sms ? { sms } : {}),
+      sms,
       onFailure: (detail) => console.error(`[reservations] link resend failed — ${detail}`),
     },
     reservation,
     bookingCode,
   );
+  if (!email && !live) return { kind: "skipped", reason: "no_channels" };
   return { kind: "attempted", result };
 }

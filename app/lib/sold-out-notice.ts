@@ -2,9 +2,8 @@ import { EmailChannel } from "@core/adapters/email-channel.js";
 import type { SoldOutCharge } from "@core/reservations/booking-webhook.js";
 import { sendSoldOutNotice } from "@core/reservations/sold-out-notice.js";
 import { readEmailEnv } from "./auth-delivery";
-import { isProdDeploy } from "./flags";
 import { getRepo } from "./repo";
-import { makeTwilioChannel } from "./sms";
+import { makeSmsChannel } from "./sms";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
@@ -24,13 +23,17 @@ export async function sendReservationSoldOutNotice(
     const repo = getRepo();
     const emailEnv = readEmailEnv();
     const email = emailEnv ? new EmailChannel(emailEnv) : undefined;
-    // makeTwilioChannel needs a base for its deep links; the sold-out notice has none, but
-    // the SMS body carries no link, so an unset base only disables SMS (email still fires).
-    const sms = linkBase ? (makeTwilioChannel(repo, linkBase) ?? undefined) : undefined;
+    // The channel needs a base for its deep links; the sold-out notice has none, but the SMS body
+    // carries no link, so an unset base only disables SMS (email still fires). That guard stays —
+    // making an unset `APP_BASE_URL` fatal is issue #1007, deliberately not folded in here.
+    //
+    // #955: Twilio-dark used to mean no SMS and, when email was also unconfigured, a prod-only
+    // console line. §2.8.7 is why that was the wrong shape — this notice accompanies an automatic
+    // refund, and "a refund nobody was told about reads as a silent failed payment." It now always
+    // has somewhere to write.
+    const sms = linkBase ? makeSmsChannel(repo, linkBase).channel : undefined;
     if (!email && !sms) {
-      if (isProdDeploy()) {
-        console.error("[reservations] sold-out notice skipped — no email or SMS channel configured");
-      }
+      console.error("[reservations] sold-out notice skipped — no APP_BASE_URL and no email channel");
       return;
     }
 

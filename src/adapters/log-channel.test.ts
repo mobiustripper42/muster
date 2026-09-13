@@ -51,6 +51,55 @@ const ring = (): NotificationMessage => ({
   messageIds: [asId<"MessageId">("msg-1")],
 });
 
+/** A customer-facing receipt whose body carries a live booking credential. */
+const receipt = (code: string): OutboundMessage => ({
+  to: { email: "mary@x.io", phone: "+15555550199" },
+  kind: "receipt",
+  body: `Your trip is confirmed. Manage it here: https://x.test/b/${code}`,
+});
+
+const CODE = "0123456789ABCD"; // 14 chars from BOOKING_CODE_ALPHABET
+
+describe("LogChannel — a booking code is a credential (#955)", () => {
+  /**
+   * `mintLink: false` is the production posture and it only ever governed the CREW magic link
+   * this class mints. A customer receipt arrives with its link already composed into `body`, so
+   * the guard never saw it — and #955 made that matter. Before that change a receipt reached this
+   * sink only when BOTH email and SMS were unconfigured, which the now-deleted `app/lib/unsent.ts`
+   * called rare and accepted. Every send site falls back here now, so on a Twilio-dark deploy with
+   * email working it is every confirmation and every recovery link, written where log-read access
+   * alone can collect them.
+   *
+   * A booking code is a bearer credential by `booking-code.ts`'s own words, it resolves with no
+   * session, and it never expires.
+   */
+  it("redacts a /b/<code> in the body when links are not minted (production)", async () => {
+    const lines: string[] = [];
+    const c = new LogChannel(new InMemoryRepository(), {
+      linkBase: "https://x.test/",
+      now: () => T0,
+      mintSecret: () => "s3cret",
+      sink: (l) => lines.push(l),
+      // mintLink absent = the production posture
+    });
+
+    await c.send(receipt(CODE));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toContain(CODE);
+    // Still legible as a record: you can tell WHAT did not go out and to WHOM.
+    expect(lines[0]).toContain("Your trip is confirmed.");
+    expect(lines[0]).toContain("+15555550199");
+    expect(lines[0]).toContain("/b/<redacted>");
+  });
+
+  it("leaves the code intact in dev, where the clickable link is the entire point", async () => {
+    const lines: string[] = [];
+    await chan(lines).send(receipt(CODE));
+    expect(lines[0]).toContain(`https://x.test/b/${CODE}`);
+  });
+});
+
 describe("LogChannel", () => {
   it("carries the body VERBATIM — a summarised ask is not an ask", async () => {
     const lines: string[] = [];

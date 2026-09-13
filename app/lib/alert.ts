@@ -1,6 +1,6 @@
 import { forwardBoardAlerts as forwardCore, type BoardLanding } from "@core/adapters/forward-board-alerts.js";
 import { forwardMoneyAlert } from "@core/adapters/forward-money-alert.js";
-import { makeTwilioChannel } from "./sms";
+import { makeSmsChannel } from "./sms";
 import { getRepo } from "./repo";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
 
@@ -9,11 +9,15 @@ import { stripTrailingSlashes } from "@core/config/base-url.js";
  * `relayAsks`/`runDoorbellTick`. The ONE place the app picks the channel +
  * the host-safe board link and hands the tick's new landings to the core sender.
  *
- * No relay fallback (DEC-095): with no live SMS the recipient IS the operator and
- * `/admin/at-risk` is the standing surface, so a Twilio-dark tick simply doesn't
- * send. No civil-hours gating (DEC-088 N/A — a Tier-3 "needs a human" signal is
- * urgent). Recipients are the active admins, not the `OPERATOR_CREW_MEMBER_ID`
- * singleton (#293) — the core sender fans out.
+ * **A Twilio-dark tick writes the alert to the console (DEC-170, superseding DEC-095's
+ * no-relay-fallback clause).** It used to send nothing, on the reasoning that the recipient is the
+ * operator and `/admin/at-risk` is the standing surface — but a board is a fallback for somebody
+ * looking at it, and the reason this alert exists is that nobody is.
+ *
+ * **The count it returns therefore includes logged alerts**, because `LogChannel` accepts every
+ * message. Read it as "reached a recipient's record", not "reached a phone". No civil-hours gating
+ * (DEC-088 N/A — a Tier-3 "needs a human" signal is urgent). Recipients are the active admins, not
+ * the `OPERATOR_CREW_MEMBER_ID` singleton (#293) — the core sender fans out.
  */
 export async function forwardBoardAlerts(landings: BoardLanding[] | undefined): Promise<number> {
   if (!landings || landings.length === 0) return 0;
@@ -27,9 +31,11 @@ export async function forwardBoardAlerts(landings: BoardLanding[] | undefined): 
   }
   const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL ?? "http://localhost:3000");
 
-  const channel = makeTwilioChannel(repo, linkBase);
-  if (!channel) return 0; // no live SMS ⇒ no send; the board is the fallback (DEC-095)
-
+  // #955 (DEC-170 supersedes DEC-095's no-relay-fallback clause): this used to `return 0` when
+  // Twilio was dark, on the reasoning that the At-Risk board is the standing fallback. A board is
+  // a fallback for a person who is looking at it, and the whole reason this alert exists is that
+  // nobody is. Twilio-dark now writes the alert to the console like every other send site.
+  const { channel } = makeSmsChannel(repo, linkBase);
   return forwardCore(repo, channel, landings, `${linkBase}/admin/at-risk`);
 }
 
@@ -60,8 +66,10 @@ export async function alertMoneyProblem(message: string): Promise<void> {
   try {
     const repo = getRepo();
     const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL ?? "http://localhost:3000");
-    const channel = makeTwilioChannel(repo, linkBase);
-    if (!channel) return; // Twilio-dark ⇒ the log line above is the whole alert
+    // #955: Twilio-dark used to make the `console.error` above the whole alert. It still is the
+    // floor, written first and unconditionally — but the message itself now also reaches the
+    // console with its recipients and body, rather than only the summary line.
+    const { channel } = makeSmsChannel(repo, linkBase);
     const sent = await forwardMoneyAlert(repo, channel, message, `${linkBase}/admin/purchases`);
     if (sent === 0) console.error("[reservations] money alert reached NO admin (none reachable)");
   } catch (e) {

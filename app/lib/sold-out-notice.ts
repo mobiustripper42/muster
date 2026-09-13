@@ -37,7 +37,8 @@ export async function sendReservationSoldOutNotice(
       return;
     }
 
-    const m = charge.metadata;
+    // The contact is already resolved off the reservation row by the webhook (15.5) — this edge
+    // does not reach for it, and there is no longer any metadata here to reach into.
     await sendSoldOutNotice(
       {
         ...(email ? { email } : {}),
@@ -45,11 +46,7 @@ export async function sendReservationSoldOutNotice(
         onFailure: (detail) =>
           console.error(`[reservations] sold-out notice send failed — ${detail}`),
       },
-      {
-        customerName: m.customerName ?? "",
-        ...(m.email ? { email: m.email } : {}),
-        ...(m.phone ? { phone: m.phone } : {}),
-      },
+      charge.contact,
     );
   } catch (e) {
     console.error(

@@ -4,10 +4,12 @@
  *
  * The two ways a customer's card is charged and no booking exists:
  *
- *   --lost        the residual race (DEC-109): their 15-minute hold expired mid-payment, a rival
- *                 took the freed slot and paid first, then their payment landed. Expected:
- *                 AUTO-REFUND + a "sold out while you were paying" notice to the customer, and
- *                 NO operator alert — nothing needs a human.
+ *   --lost        the residual race (`docs/SPEC.md` §2.8.7): their 15-minute hold expired
+ *                 mid-payment, a rival took the freed slot and paid first, then their payment
+ *                 landed. Expected: AUTO-REFUND + a "sold out while you were paying" notice to
+ *                 the customer, and ONE operator alert that does NOT ask for a manual refund
+ *                 (15.5 — nothing needs a human, but a customer was charged for a trip they did
+ *                 not get, and how often that happens is the evidence deciding issue #1012).
  *   --unbookable  the anomaly (default): the charge names an event that isn't there. Deliberately
  *                 NOT auto-refunded — expected: a loud REFUND MANUALLY alert for the operator.
  *
@@ -45,6 +47,7 @@ import {
   paymentIdFor,
   type WebhookDeps,
 } from "../src/reservations/booking-webhook.js";
+import { soldOutNoticeBody } from "../src/reservations/sold-out-notice.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 if (existsSync(".env.local")) {
@@ -55,6 +58,12 @@ if (existsSync(".env.local")) {
 
 const args = process.argv.slice(2);
 const lost = args.includes("--lost");
+/** `--name "<whatever>"` — the booking name. Free text at the real checkout, which is only
+ *  trimmed and checked non-empty, so this is what an attacker can actually send. Exists so the
+ *  operator can see for themselves that a name shaped like an instruction cannot forge the
+ *  operator alert (15.5, `/security-review`). */
+const nameFlag = args.indexOf("--name");
+const customerName = nameFlag >= 0 ? (args[nameFlag + 1] ?? "Test Customer") : "Test Customer";
 const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 
 // Local-DB guard (mirrors db:seed:reservation): this writes synthetic rows.
@@ -75,6 +84,7 @@ const payments = new FakePaymentPort();
 
 const alerts: string[] = [];
 const notices: string[] = [];
+const noticeBodies: string[] = [];
 
 const paymentIntentId = `pi_${stamp}`;
 
@@ -90,7 +100,7 @@ try {
       eventId: null,
       source: "muster",
       status: "pending",
-      customerName: "Test Customer",
+      customerName,
       email: "test-customer@example.test",
       partySize: 6,
       vesselId: asId<"VesselId">("vessel-brew-2"),
@@ -134,7 +144,14 @@ try {
     // alert, not the confirmation, so reporting success keeps the claim on the row and stops the
     // seeded booking from looking like one nobody was told about.
     sendConfirmation: async () => true,
-    notifyCustomerSoldOut: async (c) => void notices.push(String(c.metadata.email ?? "(no email)")),
+    // The contact comes off the reservation row now (15.5), not the charge metadata. The BODY is
+    // composed here rather than only the recipient recorded: this script is how a person checks
+    // the customer-facing copy, and printing an email address proves the plumbing while showing
+    // nothing of what the customer actually reads.
+    notifyCustomerSoldOut: async (c) => {
+      notices.push(c.contact.email ?? "(no email)");
+      noticeBodies.push(soldOutNoticeBody(c.contact.customerName));
+    },
   };
 
   const body = JSON.stringify({
@@ -153,7 +170,7 @@ try {
         priceCents: "50000",
         kind: "full",
         taxCents: "3625",
-        customerName: "Test Customer",
+        customerName,
         email: "test-customer@example.test",
       },
     },
@@ -169,9 +186,22 @@ try {
   console.log(`  operator alerts  ${alerts.length}`);
   for (const a of alerts) console.log(`                   ${a}`);
   console.log(`  orphan payment   ${orphan ? "YES — BUG" : "none (correct)"}`);
+  // The message a HUMAN reads, printed verbatim after the summary — the only way to check the
+  // copy without producing a real race. This is the one that used to claim "You have NOT been
+  // charged" while the customer's statement said otherwise for days (15.5).
+  for (const b of noticeBodies) {
+    console.log(`\n  --- what the customer is sent ---`);
+    for (const line of b.split("\n")) console.log(`  ${line}`);
+  }
 
+  // On `--lost` the operator IS alerted now (15.5) — one informational alert, which must NOT ask
+  // for a manual refund, because the auto-refund already ran. This assertion read
+  // `alerts.length === 0` until 15.5 and would have reported the new behaviour as a failure; the
+  // script is outside `verify`, so nothing but running it would have said so.
+  const informationalAlert =
+    alerts.length === 1 && !alerts[0]!.includes("REFUND MANUALLY");
   const ok = lost
-    ? payments.refunds.length === 1 && notices.length === 1 && alerts.length === 0 && !orphan
+    ? payments.refunds.length === 1 && notices.length === 1 && informationalAlert && !orphan
     : alerts.length === 1 && !orphan;
   console.log(
     ok

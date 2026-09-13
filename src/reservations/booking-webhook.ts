@@ -37,6 +37,7 @@ import {
 import type { CheckoutCompleted, DisputeUpdated, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { balanceOwedCents } from "./payment-config.js";
+import type { SoldOutContact } from "./sold-out-notice.js";
 import { confirmPendingRow, type ConfirmResult } from "./write-booking.js";
 
 export interface WebhookDeps {
@@ -57,18 +58,22 @@ export interface WebhookDeps {
   payments: PaymentPort;
   now: () => string;
   /**
-   * Loudly notify all active admins that a PAID customer needs a MANUAL refund. Post-12.1b
-   * this is the FALLBACK, not the default: a residual-race loss is auto-refunded (below); this
-   * fires only when the auto-refund itself fails or there's no `paymentIntentId` to refund
-   * against, and for other unreconcilable money (e.g. an overpaid balance).
+   * Notify all active admins about money that moved without Muster deciding it should. Most of
+   * its callers need a MANUAL refund and say so in the body.
+   *
+   * **Not only that (15.5).** A residual-race loss whose auto-refund SUCCEEDS also alerts, with
+   * no action asked for. That path told nobody until 15.5, and the silence was justified on the
+   * grounds that nothing needed doing — true, and beside the point: a customer was charged for a
+   * trip they did not get, and how often that happens is the evidence deciding issue #1012.
+   * Read the body, not the call site, to know whether an alert wants a human.
    */
   alertPaidButUnbooked: (message: string) => Promise<void>;
   /**
    * Tell the customer their departure sold out while they were paying and they've been fully
    * refunded (DEC-109 residual race). Best-effort — a notify failure must never 500 the
    * webhook (the refund already succeeded; a 500 would make Stripe retry the whole event).
-   * Receives the normalized charge (contact lives in `metadata`) — works for both the hosted
-   * session and the Elements PaymentIntent path (DEC-134).
+   * Receives a loggable charge ref and the contact **read off the reservation row** (15.5) —
+   * §2.8.7's rule, and the only source that survives 15.7 deleting the charge metadata.
    */
   notifyCustomerSoldOut: (charge: SoldOutCharge) => Promise<void>;
   /**
@@ -125,11 +130,19 @@ export type WebhookResult =
         | "ignored";
     };
 
-/** The contact-bearing slice of a charge the sold-out notice needs (both event paths). */
+/**
+ * What the sold-out notice needs: a loggable handle, and who to tell.
+ *
+ * **The contact comes off the reservation row, never off the charge (15.5).** `SPEC.md` §2.8.7
+ * always said so — "the phone on the reservation; phone is required, email is not" — but the
+ * code read `charge.metadata` until now, and 15.7 deletes those keys. The `metadata` field is
+ * GONE rather than merely unused, because a field that still exists is one a future edit can
+ * read from, and this notice reaching nobody is silent by construction.
+ */
 export interface SoldOutCharge {
   /** Loggable handle: the session id (hosted) or PaymentIntent id (Elements). */
   chargeRef: string;
-  metadata: Record<string, string>;
+  contact: SoldOutContact;
 }
 
 /**
@@ -279,6 +292,133 @@ export interface ConfirmOptions {
   notifyOnResidualRaceLoss?: boolean;
 }
 
+
+/**
+ * The residual-race compensation (`docs/SPEC.md` §2.8.7): what happens to the buyer whose payment
+ * landed second. Cited to the spec on purpose — the surrounding comments in this file all say
+ * "DEC-109", and that record is `status: withdrawn`, a signpost whose own ruling reads "Retired.
+ * The spec replaced the checkout hold with the pending reservation." New code should not grow the
+ * pile of citations to a retired decision; §2.8.7 is the live answer.
+ *
+ * Extracted from `processBookingCharge` in 15.5, and not only for the complexity ceiling it
+ * crossed — this is one coherent job with its own rules (refund, tell them, tell the office) and
+ * three exits, sitting inside a function whose job is dispatch.
+ *
+ * **Everything said about this customer comes off the ROW**, never the charge. The row was read
+ * and proven `pending` at the top of `confirmPendingRow`; the CAS that failed was against
+ * somebody else's. Before 15.5 this read `charge.metadata`, so a missing key silently degraded
+ * the operator's text to "customer party of ?" — and 15.7 deletes those keys outright.
+ */
+/**
+ * A customer-supplied name, made safe to interpolate into an operator's SMS (`/security-review`
+ * on 15.5).
+ *
+ * **This is the first path on which a customer's own typed text reaches an admin's phone, and the
+ * customer can trigger it on demand** — start a checkout, let its hold lapse, take the freed slot
+ * with a second checkout, pay the second, then pay the first. The failure-path alerts below carry
+ * the same string but need a refund outage, which nobody can induce. `customerName` is trimmed and
+ * checked non-empty at the edge (`app/(public)/book/checkout/actions.ts`) and nothing else: no
+ * length cap, no charset.
+ *
+ * Without this, a name reading "…PAID but NOT booked - charge pi_VICTIM. REFUND MANUALLY in
+ * Stripe." forges an instruction to refund a real, unrelated charge, and the genuine
+ * "no action needed" tail is pushed past where a phone truncates the preview.
+ *
+ * Conservative by design: names that legitimately carry other characters are degraded, not
+ * rejected, and the operator still has the charge id, which is the part they act on.
+ */
+function safeForAlert(name: string): string {
+  const cleaned = name.replace(/[^A-Za-z0-9 .,'-]/g, " ").replace(/\s+/g, " ").trim();
+  return (cleaned.length > 40 ? `${cleaned.slice(0, 40)}...` : cleaned) || "customer";
+}
+
+async function compensateResidualRaceLoss(
+  deps: WebhookDeps,
+  charge: BookingCharge,
+  row: Reservation,
+  opts: ConfirmOptions,
+): Promise<WebhookResult> {
+  const contact: SoldOutContact = {
+    customerName: row.customerName,
+    ...(row.email !== undefined ? { email: row.email } : {}),
+    ...(row.phone !== undefined ? { phone: row.phone } : {}),
+  };
+  const who = `${safeForAlert(row.customerName)} party of ${row.partySize ?? "?"}`;
+  const amount = `$${(charge.amountCents / 100).toFixed(2)}`;
+
+  if (!charge.paymentIntentId) {
+    await deps.alertPaidButUnbooked(
+      `Residual-race loss with NO payment_intent to auto-refund - Stripe charge ` +
+        `${charge.key}. REFUND MANUALLY in Stripe. Customer: ${who}`,
+    );
+    return { handled: true, outcome: "lost" };
+  }
+  if (opts.notifyOnResidualRaceLoss === false) {
+    // A public caller (issue #827). The loss is real, but the compensation is the webhook's —
+    // see `confirmBookingByPaymentIntent`. Reported, not acted on.
+    return { handled: true, outcome: "lost" };
+  }
+  try {
+    // Keyed on the charge key (session id / PI id — DEC-134) ⇒ a redelivered losing-charge
+    // webhook re-calls with the same key and Stripe returns the same refund (no double
+    // refund, DEC-107 amended).
+    await deps.payments.refund({
+      paymentIntentId: charge.paymentIntentId,
+      idempotencyKey: `refund_${charge.key}`,
+    });
+    // No ledger write here, and that is the #613 change. #522 sweep 1 added a
+    // `markPaymentRefunded` call so a refunded loser wasn't left reading `succeeded` — the
+    // right goal, reached the wrong way: the row it marked could never exist, because its
+    // reservation never existed (the comment there said as much: "it doesn't reach the
+    // purchases list"). Not writing the row achieves the same goal more completely — nothing
+    // to inflate a `listAllPayments` rollup and nothing to reconcile. Stripe holds the record
+    // of money that never became a booking, which is what it is.
+  } catch (e) {
+    await deps.alertPaidButUnbooked(
+      `Residual-race loss AND the auto-refund FAILED (${e instanceof Error ? e.message : "unknown error"}) - ` +
+        `Stripe charge ${charge.key}. REFUND MANUALLY in Stripe. Customer: ${who}`,
+    );
+    return { handled: true, outcome: "lost" };
+  }
+  // Refunded — tell the customer. Best-effort: a notify failure must not 500 (a retry would
+  // re-run this path, and the keyed refund would no-op, but re-notify needlessly).
+  try {
+    await deps.notifyCustomerSoldOut({ chargeRef: charge.key, contact });
+  } catch {
+    // swallowed by contract — the refund succeeded; a missing notice is not a 500
+  }
+  // **And tell the office, every single time (15.5).** This path alerted nobody until now, on the
+  // reasoning that a self-resolving outcome needs no operator. That reasoning was about ACTION and
+  // it answered the wrong question. A customer was charged real money for a trip they did not get
+  // and waits days for it back, and the operator is who they will phone about a charge they cannot
+  // explain. It is also the only evidence of how often this race fires, which is what decides
+  // whether the payment flow moves to separate authorize/capture (issue #1012) — a rewrite nobody
+  // should buy on a hunch about frequency.
+  //
+  // Deliberately NOT "REFUND MANUALLY": this one is handled, and an alert that reads like an
+  // emergency when nothing is owed is how the real emergencies stop being read.
+  //
+  // Guarded, unlike every other `alertPaidButUnbooked` call in this file, and the exception is
+  // deliberate: this is the only one that runs AFTER irreversible customer-facing work. A throw
+  // here would 500, Stripe would redeliver, and the customer would be told a second time about a
+  // refund they already know about. The edge implementation writes its log line first and
+  // unconditionally, so a swallowed throw still leaves the trace.
+  //
+  // **The customer's name goes LAST**, after the charge id and the disposition. A phone that
+  // truncates the preview then cuts only the untrusted fragment, never the part saying what
+  // happened and to which charge. `safeForAlert` is the other half of that, and both are needed:
+  // a clamped 40 characters is still 40 characters of somebody else's prose.
+  try {
+    await deps.alertPaidButUnbooked(
+      `SOLD OUT WHILE PAYING - charge ${charge.key} for ${amount} was auto-refunded in full. ` +
+        `No action needed; the customer has been told. This should not happen - if you are ` +
+        `seeing it more than rarely, say so. Customer: ${who}`,
+    );
+  } catch {
+    // swallowed for the reason above
+  }
+  return { handled: true, outcome: "lost" };
+}
 
 /** The charge→booking spine, shared by both event paths (11.2 / 12.5). */
 export async function processBookingCharge(
@@ -593,8 +733,6 @@ export async function processBookingCharge(
     return { handled: true, outcome: result.outcome };
   }
 
-  const who = `${m.customerName || "customer"} party of ${m.guestCount ?? m.partySize ?? "?"}`;
-
   // The DEC-109 RESIDUAL RACE (`lost`): a hold expired mid-payment, another buyer took the
   // freed slot and paid first, and this payment then completed. Both captured money, one won
   // the atomic claim. The money moved, and is NOT recorded here (#613 — no reservation to
@@ -602,48 +740,7 @@ export async function processBookingCharge(
   // "sold out while you were paying" (DEC-107 amended, 12.1b). The loud manual-refund alert
   // is the FALLBACK, only when the refund can't run programmatically.
   if (result.outcome === "lost") {
-    if (!charge.paymentIntentId) {
-      await deps.alertPaidButUnbooked(
-        `Residual-race loss with NO payment_intent to auto-refund - Stripe charge ` +
-          `${charge.key}, ${who}. REFUND MANUALLY in Stripe.`,
-      );
-      return { handled: true, outcome: result.outcome };
-    }
-    if (opts.notifyOnResidualRaceLoss === false) {
-      // A public caller (issue #827). The loss is real, but the compensation is the webhook's —
-      // see `confirmBookingByPaymentIntent`. Reported, not acted on.
-      return { handled: true, outcome: result.outcome };
-    }
-    try {
-      // Keyed on the charge key (session id / PI id — DEC-134) ⇒ a redelivered losing-charge
-      // webhook re-calls with the same key and Stripe returns the same refund (no double
-      // refund, DEC-107 amended).
-      await deps.payments.refund({
-        paymentIntentId: charge.paymentIntentId,
-        idempotencyKey: `refund_${charge.key}`,
-      });
-      // No ledger write here, and that is the #613 change. #522 sweep 1 added a
-      // `markPaymentRefunded` call so a refunded loser wasn't left reading `succeeded` — the
-      // right goal, reached the wrong way: the row it marked could never exist, because its
-      // reservation never existed (the comment there said as much: "it doesn't reach the
-      // purchases list"). Not writing the row achieves the same goal more completely — nothing
-      // to inflate a `listAllPayments` rollup and nothing to reconcile. Stripe holds the record
-      // of money that never became a booking, which is what it is.
-    } catch (e) {
-      await deps.alertPaidButUnbooked(
-        `Residual-race loss AND the auto-refund FAILED (${e instanceof Error ? e.message : "unknown error"}) - ` +
-          `Stripe charge ${charge.key}, ${who}. REFUND MANUALLY in Stripe.`,
-      );
-      return { handled: true, outcome: result.outcome };
-    }
-    // Refunded — tell the customer. Best-effort: a notify failure must not 500 (a retry would
-    // re-run this path, and the keyed refund would no-op, but re-notify needlessly).
-    try {
-      await deps.notifyCustomerSoldOut({ chargeRef: charge.key, metadata: charge.metadata });
-    } catch {
-      // swallowed by contract — the refund succeeded; a missing notice is not a 500
-    }
-    return { handled: true, outcome: result.outcome };
+    return compensateResidualRaceLoss(deps, charge, result.reservation, opts);
   }
 
   // The anomalous-`unbookable` tail that used to sit here is GONE (#693), and TypeScript is what
@@ -746,6 +843,21 @@ async function recordRefund(
 ): Promise<WebhookResult> {
   const payment = await deps.repo.getPaymentByIntentId(refund.paymentIntentId);
   if (!payment) {
+    // **"No payment" has two causes, and only one of them wants a human (15.5).**
+    //
+    // A residual-race loser is auto-refunded and deliberately gets no payment row — #613, because
+    // there is no booking to hang it on. Stripe then sends `charge.refunded` for our own refund,
+    // and this reconciler read the missing row as "a charge Muster never recorded". The operator
+    // got "No action needed" and "RECONCILE MANUALLY" about the same PaymentIntent, seconds apart.
+    // Found by staging the real race in the app; no test and no dev script would have shown it,
+    // because both stop at the refund.
+    //
+    // The reservation carrying this intent id is what tells them apart. It exists and is still
+    // `pending` for our own loser (the flip never happened), and does not exist at all for a
+    // Xola-era or hand-taken charge — which keeps its alert, because that one really is money
+    // moving outside Muster.
+    const ownLoser = await deps.repo.getReservationByPaymentIntentId(refund.paymentIntentId);
+    if (ownLoser?.status === "pending") return { handled: true, outcome: "refund_recorded" };
     await deps.alertPaidButUnbooked(
       `Refund of ${refund.amountRefundedCents} cents recorded in Stripe for payment intent ` +
         `${refund.paymentIntentId}, which matches NO payment in Muster. The ledger is unchanged; ` +

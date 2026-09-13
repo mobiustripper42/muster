@@ -42,7 +42,11 @@ export interface ConfirmCharge {
 export type ConfirmResult =
   | { outcome: "booked"; reservation: Reservation }
   | { outcome: "already"; reservation: Reservation }
-  | { outcome: "lost" }
+  // `lost` carries the row, and can: the hull went to a rival, but OUR row was read at the top of
+  // `confirmPendingRow` and is still `pending` — the CAS touched somebody else's. The residual-race
+  // compensation needs the customer's name, phone and email, and after 15.7 the charge carries
+  // none of them. This is the only place they exist.
+  | { outcome: "lost"; reservation: Reservation }
   // The pending row is not there to flip. `no_row`: checkout's write never landed, or this
   // charge was never one of ours — §2.8.6's paid-but-unbooked alert, and 2.8.9's reconciler
   // fallback. `not_pending`: the row is cancelled — a payment must never resurrect it.
@@ -121,7 +125,7 @@ export async function confirmPendingRow(
   // the window.
   if (res.result === "won") return { outcome: "booked", reservation: res.reservation };
   if (res.result === "already") return { outcome: "already", reservation: res.reservation };
-  return { outcome: "lost" };
+  return { outcome: "lost", reservation: row };
 }
 
 /** The fields a confirm sets on the pending row as it flips it. Everything else was frozen at

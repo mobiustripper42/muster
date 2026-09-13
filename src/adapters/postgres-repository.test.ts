@@ -385,8 +385,11 @@ if (!dbUp) {
       expect(payments.refunds).toHaveLength(1);
       // …the customer is told they were refunded…
       expect(soldOut).toHaveBeenCalledTimes(1);
-      // …and no manual-refund alarm, because nothing needed a human.
-      expect(alert).not.toHaveBeenCalled();
+      // …the office is told it happened (15.5), but not asked to do anything: the money is
+      // already back, and the alert exists so the operator can answer the phone call and so the
+      // frequency of this race is countable.
+      expect(alert).toHaveBeenCalledTimes(1);
+      expect(String(alert.mock.calls[0]![0])).not.toMatch(/REFUND MANUALLY/);
       // No payment row: there is no booking to hang it on, and Stripe holds the record of
       // money that never became a booking.
       expect(await repo.getPayment(paymentIdFor("pi_pg_1"))).toBeNull();

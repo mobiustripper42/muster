@@ -20,12 +20,18 @@ function capturing(throwOnSend = false): ChannelPort & { sent: OutboundMessage[]
 }
 
 describe("soldOutNoticeBody", () => {
-  it("names the customer and states plainly they were NOT charged / fully refunded", () => {
+  it("names the customer and says they WERE charged, then refunded (15.5)", () => {
     const body = soldOutNoticeBody("Mary");
     expect(body).toContain("Mary");
     expect(body).toContain("sold out");
     expect(body.toLowerCase()).toContain("refund");
-    expect(body).toContain("NOT been charged");
+    // The sentence that had to go. The payment succeeded before this path runs, so the money is
+    // genuinely captured and the refund takes days — for those days the customer's statement
+    // showed a charge from us, flatly contradicting this claim.
+    expect(body).not.toContain("NOT been charged");
+    expect(body).toContain("charged and refunded in full");
+    // It must still set the expectation about timing, or the statement looks wrong to them.
+    expect(body).toContain("few days");
   });
   it("falls back to 'there' when the name is blank", () => {
     expect(soldOutNoticeBody("  ")).toContain("Hi there,");

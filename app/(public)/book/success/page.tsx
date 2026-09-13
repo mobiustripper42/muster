@@ -34,6 +34,11 @@
 import { AppLink } from "../../../../components/ui/app-link";
 import { bookingDeps } from "../../../lib/booking-deps";
 import { confirmBookingByPaymentIntent } from "@core/reservations/confirm-booking.js";
+import {
+  bookingOutcomeView,
+  SOLD_OUT_VIEW_COPY,
+} from "@core/reservations/booking-outcome-view.js";
+import type { BookingOutcome } from "@core/reservations/booking-outcome-view.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,16 +48,24 @@ export const dynamic = "force-dynamic";
  * FAST path, not the guarantee. If Stripe is unconfigured, the id is absent, or anything fails,
  * the webhook still books the customer and the copy below is still true.
  */
-async function confirmFromRedirect(paymentIntentId: string | undefined): Promise<void> {
-  if (!paymentIntentId) return;
+async function confirmFromRedirect(
+  paymentIntentId: string | undefined,
+): Promise<BookingOutcome | undefined> {
+  if (!paymentIntentId) return undefined;
   const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) return;
+  if (!secretKey) return undefined;
   try {
-    await confirmBookingByPaymentIntent(bookingDeps(secretKey), paymentIntentId);
+    // **The outcome is RETURNED now, not discarded (15.5).** This used to be `Promise<void>` and
+    // the page rendered "You're booked!" regardless — so the residual-race loser, whose boat went
+    // to a rival and whose money is being refunded, was congratulated on a booking they did not
+    // get. Every other outcome still renders the success card; only `lost` is a known negative.
+    const result = await confirmBookingByPaymentIntent(bookingDeps(secretKey), paymentIntentId);
+    return result.handled ? result.outcome : undefined;
   } catch (e) {
     // Deliberately swallowed. A customer who paid should never see a stack trace because our
     // fast path failed, and the webhook is still coming for exactly this case.
     console.error("[book/success] confirm from redirect failed", e);
+    return undefined;
   }
 }
 
@@ -61,7 +74,40 @@ export default async function BookingSuccessPage(props: {
 }) {
   const sp = await props.searchParams;
   const pi = sp.payment_intent;
-  await confirmFromRedirect(typeof pi === "string" ? pi : undefined);
+  const outcome = await confirmFromRedirect(typeof pi === "string" ? pi : undefined);
+  const view = bookingOutcomeView(outcome);
+
+  // The residual race (§2.8.7): they paid, a rival took the last seats first, the money is already
+  // on its way back. Its own card, because every word of the success card below is false here.
+  if (view.kind === "sold_out") {
+    return (
+      <main className="mx-auto max-w-lg px-4 py-16">
+        <div className="overflow-hidden rounded-[18px] border border-line bg-card shadow-sm">
+          <div className="border-b border-line px-6 py-7 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-warn-bg text-2xl text-warn">
+              !
+            </div>
+            <h1 className="text-[22px] font-semibold">{SOLD_OUT_VIEW_COPY.heading}</h1>
+            <p className="mt-1.5 text-[13px] text-muted">{SOLD_OUT_VIEW_COPY.lead}</p>
+          </div>
+          <div className="px-6 py-6 text-[13.5px] text-muted">
+            <p>
+              <b className="text-ink">Your card was charged and refunded in full right away.</b> Refunds usually take a
+              few days to show up on a statement. You have not lost any money, and there is nothing you need to do.
+            </p>
+            <p className="mt-4 text-[12px] text-faint">
+              We’ve texted you this as well, so you have a record of it.
+            </p>
+            <div className="mt-5">
+              <AppLink href="/book" className="text-[13px] font-semibold text-accent">
+                {SOLD_OUT_VIEW_COPY.action} →
+              </AppLink>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-lg px-4 py-16">

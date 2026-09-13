@@ -25,19 +25,30 @@ export interface SoldOutNoticeDeps {
   onFailure?: (detail: string) => void;
 }
 
-/** The notice body. States plainly that they were NOT charged (fully refunded) so the
- *  customer isn't left thinking money is stuck.
+/**
+ * The notice body.
  *
- *  **Stays inside GSM-7**, like `bookingConfirmationBody` — this ships verbatim as SMS and one
- *  character outside that alphabet re-encodes the WHOLE message as UCS-2, 67 chars per
- *  concatenated segment instead of 153. Two em dashes did exactly that until #685. The shared
- *  guard in `sms-alphabet.ts` is asserted over this body by its own test. */
+ * **It used to open with "You have NOT been charged", and that was false (15.5).** The payment
+ * has already succeeded by the time this path runs — the money really is captured, and the
+ * refund that follows takes days to settle. So for those days the customer's statement showed a
+ * charge from us directly contradicting the one sentence they were most likely to act on. It now
+ * says charged and refunded in the same breath, which is what actually happened.
+ *
+ * **No amount, deliberately.** §2.8.7 asked for one; the operator's call is that the figure adds
+ * nothing to a message whose whole point is that the money is coming back in full, and the spec
+ * was amended to match rather than left saying something we do not do.
+ *
+ * **Stays inside GSM-7**, like `bookingConfirmationBody` — this ships verbatim as SMS and one
+ * character outside that alphabet re-encodes the WHOLE message as UCS-2, 67 chars per
+ * concatenated segment instead of 153. Two em dashes did exactly that until #685. The shared
+ * guard in `sms-alphabet.ts` is asserted over this body by its own test.
+ */
 export function soldOutNoticeBody(customerName: string): string {
   const who = customerName?.trim() || "there";
   return (
-    `Hi ${who}, we're sorry - your departure sold out while your payment was processing, ` +
-    `so the booking couldn't be completed. You have NOT been charged: we've issued a full ` +
-    `refund, which may take a few days to appear on your statement. Please try another time.\n\n` +
+    `Hi ${who}, your departure sold out while your payment was going through, so the booking ` +
+    `could not be completed. Your card was charged and refunded in full right away. Refunds ` +
+    `take a few days to show on a statement. Sorry for any confusion.\n\n` +
     `- Muster`
   );
 }

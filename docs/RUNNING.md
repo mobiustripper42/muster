@@ -195,10 +195,24 @@ Same seed. The cockpit is each board row's click-through, plus two off-board sce
    derivation only, DEC-029).
 5. Re-run `npm run db:seed:atrisk` to reset everything you just changed.
 
+Run one tick by hand against the same route the hosted cron calls:
+
 ```bash
-npm run db:tick          # run one engine tick by hand (DEC-023 — no scheduler in v1)
+curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/tick
 ```
-Prints the tick counters (asks fired, escalations, board landings, asks relayed). After a
+
+`CRON_SECRET` is blank in `env.example`, and the route **fails closed** when it is unset — a browser
+visit returns 401 and reads as a broken route. Put any value in `.env.local` and restart; it only
+has to match on both sides.
+
+**A `db:tick` dev script used to do this and was deleted, deliberately.** It called
+`tick` and nothing else, so it never ran `formShifts` — formation lives only in the route, ahead of
+the pause gate. A dev script that runs a *different* path than production is worse than no script:
+it is the obvious thing to reach for, and it quietly teaches you the wrong model of what a tick
+does. The doorbell dev script is unaffected; that one is an interactive harness, not a stand-in for
+a route.
+
+Returns the tick counters as JSON (asks fired, escalations, board landings, asks relayed). After a
 tick, refresh the board: **Tidewater disappears too** — Tier-2 sent a direct nudge, so an ask is in
 flight again. Re-running `db:seed:atrisk` resets all scenarios (it closes any in-flight engine asks).
 
@@ -216,7 +230,7 @@ Muster: Sat, Sep 13 - Hops - captain. Yes or no?
 http://mill-dev:3000/crew/auth?t=<secret>
 ```
 
-1. `npm run db:reset:dev` for the standard world, then `npm run db:tick` to fire the engine.
+1. `npm run db:reset:dev` for the standard world, then the tick curl above to fire the engine.
 2. Watch the **terminal**, not the browser. Each ask the tick fired prints one of those blocks.
 3. **Paste the link into a private window** → the "Tap to sign in →" confirm page → tap → you land
    on `/crew` as that crew member with the Yes/No ask. Answer it; the loop is unchanged.

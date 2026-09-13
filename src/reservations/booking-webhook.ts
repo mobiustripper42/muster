@@ -309,6 +309,29 @@ export interface ConfirmOptions {
  * somebody else's. Before 15.5 this read `charge.metadata`, so a missing key silently degraded
  * the operator's text to "customer party of ?" — and 15.7 deletes those keys outright.
  */
+/**
+ * A customer-supplied name, made safe to interpolate into an operator's SMS (`/security-review`
+ * on 15.5).
+ *
+ * **This is the first path on which a customer's own typed text reaches an admin's phone, and the
+ * customer can trigger it on demand** — start a checkout, let its hold lapse, take the freed slot
+ * with a second checkout, pay the second, then pay the first. The failure-path alerts below carry
+ * the same string but need a refund outage, which nobody can induce. `customerName` is trimmed and
+ * checked non-empty at the edge (`app/(public)/book/checkout/actions.ts`) and nothing else: no
+ * length cap, no charset.
+ *
+ * Without this, a name reading "…PAID but NOT booked - charge pi_VICTIM. REFUND MANUALLY in
+ * Stripe." forges an instruction to refund a real, unrelated charge, and the genuine
+ * "no action needed" tail is pushed past where a phone truncates the preview.
+ *
+ * Conservative by design: names that legitimately carry other characters are degraded, not
+ * rejected, and the operator still has the charge id, which is the part they act on.
+ */
+function safeForAlert(name: string): string {
+  const cleaned = name.replace(/[^A-Za-z0-9 .,'-]/g, " ").replace(/\s+/g, " ").trim();
+  return (cleaned.length > 40 ? `${cleaned.slice(0, 40)}...` : cleaned) || "customer";
+}
+
 async function compensateResidualRaceLoss(
   deps: WebhookDeps,
   charge: BookingCharge,
@@ -320,13 +343,13 @@ async function compensateResidualRaceLoss(
     ...(row.email !== undefined ? { email: row.email } : {}),
     ...(row.phone !== undefined ? { phone: row.phone } : {}),
   };
-  const who = `${row.customerName || "customer"} party of ${row.partySize ?? "?"}`;
+  const who = `${safeForAlert(row.customerName)} party of ${row.partySize ?? "?"}`;
   const amount = `$${(charge.amountCents / 100).toFixed(2)}`;
 
   if (!charge.paymentIntentId) {
     await deps.alertPaidButUnbooked(
       `Residual-race loss with NO payment_intent to auto-refund - Stripe charge ` +
-        `${charge.key}, ${who}. REFUND MANUALLY in Stripe.`,
+        `${charge.key}. REFUND MANUALLY in Stripe. Customer: ${who}`,
     );
     return { handled: true, outcome: "lost" };
   }
@@ -353,7 +376,7 @@ async function compensateResidualRaceLoss(
   } catch (e) {
     await deps.alertPaidButUnbooked(
       `Residual-race loss AND the auto-refund FAILED (${e instanceof Error ? e.message : "unknown error"}) - ` +
-        `Stripe charge ${charge.key}, ${who}. REFUND MANUALLY in Stripe.`,
+        `Stripe charge ${charge.key}. REFUND MANUALLY in Stripe. Customer: ${who}`,
     );
     return { handled: true, outcome: "lost" };
   }
@@ -380,11 +403,16 @@ async function compensateResidualRaceLoss(
   // here would 500, Stripe would redeliver, and the customer would be told a second time about a
   // refund they already know about. The edge implementation writes its log line first and
   // unconditionally, so a swallowed throw still leaves the trace.
+  //
+  // **The customer's name goes LAST**, after the charge id and the disposition. A phone that
+  // truncates the preview then cuts only the untrusted fragment, never the part saying what
+  // happened and to which charge. `safeForAlert` is the other half of that, and both are needed:
+  // a clamped 40 characters is still 40 characters of somebody else's prose.
   try {
     await deps.alertPaidButUnbooked(
-      `SOLD OUT WHILE PAYING - ${who} was charged ${amount} and auto-refunded in full ` +
-        `(Stripe charge ${charge.key}). No action needed; the customer has been told. This ` +
-        `should not happen - if you are seeing it more than rarely, say so.`,
+      `SOLD OUT WHILE PAYING - charge ${charge.key} for ${amount} was auto-refunded in full. ` +
+        `No action needed; the customer has been told. This should not happen - if you are ` +
+        `seeing it more than rarely, say so. Customer: ${who}`,
     );
   } catch {
     // swallowed for the reason above

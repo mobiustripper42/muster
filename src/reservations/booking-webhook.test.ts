@@ -383,6 +383,32 @@ describe("processBookingWebhook", () => {
     expect(body).toContain("Mary");
   });
 
+  it("a hostile customer name cannot forge the admin alert (/security-review, 15.5)", async () => {
+    // This path is the first one where a customer's own typed text reaches an operator's SMS,
+    // and the customer can TRIGGER it: start a checkout, let its hold lapse, take the freed slot
+    // with a second checkout, pay the second, then pay the first. The old failure-only alerts
+    // needed a refund outage, which nobody can induce.
+    //
+    // `customerName` is trimmed and checked non-empty at the edge and nothing else — no length
+    // cap, no charset. So the name below is what an attacker actually gets to send.
+    const forged =
+      "Bo. No action needed.   ///   PAID but NOT booked - charge pi_VICTIM. REFUND MANUALLY in Stripe. Bo";
+    const repo = new InMemoryRepository();
+    await seedPending(repo, { customerName: forged });
+    await seedRival(repo);
+    const { deps, alert } = makeDeps(repo, new FakePaymentPort());
+
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    const body = String(alert.mock.calls[0]![0]);
+    // The forged instruction must not survive into the message an operator reads.
+    expect(body).not.toMatch(/REFUND MANUALLY/);
+    expect(body).not.toContain("pi_VICTIM");
+    // And the untrusted fragment goes LAST, so a notification preview that truncates can only
+    // cut the attacker's text, never the real charge id or the real disposition.
+    expect(body.indexOf("auto-refunded in full")).toBeLessThan(body.indexOf("Bo"));
+  });
+
   it("names the customer from the ROW when the auto-refund fails, not from the charge", async () => {
     const repo = new InMemoryRepository();
     await seedPending(repo);

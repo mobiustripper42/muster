@@ -1597,6 +1597,13 @@ one** — the tax rate, the service-fee rate, the gratuity tier. A receipt that 
 tax and cannot state eight percent is unauditable a year later, which is exactly when someone asks.
 Add-on lines when they exist, and the discount when it exists.
 
+**And two totals: the quote, and the amount due now.** The quote is the sum of the components. The
+amount due now is what the provider was actually asked for, and it is the only money on the invoice
+that cannot be recomputed from the rest of it — the deposit split lives in payment configuration,
+which is live and editable, so a later recompute can answer differently than the charge that was
+taken. Under the posture in 2.8.4a the two are equal; they are stored separately because the
+configuration that makes them differ already exists in code.
+
 **What it does not carry.** The durations. Hold minutes and trip time are frozen for occupancy
 (2.8.3), not for money, and putting two readers with different reasons inside one value is how it
 starts drifting.

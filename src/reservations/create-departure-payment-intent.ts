@@ -168,6 +168,13 @@ export async function createDeparturePaymentIntent(
       gratuityCents,
       gratuityBps: req.gratuityBps,
       totalCents: fare.fareCents + taxCents + serviceFeeCents + gratuityCents,
+      // What we are about to ask Stripe for, frozen HERE with everything else rather than
+      // recomputed at the call site (15.4). It is the one money number the row cannot derive
+      // from its own components: the deposit split lives in `config`, which is live and which an
+      // operator can move while a card is being typed. Tip is added outside `chargeNowCents` —
+      // no deposit-split and no tax on crew money (DEC-124).
+      amountDueNowCents:
+        chargeNowCents(fare.fareCents, taxCents, serviceFeeCents, config) + gratuityCents,
     };
     return {
       // The SAME row on a retry — its id is the booking's for life. Reserved time is set on the
@@ -232,12 +239,11 @@ export async function createDeparturePaymentIntent(
 
   const pending = claim.claimed;
   const invoice = pending.invoice!; // the builder above always sets it
-  // The charge is rebuilt from the frozen invoice rather than recomputed, so what Stripe is asked
-  // for and what the row says cannot drift. `fare.fareCents` is base + extras by construction.
-  const fareCents = invoice.fareCents + invoice.extrasCents;
-  const amountCents =
-    chargeNowCents(fareCents, invoice.taxCents, invoice.serviceFeeCents, config) +
-    invoice.gratuityCents;
+  // The charge is READ from the frozen invoice rather than recomputed, so what Stripe is asked
+  // for and what the row says cannot drift. Until 15.4 this line recomputed it from live
+  // `config` — the comment claimed the freeze and the code did not have it, and an operator
+  // moving `depositPercent` mid-checkout moved the charge away from the row that described it.
+  const amountCents = invoice.amountDueNowCents;
   const kind = config.depositMode === "deposit" ? "deposit" : "full";
 
   const intent = await payments.createPaymentIntent({

@@ -832,6 +832,21 @@ async function recordRefund(
 ): Promise<WebhookResult> {
   const payment = await deps.repo.getPaymentByIntentId(refund.paymentIntentId);
   if (!payment) {
+    // **"No payment" has two causes, and only one of them wants a human (15.5).**
+    //
+    // A residual-race loser is auto-refunded and deliberately gets no payment row — #613, because
+    // there is no booking to hang it on. Stripe then sends `charge.refunded` for our own refund,
+    // and this reconciler read the missing row as "a charge Muster never recorded". The operator
+    // got "No action needed" and "RECONCILE MANUALLY" about the same PaymentIntent, seconds apart.
+    // Found by staging the real race in the app; no test and no dev script would have shown it,
+    // because both stop at the refund.
+    //
+    // The reservation carrying this intent id is what tells them apart. It exists and is still
+    // `pending` for our own loser (the flip never happened), and does not exist at all for a
+    // Xola-era or hand-taken charge — which keeps its alert, because that one really is money
+    // moving outside Muster.
+    const ownLoser = await deps.repo.getReservationByPaymentIntentId(refund.paymentIntentId);
+    if (ownLoser?.status === "pending") return { handled: true, outcome: "refund_recorded" };
     await deps.alertPaidButUnbooked(
       `Refund of ${refund.amountRefundedCents} cents recorded in Stripe for payment intent ` +
         `${refund.paymentIntentId}, which matches NO payment in Muster. The ledger is unchanged; ` +

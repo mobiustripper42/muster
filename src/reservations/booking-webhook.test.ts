@@ -428,6 +428,45 @@ describe("processBookingWebhook", () => {
     expect(body).toMatch(/REFUND MANUALLY/); // this one IS an action
   });
 
+  /** `charge.refunded` for the PaymentIntent, as Stripe sends it after our own auto-refund. */
+  const refundEvent = (pi = PI, cents = 53625): string =>
+    JSON.stringify({
+      type: "refund_recorded",
+      data: { paymentIntentId: pi, amountRefundedCents: cents },
+    });
+
+  it("our OWN residual-race refund does not ask the operator to reconcile it", async () => {
+    // Found by staging the real race in the app. The loser is auto-refunded and deliberately gets
+    // no payment row (#613 — there is no booking to hang it on), so Stripe's `charge.refunded`
+    // arrived at a reconciler that reads "no payment" as "a charge Muster never recorded" and
+    // texted RECONCILE MANUALLY. The operator got "No action needed" and "RECONCILE MANUALLY"
+    // about the same PaymentIntent, seconds apart. It is neither Xola-era nor hand-taken; it is
+    // ours, and the pending row carrying that intent id is the proof.
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    await seedRival(repo);
+    const payments = new FakePaymentPort();
+    const { deps, alert } = makeDeps(repo, payments);
+
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE); // loses, auto-refunds
+    alert.mockClear();
+
+    await processBookingWebhook(deps, refundEvent(), FAKE_SIGNATURE);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it("a refund for a charge Muster never recorded STILL asks for reconciliation", async () => {
+    // The regression guard on the case above: a Xola-era or hand-taken charge has no payment AND
+    // no reservation, and must keep its alert. Silencing by "no payment" alone would have deleted
+    // the one signal that money moved outside Muster entirely.
+    const repo = new InMemoryRepository();
+    const { deps, alert } = makeDeps(repo, new FakePaymentPort());
+
+    await processBookingWebhook(deps, refundEvent("pi_never_seen"), FAKE_SIGNATURE);
+    expect(alert).toHaveBeenCalledOnce();
+    expect(String(alert.mock.calls[0]![0])).toMatch(/RECONCILE MANUALLY/);
+  });
+
   it("a throwing sendConfirmation never breaks the committed booking (best-effort, DEC-122)", async () => {
     const repo = new InMemoryRepository();
     await seedPending(repo);

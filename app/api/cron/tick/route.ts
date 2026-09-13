@@ -4,7 +4,7 @@ import { logFormAudit } from "@core/oracle/audit-log.js";
 import { tick, type TickResult } from "@core/builder/tick.js";
 import { getRepo } from "../../../lib/repo";
 import { forwardFormNotices, relayAsks } from "../../../lib/channel";
-import { forwardBoardAlerts } from "../../../lib/alert";
+import { forwardBoardAlerts, forwardFormationFailures } from "../../../lib/alert";
 
 /**
  * The engine tick, on a schedule — the DEC-023 "explicit clock op" trigger, fired
@@ -71,12 +71,17 @@ export async function GET(req: Request) {
   // when this tick is genuinely the first to observe the change — which is exactly the case that
   // was silent.
   let shiftsFormed = 0;
+  // #1001: how many vessel-days could not form, and how many alerts that produced. A tick where
+  // three boats have no crew used to be byte-identical to a healthy one in this response.
+  let formFailures = 0;
+  let formFailuresAlerted = 0;
   try {
     // #999: the repair pass. This is the ONE caller that does not know what changed, so it is the
     // one that asks what might have — and it is what lets every other caller name its own
     // vessel-day without any crew transition going unrelayed.
     const form = await reformWindow(repo, now);
     shiftsFormed = form.createdShiftIds.length;
+    formFailures = form.failures.length;
     // Relay + audit like every other `formShifts` caller. `cancelledCrew`/`restoredCrew` are NOT
     // gated by `notifyTripChanges`, and after DEC-126 this and the booking webhook are the only
     // triggers left — an unrelayed transition is a crew member who is never told (DEC-084, #244).
@@ -99,6 +104,11 @@ export async function GET(req: Request) {
         `tick: ${form.failures.length} vessel-day(s) failed to form`,
         form.failures.map((f) => ({ vesselId: f.vesselId, date: f.date, error: String(f.error) })),
       );
+      // #1001: and it reaches a PERSON. The line above is a record you consult once you already
+      // know something is wrong; this is the thing that tells you. A boat sold with no crew shift
+      // is a drop-everything, so it texts every active admin naming the boat and the day — every
+      // tick, no dedup. Best-effort: it must never take the tick's own response down.
+      formFailuresAlerted = await forwardFormationFailures(form.failures);
     }
   } catch (e) {
     // Since #957 only a failure OUTSIDE the per-vessel-day loop reaches here — reading the event
@@ -158,6 +168,8 @@ export async function GET(req: Request) {
     ok: true,
     at: now.toISOString(),
     shiftsFormed,
+    formFailures,
+    formFailuresAlerted,
     shiftsAdvanced: r.shiftsAdvanced,
     bornFilling: r.bornFilling,
     toAtRisk: r.toAtRisk,

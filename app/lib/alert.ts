@@ -1,5 +1,9 @@
 import { forwardBoardAlerts as forwardCore, type BoardLanding } from "@core/adapters/forward-board-alerts.js";
 import { forwardMoneyAlert } from "@core/adapters/forward-money-alert.js";
+import {
+  forwardFormationAlert,
+  type FormationFailure,
+} from "@core/adapters/forward-formation-alert.js";
 import { makeSmsChannel } from "./sms";
 import { getRepo } from "./repo";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
@@ -37,6 +41,42 @@ export async function forwardBoardAlerts(landings: BoardLanding[] | undefined): 
   // nobody is. Twilio-dark now writes the alert to the console like every other send site.
   const { channel } = makeSmsChannel(repo, linkBase);
   return forwardCore(repo, channel, landings, `${linkBase}/admin/at-risk`);
+}
+
+/**
+ * A vessel-day that failed to form texts the office (#1001) — the second alert class on this lane.
+ *
+ * **Why it exists.** Formation failing means a boat was sold and has no crew shift. Since #957 that
+ * no longer aborts the run; it lands in `FormResult.failures` and the tick logs it. Nobody reads a
+ * log that prints the same line every fifteen minutes — you read it after somebody has already told
+ * you a trip had no crew, which is too late.
+ *
+ * **No dedup, unlike the board alert above.** That one rides the tick's per-(shift, reason) dedup
+ * so a steady board is silent. This one repeats every tick on purpose: one text about an unformed
+ * shift is a drop-everything, so the repeats are self-limiting — and a stateful alert is one that
+ * can go quiet at the wrong moment, which is the failure #1001 is named for.
+ *
+ * **Unlike `forwardBoardAlerts` it does NOT throw on a missing `APP_BASE_URL`**, matching
+ * `alertMoneyProblem` below and for the same reason: the link is a convenience on a message whose
+ * text already names the boat and the day, and taking the alert down to protect a hyperlink is the
+ * wrong trade when the alert means a trip is uncrewed.
+ */
+export async function forwardFormationFailures(
+  failures: readonly FormationFailure[],
+): Promise<number> {
+  if (failures.length === 0) return 0;
+  try {
+    const repo = getRepo();
+    const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL ?? "http://localhost:3000");
+    const { channel } = makeSmsChannel(repo, linkBase);
+    return await forwardFormationAlert(repo, channel, failures, `${linkBase}/admin/shifts`);
+  } catch (e) {
+    // The tick's own response must survive this. The core sender already swallows per-recipient
+    // failures; this covers the wiring around it — a bad env, a dead pool, a channel that will not
+    // construct. The `console.error` in the route stands either way.
+    console.error("[tick] formation-failure alert could not be sent", e);
+    return 0;
+  }
 }
 
 /**

@@ -115,6 +115,21 @@ try {
       // read it: `Reservation` has no `paymentIntentId`, so the object literal simply
       // carried a stray key and the seeded row had no PI at all (#904 rule 7).
       paymentIntentIds: [paymentIntentId],
+      // Confirm reads the money off the row as of 15.6 — a pending row without an invoice cannot
+      // be flipped, so it would refuse before ever reaching the residual-race branch this script
+      // exists to demonstrate. `typecheck:db` cannot catch that; only running it can.
+      invoice: {
+        fareCents: 50000,
+        extrasCents: 0,
+        taxCents: 3625,
+        taxRateBps: 725,
+        serviceFeeCents: 1500,
+        serviceFeeBps: 300,
+        gratuityCents: 10000,
+        gratuityBps: 2000,
+        totalCents: 65125,
+        amountDueNowCents: 65125,
+      },
     });
   }
   // …and for --unbookable we send a purposed PI with NO pending row behind it — the

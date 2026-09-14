@@ -158,6 +158,20 @@ describe("booking paths link the customer (the anti-museum guarantee)", () => {
     holdMinutes: 120,
     tripMinutes: 100,
     paymentIntentIds: ["pi_1"],
+    // Confirm reads the fare off the row's invoice as of 15.6, so a pending row without one
+    // cannot be flipped — which is also true of a row the real checkout writes.
+    invoice: {
+      fareCents: 50000,
+      extrasCents: 0,
+      taxCents: 3625,
+      taxRateBps: 725,
+      serviceFeeCents: 1500,
+      serviceFeeBps: 300,
+      gratuityCents: 10000,
+      gratuityBps: 2000,
+      totalCents: 65125,
+      amountDueNowCents: 65125,
+    },
     ...over,
   });
   async function seeded(row = pendingRow()) {
@@ -170,7 +184,7 @@ describe("booking paths link the customer (the anti-museum guarantee)", () => {
 
   it("confirmPendingRow stamps customerId on the flipped row", async () => {
     const { r, confirmPendingRow } = await seeded();
-    const res = await confirmPendingRow(r, { paymentIntentId: "pi_1", priceCents: 49900 }, now);
+    const res = await confirmPendingRow(r, "pi_1", now);
     expect(res.outcome).toBe("booked");
     if (res.outcome !== "booked") return;
     expect(res.reservation.customerId).toBe(customerIdForPhone("+12165550148"));
@@ -182,7 +196,7 @@ describe("booking paths link the customer (the anti-museum guarantee)", () => {
   it("confirmPendingRow still books when the phone is unusable — just unlinked", async () => {
     // A phone that cannot canonicalize resolves to no customer — the row books, stays unlinked.
     const { r, confirmPendingRow } = await seeded(pendingRow({ phone: "555" }));
-    const res = await confirmPendingRow(r, { paymentIntentId: "pi_1", priceCents: 49900 }, now);
+    const res = await confirmPendingRow(r, "pi_1", now);
     expect(res.outcome).toBe("booked");
     if (res.outcome !== "booked") return;
     expect("customerId" in res.reservation).toBe(false);

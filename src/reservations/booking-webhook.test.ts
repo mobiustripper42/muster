@@ -55,6 +55,21 @@ const pendingRow = (over: Partial<Reservation> = {}): Reservation => ({
   holdMinutes: 120,
   tripMinutes: 100,
   paymentIntentIds: [PI],
+  // The invoice the real checkout freezes (14.4, DEC-164, `amountDueNowCents` from 15.4). Absent
+  // here until 15.6, which is why every test through this fixture was exercising a row shape the
+  // checkout cannot produce — the money came from Stripe's metadata instead.
+  invoice: {
+    fareCents: 50000,
+    extrasCents: 0,
+    taxCents: 3625,
+    taxRateBps: 725,
+    serviceFeeCents: 0,
+    serviceFeeBps: 0,
+    gratuityCents: 0,
+    gratuityBps: 0,
+    totalCents: 53625,
+    amountDueNowCents: 53625,
+  },
   ...over,
 });
 
@@ -246,16 +261,16 @@ describe("processBookingWebhook", () => {
     expect(await repo.listAllReservations()).toHaveLength(0);
   });
 
-  it("carries the party-fare extras from metadata onto the flipped row (#474)", async () => {
+  it("carries the party-fare extras from the ROW's invoice onto the flipped row (#474, 15.6)", async () => {
+    // The extras used to travel in the charge's metadata. They are on the invoice now, which is
+    // where the checkout froze them — the balance deriver bills base + extras, so this number
+    // decides what a deposit-mode customer still owes.
     const repo = new InMemoryRepository();
-    await seedPending(repo);
+    const seeded = pendingRow();
+    await seedPending(repo, { invoice: { ...seeded.invoice!, extrasCents: 6000 } });
     const { deps } = makeDeps(repo);
 
-    const r = await processBookingWebhook(
-      deps,
-      bookingPi(PI, 53625, { extrasCents: "6000", kind: "deposit", taxCents: "4060" }),
-      FAKE_SIGNATURE,
-    );
+    const r = await processBookingWebhook(deps, bookingPi(PI, 53625), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "booked" });
     expect((await repo.getReservation(PEND))!.extrasCents).toBe(6000);
   });
@@ -315,6 +330,30 @@ describe("processBookingWebhook", () => {
     expect(await repo.listPaymentsForReservation(PEND)).toHaveLength(0);
     // The row is not booked — it stayed pending.
     expect((await repo.getReservation(PEND))!.status).toBe("pending");
+  });
+
+  it("takes the money from the row's frozen invoice, not the succeeded intent's metadata", async () => {
+    // DEC-164 and SPEC 2.8's negative list: "No booking assembled from data Stripe hands back."
+    // The metadata below is deliberately wrong. After 15.6 there is no parameter it could travel
+    // through, so the numbers can only come off the row.
+    const repo = new InMemoryRepository();
+    const seeded = pendingRow();
+    await seedPending(repo, {
+      invoice: { ...seeded.invoice!, fareCents: 50000, extrasCents: 3000 },
+    });
+    const { deps } = makeDeps(repo, new FakePaymentPort());
+
+    await processBookingWebhook(
+      deps,
+      bookingPi(PI, 53625, { priceCents: "1", extrasCents: "2", taxCents: "0" }),
+      FAKE_SIGNATURE,
+    );
+
+    const row = (await repo.getReservation(PEND))!;
+    expect(row.status).toBe("booked");
+    const event = (await repo.listEvents()).find((e) => e.id === row.eventId)!;
+    expect(event.price).toBe(50000); // the invoice's fare, not metadata's "1"
+    expect(row.extrasCents).toBe(3000); // the invoice's extras, not metadata's "2"
   });
 
   /** A losing charge carrying NO contact in its metadata at all — what 15.7 leaves behind once
@@ -714,6 +753,7 @@ describe("a native booking forms its own crewable shift (#614)", () => {
       holdMinutes: 120,
       tripMinutes: 100,
       paymentIntentIds: ["pi_614"],
+      invoice: pendingRow().invoice!, // confirm reads the money off the row (15.6)
     });
     return repo;
   }
@@ -1341,7 +1381,7 @@ describe("processBookingWebhook — a post-commit failure does not lose the conf
     // this one; only `confirmation_sent_at` can distinguish "already told" from "never got there".
     const repo = new InMemoryRepository();
     await seedPending(repo);
-    const flip = await confirmPendingRow(repo, { paymentIntentId: PI, priceCents: 50000 }, NOW);
+    const flip = await confirmPendingRow(repo, PI, NOW);
     expect(flip.outcome).toBe("booked");
 
     const { deps, confirm } = makeDeps(repo);

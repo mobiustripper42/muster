@@ -102,6 +102,18 @@ async function seedPending(repo: InMemoryRepository, paymentIntentId: string): P
     holdMinutes: 120,
     tripMinutes: 100,
     paymentIntentIds: [paymentIntentId],
+    invoice: {
+      fareCents: 50000,
+      extrasCents: 0,
+      taxCents: 3625,
+      taxRateBps: 725,
+      serviceFeeCents: 1500,
+      serviceFeeBps: 300,
+      gratuityCents: 10000,
+      gratuityBps: 2000,
+      totalCents: 65125,
+      amountDueNowCents: 65125,
+    },
   });
 }
 

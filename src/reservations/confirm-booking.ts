@@ -29,28 +29,19 @@ import {
  * Shared by the webhook (which gets the intent from a signed event) and the success page (which
  * gets it from {@link confirmBookingByPaymentIntent}, having asked Stripe).
  *
- * **The `purpose` gate is DEC-134's double-write guard and it earns its keep on both paths.**
- * Every hosted Checkout session has an underlying PaymentIntent that also succeeds and carries no
- * metadata, because the adapter never sets `payment_intent_data.metadata`. On the webhook that is
- * an extra event to ignore; on the success page it is sharper, because `/book/success` is *also*
- * the hosted-checkout landing for the balance flow — so the metadata-less intent behind a balance
- * top-up arrives here with a real customer looking at it. Booking from it would sell a second
- * reservation for a payment against one that already exists.
+ * **The `purpose` gate is gone (15.6), and the row replaced it.** The booking charge sends no
+ * metadata now, so a gate reading `metadata.purpose` would reject every real booking. What tells
+ * our payments apart instead is the pending row: the checkout writes it BEFORE calling Stripe,
+ * so an intent that is ours resolves to a row, and one that is not resolves to nothing.
+ *
+ * The bare PaymentIntent under a hosted balance session therefore lands on `unconfirmable` /
+ * `no_row` rather than being filtered out up here, and still books nothing.
  */
 export async function confirmBookingFromIntent(
   deps: WebhookDeps,
   pi: PaymentSucceeded,
   opts: ConfirmOptions = {},
 ): Promise<WebhookResult> {
-  const purpose = pi.metadata.purpose;
-  if (purpose === undefined) return { handled: false };
-  if (purpose !== "booking") {
-    await deps.alertPaidButUnbooked(
-      `Stripe payment intent with unknown purpose="${purpose}" - ${pi.paymentIntentId}. ` +
-        `NOT auto-processed; investigate (money may have moved).`,
-    );
-    return { handled: true, outcome: "ignored" };
-  }
   return processBookingCharge(deps, {
     key: pi.paymentIntentId,
     paymentIntentId: pi.paymentIntentId,

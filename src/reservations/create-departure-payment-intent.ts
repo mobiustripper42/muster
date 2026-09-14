@@ -3,7 +3,7 @@
  * hosted `createDepartureCheckout` twin was deleted at 14.5). Called at "Book & pay" submit from
  * the `/book/checkout` screen: waiver gate → gratuity-tier gate → CLAIM a fitting boat by writing
  * this checkout's pending row on it (fit-and-fallback) → mint a raw PaymentIntent carrying the
- * SLOT + frozen money in metadata. The client confirms against the returned `clientSecret`; the
+ * SLOT + the amount, and nothing else. The client confirms against the returned `clientSecret`; the
  * `payment_intent.succeeded` webhook FLIPS the pending row via `confirmPendingRow` (§2.8.6),
  * found by the intent id recorded on it.
  *
@@ -17,10 +17,10 @@
  * row picked the hull first and this module wrote the pending row afterwards, all-or-nothing — so
  * a race lost at that write reported `sold_out` with a free boat sitting next to it.
  *
- * **The metadata is on its way out (DEC-164, issue #812).** SPEC §2.8.5 says the booking charge
- * sends none, and §2.8.4 names `booking_invoice` — one value on our own row — as where the frozen
- * money belongs. The row now carries it and every metadata number below is read back off it; the
- * keys stay until `booking-webhook.ts` reads the row instead.
+ * **The metadata is GONE (15.6, DEC-164, issue #812).** SPEC §2.8.5 says the booking charge sends
+ * none, and §2.8.4 names `booking_invoice` — one value on our own row — as where the frozen money
+ * belongs. Eighteen keys used to travel to Stripe and the webhook booked from them, four of them
+ * the customer's own contact details. Nothing is sent now, and nothing reads it.
  *
  * This block used to credit "the DEC-107 freeze rule". DEC-107 ruled the **opposite** — tax read
  * live, not frozen — and is retired; it is now a signpost to §2.8.4a. Removed rather than
@@ -244,15 +244,19 @@ export async function createDeparturePaymentIntent(
   // `config` — the comment claimed the freeze and the code did not have it, and an operator
   // moving `depositPercent` mid-checkout moved the charge away from the row that described it.
   const amountCents = invoice.amountDueNowCents;
-  const kind = config.depositMode === "deposit" ? "deposit" : "full";
 
   const intent = await payments.createPaymentIntent({
     amountCents,
     currency: "usd",
-    // What a HUMAN reads on the charge (#679). Metadata below is what the WEBHOOK reads, and
-    // Stripe understands none of it — so before this the dashboard's payments list was a column
-    // of bare dollar amounts. Offering, departure, party size, who booked: enough to answer a
-    // phone call without opening anything.
+    // What a HUMAN reads on the charge (#679) — without it the dashboard's payments list is a
+    // column of bare dollar amounts. Offering, departure, party size, who booked: enough to
+    // answer a phone call without opening anything.
+    //
+    // **No metadata, at all (15.6).** Eighteen keys used to ride along, and the webhook booked
+    // from them. Four were the customer's name, email, phone and consent timestamp — personal
+    // data handed to a third party with no reader. The rest were money the reservation already
+    // holds, frozen, in `booking_invoice`. `description` and `receiptEmail` are not metadata:
+    // one is for a person reading the dashboard, the other tells Stripe to send a receipt.
     description: `${offering!.name} — ${req.date} ${req.time} · ${req.guestCount} guest${
       req.guestCount === 1 ? "" : "s"
     } · ${req.customerName}`,
@@ -260,36 +264,7 @@ export async function createDeparturePaymentIntent(
     // real and ordinary booking. Absent ⇒ Stripe sends no receipt; present ⇒ it does, in live
     // mode regardless of the account's email settings. Passing it is the decision to send one.
     ...(req.email !== undefined && req.email !== "" ? { receiptEmail: req.email } : {}),
-    metadata: {
-      // The double-write-guard discriminator (DEC-134): only purposed intents book.
-      purpose: "booking",
-      // The SLOT — no eventId (the Event doesn't exist yet; the webhook materializes it).
-      offeringId: String(offering!.id),
-      // The hull the CLAIM picked, not the one this module guessed — fit-and-fallback may have
-      // moved off the smallest boat, and metadata naming the wrong one would materialize the
-      // Event on a boat nobody reserved.
-      vesselId: String(pending.vesselId),
-      date: req.date,
-      time: req.time,
-      guestCount: String(req.guestCount),
-      // Every number below is read off the row's FROZEN invoice, so the charge, the metadata and
-      // the reservation cannot disagree about what was quoted.
-      // The per-departure BASE (→ frozen `Event.price`); extras are billed on top (12.2).
-      priceCents: String(invoice.fareCents),
-      extrasCents: String(invoice.extrasCents),
-      // Gratuity portion of amountCents (crew money; netted out of balance) + tier provenance.
-      gratuityCents: String(invoice.gratuityCents),
-      gratuityBps: String(req.gratuityBps),
-      // Service-fee portion of amountCents (DEC-134; netted out of balance like the tip).
-      serviceFeeCents: String(invoice.serviceFeeCents),
-      kind,
-      taxCents: String(invoice.taxCents),
-      customerName: req.customerName,
-      ...(req.email !== undefined ? { email: req.email } : {}),
-      ...(req.phone !== undefined ? { phone: req.phone } : {}),
-      waiverConsentAt: req.waiverConsentAt,
-      waiverVersion: req.waiverVersion,
-    },
+    metadata: {},
   });
   // Stripe answered: APPEND its id to the row so confirm can find it (issue #916). Every id this
   // checkout has minted stays, oldest first (§2.8.5) — a superseded one that succeeds late still

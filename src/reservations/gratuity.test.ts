@@ -91,13 +91,15 @@ describe("gratuity is required, no decline (DEC-124)", () => {
     expect(await repo.listAllReservations()).toHaveLength(0); // nothing claimed the hull
   });
 
-  it("accepts a valid tier and carries the gratuity in metadata", async () => {
+  it("accepts a valid tier and freezes the gratuity on the ROW (15.6)", async () => {
     const repo = await seededRepo();
     const pay = new FakePaymentPort();
     const r = await createDeparturePaymentIntent(repo, pay, req(2500), now); // 25%
     expect(r.ok).toBe(true);
-    // 25% of the 49900 fare = 12475
-    expect(pay.intents[0]!.metadata).toMatchObject({ gratuityCents: "12475", gratuityBps: "2500" });
+    // 25% of the 49900 fare = 12475. The tip decides what the crew is paid, so it is ours to
+    // record rather than something Stripe hands back.
+    const [row] = await repo.listAllReservations();
+    expect(row!.invoice).toMatchObject({ gratuityCents: 12475, gratuityBps: 2500 });
   });
 
   it("deposit mode: the tip is charged in FULL; only the fare is deposit-split", async () => {
@@ -109,7 +111,10 @@ describe("gratuity is required, no decline (DEC-124)", () => {
     // gratuity 9980 charged in full, NOT split → 12475 + 1497 + 9980 = 23952. (The old hosted
     // builder hardcoded the fee to 0 and asserted 22455 — a total Muster never charged, #793.)
     expect(pay.intents[0]!.amountCents).toBe(23952);
-    expect(pay.intents[0]!.metadata).toMatchObject({ gratuityCents: "9980", kind: "deposit" });
+    const [row] = await repo.listAllReservations();
+    expect(row!.invoice!.gratuityCents).toBe(9980);
+    // Deposit is now DERIVED, not a metadata key: charged less than the whole quote.
+    expect(row!.invoice!.amountDueNowCents).toBeLessThan(row!.invoice!.totalCents);
   });
 });
 

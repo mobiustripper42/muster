@@ -14,6 +14,17 @@
  * and any manual "run the engine" trigger — exactly how `formShifts` already
  * lives. `now` is injected; the core reads no clock.
  *
+ * **One shift cannot stop the sweep** (#1017). A shift with no required seats is skipped
+ * and named on `TickResult.unmannedShiftIds`; every other shift still advances, asks,
+ * escalates and lands on the board in the same run. Before that guard the loop was
+ * all-or-nothing in practice: `resolveShiftState` throws on such a shift by design
+ * (#582), the throw left the loop, and the cron 500'd for the whole fleet.
+ *
+ * That is the ONLY skip, deliberately. Everything else reachable from the loop that can
+ * throw is a repo call, and a repo outage is not one shift's problem — `saveShift` fails
+ * for every shift too, so swallowing it here would report N data problems where there is
+ * one outage and nothing advanced regardless. Those still propagate, and still 500.
+ *
  * **Pause is enforced at the cron edge, NOT here** (#124, DEC-054): the operator
  * pause flag is checked in `app/api/cron/tick/route.ts`, which skips calling
  * `tick` when paused — `tick` stays pure (pause is an ops concern, not engine
@@ -109,6 +120,25 @@ export interface TickResult {
    * `shift_completed` events fanned out under them.
    */
   shiftsCompleted: number;
+  /**
+   * Shifts skipped because they have **no required seats** (#1017) — the one data
+   * state the sweep cannot derive, since `deriveShiftState` throws on it by design
+   * (#582, `derive.ts:85`).
+   *
+   * **Not a general failure list, deliberately.** Every other throw reachable from
+   * the per-shift loop is a repo call, and those are not per-shift: if the pool is
+   * down, `saveShift` fails for every shift too, so catching them here would turn one
+   * abort into one entry per shift in the fleet while nothing advanced either way.
+   * That is worse output for the same outcome. This field names the single state that
+   * is genuinely one shift's problem.
+   *
+   * **Nothing alerts off it, and that is not an oversight.** The only producer is a
+   * vessel with an empty manning rule (`vessel-admin.ts:81` refuses to save one, so it
+   * takes direct SQL). `formShifts` fails on that same vessel-day and #1001 already
+   * texts the office naming the boat. A second lane for one root cause is the fan-out
+   * `forwardFormationAlert`'s grouping exists to prevent.
+   */
+  unmannedShiftIds: Shift["id"][];
 }
 
 /**
@@ -204,6 +234,7 @@ export async function tick(
     boardLandings: [],
     firedAsks: [],
     shiftsCompleted: 0,
+    unmannedShiftIds: [],
   };
 
   // One-boat-per-day (#393): a crew member holds at most one live ask across the
@@ -339,6 +370,25 @@ export async function tick(
     }
 
     const seats = await repo.listSeatsForShift(shift.id);
+    // #1017: a shift with no required seats cannot be derived — `deriveShiftState`
+    // throws on it by design (#582, `derive.ts:85`), and that is the right call: a boat
+    // with no required crew is an error, not a state. The defect was WHERE the throw
+    // landed. `resolveShiftState` below is called with no guard, so one such shift threw
+    // out of this loop, the cron route rethrew, and the run 500'd — no shift advanced,
+    // no ask fired, no escalation, no board landing, for the ENTIRE fleet. The blast
+    // radius was every vessel; the cause was one row.
+    //
+    // Same shape as #957 in the other half of the engine, and the same remedy: the bad
+    // one is named on the result and the rest of the fleet keeps moving. Narrower than
+    // #957's per-group `try`, on purpose — see `unmannedShiftIds`' own docstring for why
+    // a blanket catch here would make a repo outage read as N data problems.
+    //
+    // Deliberately below the past-trip guard: a departed shift already `continue`s above
+    // and never reaches a derive, so it is not stuck and there is nothing to report.
+    if (!seats.some((s) => s.kind === "required")) {
+      result.unmannedShiftIds.push(shift.id);
+      continue;
+    }
     const horizon = staffingHorizonFromEvents(events, leadDays, tz);
     const poolExhausted = await poolExhaustedFor(repo, shift, seats, now);
     const next = resolveShiftState(seats, { now, horizon, poolExhausted });

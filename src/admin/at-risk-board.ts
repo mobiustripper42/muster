@@ -227,6 +227,17 @@ export async function deriveAtRiskBoard(
 
     const seats = await repo.listSeatsForShift(shift.id);
     const required = seats.filter((s) => s.kind === "required");
+    // #1017: skip a shift with no required seats — `resolveShiftState` below throws on
+    // it by design (#582, `derive.ts:85`) and this loop had no guard, so one such row
+    // took down every caller: the tick's board-landing pass (so nothing landed for ANY
+    // vessel), `/admin/at-risk`, and `warming.ts`. Mirrors the guard `tick.ts` now
+    // applies to its own work loop, and shares its reasoning — including why nothing
+    // alerts from here (#1001 already texts the office about the vessel-day).
+    //
+    // It is not a board row either way: every reason below is a crewing gap measured
+    // against a required set, and there isn't one. The defect is that the vessel has no
+    // manning rule, which is not a thing the operator fixes from this screen.
+    if (required.length === 0) continue;
 
     // One solve per shift: the trail's `exhausted` IS the oracle's verdict, so
     // the resolve below reuses it instead of calling solveShift again.

@@ -262,6 +262,53 @@ describe("tick — horizon advance", () => {
   });
 });
 
+describe("tick — a shift with no required seats (#1017)", () => {
+  const UNMANNED = asId<"VesselId">("vessel-unmanned");
+  const UNMANNED_SHIFT = asId<"ShiftId">(`shift-${UNMANNED}-2026-07-01`);
+
+  it("skips it instead of ending the sweep for the whole fleet", async () => {
+    // `deriveShiftState` throws on zero required seats (#582, `derive.ts:85`) — a
+    // deliberate loud failure, and the right one. The defect was WHERE it landed:
+    // `tick` called it with no guard, so one such shift threw out of the per-shift
+    // loop and the cron returned 500 — no shift advanced, no ask fired, no board
+    // landing, fleet-wide.
+    //
+    // Seeded FIRST so it is the first shift the loop reaches. Failing on the last
+    // one would prove nothing about the skip — the same argument `form-shifts.test.ts`
+    // makes for #957's isolation case.
+    await repo.saveVessel({ id: UNMANNED, name: "Unmanned", coiMaxPax: 6, manning: [] });
+    await repo.saveEvent({
+      id: asId<"EventId">("e-unmanned"),
+      vesselId: UNMANNED,
+      date: "2026-07-01",
+      time: "15:00",
+      capacity: 6,
+      source: "xola", status: "scheduled",
+    });
+    // Hand-saved, because nothing in the app produces one: `formShifts` isolates the
+    // vessel-day away (#957) and `vessel-admin.ts:81` refuses to save an empty manning
+    // rule. The issue reproduced it with direct SQL, which is the only producer.
+    await repo.saveShift({
+      id: UNMANNED_SHIFT,
+      vesselId: UNMANNED,
+      date: "2026-07-01",
+      state: "Pending",
+      eventIds: [asId<"EventId">("e-unmanned")],
+    });
+    await seedVesselEvent();
+    await addCaptain("cap-1");
+    await formAllVesselDaysForTest(repo);
+
+    const r = await tick(repo, AFTER);
+
+    expect(r.unmannedShiftIds).toEqual([UNMANNED_SHIFT]);
+    // ...and the rest of the fleet advanced in the same run, which is the point.
+    expect(r.bornFilling).toBe(1);
+    expect(r.asksFired).toBe(1);
+    expect(await shiftState()).toBe("Filling");
+  });
+});
+
 describe("tick — Tier-2 stall escalation (DEC-024)", () => {
   const T1 = new Date(AFTER.getTime() + 2 * 60 * 60_000); // +2h
   const T2 = new Date(AFTER.getTime() + 4 * 60 * 60_000); // +4h

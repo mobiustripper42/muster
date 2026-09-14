@@ -228,15 +228,18 @@ describe("processBookingWebhook", () => {
    * `checkout.session.completed` booking session, which nothing mints since 14.5. Both mean money
    * moved with nothing behind it — the one thing that must never pass quietly.
    */
-  it("a purposed PI with no pending row: alerts, books nothing", async () => {
+  it("a PI with no pending row: acked, books nothing, and does NOT alert (15.6)", async () => {
+    // This asserted an alert until 15.6, back when a `purpose` key filtered foreign intents out
+    // before the lookup. With no metadata on the booking charge the lookup IS the filter, and the
+    // bare PaymentIntent under every hosted balance or gratuity session arrives here — so alerting
+    // would page every admin on routine payments. A booking payment always has a row.
     const repo = new InMemoryRepository();
     const { deps, alert, confirm } = makeDeps(repo);
 
     const r = await processBookingWebhook(deps, bookingPi("pi_stranger"), FAKE_SIGNATURE);
 
-    expect(r).toEqual({ handled: true, outcome: "unbookable" });
-    expect(alert).toHaveBeenCalledOnce();
-    expect(alert.mock.calls[0]![0]).toContain("no live pending reservation");
+    expect(r).toEqual({ handled: false });
+    expect(alert).not.toHaveBeenCalled();
     expect(confirm).not.toHaveBeenCalled();
     expect((await repo.listAllReservations())).toHaveLength(0);
   });

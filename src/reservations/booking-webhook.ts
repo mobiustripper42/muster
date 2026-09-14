@@ -473,14 +473,29 @@ export async function processBookingCharge(
     deps.now,
   );
 
-  // A paid charge that matched no live pending row (§2.8.6): checkout's write never landed, or
-  // this charge was never one of ours. Money moved with nothing behind it — the one thing that
-  // must never pass quietly. The reconciler (2.8.9) is the durable backstop; this is the alert.
+  // **`no_row` is not a problem; it means the charge is not one of our bookings (15.6).**
+  //
+  // The pending row is written BEFORE Stripe is called, and the customer never receives a payable
+  // client secret unless that write succeeded — so a booking payment always has a row to find.
+  // "No row" therefore means somebody else's payment, and the commonest one is routine: the
+  // PaymentIntent underneath every hosted Checkout Session, which `stripe-payment.ts` leaves
+  // metadata-less on purpose. A balance top-up or a post-trip tip fires one alongside its own
+  // `checkout.session.completed`.
+  //
+  // The `purpose` gate used to drop those before any lookup. Deleting it (the charge sends no
+  // metadata now) moved the filter here, and `@code-review` caught that the first cut alerted
+  // instead — which would have paged every admin with REFUND MANUALLY on every balance payment.
+  // Acked and ignored, exactly as the `purpose` gate did.
+  if (result.outcome === "unconfirmable" && result.reason === "no_row") {
+    return { handled: false };
+  }
+  // `not_pending` IS a problem: the row exists and is not bookable, so a payment landed against a
+  // cancelled reservation. Money moved and a human has to decide what happens to it.
   if (result.outcome === "unconfirmable") {
     await deps.alertPaidButUnbooked(
       `PAID but NOT booked - charge ${charge.key} (${charge.amountCents} ${charge.currency}) ` +
-        `resolved to no live pending reservation (${result.reason}). Its write may have been lost, ` +
-        `or the charge is not one of ours. REFUND MANUALLY if unrecognised; investigate either way.`,
+        `resolved to a reservation that cannot be booked (${result.reason}). REFUND MANUALLY if ` +
+        `unrecognised; investigate either way.`,
     );
     return { handled: true, outcome: "unbookable" };
   }

@@ -177,10 +177,14 @@ export class StripePaymentPort implements PaymentPort {
 
   async createCheckoutSession(input: CreateCheckoutInput): Promise<CheckoutSession> {
     // CRITICAL (DEC-134 double-write guard): NEVER set `payment_intent_data.metadata` here.
-    // The metadata lives on the SESSION only, so the PaymentIntent underlying a hosted
-    // checkout stays metadata-less and the `payment_intent.succeeded` webhook handler
-    // (which processes only `purpose`-carrying intents) acks-and-ignores it — one charge,
-    // one booking write, never two.
+    // The metadata lives on the SESSION only, so the PaymentIntent underlying a hosted checkout
+    // stays metadata-less — one charge, one booking write, never two.
+    //
+    // **What acks-and-ignores it changed in 15.6.** It used to be a `purpose` filter in the
+    // `payment_intent.succeeded` handler, which could not survive a booking charge that sends no
+    // metadata at all. The bare PI now falls through to the pending-row lookup, finds nothing,
+    // and is acked there instead — a booking payment always has a row, so "no row" means this is
+    // not one. Same outcome, different mechanism.
     const session = await this.#stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",

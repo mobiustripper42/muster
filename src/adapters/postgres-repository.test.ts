@@ -375,10 +375,12 @@ if (!dbUp) {
       // No pending row seeded → confirm resolves `no_row`.
       const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
 
-      expect(r.handled).toBe(true);
-      expect(alert).toHaveBeenCalledTimes(1);
-      expect(alert.mock.calls[0]![0]).toMatch(/no live pending reservation/i);
-      // And no orphan payment was left behind.
+      // As of 15.6 "no row" is acked and ignored rather than alerted: a booking payment always
+      // has a row (the checkout writes it before Stripe is called), so this shape is somebody
+      // else's payment — most often the bare PaymentIntent under a hosted balance session.
+      expect(r).toEqual({ handled: false });
+      expect(alert).not.toHaveBeenCalled();
+      // And no orphan payment was left behind, which is what #613 is about either way.
       expect(await repo.getPayment(paymentIdFor("pi_pg_1"))).toBeNull();
     });
 

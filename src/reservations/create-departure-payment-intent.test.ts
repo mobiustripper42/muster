@@ -373,21 +373,40 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     expect(await repo.listPaymentsForReservation(await resIdBy(repo, "pi_fake_1"))).toHaveLength(1);
   });
 
-  it("a payment matching no pending row books nothing, and says so (15.6)", async () => {
+  it("a payment matching no pending row is acked and IGNORED, not alerted (15.6)", async () => {
     // The `purpose` metadata guard used to filter these out before any lookup. It cannot survive
     // a charge that sends no metadata, so the ROW is the discriminator now: checkout writes the
-    // pending row BEFORE calling Stripe, so a payment that is ours resolves to one and a payment
-    // that is not resolves to nothing.
+    // pending row BEFORE calling Stripe and the customer never receives a payable client secret
+    // unless that write succeeded, so a booking payment ALWAYS has a row.
     //
-    // The outcome changes from a silent ack to a money alert, which is the honest reading — a
-    // verified payment we cannot match is money moving with nothing behind it. Today nothing
-    // mints such an intent; a dormant hosted balance session would, and that is 15.12's ground.
+    // Which makes "no row" mean "not one of our bookings" — and it must stay quiet, because the
+    // PaymentIntent underneath every hosted Checkout Session is exactly this shape. A balance
+    // top-up or a post-trip tip fires one of these alongside its own `checkout.session.completed`
+    // (`stripe-payment.ts` never sets `payment_intent_data.metadata`, deliberately). Alerting
+    // here pages every admin with REFUND MANUALLY on every routine balance payment.
+    //
+    // Caught by `@code-review`, which also disproved my claim that the balance path was dormant:
+    // `createBalanceLink` is wired to a button on the reservation pane.
     const repo = await seededRepo();
     const { deps, alert } = makeDeps(repo);
     const r = await processBookingWebhook(deps, piEvent("pi_unknown_1", 49900, {}), FAKE_SIGNATURE);
-    expect(r).toEqual({ handled: true, outcome: "unbookable" });
+    expect(r).toEqual({ handled: false });
     expect(await repo.listAllReservations()).toHaveLength(0);
     expect(await repo.listAllPayments()).toHaveLength(0);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it("a payment landing on a CANCELLED row still alerts — that one is a real problem (15.6)", async () => {
+    // The other half of the split. `not_pending` means the row is there and is not bookable, so
+    // somebody paid against a cancelled reservation. Money moved and a human has to decide.
+    const repo = await seededRepo();
+    await seedLosingPending(repo, "pi_cancelled_1");
+    const row = (await repo.getReservationByPaymentIntentId("pi_cancelled_1"))!;
+    await repo.saveReservation({ ...row, status: "cancelled" });
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, piEvent("pi_cancelled_1", 49900, {}), FAKE_SIGNATURE);
+    expect(r).toEqual({ handled: true, outcome: "unbookable" });
     expect(alert).toHaveBeenCalledOnce();
   });
 

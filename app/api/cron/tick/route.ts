@@ -122,7 +122,14 @@ export async function GET(req: Request) {
   }
 
   // NOT best-effort, unlike the two legs below (#892). A throw from `tick` means the run failed and
-  // has to read as one — hence the rethrow, and the 500 it produces. The catch earns its place only
+  // has to read as one — hence the rethrow, and the 500 it produces.
+  //
+  // #1017 narrowed what can get here, and the narrowing is the point: a shift with no required
+  // seats used to throw out of the per-shift loop and 500 the whole fleet's run. It is skipped and
+  // counted now. What remains is a repo call failing, which is a real whole-run failure — every
+  // shift's `saveShift` fails the same way — and still belongs on this path.
+  //
+  // The catch earns its place only
   // by naming the leg: an unlabelled throw here is indistinguishable in the logs from `getRepo()` at
   // :41 or a rejected CRON_SECRET at :36, and those are three different operator responses.
   // `shiftsFormed` rides along because the formation leg above is best-effort and already durable,
@@ -164,12 +171,28 @@ export async function GET(req: Request) {
     console.error("tick: forwardBoardAlerts failed — admin At-Risk alert not sent", e);
   }
 
+  // #1017: shifts the sweep could not derive. This used to be a 500 for the whole fleet;
+  // it is now a skip, and a skip that said nothing would be the quieter version of the
+  // same bug. No alert lane of its own — the only producer is a vessel with an empty
+  // manning rule, which `formShifts` also fails on, so #1001's text has already gone out
+  // above naming the boat. This line is the record you consult once you know.
+  //
+  // The one case where it is the ONLY record: a bad shift dated outside `reformWindow`'s
+  // scan, which this unbounded sweep still reaches. See `unmannedShiftIds`' docstring.
+  if (r.unmannedShiftIds.length > 0) {
+    console.error(
+      `tick: ${r.unmannedShiftIds.length} shift(s) skipped — no required seats, so no state to derive (#582). The vessel has no manning rule.`,
+      r.unmannedShiftIds,
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     at: now.toISOString(),
     shiftsFormed,
     formFailures,
     formFailuresAlerted,
+    shiftsSkipped: r.unmannedShiftIds.length,
     shiftsAdvanced: r.shiftsAdvanced,
     bornFilling: r.bornFilling,
     toAtRisk: r.toAtRisk,

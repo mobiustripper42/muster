@@ -314,6 +314,24 @@ describe("membership — regression and credential-lapse", () => {
 
     expect(await deriveAtRiskBoard(repo, T0)).toEqual([]);
   });
+
+  it("skips a shift with no required seats and still boards the rest (#1017)", async () => {
+    // `resolveShiftState` throws on a seatless shift (#582, `derive.ts:85`) and this
+    // loop had no guard, so ONE such row took down every caller of this function: the
+    // tick's board-landing pass — meaning nothing landed for any vessel, and the cron
+    // 500'd — plus `/admin/at-risk` and `warming.ts`.
+    //
+    // Seeded FIRST so it is the first shift the loop reaches; a throw on the last would
+    // prove nothing. The healthy row asserts the rest of the board survived it.
+    await addShift("unmanned", hoursAfterT0(24), []);
+    await addCrew("ghost3");
+    const { seatIds } = await addShift("live", hoursAfterT0(1), [{ state: "Open" }]);
+    await broadcastAllDecline(seatIds[0]!);
+
+    const rows = await deriveAtRiskBoard(repo, T0);
+
+    expect(rows.map((r) => r.shiftId)).toEqual([asId<"ShiftId">("live")]);
+  });
 });
 
 describe("fills-by deadline + multi-trip times (DEC-031, #59)", () => {

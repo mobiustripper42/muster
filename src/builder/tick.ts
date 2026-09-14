@@ -135,8 +135,16 @@ export interface TickResult {
    * **Nothing alerts off it, and that is not an oversight.** The only producer is a
    * vessel with an empty manning rule (`vessel-admin.ts:81` refuses to save one, so it
    * takes direct SQL). `formShifts` fails on that same vessel-day and #1001 already
-   * texts the office naming the boat. A second lane for one root cause is the fan-out
-   * `forwardFormationAlert`'s grouping exists to prevent.
+   * texts the office naming the boat, in the same cron invocation, before this field is
+   * even read. A second lane for one root cause is the fan-out `forwardFormationAlert`'s
+   * grouping exists to prevent.
+   *
+   * **One gap in that, stated rather than glossed** (@code-review): `reformWindow` scans
+   * a bounded date range while this loop sweeps every non-terminal shift, so a bad shift
+   * dated outside that window is counted here in a run where formation never looked at
+   * it and no text was sent. The route's `console.error` is the only record until the
+   * date rolls into range. Narrow — such a shift takes hand-SQL to exist at all — and
+   * the fix if it ever bites is a scope question about `reformWindow`, not a new alert.
    */
   unmannedShiftIds: Shift["id"][];
 }
@@ -173,7 +181,20 @@ function widenDue(seat: Seat, asks: Ask[], dripMs: number, now: Date): boolean {
  * surfaces that must not trust the persisted, eventually-consistent badge
  * (e.g. the assignment page a board row links to). Single-shift, repo-backed
  * composition of the same pieces tick's batch loop and the board's trail-reuse
- * inline for their own structural reasons. `null` when the shift is unknown.
+ * inline for their own structural reasons.
+ *
+ * **`null` means "no state to report", and there are two ways to get it** (#1017):
+ * the shift is unknown, or it has no required seats. The second is a data defect
+ * (#582) rather than a missing row, but it answers the caller's question the same
+ * way, and every caller already falls back to the persisted badge on `null`.
+ *
+ * Returning null rather than letting `deriveShiftState` throw is the whole point.
+ * `deriveAllShifts` (`src/admin/all-shifts.ts:174`) resolves every non-terminal row
+ * through here, and `/admin/shifts` catches at the top of its render — so ONE such
+ * shift blacked out the entire cockpit, every vessel and every date in the window,
+ * behind "Can't reach the schedule right now." The crew app's "other boats today"
+ * panel (`src/crewapp/other-shifts.ts:45`) failed the same way and rendered empty.
+ * One row carrying a stale badge is strictly better than a board carrying nothing.
  */
 export async function resolveShiftStateOnRead(
   repo: Repository,
@@ -184,6 +205,7 @@ export async function resolveShiftStateOnRead(
   const shift = await repo.getShift(shiftId);
   if (!shift) return null;
   const seats = await repo.listSeatsForShift(shiftId);
+  if (!seats.some((s) => s.kind === "required")) return null;
   const horizon = staffingHorizonFor(
     shift,
     await repo.listEvents(),

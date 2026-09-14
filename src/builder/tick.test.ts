@@ -585,6 +585,28 @@ describe("resolveShiftStateOnRead (DEC-023 corollary)", () => {
       await resolveShiftStateOnRead(repo, asId<"ShiftId">("nope"), AFTER),
     ).toBeNull();
   });
+
+  it("returns null for a shift with no required seats rather than throwing (#1017)", async () => {
+    // Third call site of the #582 guard, found by `@code-review` after the tick and
+    // the At-Risk board were fixed: `deriveAllShifts` resolves every non-terminal row
+    // through here, so one seatless shift threw and `/admin/shifts` caught it at the
+    // TOP of the render — blacking out the whole cockpit, every vessel, every date in
+    // the window, behind "Can't reach the schedule right now."
+    //
+    // Null, not a state: this function already answers null for a shift it cannot
+    // resolve, and every caller falls back to the persisted badge. One row showing a
+    // stale badge beats the entire board showing nothing.
+    const shiftId = asId<"ShiftId">("shift-seatless");
+    await repo.saveShift({
+      id: shiftId,
+      vesselId: asId<"VesselId">("vessel-seatless"),
+      date: "2026-07-01",
+      state: "Pending",
+      eventIds: [],
+    });
+
+    expect(await resolveShiftStateOnRead(repo, shiftId, AFTER)).toBeNull();
+  });
 });
 
 describe("tick — silent-ask sweep (#151, DEC-067)", () => {

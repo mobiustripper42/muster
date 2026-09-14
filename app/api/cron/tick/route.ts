@@ -174,8 +174,11 @@ export async function GET(req: Request) {
   // #1017: shifts the sweep could not derive. This used to be a 500 for the whole fleet;
   // it is now a skip, and a skip that said nothing would be the quieter version of the
   // same bug. No alert lane of its own — the only producer is a vessel with an empty
-  // manning rule, which `formShifts` also fails on, so #1001's text has already named
-  // the boat. This line is the record you consult once you know.
+  // manning rule, which `formShifts` also fails on, so #1001's text has already gone out
+  // above naming the boat. This line is the record you consult once you know.
+  //
+  // The one case where it is the ONLY record: a bad shift dated outside `reformWindow`'s
+  // scan, which this unbounded sweep still reaches. See `unmannedShiftIds`' docstring.
   if (r.unmannedShiftIds.length > 0) {
     console.error(
       `tick: ${r.unmannedShiftIds.length} shift(s) skipped — no required seats, so no state to derive (#582). The vessel has no manning rule.`,

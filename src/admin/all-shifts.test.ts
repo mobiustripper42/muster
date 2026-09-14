@@ -140,6 +140,39 @@ describe("deriveAllShifts", () => {
     expect(row.confirmedSeats).toBe(2);
   });
 
+  it("one seatless shift does not black out the whole board (#1017)", async () => {
+    // `resolveShiftStateOnRead` used to throw on a shift with no required seats
+    // (#582), and `/admin/shifts` catches at the TOP of its render — so one bad row
+    // took the entire cockpit down to "Can't reach the schedule right now.", every
+    // vessel, every date in the window. The third site of this defect, after the tick
+    // and the At-Risk board; found by `@code-review`, not by the census.
+    //
+    // Seeded FIRST so it is the first row the loop reaches.
+    await addShift("s-seatless", "2026-07-03", "Ghost", [{ time: "09:00", pax: [2] }], []);
+    await addShift(
+      "s-healthy",
+      "2026-07-03",
+      "Hops",
+      [{ time: "15:00", pax: [4] }],
+      [{ state: "Confirmed" }],
+      "Crewed",
+    );
+
+    const rows = await deriveAllShifts(
+      repo,
+      { from: "2026-07-01", to: "2026-07-31" },
+      T0,
+      OPTS,
+    );
+
+    // Both rows render. The seatless one falls back to its persisted badge, because
+    // the resolver has no state to report — a stale badge on one row beats nothing
+    // on all of them.
+    expect(rows.map((r) => r.vesselName).sort()).toEqual(["Ghost", "Hops"]);
+    expect(rows.find((r) => r.vesselName === "Ghost")!.state).toBe("Filling");
+    expect(rows.find((r) => r.vesselName === "Hops")!.state).toBe("Crewed");
+  });
+
   it("ships per-seat pip facts — every seat incl. supernumerary, sorted role → kind — without changing the required-only fill counts", async () => {
     await addShift(
       "s-pips",

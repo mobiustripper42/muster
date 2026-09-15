@@ -7,7 +7,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { FAKE_SIGNATURE, FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import { isBooked, type Offering, type Vessel } from "../domain/entities.js";
+import type { Offering, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { PaymentEvent } from "../ports/payment.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
@@ -80,6 +80,20 @@ async function seedLosingPending(repo: InMemoryRepository, paymentIntentId: stri
     holdMinutes: 120,
     tripMinutes: 100,
     paymentIntentIds: [paymentIntentId],
+    // Confirm reads the money off the row as of 15.6, so a pending row needs the invoice the
+    // real checkout freezes onto it — without one it cannot be flipped at all.
+    invoice: {
+      fareCents: 49900,
+      extrasCents: 0,
+      taxCents: 3618,
+      taxRateBps: 725,
+      serviceFeeCents: 1497,
+      serviceFeeBps: 300,
+      gratuityCents: 9980,
+      gratuityBps: 2000,
+      totalCents: 64995,
+      amountDueNowCents: 27570,
+    },
   });
 }
 
@@ -114,18 +128,23 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     const intent = pay.intents[0]!;
     expect(intent.amountCents).toBe(27570);
     expect(intent.currency).toBe("usd");
-    expect(intent.metadata).toMatchObject({
-      purpose: "booking", offeringId: "off-1", vesselId: "v-small", date: DATE, time: TIME,
-      guestCount: "4", priceCents: "49900", extrasCents: "0",
-      gratuityCents: "9980", gratuityBps: "2000",
-      serviceFeeCents: "1497", taxCents: "3618", kind: "deposit",
-      customerName: "Mary", email: "m@x.io", phone: "+12165550148",
-      waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1",
+    // Stripe is told the amount and nothing else (15.6). The frozen money lives on OUR row.
+    expect(intent.metadata).toEqual({});
+
+    const [row] = await repo.listAllReservations();
+    expect(row!.invoice).toEqual({
+      fareCents: 49900,
+      extrasCents: 0,
+      taxCents: 3618,
+      taxRateBps: 725,
+      serviceFeeCents: 1497,
+      serviceFeeBps: 300,
+      gratuityCents: 9980,
+      gratuityBps: 2000,
+      totalCents: 64995,
+      amountDueNowCents: 27570,
     });
-    expect(intent.metadata.eventId).toBeUndefined(); // no Event yet — the slot is the payload
-    // The holder token is a SESSION credential and must not travel to Stripe. Nothing needs it
-    // there, and metadata is somebody else's log.
-    expect(intent.metadata.holderToken).toBeUndefined();
+    expect(row!.eventId).toBeNull(); // no Event yet — the row names the slot
   });
 
   it("waiver consent is a hard gate — no hold parked without it", async () => {
@@ -209,12 +228,15 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     await repo.saveOffering(offering({ includedGuestCount: 2 }));
     const r = await createDeparturePaymentIntent(repo, pay, { ...req, guestCount: 8 }, now);
     expect(r.ok).toBe(true);
-    const m = pay.intents[0]!.metadata;
+    // The composed fare is frozen on the ROW, not sent to Stripe (15.6).
     // fare = 49900 + 6 × 5000 = 79900; fee = 3% = 2397; tax = 5793; tip 20% = 15980.
-    expect(m.extrasCents).toBe("30000");
-    expect(m.serviceFeeCents).toBe("2397");
-    expect(m.taxCents).toBe("5793");
-    expect(m.gratuityCents).toBe("15980");
+    const [row] = await repo.listAllReservations();
+    expect(row!.invoice).toMatchObject({
+      extrasCents: 30000,
+      serviceFeeCents: 2397,
+      taxCents: 5793,
+      gratuityCents: 15980,
+    });
     expect(pay.intents[0]!.amountCents).toBe(Math.round(79900 * 0.25) + 5793 + 2397 + 15980);
   });
 });
@@ -258,16 +280,6 @@ describe("createDeparturePaymentIntent — what Stripe is told (#679)", () => {
     // Phone is the required field (DEC-132), so a booking without email is ordinary, not an
     // error — it just gets no Stripe receipt. The description still identifies the departure.
     expect(pay.intents[0]!.description).toContain("2026-07-04");
-  });
-
-  it("leaves the money metadata untouched — the webhook still books from it", async () => {
-    const repo = await seededRepo();
-    const pay = new FakePaymentPort();
-    await createDeparturePaymentIntent(repo, pay, req, now);
-    expect(pay.intents[0]!.metadata).toMatchObject({
-      purpose: "booking", vesselId: "v-small", date: DATE, time: TIME,
-      priceCents: "49900", taxCents: "3618", serviceFeeCents: "1497", gratuityCents: "9980",
-    });
   });
 });
 
@@ -361,23 +373,41 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     expect(await repo.listPaymentsForReservation(await resIdBy(repo, "pi_fake_1"))).toHaveLength(1);
   });
 
-  it("DOUBLE-WRITE GUARD: a metadata-less payment_intent.succeeded (a hosted session's PI) is acked-and-ignored", async () => {
+  it("a payment matching no pending row is acked and IGNORED, not alerted (15.6)", async () => {
+    // The `purpose` metadata guard used to filter these out before any lookup. It cannot survive
+    // a charge that sends no metadata, so the ROW is the discriminator now: checkout writes the
+    // pending row BEFORE calling Stripe and the customer never receives a payable client secret
+    // unless that write succeeded, so a booking payment ALWAYS has a row.
+    //
+    // Which makes "no row" mean "not one of our bookings" — and it must stay quiet, because the
+    // PaymentIntent underneath every hosted Checkout Session is exactly this shape. A balance
+    // top-up or a post-trip tip fires one of these alongside its own `checkout.session.completed`
+    // (`stripe-payment.ts` never sets `payment_intent_data.metadata`, deliberately). Alerting
+    // here pages every admin with REFUND MANUALLY on every routine balance payment.
+    //
+    // Caught by `@code-review`, which also disproved my claim that the balance path was dormant:
+    // `createBalanceLink` is wired to a button on the reservation pane.
     const repo = await seededRepo();
     const { deps, alert } = makeDeps(repo);
-    const r = await processBookingWebhook(deps, piEvent("pi_hosted_1", 49900, {}), FAKE_SIGNATURE);
-    expect(r).toEqual({ handled: false }); // ack + ignore — no write, no alert
+    const r = await processBookingWebhook(deps, piEvent("pi_unknown_1", 49900, {}), FAKE_SIGNATURE);
+    expect(r).toEqual({ handled: false });
     expect(await repo.listAllReservations()).toHaveLength(0);
     expect(await repo.listAllPayments()).toHaveLength(0);
     expect(alert).not.toHaveBeenCalled();
   });
 
-  it("a purposed-but-unknown PI is loudly flagged, never booked", async () => {
+  it("a payment landing on a CANCELLED row still alerts — that one is a real problem (15.6)", async () => {
+    // The other half of the split. `not_pending` means the row is there and is not bookable, so
+    // somebody paid against a cancelled reservation. Money moved and a human has to decide.
     const repo = await seededRepo();
+    await seedLosingPending(repo, "pi_cancelled_1");
+    const row = (await repo.getReservationByPaymentIntentId("pi_cancelled_1"))!;
+    await repo.saveReservation({ ...row, status: "cancelled" });
     const { deps, alert } = makeDeps(repo);
-    const r = await processBookingWebhook(deps, piEvent("pi_x", 100, { purpose: "mystery" }), FAKE_SIGNATURE);
-    expect(r).toEqual({ handled: true, outcome: "ignored" });
+
+    const r = await processBookingWebhook(deps, piEvent("pi_cancelled_1", 49900, {}), FAKE_SIGNATURE);
+    expect(r).toEqual({ handled: true, outcome: "unbookable" });
     expect(alert).toHaveBeenCalledOnce();
-    expect(await repo.listAllReservations()).toHaveLength(0);
   });
 
   it("residual race on the PI path: loser auto-refunded keyed on the PI id", async () => {
@@ -489,78 +519,6 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, m), FAKE_SIGNATURE);
 
     expect(await repo.listGratuitiesForEvent(eventIdForSlot(SMALL, DATE, TIME))).toHaveLength(1);
-  });
-
-  it("refuses to book at a defaulted price when priceCents is missing from metadata", async () => {
-    // `Number(m.priceCents ?? 0)` materialized the event at price 0, after which
-    // `balanceOwedCents` derives "nothing owed" and the purchases view reports
-    // `priceKnown: true` — a free boat that reads as a normal paid booking. Only our own
-    // builders mint this metadata, so an absent value is our bug: it should be a loud 500
-    // Stripe retries, not a silent zero.
-    const repo = await seededRepo();
-    const pay = new FakePaymentPort();
-    await createDeparturePaymentIntent(repo, pay, req, now);
-    const { deps } = makeDeps(repo, pay);
-    const { priceCents: _dropped, ...without } = pay.intents[0]!.metadata;
-
-    await expect(
-      processBookingWebhook(deps, piEvent("pi_fake_1", 27570, without), FAKE_SIGNATURE),
-    ).rejects.toThrow(/missing a usable priceCents/);
-    // A PENDING row exists from checkout (14.4); what must not exist is a BOOKED one.
-    expect((await repo.listAllReservations()).filter(isBooked)).toHaveLength(0);
-  });
-
-  it("rejects a priceCents that COERCES to a number but isn't one", async () => {
-    // The guard originally validated `Number(raw)`, and `Number("  ")` is 0 — finite and
-    // not negative — so whitespace walked through and booked at price zero, which is the
-    // exact defect it exists to prevent. `"0x10"` (→ 16) and `"1e3"` are the same class.
-    const repo = await seededRepo();
-    const pay = new FakePaymentPort();
-    await createDeparturePaymentIntent(repo, pay, req, now);
-    const { deps } = makeDeps(repo, pay);
-    const m = pay.intents[0]!.metadata;
-
-    for (const bad of ["  ", "", "0x10", "1e3", "-1", "12.5", "abc"]) {
-      await expect(
-        processBookingWebhook(deps, piEvent("pi_fake_1", 27570, { ...m, priceCents: bad }), FAKE_SIGNATURE),
-      ).rejects.toThrow(/missing a usable priceCents/);
-    }
-    // A PENDING row exists from checkout (14.4); what must not exist is a BOOKED one.
-    expect((await repo.listAllReservations()).filter(isBooked)).toHaveLength(0);
-  });
-
-  it("applies the same guard to extrasCents, which under-bills the balance when silently zeroed", async () => {
-    // `extrasCents` sat one line below `priceCents` still using the coercion this hardened
-    // against — a whitespace value books extras at 0 and under-collects the deposit-mode
-    // balance by `extras + tax(extras)`, which is the #474 bug arriving silently.
-    const repo = await seededRepo();
-    const pay = new FakePaymentPort();
-    await createDeparturePaymentIntent(repo, pay, req, now);
-    const { deps } = makeDeps(repo, pay);
-    const m = pay.intents[0]!.metadata;
-
-    await expect(
-      processBookingWebhook(deps, piEvent("pi_fake_1", 27570, { ...m, extrasCents: " " }), FAKE_SIGNATURE),
-    ).rejects.toThrow(/missing a usable extrasCents/);
-
-    // Absent is still legitimate — a pre-#474 charge reads 0 and books fine.
-    const { extrasCents: _gone, ...noExtras } = m;
-    const r = await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, noExtras), FAKE_SIGNATURE);
-    expect(r).toMatchObject({ handled: true, outcome: "booked" });
-  });
-
-  it("ALERTS on unusable metadata — money moved, so it must not fail silently", async () => {
-    const repo = await seededRepo();
-    const pay = new FakePaymentPort();
-    await createDeparturePaymentIntent(repo, pay, req, now);
-    const { deps, alert } = makeDeps(repo, pay);
-    const m = pay.intents[0]!.metadata;
-
-    await expect(
-      processBookingWebhook(deps, piEvent("pi_fake_1", 27570, { ...m, priceCents: "  " }), FAKE_SIGNATURE),
-    ).rejects.toThrow();
-    expect(alert).toHaveBeenCalledOnce();
-    expect(alert.mock.calls[0]![0]).toMatch(/PAID but NOT booked/);
   });
 
   it("does NOT alert 'unusable metadata' when the WRITE fails — that's infra, and Stripe retries", async () => {
@@ -703,6 +661,29 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     expect(row!.invoice!.amountDueNowCents).not.toBe(row!.invoice!.totalCents);
   });
 
+  it("sends Stripe NO metadata at all (15.6)", async () => {
+    // SPEC 2.8: "the booking charge sends no metadata at all. Empty is a rule that can be
+    // checked; send some but never read it is a discipline that decays." Four of the eighteen
+    // keys this replaces were the customer's name, email, phone and consent timestamp — personal
+    // data handed to a third party for no reader.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(pay.intents[0]!.metadata).toEqual({});
+  });
+
+  it("still sends description and receiptEmail — neither is metadata (#679)", async () => {
+    // The fast way to green the case above is to strip the intent bare, which silently undoes the
+    // work that made the Stripe dashboard readable and that sends the customer a receipt.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, { ...req, email: "mary@x.io" }, now);
+    expect(pay.intents[0]!.description).toContain("guests");
+    expect(pay.intents[0]!.receiptEmail).toBe("mary@x.io");
+  });
+
   it("the row exists even when Stripe throws — written BEFORE the provider call (criterion 2)", async () => {
     const repo = await seededRepo();
     await repo.saveOffering(tripOffering());
@@ -728,7 +709,9 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
       now,
     );
     expect(rival.ok).toBe(true);
-    expect(pay.intents[1]!.metadata.vesselId).toBe("v-big");
+    // The claim moved to the next hull; the ROW records which (15.6 — Stripe is told nothing).
+    const rows = await repo.listAllReservations();
+    expect(rows.map((x) => String(x.vesselId)).sort()).toEqual(["v-big", "v-small"]);
   });
 
   it("a retry from the same session REUSES the row — same id, reserved time untouched, both ids recorded (14.6)", async () => {
@@ -750,7 +733,7 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     expect(after[0]!.id).toBe(firstId); // the SAME row
     expect(after[0]!.reservedAt).toBe(NOW); // reserved time untouched — the window keeps counting from the first submit
     expect(after[0]!.paymentIntentIds).toEqual(["pi_fake_1", "pi_fake_2"]); // both ids recorded (§2.8.5)
-    expect(pay.intents[1]!.metadata.vesselId).toBe("v-small"); // same boat
+    expect(String(after[0]!.vesselId)).toBe("v-small"); // same boat, read off the row (15.6)
   });
 
   it("a second checkout with a DIFFERENT cookie is NOT merged onto the first — possession, not identity (criterion 10)", async () => {
@@ -824,7 +807,8 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     expect(rows).toHaveLength(1);
     expect(rows[0]!.partySize).toBe(6); // the manifest
     expect(rows[0]!.invoice!.extrasCents).toBe(10000); // and the money: two over the included 4
-    expect(pay.intents[1]!.metadata.guestCount).toBe("6"); // and what Stripe was asked for
+    // What Stripe was asked for is the row's frozen amount now, not a metadata echo (15.6).
+    expect(pay.intents[1]!.amountCents).toBe(rows[0]!.invoice!.amountDueNowCents);
   });
 
   it("a retry's re-freeze does NOT re-read the offering's durations (criterion 20, DEC-161)", async () => {

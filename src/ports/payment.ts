@@ -79,10 +79,18 @@ export interface CreatePaymentIntentInput {
    * means opening metadata.
    */
   description?: string;
-  /** Opaque key/value carried through Stripe back to the webhook — the frozen slot + money
-   *  fields (see `createDeparturePaymentIntent`). MUST include `purpose`: the webhook's
-   *  `payment_intent.succeeded` handler processes only purposed intents (DEC-134 double-write
-   *  guard — the PI underlying a hosted session has no metadata and is acked-and-ignored). */
+  /**
+   * Opaque key/value carried through Stripe back to the webhook.
+   *
+   * **Optional, and the booking charge sends none (15.6).** It used to be required and used to
+   * carry the frozen slot and money, which the webhook then booked from — forbidden by DEC-164
+   * and by SPEC 2.8's negative list, and four of those keys were the customer's personal data
+   * sitting in a third party's dashboard for no reader. The reservation row holds all of it.
+   *
+   * Nothing reads this on the booking path any more, which sends `{}`. Still required rather
+   * than optional, so "I sent nothing" is written down at the call site instead of inferred from
+   * an absent key — and so the hosted session paths, which do carry metadata, keep their shape.
+   */
   metadata: Record<string, string>;
 }
 

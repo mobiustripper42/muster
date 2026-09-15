@@ -24,20 +24,6 @@ import { eventIdForSlot } from "./availability.js";
 import { pendingLiveSince } from "./pending.js";
 import { resolveCustomerId } from "../customers/resolve.js";
 
-/**
- * The money and identity a confirm carries in from the charge. Until 15.1 the money still comes
- * from Stripe metadata; the slot, both durations and everything else the customer was quoted
- * come from the `pending` row (14.4), found by `paymentIntentId`.
- */
-export interface ConfirmCharge {
-  /** The succeeded PaymentIntent id — how the pending row is found (§2.8.6 step 1). */
-  paymentIntentId: string;
-  /** The per-departure BASE, frozen onto the materialized `Event.price` (DEC-125). */
-  priceCents: number;
-  /** The extra-guest surcharge portion of the fare (`composeFare`, #474), frozen onto the row so
-   *  the deposit-mode balance deriver collects the extras too. Absent ⇒ 0. */
-  extrasCents?: number;
-}
 
 export type ConfirmResult =
   | { outcome: "booked"; reservation: Reservation }
@@ -47,36 +33,59 @@ export type ConfirmResult =
   // compensation needs the customer's name, phone and email, and after 15.7 the charge carries
   // none of them. This is the only place they exist.
   | { outcome: "lost"; reservation: Reservation }
-  // The pending row is not there to flip. `no_row`: checkout's write never landed, or this
-  // charge was never one of ours — §2.8.6's paid-but-unbooked alert, and 2.8.9's reconciler
-  // fallback. `not_pending`: the row is cancelled — a payment must never resurrect it.
-  | { outcome: "unconfirmable"; reason: "no_row" | "not_pending" };
+  // The row cannot be flipped, for three different reasons that must NOT be conflated — the
+  // caller alerts on two of them and stays silent on the third.
+  //
+  //   `no_row`       nothing carries this payment intent id. Not one of our bookings: a booking
+  //                  payment always has a row, so this is the bare PaymentIntent under a hosted
+  //                  session, or somebody else's charge entirely. Acked, silent.
+  //   `not_pending`  the row is there and is cancelled — a payment must never resurrect it.
+  //   `unusable_row` the row is there and pending but is missing its slot or its invoice, which
+  //                  the checkout always writes together. That is a WRITE BUG, and it used to be
+  //                  folded into `no_row` — so 15.6's new silence would have swallowed it, money
+  //                  moved and nobody told, while `/book/success` said "You're booked!"
+  //                  (`/security-review`). Unreachable today; loud if it ever happens.
+  | { outcome: "unconfirmable"; reason: "no_row" | "not_pending" | "unusable_row" };
 
 /**
- * Confirm the pending row that carries `charge.paymentIntentId` (§2.8.6). Idempotent: a second
- * run over an already-`booked` row resolves `already`. `now` is injected (house style) for a
- * deterministic `updatedAt`.
+ * Confirm the pending row that carries `paymentIntentId` (§2.8.6). Idempotent: a second run over
+ * an already-`booked` row resolves `already`. `now` is injected (house style) for a deterministic
+ * `updatedAt`.
  *
- * The Event is built from the ROW, not the charge: slot from `vesselId`/`date`/`time`, capacity
- * from the vessel COI (DEC-108/109), trip time from the row's frozen `tripMinutes` (DEC-161).
- * Only `price` comes from the charge, until 15.1 moves that onto the row too.
+ * **The Event is built entirely from the ROW (15.6).** Slot, capacity from the vessel COI, trip
+ * time frozen at checkout, and — as of this task — the price and extras from the row's frozen
+ * `invoice`. `price` used to arrive from the succeeded intent's Stripe metadata, which DEC-164
+ * and SPEC 2.8's negative list both forbid: "No booking assembled from data Stripe hands back."
+ *
+ * The parameter that carried those numbers is gone rather than merely unread, so there is no
+ * longer a shape through which a Stripe number could reach this write. A payment intent id is
+ * all a confirm is told.
  */
 export async function confirmPendingRow(
   repo: Repository,
-  charge: ConfirmCharge,
+  paymentIntentId: string,
   now: () => string,
 ): Promise<ConfirmResult> {
-  const row = await repo.getReservationByPaymentIntentId(charge.paymentIntentId);
+  const row = await repo.getReservationByPaymentIntentId(paymentIntentId);
   if (!row) return { outcome: "unconfirmable", reason: "no_row" };
   // Already flipped — a redelivered webhook, or the success page after the webhook. The intent
   // id on the booked row is the idempotency key now that the reservation id is not derived.
   if (row.status === "booked") return { outcome: "already", reservation: row };
   if (row.status !== "pending") return { outcome: "unconfirmable", reason: "not_pending" };
 
-  if (row.vesselId === undefined || row.date === undefined || row.time === undefined) {
-    // A pending row names its slot (14.4). One without is a write bug, not a state — refuse it
-    // the way a charge with no row is refused rather than materialize an Event at `undefined`.
-    return { outcome: "unconfirmable", reason: "no_row" };
+  if (
+    row.vesselId === undefined ||
+    row.date === undefined ||
+    row.time === undefined ||
+    row.invoice === undefined
+  ) {
+    // A pending row names its slot and carries its frozen invoice (14.4, DEC-164). One without
+    // either is a write bug, not a state — refuse it rather than materialize an Event at
+    // `undefined` or a booking at no price.
+    //
+    // Its OWN reason, not `no_row`: since 15.6 that one is acked in silence, and a write bug is
+    // the opposite of silent. Money moved, the row exists, and nobody would have been told.
+    return { outcome: "unconfirmable", reason: "unusable_row" };
   }
 
   const vessel = await repo.getVessel(row.vesselId);
@@ -92,7 +101,8 @@ export async function confirmPendingRow(
     capacity: vessel?.coiMaxPax ?? row.partySize,
     status: "scheduled",
     source: "muster",
-    price: charge.priceCents,
+    // The fare the customer was quoted, off the row's own frozen invoice (15.6, DEC-164).
+    price: row.invoice.fareCents,
     // Trip time FROZEN off the row (DEC-161) — read from the offering when checkout STARTED,
     // which is the moment the customer's quote was fixed; a mid-checkout edit must not change
     // how long the trip that already ran was. Downstream this sets the shift's end.
@@ -110,7 +120,9 @@ export async function confirmPendingRow(
   const patch = {
     updatedAt: now(),
     ...(customerId !== undefined ? { customerId } : {}),
-    ...(charge.extrasCents !== undefined ? { extrasCents: charge.extrasCents } : {}),
+    // Extras off the invoice too — the deposit-mode balance deriver collects them, so the number
+    // has to be the one the customer was quoted rather than one Stripe echoed back.
+    extrasCents: row.invoice.extrasCents,
   };
 
   const res = await repo.bookPendingIfHullFree(

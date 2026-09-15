@@ -41,7 +41,10 @@ const offering = (over: Partial<Offering> = {}): Offering => ({
   ...over,
 });
 
-/** The row checkout wrote before Stripe (14.4): names the slot, both durations frozen. */
+/** The row checkout wrote before Stripe (14.4): names the slot, both durations frozen, and the
+ *  money frozen as one invoice (DEC-164). The invoice is what confirm reads the fare and extras
+ *  from as of 15.6; before that they arrived from Stripe's metadata and this fixture omitted it,
+ *  describing a row the real checkout cannot produce. */
 const pendingRow = (over: Partial<Reservation> = {}): Reservation => ({
   id: PEND,
   eventId: null,
@@ -58,6 +61,18 @@ const pendingRow = (over: Partial<Reservation> = {}): Reservation => ({
   holdMinutes: 240,
   tripMinutes: 240,
   paymentIntentIds: ["pi_1"],
+  invoice: {
+    fareCents: 49900,
+    extrasCents: 5000,
+    taxCents: 3618,
+    taxRateBps: 725,
+    serviceFeeCents: 1497,
+    serviceFeeBps: 300,
+    gratuityCents: 9980,
+    gratuityBps: 2000,
+    totalCents: 69995,
+    amountDueNowCents: 69995,
+  },
   ...over,
 });
 
@@ -70,7 +85,7 @@ async function world(row: Reservation | null = pendingRow()): Promise<InMemoryRe
 }
 
 const confirm = (repo: InMemoryRepository, paymentIntentId = "pi_1") =>
-  confirmPendingRow(repo, { paymentIntentId, priceCents: 49900, extrasCents: 5000 }, NOW);
+  confirmPendingRow(repo, paymentIntentId, NOW);
 
 describe("confirmPendingRow — the pending row becomes the booking (§2.8.6)", () => {
   it("flips the row: booked, eventId set, the Event materialized from the row and the charge", async () => {

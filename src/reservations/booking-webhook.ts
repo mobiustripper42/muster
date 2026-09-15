@@ -7,9 +7,10 @@
  *    reservation (no re-booking); `"gratuity"` → the post-trip tip; absent/`"booking"` → the
  *    charge→booking spine. Any OTHER purpose is loudly flagged, never silently booked.
  *  - **`payment_intent.succeeded`** (inline Elements, 12.5) — the SAME booking spine, keyed
- *    on the PaymentIntent id. **Double-write guard (DEC-134):** processes ONLY intents whose
- *    metadata carries `purpose` — the metadata-less PI underlying every hosted session is
- *    acked-and-ignored, so one charge can never book twice.
+ *    on the PaymentIntent id. **The booking charge sends no metadata (15.6)**, so the PENDING ROW
+ *    is what tells our payments apart: checkout writes it before calling Stripe, so an intent that
+ *    is ours resolves to a row and one that is not resolves to nothing and books nothing. The
+ *    `purpose` guard this replaced could not survive a charge that sends no keys at all.
  *
  * **A Payment row requires a reservation to hang it on (#613).** `payments.reservation_id` is
  * `not null` with an immediate FK, so the row is written only once a reservation exists:
@@ -28,7 +29,7 @@ import { formShifts, type FormResult } from "../builder/form-shifts.js";
 import { confirmBookingFromIntent } from "./confirm-booking.js";
 import { logFormAudit } from "../oracle/audit-log.js";
 import { eventIdOfBooked, isBooked } from "../domain/entities.js";
-import type { Payment, Reservation } from "../domain/entities.js";
+import type { BookingInvoice, Payment, Reservation } from "../domain/entities.js";
 import {
   asId,
   type PaymentId,
@@ -255,27 +256,6 @@ export async function processBookingWebhook(
  *  Exported so the Postgres suite can assert NO orphan row survives a lost/unbookable charge (#613). */
 export const paymentIdFor = (chargeKey: string): PaymentId => asId<"PaymentId">(`pay_${chargeKey}`);
 
-/**
- * Read a required cents value out of charge metadata, or throw.
- *
- * Money read from metadata must never fall back to a default: a zero that flows into the
- * booking is indistinguishable downstream from a genuinely free one. Throwing surfaces as
- * a 500, which is the correct answer to Stripe — it retries, and the failure is visible.
- */
-function requireCents(raw: string | undefined, field: string, chargeKey: string): number {
-  // Validate the STRING, not the coercion. `Number("  ")` is 0 — finite and not negative
-  // — so a whitespace-only value walked straight through the first version of this guard
-  // and booked at price zero, which is the exact defect it exists to prevent. `Number`
-  // also accepts `"0x10"` (→ 16) and `"1e3"`, neither of which our builders emit; Stripe
-  // makes no promise about what a metadata value contains. Integer cents only (DEC-112).
-  if (raw === undefined || !/^\d+$/.test(raw)) {
-    throw new Error(
-      `booking metadata is missing a usable ${field} (got ${JSON.stringify(raw)}) on charge ${chargeKey} - ` +
-        `refusing to book at a defaulted price`,
-    );
-  }
-  return Number(raw);
-}
 
 /** Options for callers that are not the signed webhook (issue #827). */
 export interface ConfirmOptions {
@@ -454,8 +434,6 @@ export async function processBookingCharge(
     return { handled: false };
   }
 
-  const m = charge.metadata;
-  const kind = m.kind === "deposit" ? "deposit" : "full";
   // The booking is the `pending` row checkout wrote (§2.8.6), found by the PaymentIntent id.
   // The surviving caller is the inline-Elements `payment_intent.succeeded` path, whose charge
   // key IS that id. A charge with none is a hosted booking session, and nothing mints those
@@ -485,62 +463,39 @@ export async function processBookingCharge(
   // (`app/api/webhooks/stripe/route.ts:68`). Telling an operator to refund a booking that
   // will land on the next retry is worse than saying nothing, and it gets worse still once
   // the alert fans out to admins over SMS.
-  const alertUnusableMetadata = async (e: unknown): Promise<void> => {
-    await deps
-      .alertPaidButUnbooked(
-        `PAID but NOT booked - unusable booking metadata on Stripe charge ${charge.key} ` +
-          `(${charge.amountCents} ${charge.currency}): ${e instanceof Error ? e.message : String(e)}. ` +
-          `Stripe will retry; if it keeps failing, REFUND MANUALLY and investigate the builder that minted it.`,
-      )
-      .catch(() => {
-        // An alert failure must not replace the underlying error — the caller rethrows that.
-      });
-  };
 
-  // Parse the money metadata BEFORE the write, in its own guard (until 15.1 moves the money onto
-  // the row). A defect here is our bug and needs the alert; a write failure is infra and
-  // Stripe's retry already covers it.
-  const parseSlotMoney = async (): Promise<{ priceCents: number; extrasCents: number }> => {
-    try {
-      return {
-        // Never default. `?? 0` materialized the event at price 0, after which
-        // `balanceOwedCents` derives "nothing owed" and `purchases-view` reports
-        // `priceKnown: true` — a free boat that reads as a normal paid booking (#522).
-        priceCents: requireCents(m.priceCents, "priceCents", charge.key),
-        // Extras frozen at checkout (composeFare, #474) — carried so the deposit-mode
-        // balance deriver bills base + extras, not the bare base (DEC-107 amend). Absent is
-        // legitimate (a pre-#474 charge) and reads 0; present-but-unusable is not, and used
-        // to slip through the same `Number()` coercion `priceCents` was hardened against.
-        extrasCents: requireCents(m.extrasCents ?? "0", "extrasCents", charge.key),
-      };
-    } catch (e) {
-      await alertUnusableMetadata(e);
-      throw e;
-    }
-  };
-
-  const money = await parseSlotMoney();
-
-  // Flip the pending row (§2.8.6). Its slot, party size and both durations are the row's; only
-  // the money still comes from the charge, until 15.1.
+  // Flip the pending row (§2.8.6). Everything the booking needs is on the row — slot, party
+  // size, both durations and, as of 15.6, the money. The metadata parser that used to stand here
+  // is gone with the metadata it read.
   const result: ConfirmResult = await confirmPendingRow(
     deps.repo,
-    {
-      paymentIntentId: charge.paymentIntentId,
-      priceCents: money.priceCents,
-      extrasCents: money.extrasCents,
-    },
+    charge.paymentIntentId,
     deps.now,
   );
 
-  // A paid charge that matched no live pending row (§2.8.6): checkout's write never landed, or
-  // this charge was never one of ours. Money moved with nothing behind it — the one thing that
-  // must never pass quietly. The reconciler (2.8.9) is the durable backstop; this is the alert.
+  // **`no_row` is not a problem; it means the charge is not one of our bookings (15.6).**
+  //
+  // The pending row is written BEFORE Stripe is called, and the customer never receives a payable
+  // client secret unless that write succeeded — so a booking payment always has a row to find.
+  // "No row" therefore means somebody else's payment, and the commonest one is routine: the
+  // PaymentIntent underneath every hosted Checkout Session, which `stripe-payment.ts` leaves
+  // metadata-less on purpose. A balance top-up or a post-trip tip fires one alongside its own
+  // `checkout.session.completed`.
+  //
+  // The `purpose` gate used to drop those before any lookup. Deleting it (the charge sends no
+  // metadata now) moved the filter here, and `@code-review` caught that the first cut alerted
+  // instead — which would have paged every admin with REFUND MANUALLY on every balance payment.
+  // Acked and ignored, exactly as the `purpose` gate did.
+  if (result.outcome === "unconfirmable" && result.reason === "no_row") {
+    return { handled: false };
+  }
+  // `not_pending` IS a problem: the row exists and is not bookable, so a payment landed against a
+  // cancelled reservation. Money moved and a human has to decide what happens to it.
   if (result.outcome === "unconfirmable") {
     await deps.alertPaidButUnbooked(
       `PAID but NOT booked - charge ${charge.key} (${charge.amountCents} ${charge.currency}) ` +
-        `resolved to no live pending reservation (${result.reason}). Its write may have been lost, ` +
-        `or the charge is not one of ours. REFUND MANUALLY if unrecognised; investigate either way.`,
+        `resolved to a reservation that cannot be booked (${result.reason}). REFUND MANUALLY if ` +
+        `unrecognised; investigate either way.`,
     );
     return { handled: true, outcome: "unbookable" };
   }
@@ -693,7 +648,12 @@ export async function processBookingCharge(
     // still nets out of the customer's balance, so nothing looks wrong, but `splitGratuity`
     // builds the crew pool from `Gratuity` rows alone — so the tip stays in the operator's
     // Stripe account and the crew is never paid it (#522 sweep 1).
-    const gratuityCents = Number(m.gratuityCents ?? 0);
+    //
+    // The tip and its tier come off the ROW's frozen invoice as of 15.6, like every other money
+    // number here. They used to be read from the charge's metadata, which is money arriving from
+    // outside to decide what the crew is paid.
+    const invoice = result.reservation.invoice;
+    const gratuityCents = invoice?.gratuityCents ?? 0;
     if (gratuityCents > 0) {
       await deps.repo.saveGratuity({
         id: asId<"GratuityId">(`grat_pre_${charge.key}`),
@@ -702,7 +662,7 @@ export async function processBookingCharge(
         reservationId: result.reservation.id,
         kind: "pre",
         amountCents: gratuityCents,
-        ...(m.gratuityBps ? { bps: Number(m.gratuityBps) } : {}),
+        ...(invoice?.gratuityBps !== undefined ? { bps: invoice.gratuityBps } : {}),
         // Reconciliation handle: the hosted path keeps the session id; an Elements
         // gratuity's handle is the PI id baked into the deterministic row id.
         ...(charge.sessionId !== undefined
@@ -728,7 +688,12 @@ export async function processBookingCharge(
     // `recordPayment` runs on `already` too, so the retry heals the row. Swallowing it would
     // trade a self-healing gap for a permanently missing ledger row, and `balanceOwedCents` reads
     // payments — a missing one makes a paid booking look unpaid.
-    await recordPayment(deps, charge, kind, reservationId);
+    // Deposit or full, DERIVED from the row rather than taken from a metadata key (15.6): the
+    // invoice says what the whole trip costs and what we asked for now, and a charge for less
+    // than the total is a deposit by definition.
+    const kind =
+      invoice !== undefined && invoice.amountDueNowCents < invoice.totalCents ? "deposit" : "full";
+    await recordPayment(deps, charge, kind, reservationId, invoice);
 
     return { handled: true, outcome: result.outcome };
   }
@@ -787,6 +752,8 @@ async function recordPayment(
   charge: BookingCharge,
   kind: "full" | "deposit",
   reservationId: ReservationId,
+  /** The row's frozen quote (15.6). The carve-outs below used to come from Stripe metadata. */
+  invoice: BookingInvoice | undefined,
 ): Promise<void> {
   // Stripe's hosted receipt (#679), for the guest's manage page. Best-effort by construction:
   // a receipt link is a convenience and the payment row is the ledger, so a provider hiccup
@@ -807,15 +774,14 @@ async function recordPayment(
     method: "stripe",
     kind,
     amountCents: charge.amountCents,
-    taxCents: Number(charge.metadata.taxCents ?? 0),
+    // Every carve-out off the ROW's frozen invoice (15.6), not the charge's metadata. These are
+    // what `balanceOwedCents` nets out, so a number arriving from outside decides what a customer
+    // still owes — which is the whole reason DEC-164 put the quote on our own row.
+    taxCents: invoice?.taxCents ?? 0,
     // The gratuity bundled into amountCents (DEC-124) — carved out so balanceOwedCents nets it.
-    ...(Number(charge.metadata.gratuityCents ?? 0) > 0
-      ? { gratuityCents: Number(charge.metadata.gratuityCents) }
-      : {}),
+    ...((invoice?.gratuityCents ?? 0) > 0 ? { gratuityCents: invoice!.gratuityCents } : {}),
     // The service fee bundled into amountCents (DEC-134) — same carve-out, same reason.
-    ...(Number(charge.metadata.serviceFeeCents ?? 0) > 0
-      ? { serviceFeeCents: Number(charge.metadata.serviceFeeCents) }
-      : {}),
+    ...((invoice?.serviceFeeCents ?? 0) > 0 ? { serviceFeeCents: invoice!.serviceFeeCents } : {}),
     currency: charge.currency,
     ...(charge.sessionId !== undefined ? { stripeCheckoutSessionId: charge.sessionId } : {}),
     ...(charge.paymentIntentId ? { stripePaymentIntentId: charge.paymentIntentId } : {}),

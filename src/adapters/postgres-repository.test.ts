@@ -63,12 +63,23 @@ async function bookViaFlip(
     holdMinutes: 120,
     tripMinutes: 100,
     paymentIntentIds: [paymentIntentId],
+    // The money lives on the row now (15.6), where the real checkout freezes it — confirm reads
+    // it here instead of being handed it. The rates and totals are not what these tests assert
+    // on; the fare and extras are.
+    invoice: {
+      fareCents: req.priceCents,
+      extrasCents: req.extrasCents ?? 0,
+      taxCents: 0,
+      taxRateBps: 0,
+      serviceFeeCents: 0,
+      serviceFeeBps: 0,
+      gratuityCents: 0,
+      gratuityBps: 0,
+      totalCents: req.priceCents + (req.extrasCents ?? 0),
+      amountDueNowCents: req.priceCents + (req.extrasCents ?? 0),
+    },
   });
-  return confirmPendingRow(
-    repo,
-    { paymentIntentId, priceCents: req.priceCents, extrasCents: req.extrasCents ?? 0 },
-    now,
-  );
+  return confirmPendingRow(repo, paymentIntentId, now);
 }
 
 const TEST_URL =
@@ -295,6 +306,20 @@ if (!dbUp) {
         holdMinutes: 120,
         tripMinutes: 100,
         paymentIntentIds: [pi],
+        // Confirm reads the money off the row (15.6), so the row needs the invoice the checkout
+        // freezes — without one it refuses before it can reach the flip and lose the race.
+        invoice: {
+          fareCents: 50000,
+          extrasCents: 0,
+          taxCents: 3625,
+          taxRateBps: 725,
+          serviceFeeCents: 1500,
+          serviceFeeBps: 300,
+          gratuityCents: 10000,
+          gratuityBps: 2000,
+          totalCents: 65125,
+          amountDueNowCents: 65125,
+        },
       });
     }
 
@@ -350,10 +375,12 @@ if (!dbUp) {
       // No pending row seeded → confirm resolves `no_row`.
       const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
 
-      expect(r.handled).toBe(true);
-      expect(alert).toHaveBeenCalledTimes(1);
-      expect(alert.mock.calls[0]![0]).toMatch(/no live pending reservation/i);
-      // And no orphan payment was left behind.
+      // As of 15.6 "no row" is acked and ignored rather than alerted: a booking payment always
+      // has a row (the checkout writes it before Stripe is called), so this shape is somebody
+      // else's payment — most often the bare PaymentIntent under a hosted balance session.
+      expect(r).toEqual({ handled: false });
+      expect(alert).not.toHaveBeenCalled();
+      // And no orphan payment was left behind, which is what #613 is about either way.
       expect(await repo.getPayment(paymentIdFor("pi_pg_1"))).toBeNull();
     });
 

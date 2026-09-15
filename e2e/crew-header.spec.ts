@@ -12,7 +12,7 @@
  * So the assertions that matter here are the SPACE ones, not the drawer mechanics: the hub leads
  * with work, and the drill-in header is one row rather than two. The drawer is the means.
  */
-import { test, expect, resetAndSeed, signInAsCrew } from "./fixtures.js";
+import { test, expect, resetAndSeed, signInAsCrew, crewAuthPath } from "./fixtures.js";
 
 /** Every crew route that carries the shared header, with the heading it should show. */
 const ROUTES = [
@@ -260,8 +260,11 @@ test.describe("crew header (#644)", () => {
     // drawer that does are different claims.
     const ctx = await browser.newContext({ javaScriptEnabled: false });
     const page = await ctx.newPage();
-    // The sign-in fixture drives a real form POST, which needs no JS either.
-    await page.goto("/crew/dev-link?crew=crew-quint");
+    // Signs in through the real `/crew/auth` interstitial, whose button is a plain form POST —
+    // so it needs no JS either, which is the whole point of this spec's context. Inlined rather
+    // than calling `signInAsCrew` because that helper waits on a URL predicate that also excludes
+    // `?auth=`, and here the assertion is deliberately narrower.
+    await page.goto(await crewAuthPath("crew-quint"));
     await page.getByRole("button", { name: /tap to sign in/i }).click();
     await page.waitForURL((u) => u.pathname === "/crew");
 

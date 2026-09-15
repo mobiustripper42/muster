@@ -9,7 +9,7 @@ import { defineConfig, devices } from "@playwright/test";
  *    `next dev` in this directory can't start while the operator's `next dev` holds
  *    Next's per-directory dev lock (`⨯ Another next dev server is already running`),
  *    which is the common case on the dev box. `next start` takes no dev lock, so the
- *    suite runs alongside a live dev server. `/crew/dev-link` (every flow signs in
+ *    suite runs alongside a live dev server. Sign-in (every flow does it
  *    through it) 404s only when `isProdDeploy` — i.e. `VERCEL_ENV==="production"` or
  *    (no `VERCEL_ENV` && `NODE_ENV==="production"`). `next start` sets the latter, so
  *    `VERCEL_ENV=preview` is load-bearing: it flips `isProdDeploy` false and keeps the
@@ -143,7 +143,7 @@ export default defineConfig({
       // controls that happened to sit under it. Framework chrome shouldn't be in the viewport
       // during a test run.
       E2E: "1",
-      // Prod server only: keep `/crew/dev-link` live (isProdDeploy → false) exactly
+      // Prod server only: keep `/crew/dev-code` live (isProdDeploy → false) exactly
       // as on a Vercel preview, and pin E2E_PROD so the build/start subprocess picks
       // the `.next-e2e` distDir (next.config.ts) instead of the operator's `.next`.
       ...(E2E_PROD ? { VERCEL_ENV: "preview", E2E_PROD: "1" } : {}),

@@ -54,7 +54,7 @@ export interface PaneActionState {
    * The customer's manage URL, for copying into a browser (#686). **Present only off
    * production** — it is a live bearer credential, so on a production deploy it must not reach
    * the operator's clipboard, one paste away from a Slack thread. Same posture as
-   * `/crew/dev-link` under DEC-057.
+   * the dev-only routes under DEC-057.
    *
    * #741 made the code revocable, which weakens but does not retire that argument: the remedy
    * (notice the leak, press Replace their link) depends on someone realising it leaked, and a

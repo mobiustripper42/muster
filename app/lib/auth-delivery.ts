@@ -25,7 +25,7 @@ export interface LoginCodeDelivery {
 /**
  * Dev-only echo of the last code per email — the `/crew/dev-code` route reads it
  * so e2e (and a dev by hand) can complete the round-trip the hash-only store
- * can't reveal. Same risk class + gating as the dev-link issuer (404 in prod).
+ * can't reveal. Hard-404 on any production deploy, same as every dev-only route.
  * Module-level state, fine in the single-process `next dev`/preview; meaningless
  * in prod (where the flag is off and the echo route 404s anyway).
  */

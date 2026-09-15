@@ -15,10 +15,10 @@
  * `add` also seeds the DEC-044 placeholder MMC so the new hire is actually
  * askable (no MMC ⇒ eligible for nothing); pass --mmc=YYYY-MM-DD for a real date.
  *
- * Connects via DATABASE_URL — same as db:migrate/db:mint/db:admin — falling back
+ * Connects via DATABASE_URL — same as db:migrate/db:admin — falling back
  * to local muster_dev. For PROD, point it at the Neon **direct/unpooled** string:
  *   DATABASE_URL="<neon-direct>" npm run db:crew -- set crew-eric --email=…
- * `.env.local` is auto-sourced like db:mint, but an inline DATABASE_URL wins.
+ * `.env.local` is auto-sourced like db:admin, but an inline DATABASE_URL wins.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
@@ -44,7 +44,7 @@ function loadGustoMap(path: string): GustoMapEntry[] {
     }));
 }
 
-// Auto-source .env.local (parity with db:mint), but let an inline DATABASE_URL win.
+// Auto-source .env.local (parity with db:admin), but let an inline DATABASE_URL win.
 if (existsSync(".env.local")) {
   const inlineDb = process.env.DATABASE_URL;
   process.loadEnvFile(".env.local");

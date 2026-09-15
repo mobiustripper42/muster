@@ -2,7 +2,7 @@
   // Scripts profile (#904 rule 7) — the third `include`, and the reason it exists.
   //
   // `db/` holds 30 files: the migration runner, every seed, and the ops scripts you drive
-  // from a terminal (`db:admin`, `db:crew`, `db:mint`, `db:pay`, `db:xola:report`, the
+  // from a terminal (`db:admin`, `db:crew`, `db:pay`, `db:xola:report`, the
   // resets). Until this profile, NONE of it was typechecked. `tsconfig.core.json` includes
   // `src` only and says so on purpose; `tsconfig.json` includes `app` + `components`. Both
   // scope themselves inward, and `db/` is named by neither. It was never excluded — it was

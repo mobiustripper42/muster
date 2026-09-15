@@ -5,7 +5,7 @@
  *
  * Idempotent — every write is an upsert. Run against local dev Postgres:
  *   docker compose up -d && npm run db:migrate && npx tsx db/seed-crewapp-dev.ts
- * Then: GET /crew/dev-link?crew=crew-quint → tap the link → /crew.
+ * Then: sign in at /crew with a code as crew-quint → tap the link → /crew.
  *
  * Dev tooling, not app code. Uses the same Postgres adapter the app runs on.
  */
@@ -94,7 +94,7 @@ try {
   // dev, where the roster is fixture data and the ids are knowable — which is the whole
   // difference. Prod still gets its admins from `db:admin` after the real roster exists.
   //
-  // Sign in at /crew/dev-link?admin=eric, or via the crew code flow on eric@bb.test.
+  // Sign in at /crew with a code as eric@bb.test, then Switch to admin.
   await repo.saveAdmin({
     id: ERIC,
     handle: "eric",
@@ -200,7 +200,7 @@ try {
   console.log("  + Quint's MMC expires ~30d out → the #57 credential nudge line shows on /crew.");
   console.log("  + Bail demo (#56): open the shift card → 'I can't make it…' — Quint is the only");
   console.log("    captain, so the seat rests Bailed and the shift lands on /admin/at-risk as a regression.");
-  console.log("Seeded crew-dooley: full reliability log → worst-case standing line. View: /crew/dev-link?crew=crew-dooley");
+  console.log("Seeded crew-dooley: full reliability log → worst-case standing line. View: sign in at /crew with a code as crew-dooley");
 } finally {
   await repo.close();
 }

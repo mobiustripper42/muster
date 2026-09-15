@@ -91,9 +91,10 @@ than merely discouraged, and a denied command in a doc fails as a permission ref
 like the agent being difficult. Do **not** pull a separate Playwright MCP server either: it would
 fetch an unpinned `@latest` over the network on every review, to do what a pinned dependency does.
 
-Most surfaces need a session. `/crew/dev-link?crew=<id>` and `?admin=<handle>` mint one in dev; if a
-surface can't be reached without auth you couldn't establish, say so in `Basis:` rather than
-reviewing a redirect.
+Most surfaces need a session. Sign in at `/crew` with an email and read the 6-digit code back from
+`/crew/dev-code?email=<email>` (dev-only); for an admin surface, use the drawer's **Switch to admin**
+afterwards. If a surface can't be reached without auth you couldn't establish, say so in `Basis:`
+rather than reviewing a redirect.
 
 ### Step 2 — Read the context
 

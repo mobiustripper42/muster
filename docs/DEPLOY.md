@@ -214,52 +214,18 @@ DATABASE_URL="<neon-direct>" npm run db:admin -- add --crew=<crewId> --handle=dr
 DATABASE_URL="<neon-direct>" npm run db:admin -- list
 ```
 
-The **primary sign-in for admins is the crew code login** (DEC-081, live now that email is wired): log in
-with a code as crew, then **"Switch to admin"** (DEC-093). `db:mint --admin=<handle>` remains the
-out-of-band **bootstrap** magic link — it must be a **seeded, active** handle (mint refuses an unknown or
-deactivated one and prints the active handles). (`eric` is the dev/e2e-only operator, never a prod admin.)
+The **only sign-in is the crew code login** (DEC-081, live now that email is wired): sign in with a
+code as crew, then **"Switch to admin"** (DEC-093). The admin must hold a **seeded, active** row in
+`admins` — `db:admin` puts one there. (`eric` is the dev/e2e-only operator, never a prod admin.)
 
-`/crew/dev-link` is **hard-404 in production** (it must never mint links there), so an admin's first
-sign-in is bootstrapped out-of-band. The script auto-sources `.env.local` (what step 3's
-`vercel env pull` wrote), so once that file holds `APP_BASE_URL` + a DB string the command is just:
-```bash
-npm run db:mint -- --admin=eric
-#  → Minted admin link · crew-eric-stoffer (eric)   (db: ep-xxx.neon.tech)
-#      https://<domain>/crew/auth?t=<secret>
-#      single-use · expires ... (60 min)
-```
-**The DB string is the catch.** Neon connection vars are **Sensitive**, so `vercel env pull` returns
-`DATABASE_URL` *empty* (step 3) — `APP_BASE_URL` (not sensitive) pulls fine, but the DB string doesn't.
-So either paste the **direct/unpooled** string into `.env.local` once (it's gitignored; survives until
-the next `env pull` overwrites the file), or pass it inline — inline always wins. **Both `APP_BASE_URL`
-and `DATABASE_URL` are required:** omit `APP_BASE_URL` and the printed link silently falls back to the
-local host (`http://mill-dev:3000`), not your domain. Quote the DB string — an unquoted `&` in it is a
-bash background operator and splits the command, so `DATABASE_URL` never reaches the script:
-```bash
-APP_BASE_URL=https://<prod-domain> DATABASE_URL="<paste-direct-unpooled-string>" npm run db:mint -- --admin=brendan
-```
-**Check both in the output** — the `db:` host must be the Neon host (not `localhost:5432`), AND the
-printed link must be your `<prod-domain>` (not `http://mill-dev:3000`). Either one wrong means that env
-var didn't take.
+**There is no out-of-band link minter any more.** `db:mint` and `/crew/dev-link` both existed to hand
+out a session without a code, and both were deleted once the code flow plus the switcher could reach
+every subject either of them could. A fresh deployment bootstraps with `db:crew` to create the person
+and `db:admin` to grant them the row; they then sign in through the front door like everyone else.
 
-**On the dev box (mill-dev), don't edit `.env.local` for this.** Your `.env.local` points at *local*
-dev (mill-dev origin + localhost DB), and inline env is one-shot — it never touches that file, so
-there's nothing to restore afterward. Save a one-time alias and you get a clean second command:
-```bash
-echo 'postgres://<neon-direct-unpooled-string>' > ~/.muster-prod-db   # once; gitignored home file
-# add this line to ~/.bashrc so it persists:
-alias mint-prod='APP_BASE_URL=https://muster-sigma.vercel.app DATABASE_URL="$(cat ~/.muster-prod-db)" npm run db:mint --'
-```
-Then `mint-prod --admin=eric` mints a **prod** link, while plain `npm run db:mint -- --admin=eric`
-still mints **local** — two commands, no editing, no switch-back. (Rarely needed: the sign-in cookie
-lasts 14 days and renews on use, so it's a first-sign-in / long-gap thing.)
-
-Open the printed URL in a browser → tap **Tap to sign in** → you land on **`/admin/at-risk`** with a
-session cookie (a 14-day cookie that silently renews on use — you sign in once, not per visit). The link
-is single-use and expires in 60 min (`--ttl-min=<n>` to change). `APP_BASE_URL` is **required** — the
-script refuses without it (a CLI has no Host header, and a link on the wrong origin is host-spoofable /
-unopenable). **Crew** need none of this: they sign in with an emailed code, or the link in an ask text
-that Muster sends them automatically (`--crew=<id>` exists as a manual escape hatch, not the normal path).
+**This makes `EMAIL_FROM` + `RESEND_API_KEY` load-bearing for admin access.** With email unwired
+nobody can reach `/admin` at all, where previously a minted link was the escape hatch. Verify the
+email path works on a new deployment before you need it.
 
 ### 7b. Deprovision / manage admins — `db:admin` (per-person revoke — DEC-092)
 
@@ -406,12 +372,12 @@ booking of your own:
 Keep the amounts small. This is real money in the operator's real account, and steps 1 and 4 leave
 Stripe's processing fee behind on each charge even after a full refund.
 
-## Running the management CLIs against prod (`db:crew`, `db:admin`, `db:mint`)
+## Running the management CLIs against prod (`db:crew`, `db:admin`)
 
-This is the recipe for every operator CLI. All three connect through **`DATABASE_URL` = the Neon
+This is the recipe for every operator CLI. Both connect through **`DATABASE_URL` = the Neon
 direct/unpooled prod string** (same as `db:migrate`, step 3). They auto-source `.env.local`, but an inline
-`DATABASE_URL` always wins. `db:crew`/`db:admin` need **no** `APP_BASE_URL` (they mint no links — only
-`db:mint` does).
+`DATABASE_URL` always wins. Neither needs `APP_BASE_URL` — they mint no links, and nothing does now
+that `db:mint` is gone.
 
 **The catch (see step 7):** the Neon string is a **Sensitive** Vercel var, so `vercel env pull` returns it
 *empty* — you paste the direct/unpooled string yourself. On the dev box **don't edit `.env.local`** (it
@@ -445,7 +411,7 @@ levers take the direct/unpooled prod `DATABASE_URL` (same as `db:migrate`, step 
 | The fire | Lever | How |
 |----------|-------|-----|
 | **Crew can't log in — wrong email on file** | `db:crew` | `db:crew -- set <id> --email=<addr>` then they re-request a code (or hand them a link — next row) |
-| **Crew can't log in — locked out / need them in NOW** | `db:mint` | `APP_BASE_URL=<domain> DATABASE_URL="<direct>" npm run db:mint -- --crew=<id>` — a single-use magic link that **bypasses the login-code cap** entirely |
+| **Crew can't log in — locked out by the code cap** | *(no lever)* | **This escape hatch is gone.** `db:mint --crew=<id>` minted a link that bypassed the login-code cap, and it was deleted with the rest of the out-of-band minting. Today the options are to wait out the cap window or clear the crew member's `login_codes` row directly against the DB. If this bites in season, that is the signal to build a real one rather than restore a backdoor |
 | **Crew not getting SMS — wrong phone** | `db:crew` | `db:crew -- set <id> --phone=+1XXXXXXXXXX` (must be E.164 — the CLI rejects anything else) |
 | **Don't know the crew id** | `db:crew` | `db:crew -- list` — id · name · phone · email, sorted by name |
 | **Onboard a new hire** | `db:crew` | `db:crew -- add --name="<name>" --phone=+1XXXXXXXXXX --ratings=captain,mate [--email=<addr>]` — creates them **and** the DEC-044 placeholder MMC, so they're actually askable. `--id` overrides the derived `crew-<slug>`; `--mmc=YYYY-MM-DD` sets a real credential date |

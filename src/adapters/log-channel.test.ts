@@ -135,7 +135,7 @@ describe("LogChannel", () => {
     expect(lines[0]).toContain("https://x.test/crew/auth?t=s3cret");
     const token = await repo.getMagicTokenByHash(hashSecret("s3cret"));
     expect(token).toMatchObject({ subjectKind: "crew", subjectId: CREW });
-    // The relay TTL (24h — the ask's answer window), not the 15-minute dev-link one.
+    // The relay TTL (24h — the ask's answer window), not the 15-minute hand-minted one.
     expect(token!.expiresAt).toBe(new Date(T0.getTime() + RELAY_LINK_TTL_MS).toISOString());
   });
 

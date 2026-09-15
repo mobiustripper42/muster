@@ -400,10 +400,10 @@ reverse-proxy to `127.0.0.1:3000`.
 
 **45.** ⚠️ **Verify `NODE_ENV=production` is actually in effect.** Without `VERCEL_ENV` present,
 `isProdDeploy()` (`app/lib/flags.ts`) falls through to `!VERCEL_ENV && NODE_ENV === "production"`.
-If `NODE_ENV` is missing, **`/crew/dev-link` becomes a live unauthenticated magic-link minter on
+If `NODE_ENV` is missing, **`/crew/dev-code` becomes a live login-code echo on
 the public origin.**
 
-Check: `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/crew/dev-link` → **404**.
+Check: `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/crew/dev-code` → **404**.
 Anything else, stop and fix before going further.
 
 **46.** `systemctl enable --now` the unit. Reboot the box and confirm it comes back up on its own.
@@ -487,7 +487,7 @@ there is no public-side cert change.
    - `https://crew.brewcle.com/api/health` → `ok`
    - **A crew magic-link SMS arrives and its link opens** — this is what `APP_BASE_URL` protects;
      a wrong value dead-links to localhost
-   - `/crew/dev-link` → **404**
+   - `/crew/dev-code` → **404**
    - Sign in as admin, load `/admin/at-risk`
    - Both timers fire on schedule (`journalctl`)
    - If `RESERVATIONS` is on: a test Stripe event reaches `/api/webhooks/stripe` and returns 200.

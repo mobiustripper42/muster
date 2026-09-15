@@ -13,7 +13,6 @@
     "db:down": "docker compose down",
     "db:migrate": "tsx db/migrate.ts",
     "db:new-migration": "tsx db/new-migration.ts",
-    "db:mint": "tsx db/mint-link.ts",
     "db:admin": "tsx db/admin.ts",
     "db:crew": "tsx db/crew.ts",
     "db:balance": "tsx db/balance-dev.ts",

@@ -104,7 +104,7 @@ export interface SendResult {
 
 /**
  * How long a relayed magic link lives: the ask's answer window (DEC-030). The 15-minute
- * dev-link TTL stays dev-only.
+ * short magic-link TTL stays dev-only.
  *
  * Lived in `web-link-channel.ts` until #934 deleted that adapter, and `TwilioChannel`
  * imported it from there — an adapter depending on a sibling adapter for a contract

@@ -11,7 +11,7 @@ import { appBaseUrl } from "./base-url";
  *
  * **The environment the issue missed.** Unset is not a misconfiguration — it is the DESIGNED
  * state on a preview deploy. `APP_BASE_URL` is scoped to Production only (DEC-057) so a preview's
- * minted links resolve to the preview rather than to prod, which is what makes `crew/dev-link`
+ * minted links resolve to the preview rather than to prod, which is what made a preview
  * worth having. So there are three environments here, not two, and the branch that had no
  * implementation at all is the preview one.
  */

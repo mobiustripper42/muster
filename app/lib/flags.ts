@@ -41,7 +41,7 @@ export function messagingEnabled(): boolean {
  * reservation has validated end to end.
  *
  * This function exists because the predicate was hand-spelled at five call sites (#588). That is
- * the same shape as the auth-sweep defect where `dev-link` carried its own copy of the
+ * the same shape as the auth-sweep defect where the dev-link route carried its own copy of the
  * production kill-switch while two other files imported the shared one — two spellings of one
  * guard, and only one of them ever gets fixed.
  */
@@ -69,7 +69,7 @@ export function timeClockEnabled(): boolean {
 /**
  * True on any PRODUCTION deploy — Vercel prod (`VERCEL_ENV`) or a self-hosted
  * prod (`next start` with no `VERCEL_ENV`, `NODE_ENV=production`). The single
- * predicate the dev-only affordances gate on (dev-link's inline copy, the
+ * predicate the dev-only affordances gate on (the
  * dev-code echo route, and the login-code log/echo), so "live on preview + local,
  * 404/inert in prod" stays consistent across all three (DEC-057).
  */

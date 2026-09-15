@@ -89,6 +89,18 @@ export async function runAdminCommand(
             `add: no crew member with id "${id}". An admin id must be a real crew id — ` +
               `check the id, or use --email=<addr> to resolve it from the roster.`,
           );
+        // And they must be REACHABLE (DEC-174, @code-review). The `--email=` branch above proves
+        // an email exists by construction; this one does not, so before DEC-174 you could grant
+        // admin to an email-less crew member and they still had a way in — `db:mint --admin=` or
+        // `/crew/dev-link?admin=`. Both are deleted. The only door left is the 6-digit code, and
+        // `matchCrewByEmail` (`login-code.ts:150`) skips a crew row with no email, so an admin
+        // minted here without one has NO path to `/admin` at all and nothing says so.
+        if (!c.email)
+          throw new AdminCliError(
+            `add: crew member "${id}" has no email, so they could never sign in — the 6-digit ` +
+              `code is the only door (DEC-174). Set one with ` +
+              `\`npm run db:crew -- set ${id} --email=<addr>\` first.`,
+          );
         name ??= c.name;
       }
       // `name` is set now: both paths take it from a crew member (name is required).

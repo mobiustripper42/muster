@@ -23,7 +23,7 @@
  *
  * Idempotent: entity writes are upserts; the one append-only log write (the
  * bail) is guarded. Run: npm run db:seed:atrisk  (DB up + migrated first).
- * Then: /crew/dev-link?admin=eric → tap the link → /admin/at-risk.
+ * Then: sign in at /crew with a code, then Switch to admin → tap the link → /admin/at-risk.
  *
  * Heads-up: `npm run db:tick` afterward makes the engine WORK this state —
  * scenario A is a stalled Filling shift, so Tier-2 nudges the ghost and the
@@ -309,7 +309,7 @@ try {
   console.log("  E shift-ar-claimed   Tidewater II ~3d   cockpit: Petra awaits confirm (off-board)");
   console.log("  F shift-ar-warming   Kettle       ~4d   warming: 1 declined · 1 ghost (off-board)");
   console.log("  H shift-ar-gappy     Barrel       ~2d   view: 11:00 + 18:00 (7h gap) → split cue");
-  console.log("Board:   /crew/dev-link?admin=eric → tap link → /admin/at-risk");
+  console.log("Board:   sign in at /crew with a code, then Switch to admin → tap link → /admin/at-risk");
   console.log("Cockpit: /admin/shift/shift-ar-claimed  (Confirm demo)");
   console.log("Warming: any cockpit → 'Warming signals →'  (shows Kettle)");
 } finally {

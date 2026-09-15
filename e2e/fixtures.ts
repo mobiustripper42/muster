@@ -322,7 +322,13 @@ export async function signInAsAdmin(page: Page, handle: string): Promise<void> {
   let adminId: string;
   try {
     const admin = await repo.getAdminByHandle(handle);
-    if (!admin) throw new Error(`signInAsAdmin: no admin with handle "${handle}"`);
+    // `active` too, which the deleted route checked and the first cut of this fixture dropped
+    // (`/security-review`). `readSubject` refuses an inactive admin on the next request, so a spec
+    // would have failed at `waitForURL` anyway — but it would have failed looking like a routing
+    // bug rather than saying the handle is deactivated.
+    if (!admin || !admin.active) {
+      throw new Error(`signInAsAdmin: no ACTIVE admin with handle "${handle}"`);
+    }
     adminId = String(admin.id);
   } finally {
     await repo.close();

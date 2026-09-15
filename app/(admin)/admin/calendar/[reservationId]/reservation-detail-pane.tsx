@@ -284,13 +284,18 @@ export function actionMessage(
           return "This booking has no email or phone on it, so there’s nowhere to send.";
         case "not_muster":
           return "Xola bookings have no Muster manage link.";
-        // The three below mean NOTHING was attempted — a deployment problem, not a bad booking.
+        // The two below mean NOTHING was attempted — a deployment problem, not a bad booking.
         // Retrying changes nothing until the deployment does, so the copy says so rather than
         // inviting a second press.
+        //
+        // `not_configured` ("APP_BASE_URL is unset") was a third, removed at #1007. It could only
+        // be produced on a deploy that cannot build a link at all, which now throws at the
+        // resolver instead of returning a tidy skip — and on a preview, where it used to fire
+        // every time because the variable is scoped to Production by design (DEC-057), the resend
+        // simply works. The string travels as a URL param, so nothing in the type system was ever
+        // going to name this case; it was found by grepping the render sites.
         case "messaging_off":
           return "Messaging is switched off on this deployment, so nothing was sent.";
-        case "not_configured":
-          return "This deployment can’t build a manage link (APP_BASE_URL is unset), so nothing was sent.";
         case "no_channels":
           return "No email or SMS channel is configured on this deployment, so nothing was sent.";
         case "all_failed":

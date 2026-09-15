@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { forwardAsks } from "@core/adapters/forward-asks.js";
 import {
   forwardNotices,
@@ -10,7 +9,7 @@ import { formNoticeChanges } from "@core/builder/form-notices.js";
 import { getRepo } from "./repo";
 import { OPERATOR_CREW_MEMBER_ID } from "./operator";
 import { makeSmsChannel } from "./sms";
-import { stripTrailingSlashes } from "@core/config/base-url.js";
+import { appBaseUrl } from "./base-url";
 
 /**
  * App-side channel wiring (DEC-030, DEC-MSG-3). This module is the ONE place
@@ -20,27 +19,19 @@ import { stripTrailingSlashes } from "@core/config/base-url.js";
  * dark until the env is set (#70). The swap is exactly the constructors below,
  * zero domain change.
  *
- * Link base: delivered links must come from `APP_BASE_URL` in production (the
- * Host header is client-controlled — see app/lib/base-url.ts on host-header
- * poisoning / token theft). The headers() fallback is dev-only convenience,
- * same posture as the dev-link issuer.
+ * Link base: `appBaseUrl()` (#1007), the one answer shared with `alert.ts`, `doorbell.ts`,
+ * `booking-confirmation.ts` and `sold-out-notice.ts`. Delivered links must never ride a
+ * client-controlled Host header — see `app/lib/base-url.ts` on poisoning and token theft — and
+ * with Twilio live a poisoned link is auto-texted to a crew phone with an auth token in it,
+ * where pre-9.4 it at least passed through the operator's outbox first.
+ *
+ * **Two things changed here at #1007.** The prod check was hand-spelled as
+ * `NODE_ENV === "production"`, which Vercel also sets on previews, so every preview threw instead
+ * of relaying; that predicate is `isProdDeploy()` now and a preview gets its own origin. And the
+ * `headers()` dev fallback is gone: a preview no longer needs it, and in local dev `appBaseUrl`
+ * answers `http://localhost:3000`. A dev serving on another port sets `APP_BASE_URL`, which is
+ * the same thing every other site in this layer already requires.
  */
-async function linkBase(): Promise<string> {
-  const configured = process.env.APP_BASE_URL;
-  if (configured) return stripTrailingSlashes(configured);
-  // Fail LOUD in prod (the doorbell.ts posture): pre-9.4 a poisoned-Host link
-  // at least passed through the operator's outbox; with Twilio live it would be
-  // auto-texted straight to a crew phone with an embedded auth token.
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "APP_BASE_URL must be set in production — delivered links would ride the client-controlled Host header",
-    );
-  }
-  const h = await headers();
-  const host = h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
-}
 
 /**
  * `logChannel` lived here until #955 and now lives in `sms.ts`, private. It was exported so
@@ -61,7 +52,7 @@ export async function relayAsks(
 ): Promise<void> {
   if (!asks || asks.length === 0) return;
   const repo = getRepo();
-  const base = await linkBase();
+  const base = appBaseUrl();
   const { channel } = makeSmsChannel(repo, base);
   await forwardAsks(repo, channel, asks);
 }
@@ -78,7 +69,7 @@ export async function relayNotices(
 ): Promise<void> {
   if (!changes || changes.length === 0) return;
   const repo = getRepo();
-  const base = await linkBase();
+  const base = appBaseUrl();
   const { channel } = makeSmsChannel(repo, base);
   await forwardNotices(repo, channel, changes);
 }

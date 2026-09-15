@@ -147,6 +147,16 @@ export default defineConfig({
       // as on a Vercel preview, and pin E2E_PROD so the build/start subprocess picks
       // the `.next-e2e` distDir (next.config.ts) instead of the operator's `.next`.
       ...(E2E_PROD ? { VERCEL_ENV: "preview", E2E_PROD: "1" } : {}),
+      // #1007: the harness serves on E2E_PORT (3100), and `appBaseUrl()`'s local-dev floor is
+      // `http://localhost:3000` — the operator's port, not this one. Before #1007 `channel.ts`
+      // derived the origin from the request and happened to get 3100 right; every other delivery
+      // site already hardcoded 3000 and was already wrong here. So pin it, which is exactly the
+      // rule the resolver states: a server on another port sets `APP_BASE_URL`.
+      //
+      // Caught by `@code-review`, and it would have shipped green — no spec asserts the HOST of a
+      // minted link, so every relayed ask and notice in the suite would have carried a link to a
+      // port with nothing listening, and the whole suite stays passing.
+      APP_BASE_URL: BASE_URL,
       // Civil send window (DEC-088) wide open: e2e runs at arbitrary wall-clock
       // times, and the bail/ask flows it drives must not defer past 20:00.
       CIVIL_SEND_START: "00:00",

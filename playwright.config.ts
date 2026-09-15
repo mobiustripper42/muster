@@ -167,9 +167,6 @@ export default defineConfig({
       // The doorbell cron is CRON_SECRET-gated; pin one so the ring-relay e2e can
       // trigger a tick (the only way to exercise the relay end-to-end).
       CRON_SECRET: process.env.CRON_SECRET ?? "e2e-cron-secret",
-      // Crew self-serve code login (DEC-081) is flag-gated OFF in prod until 7.0b
-      // wires real email; the e2e env is where we exercise it, so turn it on.
-      CREW_SELF_SERVE: "1",
       // Messaging (#389) is disabled in prod (kill switch, off by default), but the
       // code stays and its e2e specs must keep exercising it — turn it on here.
       MESSAGING: "1",

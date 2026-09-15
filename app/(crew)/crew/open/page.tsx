@@ -1,7 +1,7 @@
 import { AppLink } from "../../../../components/ui/app-link";
 import { CrewHeader } from "../../../../components/crew/crew-header";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import {
   buildClaimableView,
   type ClaimableSeatView,
@@ -14,7 +14,6 @@ import { Shell } from "../../../../components/ui/shell";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
-import { selfServeEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
 import { CREW_UNAVAILABLE, logSwallowed } from "../../../lib/swallowed";
 import { fmt12 } from "../../../lib/format";
@@ -34,7 +33,7 @@ import { claimSeat } from "./actions";
  *
  * Server-rendered, no client JS: presets are GET links, the confirm "sheet" is a
  * native <details> disclosure (the bail pattern), Claim is a <form action>.
- * Flag-gated (DEC-059): 404 in prod until CREW_SELF_SERVE is on.
+ * Live everywhere since DEC-175 — the CREW_SELF_SERVE gate that 404'd this in prod is gone.
  */
 export const dynamic = "force-dynamic"; // DEC-042: dynamic on navigation, never polled
 
@@ -51,7 +50,6 @@ export default async function CrewOpenPage({
 }: {
   searchParams: Promise<Search>;
 }) {
-  if (!selfServeEnabled()) notFound(); // dark in prod until the flag flips (DEC-059)
   const sp = await searchParams;
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") redirect("/crew"); // /crew owns the login UI

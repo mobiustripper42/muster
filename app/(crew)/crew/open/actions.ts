@@ -6,7 +6,6 @@ import { claimSeat as claimSeatService } from "@core/asks/claim.js";
 import { asId } from "@core/domain/ids.js";
 import { logCrewAdded } from "@core/oracle/audit-log.js";
 import { readSubject } from "../../../lib/auth";
-import { selfServeEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 
@@ -24,7 +23,6 @@ import { logSwallowed } from "../../../lib/swallowed";
  * `redirect()` throws by design → it stays OUTSIDE the try.
  */
 export async function claimSeat(formData: FormData): Promise<void> {
-  if (!selfServeEnabled()) redirect("/crew");
   const subject = await readSubject();
   const seatId = String(formData.get("seatId") ?? "");
   const backRaw = String(formData.get("back") ?? "/crew/open");

@@ -120,7 +120,7 @@ dashboard scroll. Tick each one off against its source.
 | `OPERATOR_CREW_MEMBER_ID` | `app/lib/operator.ts` | Not secret |
 | `OPERATOR_NOTIFY_EMAIL` | `app/b/[code]/actions.ts` | Not secret |
 | `NODE_ENV` | — | `production`. See step 45; getting this wrong is a security hole |
-| `CREW_SELF_SERVE` `MESSAGING` `RESERVATIONS` `TIME_CLOCK` | `app/lib/flags.ts` | Step 5 |
+| `MESSAGING` `RESERVATIONS` `TIME_CLOCK` | `app/lib/flags.ts` | Step 5 |
 
 > Not needed on the box: `E2E`, `E2E_PROD`, `SEED_TODAY`, `TEST_DATABASE_URL`, `RESET_PILOT_*`,
 > `BACKFILL_CONFIRM`, `OUTBOX_TEST_PHONE`, `XOLA_REPORT_*` (CLI script args), `PROBE_*`
@@ -151,7 +151,7 @@ box does not want them. This is most of the "~22 values" the step used to warn a
 
 **Set and needed:** `DATABASE_URL`, `APP_BASE_URL`, `SESSION_SECRET`, `CRON_SECRET`,
 `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID`, `RESEND_API_KEY`,
-`EMAIL_FROM`, `XOLA_API_KEY`, `XOLA_SELLER_ID`, `CREW_SELF_SERVE`, `TIME_CLOCK`, plus the seven
+`EMAIL_FROM`, `XOLA_API_KEY`, `XOLA_SELLER_ID`, `TIME_CLOCK`, plus the seven
 tuning vars above that are set.
 
 **Read by code, NOT set in production** — all currently running on their code defaults:
@@ -211,7 +211,6 @@ Record from Neon:
 
    | Flag | State | Value on Vercel |
    |---|---|---|
-   | `CREW_SELF_SERVE` | **ON** | `1` |
    | `TIME_CLOCK` | **ON** | `1` |
    | `MESSAGING` | **OFF** | not set |
    | `RESERVATIONS` | **OFF** | not set |

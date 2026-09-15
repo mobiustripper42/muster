@@ -172,6 +172,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-142 — Login brute force is bounded per subject, not per code — and every verify failure is one generic response
 - DEC-150 — An already-authenticated crew member skips the tap-to-sign-in interstitial
 - DEC-174 — The session minters are deleted — one door in
+- DEC-175 — CREW_SELF_SERVE is deleted — a flag with no off-state
 
 ### Reservations & payments
 - DEC-105 — Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover

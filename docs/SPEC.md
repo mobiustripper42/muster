@@ -1394,11 +1394,10 @@ Everything needed on one screen, no hunting. This is where "bulletproof" lives.
 > *(The "fourth surface" framing was true at DEC-074 and has been overtaken three times since — seven
 > crew routes ship. See §2.6's reconcile banner.)*
 >
-> **Dark by default, and coupled.** `/crew/open` 404s unless `CREW_SELF_SERVE=1`; the claim action
-> redirects on the same gate and the hub entry doesn't render. **The coupling is the point, not the
-> flag:** one env var gates **both** this surface **and** the DEC-079/DEC-081 crew code-login front
-> door, so they cannot ship independently — a fact stated in neither §2.7 nor §3.2 until now. Shard E's
-> E1 named the consequence: a deploy built from the runbook comes up with crew unable to sign in.
+> **Live everywhere (DEC-175, amends this section).** `/crew/open`, the claim action and the hub
+> entry were dark behind `CREW_SELF_SERVE`, coupled to the DEC-079/DEC-081 code-login front door by
+> the same env var. The flag was turned on in production once email delivery was real, and deleted
+> once its off-state existed nowhere — on in prod, on in e2e, so nothing ever ran the dark path.
 
 **2.7.1 The list.** ~~Open~~ **Uncommitted** **required** seats the viewer is **eligible** for, on
 shifts in `Pending`/`Filling`/**`AtRisk`**, within `[today, today+45d]`.
@@ -1477,7 +1476,6 @@ conflict: both end at a `Confirmed` seat via the same state machine.
       and the rule itself is under review in #560.)*
 - [ ] Releasing a claimed seat returns it to `Open` and records a lead-time-weighted reliability event,
       with no operator action.
-- [ ] The surface renders nothing and claims nothing when `CREW_SELF_SERVE` is off.
 
 ---
 

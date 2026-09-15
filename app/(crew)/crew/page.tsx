@@ -7,7 +7,6 @@ import { Shell } from "../../../components/ui/shell";
 import { CrewHeader } from "../../../components/crew/crew-header";
 import { VersionTag } from "../../../components/ui/version-tag";
 import { readSubject } from "../../lib/auth";
-import { selfServeEnabled } from "../../lib/flags";
 import { LOGIN_EMAIL_COOKIE } from "../../lib/login-cookie";
 import {
   SMS_CONSENT_FIELD,
@@ -65,8 +64,6 @@ export default async function CrewHome({
     const pendingEmail = (await cookies()).get(LOGIN_EMAIL_COOKIE)?.value ?? null;
     return (
       <SignedOut
-        reason={sp.auth}
-        flag={selfServeEnabled()}
         stage={sp.stage}
         err={sp.err}
         pendingEmail={pendingEmail}
@@ -132,9 +129,7 @@ export default async function CrewHome({
     // what this branch needed all along; nothing else in the flow was broken.
     return (
       <SignedOut
-        reason="stale"
         sessionEnded
-        flag={selfServeEnabled()}
         stage={sp.stage}
         err={sp.err}
         pendingEmail={(await cookies()).get(LOGIN_EMAIL_COOKIE)?.value ?? null}
@@ -148,7 +143,6 @@ export default async function CrewHome({
       bailedNote={bailedNote}
       claimedNote={claimedNote}
       answeredNote={answeredNote}
-      selfServe={selfServeEnabled()}
     />
   );
 }
@@ -209,36 +203,20 @@ function ShiftWhenWhat({ s }: { s: CrewAppView["shifts"][number] }) {
 }
 
 function SignedOut({
-  reason,
-  flag,
   stage,
   err,
   pendingEmail,
   sessionEnded,
 }: {
-  reason?: string;
-  flag: boolean;
   stage?: string;
   err?: string;
   pendingEmail: string | null;
   /** Derived here, NEVER read from the URL — see the notice below. */
   sessionEnded?: boolean;
 }) {
-  // Flag OFF (prod until 7.0b wires real email, DEC-059/080): today's behavior —
-  // the only way in is the operator-relayed link.
-  if (!flag) {
-    const message =
-      reason && reason !== "stale"
-        ? "That link didn’t work — it may have expired or already been used. Ask your operator for a fresh one."
-        : "You’re signed out. Tap the link your operator sent to get back in.";
-    return (
-      <Shell>
-        <h1 className="text-lg font-semibold text-ink">Muster</h1>
-        <Notice>{message}</Notice>
-        <VersionTag />
-      </Shell>
-    );
-  }
+  // The `!flag` branch lived here until DEC-175 — a whole second signed-out screen telling crew
+  // to tap an operator-relayed link, for a flag that was on in production and on in e2e. It was
+  // rendered by nothing and asserted by nothing.
 
   const onCodeStep = stage === "code" && !!pendingEmail;
   // `stage=code` with no cookie: the 600s TTL lapsed, or this is a bookmark or a
@@ -254,11 +232,12 @@ function SignedOut({
           call: the crew member cannot act on the reason, and the form below is the
           whole instruction.
 
-          Gated on `sessionEnded`, which only the `!view` branch sets, NOT on
-          `reason` — `reason` is `sp.auth`, so keying the notice on it would let
-          anyone render "Your session ended." at `/crew?auth=stale` on a browser
-          that has never held a session. No information either way, but a claim
-          about the visitor's own history should not be settable by the visitor. */}
+          Gated on `sessionEnded`, which only the `!view` branch sets. Do NOT re-introduce a
+          `reason` prop from `sp.auth` to drive this: that is a URL param, so keying the notice
+          on it would let anyone render "Your session ended." at `/crew?auth=stale` on a browser
+          that has never held a session. No information either way, but a claim about the
+          visitor's own history should not be settable by the visitor. The prop existed until
+          DEC-175 and was read only by the deleted flag-off screen. */}
       {sessionEnded ? <Notice>Your session ended.</Notice> : null}
       {expired ? (
         <Notice>That sign-in step expired. Enter your email to get a new code.</Notice>
@@ -433,13 +412,11 @@ function CrewApp({
   bailedNote,
   claimedNote,
   answeredNote,
-  selfServe,
 }: {
   view: CrewAppView;
   bailedNote: string | null;
   claimedNote: string | null;
   answeredNote: string | null;
-  selfServe: boolean;
 }) {
   return (
     <Shell>
@@ -463,19 +440,17 @@ function CrewApp({
           hamburger — messaging is dark (operator, 2026-08-05) and that is the question to answer
           before it comes back. */}
 
-      {/* The 4th surface (DEC-074): a calm pull entry point, flag-gated. Neutral
-          accent, never an alarm — it's an invitation, not a demand. */}
-      {selfServe && (
-        <AppLink
-          href="/crew/open"
-          prefetch={false}
-          spinner="overlay"
-          className="relative flex items-center justify-between rounded-card border border-accent bg-accent px-4 py-3 font-semibold text-white shadow-sm"
-        >
-          <span>Pick up a shift</span>
-          <span aria-hidden>›</span>
-        </AppLink>
-      )}
+      {/* The 4th surface (DEC-074): a calm pull entry point. Neutral accent, never an alarm —
+          it's an invitation, not a demand. Was flag-gated until DEC-175. */}
+      <AppLink
+        href="/crew/open"
+        prefetch={false}
+        spinner="overlay"
+        className="relative flex items-center justify-between rounded-card border border-accent bg-accent px-4 py-3 font-semibold text-white shadow-sm"
+      >
+        <span>Pick up a shift</span>
+        <span aria-hidden>›</span>
+      </AppLink>
 
       {bailedNote && <Notice>{bailedNote}</Notice>}
       {claimedNote && <Notice>{claimedNote}</Notice>}

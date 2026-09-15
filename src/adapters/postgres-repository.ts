@@ -1827,8 +1827,8 @@ export class PostgresRepository implements Repository {
     return rows[0] ? toReservation(rows[0]) : null;
   }
 
-  async recordCheckoutAttempt(attempt: Reservation, paymentIntentId: string): Promise<void> {
-    // Append the id unconditionally (additive — a superseded id stays findable, §2.8.5); re-freeze
+  async recordCheckoutAttempt(attempt: Reservation, paymentIntentId: string | null): Promise<void> {
+    // Append the id when there IS one (additive — a superseded id stays findable, §2.8.5); re-freeze
     // the customer's answers ONLY while `pending`. Never writes `status`/`event_id`, so a retry
     // whose read preceded a concurrent confirm cannot revert the just-booked row to pending.
     //
@@ -1837,7 +1837,10 @@ export class PostgresRepository implements Repository {
     // none of these may.
     await this.#pool.query(
       `update reservations
-          set payment_intent_ids = array_append(coalesce(payment_intent_ids, '{}'::text[]), $2::text),
+          set payment_intent_ids = case
+                when $2::text is null then payment_intent_ids
+                else array_append(coalesce(payment_intent_ids, '{}'::text[]), $2::text)
+              end,
               booking_invoice = case when status = 'pending'
                                      then coalesce($3::jsonb, booking_invoice) else booking_invoice end,
               updated_at = case when status = 'pending'

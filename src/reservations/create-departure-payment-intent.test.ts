@@ -732,8 +732,108 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     expect(after).toHaveLength(1); // reused, not a second row
     expect(after[0]!.id).toBe(firstId); // the SAME row
     expect(after[0]!.reservedAt).toBe(NOW); // reserved time untouched — the window keeps counting from the first submit
-    expect(after[0]!.paymentIntentIds).toEqual(["pi_fake_1", "pi_fake_2"]); // both ids recorded (§2.8.5)
+    // ONE id, not two, as of 15.8: the retry raises the intent it already minted rather than
+    // adding a second payable one. §2.8.5's many-ids rule still holds for the cases that DO mint
+    // again — an intent that is settled, cancelled, or in a state we cannot describe.
+    expect(after[0]!.paymentIntentIds).toEqual(["pi_fake_1"]);
+    expect(pay.intents).toHaveLength(1);
     expect(String(after[0]!.vesselId)).toBe("v-small"); // same boat, read off the row (15.6)
+  });
+
+  it("a repriced retry raises the SAME intent's amount and mints no second intent (15.8)", async () => {
+    // Stripe's own guidance: "If the checkout process is interrupted and resumes later, attempt to
+    // reuse the same PaymentIntent instead of creating a new one."
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering({ includedGuestCount: 4 }));
+    const pay = new FakePaymentPort();
+
+    await createDeparturePaymentIntent(repo, pay, req, now); // 4 guests
+    const again = await createDeparturePaymentIntent(repo, pay, { ...req, guestCount: 6 }, now);
+    expect(again.ok).toBe(true);
+
+    expect(pay.intents).toHaveLength(1);
+    const [row] = await pendingRows(repo);
+    expect(pay.amountUpdates).toMatchObject([
+      { paymentIntentId: "pi_fake_1", amountCents: row!.invoice!.amountDueNowCents },
+    ]);
+  });
+
+  it("the superseded intent is not left payable at the old amount (15.8)", async () => {
+    // The defect itself, named. Minting a second intent leaves the first one payable at the first
+    // quote — so a stale tab pays for four guests and the row says six. Asserting the intent COUNT
+    // alone would not catch a fix that mints one and forgets to raise it.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering({ includedGuestCount: 4 }));
+    const pay = new FakePaymentPort();
+
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    const firstAmount = pay.liveAmountCents.get("pi_fake_1")!;
+    await createDeparturePaymentIntent(repo, pay, { ...req, guestCount: 6 }, now);
+
+    const [row] = await pendingRows(repo);
+    expect(pay.liveAmountCents.get("pi_fake_1")).toBe(row!.invoice!.amountDueNowCents);
+    expect(pay.liveAmountCents.get("pi_fake_1")).not.toBe(firstAmount);
+  });
+
+  it("a retry whose intent ALREADY READS as paid is refused — the ordinary case, not the race (15.8)", async () => {
+    // `/security-review`, HIGH. The first cut put the `already_paid` refusal inside the catch
+    // around the amount update, so it only covered the seconds-wide race where the read said
+    // reusable and the update was then refused. A first read that says `settled` outright — which
+    // is how a paid intent is NORMALLY observed, since the state is read on every retry — skipped
+    // the block entirely and minted a second payable intent.
+    //
+    // The row stays `pending` until the webhook lands or `/book/success` runs, so this window is
+    // ordinary rather than exotic: a dropped 3DS return, a closed tab, a slow webhook.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    pay.intentStates.set("pi_fake_1", "settled"); // they paid; the row has not flipped yet
+
+    const again = await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(again).toEqual({ ok: false, reason: "already_paid" });
+    expect(pay.intents).toHaveLength(1);
+  });
+
+  it("a retry whose intent was PAID in another tab is refused, not handed a second charge (15.8)", async () => {
+    // `@code-review` found this. The update is refused when the intent is no longer updatable, and
+    // the commonest reason is that it just succeeded — the other tab paid. Falling through to mint
+    // then hands this tab a second payable client secret for a row that is about to be booked, so
+    // paying it is a second charge with no second booking and no refund.
+    //
+    // The window is seconds wide: once the webhook flips the row to `booked` the claim stops
+    // finding it and writes a fresh row instead. Reachable, and it is money.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    // The other tab pays. The first state read still says reusable — that is the whole race — and
+    // the refusal arrives from the update, after which a re-read shows it settled.
+    pay.updateAmountError = new Error("stripe: intent is no longer updatable");
+
+    const again = await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(again).toEqual({ ok: false, reason: "already_paid" });
+    expect(pay.intents).toHaveLength(1); // no second payable intent
+  });
+
+  it("an intent the provider cannot describe is replaced, not reused (15.8)", async () => {
+    // A state read that throws, or a status this build has never seen, both mean the same thing:
+    // do not hand it back to the customer. Reusing an intent we cannot describe is how one
+    // checkout takes money twice.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    pay.intentStateError = new Error("stripe: 503");
+    const again = await createDeparturePaymentIntent(repo, pay, req, now);
+
+    expect(again.ok).toBe(true);
+    expect(pay.intents).toHaveLength(2); // minted fresh rather than reused
+    const [row] = await pendingRows(repo);
+    expect(row!.paymentIntentIds).toEqual(["pi_fake_1", "pi_fake_2"]);
   });
 
   it("a second checkout with a DIFFERENT cookie is NOT merged onto the first — possession, not identity (criterion 10)", async () => {
@@ -807,8 +907,11 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     expect(rows).toHaveLength(1);
     expect(rows[0]!.partySize).toBe(6); // the manifest
     expect(rows[0]!.invoice!.extrasCents).toBe(10000); // and the money: two over the included 4
-    // What Stripe was asked for is the row's frozen amount now, not a metadata echo (15.6).
-    expect(pay.intents[1]!.amountCents).toBe(rows[0]!.invoice!.amountDueNowCents);
+    // What Stripe is asked for is the row's frozen amount (15.6), on the ONE intent this checkout
+    // has (15.8) — the retry raised it rather than minting a second at the old party size, which
+    // is #946's root cause rather than its symptom.
+    expect(pay.intents).toHaveLength(1);
+    expect(pay.liveAmountCents.get("pi_fake_1")).toBe(rows[0]!.invoice!.amountDueNowCents);
   });
 
   it("a retry's re-freeze does NOT re-read the offering's durations (criterion 20, DEC-161)", async () => {

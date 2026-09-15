@@ -414,7 +414,7 @@ export interface Repository {
    * mutation in the repo uses (the flip's `where status='pending'`, `markPaymentDisputed`'s
    * refunded-row guard); the append is the one part safe to run on a booked row.
    */
-  recordCheckoutAttempt(attempt: Reservation, paymentIntentId: string): Promise<void>;
+  recordCheckoutAttempt(attempt: Reservation, paymentIntentId: string | null): Promise<void>;
 
   /**
    * **Claim the right to send this customer their booking confirmation** (15.3, issue #971).

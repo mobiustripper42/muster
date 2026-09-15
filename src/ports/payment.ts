@@ -94,6 +94,17 @@ export interface CreatePaymentIntentInput {
   metadata: Record<string, string>;
 }
 
+/**
+ * A PaymentIntent's state, normalized away from the provider's vocabulary (15.8).
+ *
+ * Three members, because the caller only ever asks three questions: can I still raise this and
+ * hand it back to the customer, has it already taken the money, or do I not know.
+ *
+ * `"unknown"` covers a status this build has not been taught, a read that threw, and an intent the
+ * provider has never heard of. All three mean the same thing to a retry: do not reuse it.
+ */
+export type PaymentIntentState = "reusable" | "settled" | "unknown";
+
 /** A verified `payment_intent.succeeded` event, normalized off the provider's shape. */
 export interface PaymentSucceeded {
   paymentIntentId: string;
@@ -241,6 +252,41 @@ export interface PaymentPort {
    * than believe the address bar. A forged or unpaid id resolves to `null` and books nothing.
    */
   getSucceededPaymentIntent(paymentIntentId: string): Promise<PaymentSucceeded | null>;
+  /**
+   * What state is this PaymentIntent in, normalized (15.8)? Read before a retry decides whether to
+   * reuse the intent it already minted or start a new one.
+   *
+   * **`"unknown"` is a real member, not a fallback nobody hits.** A provider that returns a status
+   * this build has never heard of, or a read that throws, both resolve here — and the caller mints
+   * fresh rather than guessing. Reusing an intent we cannot describe is how one charge becomes
+   * two.
+   */
+  getPaymentIntentState(paymentIntentId: string): Promise<PaymentIntentState>;
+  /**
+   * Raise or lower the amount on an intent still awaiting payment (15.8).
+   *
+   * Stripe endorses the shape: *"If the checkout process is interrupted and resumes later, attempt
+   * to reuse the same PaymentIntent instead of creating a new one"*, and *"you might need to update
+   * the amount when they start the checkout process again"* (`/payments/payment-intents`).
+   *
+   * **Its documentation contradicts itself on the case that matters**, which is a card that was
+   * declined: one page permits updates while awaiting payment, another says the amount generally
+   * cannot be increased after confirmation, and a declined intent is both at once. Verified by hand
+   * in the sandbox on 2026-09-15 — a $10 intent, declined, raised to $20, accepted. The fake below
+   * encodes that answer, so nothing in the suite would notice if Stripe tightened it; issue #1021
+   * is the round-trip test that would.
+   *
+   * **Returns the client secret**, because the browser needs one to confirm and Muster does not
+   * store it — it is a bearer credential for that charge, and the provider hands it back on the
+   * update anyway. Keeping it out of our database is deliberate.
+   *
+   * **Throws** if the provider refuses — the customer may have completed the first confirm in
+   * another tab between the state read and this call, which is a race no read can close.
+   */
+  updatePaymentIntentAmount(
+    paymentIntentId: string,
+    amountCents: number,
+  ): Promise<{ clientSecret: string }>;
   /**
    * Verify the webhook signature and normalize the event (12.5, DEC-134). Returns the
    * discriminated union for a `checkout.session.completed` or `payment_intent.succeeded`

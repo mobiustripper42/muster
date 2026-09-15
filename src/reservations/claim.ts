@@ -251,6 +251,19 @@ export async function claimDepartureSlot(
   // already loaded for the occupancy math above and was read at `at`, so the row this returns is
   // the same row the hull check just reasoned about. A second round-trip would read a different
   // instant.
+  // **What this token does and does not protect against — written here because the question gets
+  // re-derived every time anyone touches declined-card or payment-window work.**
+  //
+  //   It DOES stop one browser claiming a second boat. A decline, a trip back to `/book` and a
+  //   second attempt all carry the same cookie, find this row, and reuse it.
+  //
+  //   It does NOT stop a caller who sends no cookie at all. Each cookieless request gets a fresh
+  //   token, so a script can park one live pending row per fitting hull and refresh before each
+  //   lapses, holding real inventory out of `/book` without ever paying.
+  //
+  // That gap is issue #806, open and deferred — deferred on implementation cost, not on risk: the
+  // fix needs the token to exist BEFORE the action runs, and a Next.js page cannot set a cookie
+  // during render. Delete this comment when #806 ships.
   const holderToken = req.holderToken ?? null;
   if (holderToken) {
     const mine = reservations.find(

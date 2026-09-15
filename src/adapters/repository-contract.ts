@@ -993,6 +993,25 @@ export function runRepositoryContract(
       expect(got.time).toBe("14:00");
     });
 
+    it("recordCheckoutAttempt: a NULL payment id appends nothing and still re-freezes (15.8)", async () => {
+      // A retry that reused the intent it already had minted no new id. The answers and the
+      // invoice must still re-freeze, and the id list must be untouched.
+      //
+      // **This case exists for Postgres specifically.** `array_append(arr, NULL)` appends a NULL
+      // ELEMENT rather than raising, so an unguarded version would leave `{pi_declined, NULL}` on
+      // the row — and `getReservationByPaymentIntentId` matches with `@>`, so the damage would be
+      // silent until something tried to read that element. The in-memory double cannot show that.
+      await repo.saveReservation(firstAttempt());
+      await repo.recordCheckoutAttempt(
+        pendingRow({ ...firstAttempt(), customerName: "Matt Hooper", invoice: INVOICE_2, updatedAt: NOW }),
+        null,
+      );
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.paymentIntentIds).toEqual(["pi_declined"]); // no new id, and no NULL element
+      expect(got.customerName).toBe("Matt Hooper"); // the answers still re-froze
+      expect(got.invoice).toEqual(INVOICE_2);
+    });
+
     it("recordCheckoutAttempt: a BOOKED row takes the payment id and NOTHING else (the 14.6 concurrent-confirm guard)", async () => {
       // The race this guard exists for: the retry's read lands before a concurrent confirm commits
       // and its write after. A full-row write would revert a just-booked, PAID row to `pending`

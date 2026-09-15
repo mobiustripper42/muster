@@ -790,13 +790,18 @@ export class InMemoryRepository implements Repository {
     return hit ? clone(hit) : null;
   }
 
-  async recordCheckoutAttempt(attempt: Reservation, paymentIntentId: string): Promise<void> {
+  async recordCheckoutAttempt(attempt: Reservation, paymentIntentId: string | null): Promise<void> {
     const row = this.#reservations.get(attempt.id);
     if (!row) return;
     // Append is always safe (additive); status/eventId are NEVER touched, so a concurrent confirm
     // that already flipped this row to booked is not reverted. The customer's answers re-freeze
     // only while still pending.
-    const paymentIntentIds = [...(row.paymentIntentIds ?? []), paymentIntentId];
+    // `null` = this attempt reused the intent it already had and minted nothing (15.8). The
+    // answers and the invoice still re-freeze; there is simply no new id to append.
+    const paymentIntentIds =
+      paymentIntentId === null
+        ? (row.paymentIntentIds ?? [])
+        : [...(row.paymentIntentIds ?? []), paymentIntentId];
     if (row.status !== "pending") {
       this.#reservations.set(attempt.id, clone({ ...row, paymentIntentIds }));
       return;

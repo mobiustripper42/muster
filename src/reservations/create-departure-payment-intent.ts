@@ -78,7 +78,11 @@ export type DeparturePaymentIntentStart =
         | "departed"
         | "sold_out"
         | "waiver_required"
-        | "gratuity_required";
+        | "gratuity_required"
+        /** The intent this checkout already minted has been PAID, in another tab, moments ago
+         *  (15.8). Not a failure — the customer is booked or about to be, and the one thing that
+         *  must not happen is handing them a second payable charge. */
+        | "already_paid";
     };
 
 export async function createDeparturePaymentIntent(
@@ -209,6 +213,14 @@ export async function createDeparturePaymentIntent(
       // re-reading it would silently re-date the agreement to a document they never saw.
       waiverConsentAt,
       waiverVersion: prior?.waiverVersion ?? waiverVersion,
+      // **Carried forward, and 15.8 depends on it.** The reuse path reads the last id this row
+      // minted to decide whether to raise that intent or start another; without this the returned
+      // row has none and every retry mints, which is the behaviour 15.8 exists to remove. Note the
+      // reason is the OPPOSITE of the durations above: those are frozen so a later read cannot
+      // change them, this is carried so a later read can see them.
+      ...(prior?.paymentIntentIds !== undefined
+        ? { paymentIntentIds: prior.paymentIntentIds }
+        : {}),
       updatedAt: at,
     };
   };
@@ -244,6 +256,71 @@ export async function createDeparturePaymentIntent(
   // `config` — the comment claimed the freeze and the code did not have it, and an operator
   // moving `depositPercent` mid-checkout moved the charge away from the row that described it.
   const amountCents = invoice.amountDueNowCents;
+
+  // ── Reuse this checkout's own intent, or mint a fresh one (15.8) ─────────────
+  //
+  // Stripe: *"If the checkout process is interrupted and resumes later, attempt to reuse the same
+  // PaymentIntent instead of creating a new one"*, and *"you might need to update the amount when
+  // they start the checkout process again"*.
+  //
+  // **Why this is a correctness fix and not tidiness.** Minting per attempt left every superseded
+  // intent payable at the amount it was minted with. The row re-prices on each attempt, so a stale
+  // tab could pay the four-guest quote against a six-guest booking, and after 15.6 the booking
+  // records the row's numbers — so the crew tip on that booking is one the customer never paid.
+  //
+  // The reused id is the LAST one this row minted. Earlier ids stay on the row (§2.8.5) so a
+  // superseded success is still findable; they are simply never offered to the customer again.
+  const priorIntentId = pending.paymentIntentIds?.at(-1);
+  // Caught here even though the port says this resolves `"unknown"` rather than throwing, and the
+  // live adapter honours that. A docstring is not a guarantee — an adapter that throws would
+  // otherwise take down a checkout that could simply have minted a new intent, and "the comment
+  // said it could not happen" is how three defects got past review this week.
+  const priorState = priorIntentId
+    ? await payments.getPaymentIntentState(priorIntentId).catch(() => "unknown" as const)
+    : ("unknown" as const);
+
+  // **When this mints anyway, the prior intent is left behind, payable, at its old amount.**
+  // That happens on a state we cannot read and on a state we can read but cannot reuse. It is a
+  // narrower instance of the defect this task removes, and closing it means cancelling the old
+  // intent — which is task 15.10, named for exactly this residue. Stated here rather than left for
+  // someone to rediscover: `@code-review` found it, and the honest answer was that 15.8 shrinks
+  // the window and 15.10 closes it.
+  // **Already paid: refuse, never mint.** The row stays `pending` until the webhook lands or
+  // `/book/success` runs, so there is an ordinary window — a dropped 3DS return, a closed tab, a
+  // slow webhook — in which a paid intent is read back on a retry. Minting there gives the
+  // customer a second payable secret for a booking they already bought, and nothing downstream
+  // refunds it: the second confirm resolves `already`, writes a second Payment, and alerts nobody.
+  //
+  // `/security-review` found this as a HIGH, because my first cut put this refusal inside the
+  // catch below — covering the seconds-wide race and not the ordinary case. The state is read on
+  // every retry, so the direct read is how a paid intent is normally seen.
+  if (priorIntentId && priorState === "settled") return { ok: false, reason: "already_paid" };
+
+  if (priorIntentId && priorState === "reusable") {
+    let raised: { clientSecret: string } | undefined;
+    // **The try wraps the provider call and nothing else.** With `recordCheckoutAttempt` inside it,
+    // a database blip was diagnosed as a refused update and could tell a customer their booking was
+    // already paid when nothing had been (`/security-review`, in passing). A repository failure is
+    // ours and belongs to the caller as a failure, not as a reassurance.
+    try {
+      raised = await payments.updatePaymentIntentAmount(priorIntentId, amountCents);
+    } catch {
+      // Refused. Ask why before minting: the dominant reason is that it just succeeded, in the
+      // other tab, between the read above and this call.
+      const nowSettled = await payments
+        .getPaymentIntentState(priorIntentId)
+        .catch(() => "unknown" as const);
+      if (nowSettled === "settled") return { ok: false, reason: "already_paid" };
+      // Genuinely dead or unreadable: fall through and mint, accepting that the old intent is left
+      // behind. Retiring it is 15.10, which exists for exactly this residue.
+    }
+    if (raised) {
+      // Nothing new to append — this attempt minted no id. The invoice and the customer's answers
+      // still re-freeze, which is what `null` means here.
+      await repo.recordCheckoutAttempt(pending, null);
+      return { ok: true, clientSecret: raised.clientSecret, paymentIntentId: priorIntentId };
+    }
+  }
 
   const intent = await payments.createPaymentIntent({
     amountCents,

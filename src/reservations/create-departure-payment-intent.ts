@@ -78,7 +78,11 @@ export type DeparturePaymentIntentStart =
         | "departed"
         | "sold_out"
         | "waiver_required"
-        | "gratuity_required";
+        | "gratuity_required"
+        /** The intent this checkout already minted has been PAID, in another tab, moments ago
+         *  (15.8). Not a failure — the customer is booked or about to be, and the one thing that
+         *  must not happen is handing them a second payable charge. */
+        | "already_paid";
     };
 
 export async function createDeparturePaymentIntent(
@@ -275,6 +279,12 @@ export async function createDeparturePaymentIntent(
     ? await payments.getPaymentIntentState(priorIntentId).catch(() => "unknown" as const)
     : ("unknown" as const);
 
+  // **When this mints anyway, the prior intent is left behind, payable, at its old amount.**
+  // That happens on a state we cannot read and on a state we can read but cannot reuse. It is a
+  // narrower instance of the defect this task removes, and closing it means cancelling the old
+  // intent — which is task 15.10, named for exactly this residue. Stated here rather than left for
+  // someone to rediscover: `@code-review` found it, and the honest answer was that 15.8 shrinks
+  // the window and 15.10 closes it.
   if (priorIntentId && priorState === "reusable") {
     try {
       const raised = await payments.updatePaymentIntentAmount(priorIntentId, amountCents);
@@ -283,9 +293,21 @@ export async function createDeparturePaymentIntent(
       await repo.recordCheckoutAttempt(pending, null);
       return { ok: true, clientSecret: raised.clientSecret, paymentIntentId: priorIntentId };
     } catch {
-      // The customer completed the first confirm in another tab between the state read above and
-      // this update, and Stripe refused it. Not an error to surface — fall through and mint a
-      // fresh intent, which is what this path did unconditionally before 15.8.
+      // The update was refused. **Ask why before minting** — the commonest reason is that the
+      // intent just succeeded, because the customer's other tab paid between the state read above
+      // and this call. Minting there hands this tab a second payable secret for a row that is
+      // about to be booked, so paying it is a second charge with no second booking and no refund
+      // (`@code-review`). The first cut fell through unconditionally and its comment defended that
+      // by saying it was what the path did before 15.8 — which is the behaviour 15.8 removes.
+      //
+      // The window is seconds wide: once the webhook flips the row, the claim stops finding it and
+      // writes a fresh row instead. Reachable, and it is money.
+      const nowSettled = await payments
+        .getPaymentIntentState(priorIntentId)
+        .catch(() => "unknown" as const);
+      if (nowSettled === "settled") return { ok: false, reason: "already_paid" };
+      // Genuinely dead or unreadable: mint, and accept that the old intent is left behind. Retiring
+      // it is 15.10, which exists for exactly this residue.
     }
   }
 

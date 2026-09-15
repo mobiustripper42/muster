@@ -50,6 +50,11 @@ const REASON_MESSAGES: Record<string, string> = {
   departed: "That departure has already left. Head back and pick a later time.",
   sold_out:
     "That departure was just taken while you were checking out. You have not been charged — pick another time.",
+  // 15.8. Not an error from the customer's side: their other tab already paid, seconds ago. The
+  // one thing that must not happen is handing them a second charge, so this refuses and points at
+  // the confirmation rather than retrying.
+  already_paid:
+    "This booking has already been paid — check your texts and email for the confirmation. You have not been charged twice.",
   waiver_required: "Please agree to the liability waiver to continue.",
   gratuity_required: "Please pick a crew tip to continue.",
 };

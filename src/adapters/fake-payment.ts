@@ -103,7 +103,15 @@ export class FakePaymentPort implements PaymentPort {
     paymentIntentId: string,
     amountCents: number,
   ): Promise<{ clientSecret: string }> {
-    if (this.updateAmountError) throw this.updateAmountError;
+    if (this.updateAmountError) {
+      // **Refused, and the state moves with it.** Stripe rejects an update because the intent is no
+      // longer updatable, and the dominant reason for that is that it just succeeded. Leaving the
+      // state at `reusable` would model a refusal that cannot happen, and would let a test "pass"
+      // without ever reaching the caller's re-read. A test that wants a refusal on an intent that
+      // is genuinely dead can set `intentStates` itself afterwards.
+      this.intentStates.set(paymentIntentId, "settled");
+      throw this.updateAmountError;
+    }
     this.amountUpdates.push({ paymentIntentId, amountCents });
     this.liveAmountCents.set(paymentIntentId, amountCents);
     return { clientSecret: `${paymentIntentId}_secret_test` };

@@ -775,6 +775,28 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     expect(pay.liveAmountCents.get("pi_fake_1")).not.toBe(firstAmount);
   });
 
+  it("a retry whose intent was PAID in another tab is refused, not handed a second charge (15.8)", async () => {
+    // `@code-review` found this. The update is refused when the intent is no longer updatable, and
+    // the commonest reason is that it just succeeded — the other tab paid. Falling through to mint
+    // then hands this tab a second payable client secret for a row that is about to be booked, so
+    // paying it is a second charge with no second booking and no refund.
+    //
+    // The window is seconds wide: once the webhook flips the row to `booked` the claim stops
+    // finding it and writes a fresh row instead. Reachable, and it is money.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    // The other tab pays. The first state read still says reusable — that is the whole race — and
+    // the refusal arrives from the update, after which a re-read shows it settled.
+    pay.updateAmountError = new Error("stripe: intent is no longer updatable");
+
+    const again = await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(again).toEqual({ ok: false, reason: "already_paid" });
+    expect(pay.intents).toHaveLength(1); // no second payable intent
+  });
+
   it("an intent the provider cannot describe is replaced, not reused (15.8)", async () => {
     // A state read that throws, or a status this build has never seen, both mean the same thing:
     // do not hand it back to the customer. Reusing an intent we cannot describe is how one

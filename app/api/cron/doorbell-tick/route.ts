@@ -60,6 +60,21 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, paused: true, at: now.toISOString() });
   }
 
-  const r = await runDoorbellTick(now);
-  return NextResponse.json({ ok: true, at: now.toISOString(), ...r });
+  // Named, not bare (@code-review on #1007). The sibling tick route has done this since #892 and
+  // this one never did: an unlabelled throw here is indistinguishable in the logs from `getRepo()`
+  // above or a rejected `CRON_SECRET`, and those are different operator responses. The rethrow
+  // stays — a doorbell run that failed has to READ as failed, and Vercel's cron monitoring keys on
+  // the status, not on the body.
+  //
+  // #1007 gave this a new way to arrive: `appBaseUrl()` throws on a prod deploy with `APP_BASE_URL`
+  // unset, which is the same condition the hand-spelled check inside `runDoorbellTick` used to
+  // throw on. The 500 is not new; the review found that the claim "every caller is wrapped" was
+  // false for this one, so it is wrapped now rather than the claim being softened.
+  try {
+    const r = await runDoorbellTick(now);
+    return NextResponse.json({ ok: true, at: now.toISOString(), ...r });
+  } catch (e) {
+    console.error("doorbell-tick: runDoorbellTick failed — rings may have fired and gone unrelayed", e);
+    throw e;
+  }
 }

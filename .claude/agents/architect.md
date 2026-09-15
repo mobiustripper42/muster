@@ -93,7 +93,7 @@ number from this file as current.
 | Pull-window and staffing-horizon values | env config / `.claude/CLAUDE-context.md` |
 | Vessel count and per-vessel manning | tenant data, not code |
 | The crew surface list | `ls app/(crew)/crew/` |
-| Which crew surfaces are live | the feature flags — `selfServeEnabled()`, `messagingEnabled()` |
+| Which crew surfaces are live | the feature flags — `messagingEnabled()`, `reservationsEnabled()` |
 | DEC numbers ≥134 | `docs/DECISIONS.md` on the current branch |
 
 **On crew surface area.** The crew app is deliberately small but it is **not** three screens — as of

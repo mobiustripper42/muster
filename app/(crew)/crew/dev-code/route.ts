@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { peekLastLoginCode } from "../../../lib/auth-delivery";
-import { isProdDeploy, selfServeEnabled } from "../../../lib/flags";
+import { isProdDeploy } from "../../../lib/flags";
 
 /**
  * DEV-ONLY login-code echo (DEC-081). The code-login store keeps only the code's
@@ -15,8 +15,8 @@ import { isProdDeploy, selfServeEnabled } from "../../../lib/flags";
  */
 export async function GET(req: NextRequest) {
   // Same gate the echo populate uses (auth-delivery.ts): live on preview + local,
-  // 404 on any prod deploy, and only when self-serve is on.
-  if (isProdDeploy() || !selfServeEnabled()) {
+  // 404 on any prod deploy. The `CREW_SELF_SERVE` half went with DEC-175.
+  if (isProdDeploy()) {
     return new NextResponse("Not found", { status: 404 });
   }
   const email = req.nextUrl.searchParams.get("email");

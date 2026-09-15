@@ -58,13 +58,15 @@ describe("actionMessage — resent", () => {
 
 describe("actionMessage — resendErr", () => {
   /**
-   * These three mean NOTHING was attempted — a property of the deployment, not of the booking.
+   * These two mean NOTHING was attempted — a property of the deployment, not of the booking.
    * A retry changes nothing until the deployment does, so the copy must not read like a
    * transient blip inviting a second press.
+   *
+   * `not_configured` was a third until #1007 removed the guard that produced it. Dropped here
+   * rather than left asserting copy for an outcome `resendReservationLink` can no longer return.
    */
   it.each([
     ["messaging_off", /switched off/i],
-    ["not_configured", /APP_BASE_URL/],
     ["no_channels", /No email or SMS channel is configured/i],
   ])("explains %s as a deployment fact", (code, pattern) => {
     const m = actionMessage("resendErr", code);

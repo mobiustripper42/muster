@@ -7,10 +7,9 @@ import {
   type ResendResult,
 } from "@core/reservations/resend-booking-link.js";
 import { readEmailEnv } from "./auth-delivery";
-import { isProdDeploy } from "./flags";
 import { getRepo } from "./repo";
 import { makeSmsChannel } from "./sms";
-import { stripTrailingSlashes } from "@core/config/base-url.js";
+import { appBaseUrl } from "./base-url";
 
 /**
  * Booking-confirmation wiring (11.4, DEC-122) — the edge that builds the email +
@@ -48,13 +47,13 @@ export async function sendReservationConfirmation(
     // "false" silences every send; anything else (incl. unset) leaves sends on.
     if (process.env.MESSAGING === "false") return false;
 
-    const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL);
-    if (!linkBase) {
-      if (isProdDeploy()) {
-        console.error("[reservations] confirmation skipped — set APP_BASE_URL");
-      }
-      return false;
-    }
+    // #1007: was a skip-and-log when `APP_BASE_URL` was unset, which meant a PREVIEW could never
+    // send a booking confirmation — the variable is scoped to Production on purpose (DEC-057), so
+    // unset is a preview's normal state and this branch fired every time. Smoke-testing a booking
+    // on a preview is exactly what previews and `crew/dev-link` are for. `appBaseUrl` hands the
+    // preview its own origin and still throws on a prod deploy that is genuinely misconfigured,
+    // which the surrounding `try` turns into the same `false` this used to return.
+    const linkBase = appBaseUrl();
 
     const repo = getRepo();
     const emailEnv = readEmailEnv();
@@ -127,7 +126,7 @@ export async function sendReservationConfirmation(
  */
 export type ResendOutcome =
   | { kind: "attempted"; result: ResendResult }
-  | { kind: "skipped"; reason: "messaging_off" | "not_configured" | "no_channels" };
+  | { kind: "skipped"; reason: "messaging_off" | "no_channels" };
 
 /**
  * Resend the manage link from an operator press (#686) — the same channel wiring as the
@@ -141,9 +140,12 @@ export type ResendOutcome =
 export async function resendReservationLink(reservation: Reservation): Promise<ResendOutcome> {
   if (process.env.MESSAGING === "false") return { kind: "skipped", reason: "messaging_off" };
 
-  const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL);
-  // Same rule as the confirmation: the link rides the trusted APP_BASE_URL, never a Host header.
-  if (!linkBase) return { kind: "skipped", reason: "not_configured" };
+  // #1007: same rule as the confirmation, and now literally the same function. The link rides the
+  // trusted origin, never a Host header. The `not_configured` skip is gone with the guard that
+  // produced it — on a preview the operator can now resend and watch it arrive, and on a
+  // misconfigured prod deploy `appBaseUrl` throws rather than reporting a tidy skip for what is
+  // actually a broken deploy.
+  const linkBase = appBaseUrl();
 
   const repo = getRepo();
   const emailEnv = readEmailEnv();

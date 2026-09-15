@@ -10,7 +10,7 @@ import { getPresence, getRepo } from "./repo";
 import { OPERATOR_CREW_MEMBER_ID } from "./operator";
 import { makeSmsChannel } from "./sms";
 import { messagingEnabled } from "./flags";
-import { stripTrailingSlashes } from "@core/config/base-url.js";
+import { appBaseUrl } from "./base-url";
 
 /**
  * Run one doorbell sweep + relay the rings — the edge wiring (DEC-070), the
@@ -41,14 +41,17 @@ export async function runDoorbellTick(now: Date): Promise<{
   // (DEC-030) so they'd otherwise be a member of all-staff + their shifts, and
   // every broadcast they send would ring them. They monitor via /admin/messages.
   const r = await doorbellTick(repo, getPresence(), now, rules, OPERATOR_CREW_MEMBER_ID);
-  // Delivered links MUST be host-safe — APP_BASE_URL in prod (base-url.ts on
-  // host-header poisoning); the cron has no trustworthy request Host. Fail LOUD in
-  // prod when unset: otherwise every relayed ring is a dead localhost link the
-  // operator texts to crew with no error signal. Dev falls back to localhost.
-  if (!process.env.APP_BASE_URL && process.env.NODE_ENV === "production") {
-    throw new Error("APP_BASE_URL must be set in production — ring links would dead-link to localhost");
-  }
-  const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL ?? "http://localhost:3000");
+  // Delivered links MUST be host-safe — the cron has no trustworthy request Host, so the link
+  // rides the configured origin (base-url.ts on host-header poisoning). Fail loud in prod when
+  // unset: otherwise every relayed ring is a dead localhost link the operator texts to crew with
+  // no error signal.
+  //
+  // #1007: that reasoning is intact; the predicate was not. This hand-spelled
+  // `NODE_ENV === "production"`, which Vercel also sets on PREVIEWS, so a preview's doorbell
+  // threw rather than ringing — and `alert.ts` and `channel.ts` carried the same line, each
+  // citing the others as precedent. `appBaseUrl` keys on `isProdDeploy()` and gives a preview
+  // its own origin, which is what DEC-057 wanted all along.
+  const linkBase = appBaseUrl();
   // Twilio configured (9.4, DEC-MSG-1) ⇒ rings go out as real SMS; unset ⇒ the console
   // (#934/#955). The clock is passed through so a logged ring carries the tick's `now`.
   const { channel } = makeSmsChannel(repo, linkBase, () => now);

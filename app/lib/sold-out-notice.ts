@@ -4,7 +4,7 @@ import { sendSoldOutNotice } from "@core/reservations/sold-out-notice.js";
 import { readEmailEnv } from "./auth-delivery";
 import { getRepo } from "./repo";
 import { makeSmsChannel } from "./sms";
-import { stripTrailingSlashes } from "@core/config/base-url.js";
+import { appBaseUrl } from "./base-url";
 
 /**
  * Sold-out-notice wiring (12.1b, DEC-109 residual race) — the edge that builds the email +
@@ -19,23 +19,25 @@ export async function sendReservationSoldOutNotice(
   try {
     if (process.env.MESSAGING === "false") return;
 
-    const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL);
+    const linkBase = appBaseUrl();
     const repo = getRepo();
     const emailEnv = readEmailEnv();
     const email = emailEnv ? new EmailChannel(emailEnv) : undefined;
-    // The channel needs a base for its deep links; the sold-out notice has none, but the SMS body
-    // carries no link, so an unset base only disables SMS (email still fires). That guard stays —
-    // making an unset `APP_BASE_URL` fatal is issue #1007, deliberately not folded in here.
+    // #1007, the issue the old comment here deferred to. The guard it describes is gone: an unset
+    // base no longer silently disables SMS on this path, which mattered most on a preview, where
+    // unset is the designed state (DEC-057) and a customer whose payment lost the race would have
+    // got email only — while the whole point of §2.8.7 is that this notice accompanies a refund
+    // and must reach the person.
     //
     // #955: Twilio-dark used to mean no SMS and, when email was also unconfigured, a prod-only
     // console line. §2.8.7 is why that was the wrong shape — this notice accompanies an automatic
     // refund, and "a refund nobody was told about reads as a silent failed payment." It now always
     // has somewhere to write.
-    const sms = linkBase ? makeSmsChannel(repo, linkBase).channel : undefined;
-    if (!email && !sms) {
-      console.error("[reservations] sold-out notice skipped — no APP_BASE_URL and no email channel");
-      return;
-    }
+    // #1007: `linkBase` is a `string` now, never `undefined`, so the conditional that produced a
+    // channel-less notice is gone. With #955 already guaranteeing `makeSmsChannel` never returns
+    // null, `sms` is always present — so the `!email && !sms` early return below could never fire
+    // and has been deleted rather than left as reassuring dead code.
+    const sms = makeSmsChannel(repo, linkBase).channel;
 
     // The contact is already resolved off the reservation row by the webhook (15.5) — this edge
     // does not reach for it, and there is no longer any metadata here to reach into.

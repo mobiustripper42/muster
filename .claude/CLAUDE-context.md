@@ -96,6 +96,8 @@ Muster is Next.js over a framework-free domain core.
 | **Proof command** | The relevant Vitest file or suite, not the whole thing. The full suite is my call, never automatic. |
 | **Surface check** | **Every page works at 375px.** Playwright's `mobile` project already runs that pass over ~30 named specs and feeds failure screenshots to `@ui-reviewer` — read `testMatch` in `playwright.config.ts` for the current set, and add to it when a surface with real mobile layout risk lands. A surface outside that set is eyeballed at `mill-dev:3000` per `docs/RUNNING.md`. Looking is still a separate step from the proof: the automated pass catches overflow and clipping, never whether a control is reachable or a surface can be escaped. |
 
+**Vercel previews are not a test surface.** Preview builds are cancelled at the dashboard (Settings → Build and Deployment → Ignored Build Step, keyed on `VERCEL_GIT_COMMIT_REF`), and there is no preview database — the Neon project was deleted 2026-09-15. A preview that serves pages cannot reach Postgres, so "open the preview and check" verifies nothing; a hand-test step that says so has been written twice and was wrong both times. The preview code path is selected by two environment variables and runs locally: `VERCEL_ENV=preview VERCEL_URL=<host> npm run dev`. DEC-057 still describes previews as running against an isolated Neon branch, which is now false and needs a superseding record rather than an edit.
+
 **The gate** is `npm run verify`, run by `/kill-this`.
 
 ## PR Workflow Overrides

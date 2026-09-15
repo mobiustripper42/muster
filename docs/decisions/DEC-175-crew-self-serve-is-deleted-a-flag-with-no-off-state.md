@@ -15,8 +15,11 @@ claims:
     note: "the flag-off signed-out screen deleted with it"
   - kind: "file"
     target: "env.example"
-    note: "EMAIL_FROM + RESEND_API_KEY are what decide sign-in now"
+    note: "EMAIL_FROM + RESEND_API_KEY decide sign-in now"
 revisit_if: "A crew surface needs shipping dark again — then it gets its own flag, with an off-state something exercises"
+amends_spec:
+  - section: "2.7"
+    scope: "the surface is no longer dark by default, and no longer coupled to the login door by one env var"
 ---
 
 ## DEC-175: CREW_SELF_SERVE is deleted — a flag with no off-state
@@ -33,6 +36,5 @@ Two comments had inverted too. `flags.ts` still called it "OFF by default" and `
 said "404 in prod until the flag flips" — a comment stating the opposite of the code is worse than
 none.
 
-**What now decides whether anyone can sign in is `EMAIL_FROM` and `RESEND_API_KEY`**, not a flag.
-Unset on a production deploy, nobody gets in at all — crew or admin, since DEC-174 made the code
-the only door. `env.example` says so where the flag used to be.
+**`EMAIL_FROM` and `RESEND_API_KEY` decide sign-in now**, not a flag. Unset on a prod deploy
+nobody gets in at all, crew or admin, since DEC-174 made the code the only door.

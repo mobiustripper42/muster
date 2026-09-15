@@ -54,7 +54,7 @@ function crewLanding(thread: string | null): string {
   return `/crew/threads/${encodeURIComponent(thread)}`;
 }
 
-/** The tap-to-sign-in interstitial — same visual family as the dev-link page. The
+/** The tap-to-sign-in interstitial — the one page a delivered link lands on. The
  *  `thread` hint rides as a hidden field so it survives the GET→POST (the query
  *  string doesn't reach the form submit). */
 function signInPage(secret: string, thread: string | null): NextResponse {

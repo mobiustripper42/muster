@@ -52,7 +52,7 @@
  * written by the tick, which is the point.
  *
  * Run: npm run db:seed:completion   (DB up + migrated first), then npm run db:tick.
- * Crew link: /crew/dev-link?crew=crew-cmp-wanda
+ * Crew link: sign in at /crew with a code as crew-cmp-wanda
  */
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { asId } from "../src/domain/ids.js";
@@ -290,7 +290,7 @@ try {
   console.log("Check:");
   console.log("  +5 fan-out    /admin/audit  → two 'Completed' rows (Wanda AND Otto) for Tidewater");
   console.log("  visibility    /admin/shifts → Barrel present, badge reads Completed (NOT Crewed)");
-  console.log("  self-claim    /crew/dev-link?crew=crew-cmp-wanda → /crew/open → claim Growler");
+  console.log("  self-claim    sign in at /crew with a code as crew-cmp-wanda → /crew/open → claim Growler");
   console.log("                then /admin/audit → a 'Claimed' row, actor 'self'");
   console.log("  bail refused  /crew (as Wanda) → Barrel in My shifts → 'can't make it' → refused");
   console.log("  calendar      /crew/calendar → Barrel still listed");

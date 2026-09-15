@@ -22,7 +22,7 @@ page reads the cookie via `readSubject()` and branches on `kind`.
   table on every admin request and fails a row that is missing or `active=false`, so
   **deprovisioning one admin takes effect on their next request** — no
   `SESSION_SECRET` rotation, no logging everyone out. The short `handle` (`eric`) is
-  a separate column: the key for `db:mint` / `db:admin`, never the session id.
+  a separate column: the key for `db:admin`, never the session id.
 
 That admin lookup is the **one stateful check** in the whole path — crew sessions do
 no database read at all (`app/lib/auth.ts:88-96`).
@@ -39,8 +39,7 @@ Three mint a session from nothing. The fourth converts one you already have.
 | Door | Kinds it can mint | How | Notes |
 |------|-------------------|-----|-------|
 | **Code-login** | **crew only** | `/crew` → enter email → 6-digit code | The prod front door. Flag-gated by `CREW_SELF_SERVE`. Validated against the roster, no-enumeration. (DEC-081) |
-| **Magic link** | **crew or admin** | `npm run db:mint -- --admin=<handle>` / `--crew=<id>` prints a URL → opened, consumed at `/crew/auth` | Single-use, hashed token. **The only way to mint an admin session directly** — there is no admin sign-in form yet. (DEC-010/020) |
-| **Dev-link** | crew or admin | `/crew/dev-link?admin=<handle>` or `?crew=<id>` | Dev-only shortcut — **404 in prod** (`isProdDeploy`). Same effect, no minting. The smoke-test backdoor. |
+| **Magic link** | **crew or admin** | Minted by the DEC-030 relay, or by the e2e fixtures against the test DB; consumed at `/crew/auth` | Single-use, hashed token. No longer mintable by hand: `db:mint` and `/crew/dev-link` are both deleted. |
 | **Switcher** | **crew → admin, admin → crew** | A form on `/crew` (`switchToAdmin`) and the admin surfaces (`switchToCrew`) — re-mints the other-kind session for the **same id**, no re-auth | **The escalation seam** (DEC-093). `switchToAdmin` is gated on the same `getAdmin(active)` check `readSubject` enforces, so a non-admin or revoked admin is bounced to `/crew` with no session change. `app/lib/switch-actions.ts` |
 
 After any of the three minting doors, the landing redirect is `kind`-based: **admin →
@@ -50,12 +49,14 @@ cookie.
 
 ### "How do I sign in as…" (local / `mill-dev`)
 
-- **A crew member:** `mill-dev:3000/crew/dev-link?crew=crew-quint` → tap the button.
-  (Or the real flow: `/crew`, enter the crew member's email, paste the code — the
-  code is echoed at `/crew/dev-code` in dev.)
-- **The operator:** `mill-dev:3000/crew/dev-link?admin=eric` → tap the button →
-  lands on `/admin/at-risk`. (Or mint a link: `npm run db:mint -- --admin=eric`,
-  open the printed URL.)
+- **A crew member:** `mill-dev:3000/crew` → enter their email → paste the 6-digit
+  code. In dev the code is echoed at `/crew/dev-code?email=<email>`.
+- **The operator:** the same, signed in as a crew member who holds an active
+  `admins` row, then **Switch to admin** in the drawer → lands on `/admin`.
+
+There is one door now. The dev-link route and the mint CLI both existed to hand out
+a session out of band, and both were deleted (DEC-174) — the code flow plus the
+switcher reaches every subject either of them could.
 
 The code-login front door mints a **crew** session — it never hands you an admin
 session directly. But if your crew id is an active admin, the **switcher** takes you
@@ -108,7 +109,7 @@ if (!subject || subject.kind !== "crew") redirect("/crew"); // or notFound(), or
 - `selfServeEnabled()` → `CREW_SELF_SERVE === "1"`. Gates the crew code-login front
   door. OFF by default so `main` stays promotable.
 - `isProdDeploy()` → true on a real prod deploy. The dev-only affordances
-  (`/crew/dev-link`, the `/crew/dev-code` echo, login-code logging) all 404/inert
+  (the `/crew/dev-code` echo, login-code logging) all 404/inert
   when it's true.
 
 ## Today vs. future

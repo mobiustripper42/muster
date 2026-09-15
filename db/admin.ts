@@ -9,11 +9,11 @@
  *   npm run db:admin -- revoke <handle>
  *   npm run db:admin -- reactivate <handle>
  *
- * Connects via DATABASE_URL — same as db:migrate/db:mint — falling back to local
+ * Connects via DATABASE_URL — same as db:migrate/db:crew — falling back to local
  * muster_dev. For PROD, point it at the Neon **direct/unpooled** string:
  *   DATABASE_URL="<neon-direct>" npm run db:admin -- add --email=… --handle=…
  * (or reuse a `mint-prod`-style alias — see docs/DEPLOY.md). `.env.local` is
- * auto-sourced like db:mint, but an inline DATABASE_URL always wins.
+ * auto-sourced like db:crew, but an inline DATABASE_URL always wins.
  *
  * Reads the real clock (the core stays clock-free — `now` injected).
  */
@@ -22,7 +22,7 @@ import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { AdminCliError, runAdminCommand } from "../src/admin/admin-cli.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
-// Auto-source .env.local (parity with db:mint), but let an inline DATABASE_URL win.
+// Auto-source .env.local (parity with db:crew), but let an inline DATABASE_URL win.
 if (existsSync(".env.local")) {
   const inlineDb = process.env.DATABASE_URL;
   process.loadEnvFile(".env.local");

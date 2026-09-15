@@ -52,7 +52,7 @@ const plexMono = localFont({
  * the right, so anything after "Muster" is the first thing to disappear — exactly when you have
  * enough tabs open to need it.
  *
- * Same `NODE_ENV` / `VERCEL_ENV` pair the line and the DEC-057 dev-link gate key off, so all
+ * Same `NODE_ENV` / `VERCEL_ENV` pair the line and `isProdDeploy()` key off, so all
  * three agree by construction rather than by remembering to change them together.
  */
 const TITLE =
@@ -94,7 +94,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         {/* Environment tell (server-rendered, no client JS): a 4px line pinned to
             the top edge — red on local dev, yellow on a Vercel preview, nothing in
-            production. Keys off the same VERCEL_ENV the dev-link gate uses (DEC-057).
+            production. Keys off the same VERCEL_ENV `isProdDeploy()` uses (DEC-057).
             The two conditions are mutually exclusive: Vercel sets NODE_ENV=production
             on both preview and prod builds, so `development` only matches local. */}
         {process.env.NODE_ENV === "development" && (

@@ -75,18 +75,16 @@ redirects are host-relative), so all three — `mill-dev`, a port-forward, `loca
 work without config.
 
 ## Seeing the crew app (it needs a magic link)
-The crew surfaces require a session, so you can't visit `/crew` cold — you enter through a magic link.
-In dev there's a link issuer:
+The crew surfaces require a session, so you can't visit `/crew` cold — you sign in with a code:
 
-1. Open **http://mill-dev:3000/crew/dev-link?crew=crew-quint** → a **"Tap to sign in →"** page.
-2. Tap the button → the magic-link landing (`/crew/auth`) shows a second **"Tap to sign in →"**
-   confirm page. That extra tap is the prefetch guard (DEC-030): a GET only *peeks* at the token
-   (link-preview bots in iMessage/SMS GET every URL); the **POST** behind the button is what
-   consumes it, sets the `muster_session` cookie, and redirects to **`/crew`**.
-3. You should see Quint's **ask** (Yes/No), **My shifts**, the standing chip, and the amber
+1. Open **http://mill-dev:3000/crew**, enter **quint@bb.test**, submit.
+2. The code never reaches an inbox in dev (the seeded addresses are undeliverable). Read it back
+   from **http://mill-dev:3000/crew/dev-code?email=quint@bb.test** — a plain-text 6-digit code.
+3. Paste it → you land on **`/crew`** with the `muster_session` cookie set.
+4. You should see Quint's **ask** (Yes/No), **My shifts**, the standing chip, and the amber
    **credential line** (#57): "Your MMC expires &lt;~30d out&gt; — renew it to keep getting asked for shifts."
 
-`/crew/dev-link` is **dev-only** (404 in production). What to try:
+`/crew/dev-code` is **dev-only** (404 on any production deploy). What to try:
 - Tap **In** / **Out** on the ask → it resolves (In claims the seat → moves to My shifts; Out reopens).
 - **Bail (#56):** open the My-shifts row → at the card's bottom, expand **"I can’t make it…"** →
   tap **Drop this seat** → you land back on `/crew` with the calm "You’re off the … shift"
@@ -113,9 +111,9 @@ In dev there's a link issuer:
 > **Note:** the crew seed's shifts anchor to *now* (~2 weeks out, #101), like the `atrisk`
 > seeds — they never rot on a future clock. Re-run `npm run db:seed:crew` to re-anchor + reset state.
 
-### Signing in the front way (the 6-digit code)
-`dev-link` above skips the front door. To exercise the real one — `/crew` → enter email → 6-digit
-code (DEC-081, needs `CREW_SELF_SERVE=1`) — note that **the code will never reach an inbox in dev**:
+### About the code delivery
+The flow above IS the front door (DEC-081, needs `CREW_SELF_SERVE=1`). Worth knowing why step 2
+exists: **the code will never reach an inbox in dev**:
 the seeded crew all have undeliverable addresses (`quint@bb.test`). If `RESEND_API_KEY` +
 `EMAIL_FROM` are set in `.env.local`, a real send is attempted and dropped, and because it runs in
 `after()` the failure never reaches the page — the UI just says "check your email" forever.
@@ -150,7 +148,8 @@ handle, so any `?admin=<handle>` works in dev.
 npm run db:seed:atrisk   # 4 board + 2 cockpit scenarios, trips anchored to NOW (re-run to re-anchor)
 ```
 
-1. Open **http://mill-dev:3000/crew/dev-link?admin=eric** → tap the returned link, then the
+1. Sign in at **http://mill-dev:3000/crew** as `eric@bb.test` (code via `/crew/dev-code`), then
+   open the drawer and tap **Switch to admin** (DEC-093) → you land on `/admin`. Then the
    confirm page's **"Tap to sign in →"** (the DEC-030 prefetch guard) → you land signed-in on
    **`/admin/at-risk`** with "4 shifts need a call · 1 late bail".
 2. The four rows, top to bottom: **Firkin** (red *Lacking crew · late bail* pill — always pinned
@@ -168,7 +167,7 @@ npm run db:seed:atrisk   # 4 board + 2 cockpit scenarios, trips anchored to NOW 
    <48h rows — is the check.)
 3. Tap **↗ Nudge Marisol** (Firkin row) → green *"Last action: nudged Marisol — asked, not yet
    filled"* and the Firkin row is **gone** — its ask is now in flight, which is the engine working,
-   not a bug. (`/crew/dev-link?crew=crew-ar-sub` shows Marisol's Yes/No card if you want the loop.)
+   not a bug. (Sign in as `crew-ar-sub`'s email to see Marisol's Yes/No card if you want the loop.)
 4. Tap **Assignment ↗** (Tidewater row) → the assignment cockpit (#54), badge **Filling**;
    in the pool, Lance reads *declined* (muted, with a **↗ Nudge** button) and Gardner *👻 silent*
    (red, **↗ Nudge**) — visibly different.
@@ -337,7 +336,7 @@ constant exists to bound. Previews still honour it, so a reviewer can exercise t
   npm run test:e2e            # headless run
   npm run test:e2e:ui         # interactive runner
   ```
-  Covers: dev-link sign-in + crew render, ask Yes/No, bail→regression (crew-only), bail→re-ask
+  Covers: code sign-in + crew render, ask Yes/No, bail→regression (crew-only), bail→re-ask
   suppression (both seeds), board nudge. All three seeds anchor their shifts to *now* (#101), so the
   suite never rots on a future clock.
 - **Other UI changes:** for surfaces the harness doesn't cover, eyeball by hand via the flow above.

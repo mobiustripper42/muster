@@ -14,7 +14,7 @@ import { isProdDeploy } from "@core/config/deploy.js";
  *
  * **Unset is not a misconfiguration — it is the designed state on a preview.** `APP_BASE_URL` is
  * scoped to Production only (DEC-057) so a preview's minted links resolve to the preview rather
- * than to prod, which is the whole reason `crew/dev-link` stays alive there. Issue #1007 proposed
+ * than to prod, which is what DEC-057 paired the scoping with. Issue #1007 proposed
  * two branches, fatal in prod and localhost in dev, and that has no correct answer for the
  * environment where the variable is *supposed* to be missing. Hence four branches, three
  * environments.

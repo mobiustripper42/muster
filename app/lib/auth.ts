@@ -21,7 +21,7 @@ const RENEW_WITHIN_MS = 3 * 24 * 60 * 60 * 1000; // re-issue inside the last 3 d
 
 // Prod MUST set SESSION_SECRET — an unset secret in production would degrade to a
 // repo-public signing key, letting anyone forge a session for any subject. Fail
-// fast there (mirrors the dev-link route's prod hard-stop). Dev uses an obvious
+// fast there (mirrors every dev-only route's prod hard-stop). Dev uses an obvious
 // insecure default for zero-config local work. Resolved LAZILY (per request, not
 // at module load) so `next build` — which evaluates modules in production mode
 // without the env set — doesn't trip the guard.

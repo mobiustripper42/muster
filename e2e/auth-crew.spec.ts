@@ -1,10 +1,10 @@
 /**
- * Flow 1 + 6 (#65): dev-link → sign-in → the crew home renders its four pieces
+ * Flow 1 + 6 (#65): magic link → sign-in → the crew home renders its four pieces
  * (ask, my-shifts, standing, credential nudge). This is the foundation every
  * other crew flow stands on, and the credential-line copy (#57) that manual
  * eyeballing kept re-checking by hand.
  */
-import { test, expect, resetAndSeed, signInAsCrew } from "./fixtures.js";
+import { test, expect, resetAndSeed, signInAsCrew, crewAuthPath } from "./fixtures.js";
 
 test.describe("crew sign-in + render", () => {
   test.beforeEach(async () => {
@@ -59,17 +59,19 @@ test.describe("magic link with a live session", () => {
     await resetAndSeed("crew");
   });
 
-  /** The production-shaped link `/crew/auth?t=…` that dev-link prints (it does NOT sign you in). */
-  const magicLinkFor = async (page: import("@playwright/test").Page, crewId: string) => {
-    await page.goto(`/crew/dev-link?crew=${encodeURIComponent(crewId)}`);
-    const printed = (await page.locator(".url").innerText()).trim();
-    const u = new URL(printed);
-    return `${u.pathname}${u.search}`;
-  };
+  /**
+   * A production-shaped link `/crew/auth?t=…` that has NOT been consumed.
+   *
+   * Was scraped out of `/crew/dev-link`'s rendered HTML; that route is gone, and `crewAuthPath`
+   * mints the same thing directly. Strictly better here: the old version navigated the page to
+   * dev-link as a side effect of fetching a string, which mattered because these specs care
+   * about what the browser was looking at when the link is opened.
+   */
+  const magicLinkFor = async (crewId: string) => crewAuthPath(crewId);
 
   test("a matching session lands straight in the app — no tap", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
-    const link = await magicLinkFor(page, "crew-quint");
+    const link = await magicLinkFor("crew-quint");
 
     await page.goto(link);
 
@@ -82,7 +84,7 @@ test.describe("magic link with a live session", () => {
     page,
   }) => {
     await signInAsCrew(page, "crew-quint");
-    const link = await magicLinkFor(page, "crew-hooper");
+    const link = await magicLinkFor("crew-hooper");
 
     await page.goto(link);
 
@@ -95,7 +97,7 @@ test.describe("magic link with a live session", () => {
   test("no session still gets the interstitial (the DEC-030 path is untouched)", async ({
     page,
   }) => {
-    const link = await magicLinkFor(page, "crew-quint");
+    const link = await magicLinkFor("crew-quint");
     await page.context().clearCookies();
 
     await page.goto(link);
@@ -108,7 +110,7 @@ test.describe("magic link with a live session", () => {
     // about (DEC-073). Skipping the tap must not drop that — landing on /crew instead would
     // make the ring useless, which is the one link where the destination is the whole point.
     await signInAsCrew(page, "crew-quint");
-    const link = await magicLinkFor(page, "crew-quint");
+    const link = await magicLinkFor("crew-quint");
 
     await page.goto(`${link}&thread=thr-demo`);
 
@@ -117,7 +119,7 @@ test.describe("magic link with a live session", () => {
 
   test("the skip does NOT consume the token — the GET stays read-only", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
-    const link = await magicLinkFor(page, "crew-quint");
+    const link = await magicLinkFor("crew-quint");
 
     await page.goto(link); // auto-redirect
     await expect(page).toHaveURL(/\/crew$/);

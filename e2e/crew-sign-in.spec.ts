@@ -59,7 +59,7 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
     await expect(page.getByText(CODE_SENT)).toBeVisible();
 
     // Read the delivered code from the dev-only echo (hash-only store; same
-    // affordance as dev-link). Real delivery is email in 7.0b.
+    // affordance). Real delivery is email in 7.0b.
     const res = await page.request.get(
       `/crew/dev-code?email=${encodeURIComponent(QUINT_EMAIL)}`,
     );
@@ -94,8 +94,9 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
    * hardcoded and no `stage` at all — so the code screen could never render and
    * there was no way back in short of clearing cookies.
    *
-   * `signInAsCrew` takes the id straight through: `dev-link/route.ts:52-53` does
-   * not check that a crew row exists, which is what makes this one URL of setup.
+   * `signInAsCrew` takes the id straight through: `issueMagicLink` writes whatever
+   * subject id it is handed and never checks that a crew row exists, which is what
+   * makes this one line of setup rather than a seed.
    */
   test("a STALE crew session still lets you sign in again (#936)", async ({ page }) => {
     await signInAsCrew(page, "crew-does-not-exist");

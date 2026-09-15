@@ -6,7 +6,7 @@ import { ActivityBeacon } from "./components/ActivityBeacon";
  * presence/read {@link ActivityBeacon} over every crew page so "this crew member is
  * in the app" (and "reading this thread") is recorded on real human view. Scoped to
  * the (crew) group: admin pages live in (admin) and don't get it (operator presence
- * is 6.8). Route handlers (dev-link, auth, activity) aren't pages, so they don't
+ * is 6.8). Route handlers (auth, activity) aren't pages, so they don't
  * render this and won't self-trigger the beacon.
  */
 export default function CrewLayout({ children }: { children: ReactNode }) {

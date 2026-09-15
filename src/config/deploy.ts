@@ -22,10 +22,10 @@
  * **`VERCEL_ENV` is primary, and that ordering is load-bearing:** Vercel sets
  * `NODE_ENV=production` on PREVIEW deploys too, so a `NODE_ENV`-only check would read `true` on a
  * preview and disable every dev affordance exactly where a reviewer needs them — the DEC-057
- * reasoning that keeps `dev-link` alive on previews. The `NODE_ENV` fallback re-closes the gate on
+ * reasoning that kept the dev-only routes alive on previews. The `NODE_ENV` fallback re-closes the gate on
  * a self-hosted prod where `VERCEL_ENV` is absent.
  *
- * Read at CALL time, not module load: `dev-link` and friends gate per request, and a predicate
+ * Read at CALL time, not module load: `dev-code` and friends gate per request, and a predicate
  * frozen at import would be wrong in any process whose env is set up after the module graph loads.
  */
 export function isProdDeploy(): boolean {

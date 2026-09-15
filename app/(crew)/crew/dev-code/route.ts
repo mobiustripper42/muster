@@ -5,7 +5,7 @@ import { isProdDeploy, selfServeEnabled } from "../../../lib/flags";
 /**
  * DEV-ONLY login-code echo (DEC-081). The code-login store keeps only the code's
  * HASH, so a black-box test (or a dev by hand) can't read a minted code back.
- * This returns the last code delivered to an email — the parallel to the dev-link
+ * This returns the last code delivered to an email — the dev-only
  * issuer for the code flow, with the SAME gating: hard-404 on any production
  * deploy (Vercel prod or self-hosted), and only live when self-serve is on.
  *

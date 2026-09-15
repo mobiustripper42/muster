@@ -658,7 +658,7 @@ export interface Repository {
   saveAdmin(admin: Admin): Promise<void>;
   /** By id (= a crew id). `readSubject`'s revoke gate reads this, then `active`. */
   getAdmin(id: string): Promise<Admin | null>;
-  /** By short mint handle — `db:mint --admin=<handle>` resolves handle→id here. */
+  /** By short handle — `db:admin` and the e2e admin fixture resolve handle→id here. */
   getAdminByHandle(handle: string): Promise<Admin | null>;
   /** Every admin — seeding/diagnostics; the set is small (~3). */
   listAdmins(): Promise<Admin[]>;

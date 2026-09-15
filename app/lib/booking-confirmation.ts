@@ -50,7 +50,7 @@ export async function sendReservationConfirmation(
     // #1007: was a skip-and-log when `APP_BASE_URL` was unset, which meant a PREVIEW could never
     // send a booking confirmation — the variable is scoped to Production on purpose (DEC-057), so
     // unset is a preview's normal state and this branch fired every time. Smoke-testing a booking
-    // on a preview is exactly what previews and `crew/dev-link` are for. `appBaseUrl` hands the
+    // on a preview was exactly what previews were for. `appBaseUrl` hands the
     // preview its own origin and still throws on a prod deploy that is genuinely misconfigured,
     // which the surrounding `try` turns into the same `false` this used to return.
     const linkBase = appBaseUrl();

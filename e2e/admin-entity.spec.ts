@@ -6,7 +6,7 @@
  * the shared SESSION_SECRET (which logs everyone out at once).
  *
  * The seeded operator admin is `eric` (fixtures) — what signInAsAdmin resolves via
- * the dev-link handle→id lookup. The "You're signed out" notice (#352 AdminSignedOut,
+ * the fixture's handle→id lookup. The "You're signed out" notice (#352 AdminSignedOut,
  * null-subject branch) is unique to a null subject, so it's the discriminator.
  */
 import {

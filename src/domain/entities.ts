@@ -1114,7 +1114,7 @@ export interface Subject {
  * `active` is the per-person revoke lever: `readSubject` fails an admin whose row
  * is missing or `active=false` on its next request — immediate, scoped to admins,
  * so the stateless crew hot path is untouched. `handle` is the short mint key
- * (`db:admin`). No `role` column — all admins are equal at launch
+ * — `db:admin` and the e2e admin fixture resolve handle→id by it. No `role` column; all admins are equal at launch
  * (roles deferred; the column is the clean seam). Dates are ISO-8601 UTC text.
  */
 export interface Admin {

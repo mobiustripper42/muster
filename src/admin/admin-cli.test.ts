@@ -13,6 +13,10 @@ const crew = (over: Partial<CrewMember> = {}): CrewMember => ({
   ratings: [asId<"RoleTypeId">("role-captain")],
   status: "active",
   reliabilityScore: null,
+  // An email by default since DEC-174: the 6-digit code is the only door, so `add --crew=` now
+  // refuses a crew member who has none. Without this every `add --crew=` case below fails on the
+  // guard rather than on its own subject.
+  email: "eric@stoffer.net",
   ...over,
 });
 
@@ -59,6 +63,27 @@ describe("db:admin CLI (DEC-092)", () => {
       runAdminCommand(repo, ["add", "--crew=crew-ghost", "--handle=g", "--name=Ghost"], NOW),
     ).rejects.toThrow(/no crew member with id "crew-ghost"/i);
     expect(await repo.getAdminByHandle("g")).toBeNull();
+  });
+
+  it("add --crew refuses a crew member with no email — they could never sign in (DEC-174)", async () => {
+    // The lockout this guard exists for, and it is NEW. Before DEC-174 an email-less admin still
+    // had `db:mint --admin=` and `/crew/dev-link?admin=`; both are deleted, and `matchCrewByEmail`
+    // (`login-code.ts:150`) skips a crew row with no email — so without this the CLI would happily
+    // mint an admin with no path to `/admin` at all, and nothing would say so.
+    // Built inline rather than via `crew({ email: undefined })` — `exactOptionalPropertyTypes`
+    // rejects passing the key as undefined, and the point is a record with NO email key at all.
+    await repo.saveCrewMember({
+      id: asId<"CrewMemberId">("crew-mute"),
+      name: "Mute",
+      phone: "+15555550102",
+      ratings: [asId<"RoleTypeId">("role-captain")],
+      status: "active",
+      reliabilityScore: null,
+    });
+    await expect(
+      runAdminCommand(repo, ["add", "--crew=crew-mute", "--handle=mute"], NOW),
+    ).rejects.toThrow(/has no email, so they could never sign in/i);
+    expect(await repo.getAdminByHandle("mute")).toBeNull();
   });
 
   it("add --email with no roster match is a clear error (crew ≠ Xola customers)", async () => {

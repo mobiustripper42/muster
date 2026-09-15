@@ -15,25 +15,25 @@ claims:
     note: "the suite mints in Node, then taps /crew/auth"
   - kind: "file"
     target: "app/(crew)/crew/dev-code/route.ts"
-    note: "stays: echoes a delivered code, mints nothing"
+    note: "stays — echoes a code, mints nothing"
 supersedes:
   - DEC-034
-revisit_if: "A deployment is ever locked out — no admin can reach /admin, or the login-code cap strands a crew member in season"
+revisit_if: "A deployment is locked out — no admin can reach /admin, or the code cap strands crew in season"
 ---
 
 ## DEC-174: The session minters are deleted — one door in
 
 `/crew/dev-link` was an unauthenticated route minting a session for any crew id or admin handle.
-`db:mint` did the same from a terminal. DEC-034 built the second because no production auth path
-existed. One does now: DEC-081's 6-digit code, plus DEC-093's switcher turning that session into an
+`db:mint` did the same from a terminal; DEC-034 built it because no production auth path existed. One does now: DEC-081's 6-digit code, plus DEC-093's switcher turning that session into an
 admin one for anyone holding an active `admins` row — the operator's actual habit, not a theory.
 
-Their last argument was a fresh deployment with nobody in the database. `db:crew` and `db:admin`
-seed the person and the row; they sign in like everyone else.
+Fresh deployment: `db:crew` and `db:admin` seed the person and the row; they sign in like everyone
+else. **This narrows rather than matches** — the minters took any crew id and asked nothing else,
+while the code needs an email on file, so `db:admin add --crew=` now refuses one without.
 
 Two consequences, stated rather than discovered later. **Email is now load-bearing for admin
-access** — with `RESEND_API_KEY` unwired nobody reaches `/admin` at all, where a minted link used
-to be the escape. And the login-code cap has no bypass: `db:mint --crew=<id>` was it.
+access**: unwire `RESEND_API_KEY` and nobody reaches `/admin`. And the login-code cap has no
+bypass — `db:mint --crew=<id>` was it.
 
 The e2e suite used dev-link in 52 of 56 specs. It now mints against the test database and taps
-`/crew/auth`, the interstitial a real crew member meets and dev-link's shortcut skipped.
+`/crew/auth`, which dev-link's shortcut skipped.

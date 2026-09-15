@@ -94,7 +94,7 @@ try {
   // dev, where the roster is fixture data and the ids are knowable — which is the whole
   // difference. Prod still gets its admins from `db:admin` after the real roster exists.
   //
-  // Sign in at sign in at /crew with a code, then Switch to admin, or via the crew code flow on eric@bb.test.
+  // Sign in at /crew with a code as eric@bb.test, then Switch to admin.
   await repo.saveAdmin({
     id: ERIC,
     handle: "eric",

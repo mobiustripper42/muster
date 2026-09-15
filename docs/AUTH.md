@@ -55,8 +55,13 @@ cookie.
   `admins` row, then **Switch to admin** in the drawer → lands on `/admin`.
 
 There is one door now. The dev-link route and the mint CLI both existed to hand out
-a session out of band, and both were deleted (DEC-174) — the code flow plus the
-switcher reaches every subject either of them could.
+a session out of band, and both were deleted (DEC-174).
+
+**This is a narrowing, not an equivalence.** The minters took a crew id and asked
+nothing else — a crew member with no email, or an id with no row at all, still got
+a session. The code flow cannot: `matchCrewByEmail` skips a crew row with no email.
+So a crew member must have an email on file to sign in, and `db:admin add --crew=`
+refuses to grant admin to someone who has none.
 
 The code-login front door mints a **crew** session — it never hands you an admin
 session directly. But if your crew id is an active admin, the **switcher** takes you

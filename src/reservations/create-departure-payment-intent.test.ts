@@ -775,6 +775,27 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     expect(pay.liveAmountCents.get("pi_fake_1")).not.toBe(firstAmount);
   });
 
+  it("a retry whose intent ALREADY READS as paid is refused — the ordinary case, not the race (15.8)", async () => {
+    // `/security-review`, HIGH. The first cut put the `already_paid` refusal inside the catch
+    // around the amount update, so it only covered the seconds-wide race where the read said
+    // reusable and the update was then refused. A first read that says `settled` outright — which
+    // is how a paid intent is NORMALLY observed, since the state is read on every retry — skipped
+    // the block entirely and minted a second payable intent.
+    //
+    // The row stays `pending` until the webhook lands or `/book/success` runs, so this window is
+    // ordinary rather than exotic: a dropped 3DS return, a closed tab, a slow webhook.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    pay.intentStates.set("pi_fake_1", "settled"); // they paid; the row has not flipped yet
+
+    const again = await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(again).toEqual({ ok: false, reason: "already_paid" });
+    expect(pay.intents).toHaveLength(1);
+  });
+
   it("a retry whose intent was PAID in another tab is refused, not handed a second charge (15.8)", async () => {
     // `@code-review` found this. The update is refused when the intent is no longer updatable, and
     // the commonest reason is that it just succeeded — the other tab paid. Falling through to mint

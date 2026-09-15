@@ -285,29 +285,40 @@ export async function createDeparturePaymentIntent(
   // intent — which is task 15.10, named for exactly this residue. Stated here rather than left for
   // someone to rediscover: `@code-review` found it, and the honest answer was that 15.8 shrinks
   // the window and 15.10 closes it.
+  // **Already paid: refuse, never mint.** The row stays `pending` until the webhook lands or
+  // `/book/success` runs, so there is an ordinary window — a dropped 3DS return, a closed tab, a
+  // slow webhook — in which a paid intent is read back on a retry. Minting there gives the
+  // customer a second payable secret for a booking they already bought, and nothing downstream
+  // refunds it: the second confirm resolves `already`, writes a second Payment, and alerts nobody.
+  //
+  // `/security-review` found this as a HIGH, because my first cut put this refusal inside the
+  // catch below — covering the seconds-wide race and not the ordinary case. The state is read on
+  // every retry, so the direct read is how a paid intent is normally seen.
+  if (priorIntentId && priorState === "settled") return { ok: false, reason: "already_paid" };
+
   if (priorIntentId && priorState === "reusable") {
+    let raised: { clientSecret: string } | undefined;
+    // **The try wraps the provider call and nothing else.** With `recordCheckoutAttempt` inside it,
+    // a database blip was diagnosed as a refused update and could tell a customer their booking was
+    // already paid when nothing had been (`/security-review`, in passing). A repository failure is
+    // ours and belongs to the caller as a failure, not as a reassurance.
     try {
-      const raised = await payments.updatePaymentIntentAmount(priorIntentId, amountCents);
-      // Nothing new to append — this attempt minted no id. The invoice and the customer's answers
-      // still re-freeze, which is what `null` means here.
-      await repo.recordCheckoutAttempt(pending, null);
-      return { ok: true, clientSecret: raised.clientSecret, paymentIntentId: priorIntentId };
+      raised = await payments.updatePaymentIntentAmount(priorIntentId, amountCents);
     } catch {
-      // The update was refused. **Ask why before minting** — the commonest reason is that the
-      // intent just succeeded, because the customer's other tab paid between the state read above
-      // and this call. Minting there hands this tab a second payable secret for a row that is
-      // about to be booked, so paying it is a second charge with no second booking and no refund
-      // (`@code-review`). The first cut fell through unconditionally and its comment defended that
-      // by saying it was what the path did before 15.8 — which is the behaviour 15.8 removes.
-      //
-      // The window is seconds wide: once the webhook flips the row, the claim stops finding it and
-      // writes a fresh row instead. Reachable, and it is money.
+      // Refused. Ask why before minting: the dominant reason is that it just succeeded, in the
+      // other tab, between the read above and this call.
       const nowSettled = await payments
         .getPaymentIntentState(priorIntentId)
         .catch(() => "unknown" as const);
       if (nowSettled === "settled") return { ok: false, reason: "already_paid" };
-      // Genuinely dead or unreadable: mint, and accept that the old intent is left behind. Retiring
-      // it is 15.10, which exists for exactly this residue.
+      // Genuinely dead or unreadable: fall through and mint, accepting that the old intent is left
+      // behind. Retiring it is 15.10, which exists for exactly this residue.
+    }
+    if (raised) {
+      // Nothing new to append — this attempt minted no id. The invoice and the customer's answers
+      // still re-freeze, which is what `null` means here.
+      await repo.recordCheckoutAttempt(pending, null);
+      return { ok: true, clientSecret: raised.clientSecret, paymentIntentId: priorIntentId };
     }
   }
 

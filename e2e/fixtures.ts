@@ -13,6 +13,7 @@ import { test as base, expect, type Locator, type Page } from "@playwright/test"
 import { resetTestDb, TEST_DATABASE_URL } from "../db/reset-test.js";
 import { SLOW_PATH } from "./slow-path.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
+import { issueMagicLink, randomSecret } from "../src/auth/magic-link.js";
 import { TODAY } from "./reservation-demo.js";
 
 /** Local tsx binary — resolved explicitly so we don't depend on PATH/npx. */
@@ -241,19 +242,93 @@ export async function resetAndSeed(...seeds: SeedName[]): Promise<void> {
   }
 }
 
-/** Drive the real dev-link sign-in (the button POSTs straight to /crew/auth). */
+/**
+ * Mint a magic link against the TEST database and return its production-shaped path,
+ * `/crew/auth?t=<secret>` — WITHOUT consuming it.
+ *
+ * **Why this exists.** The suite used to sign in by driving `/crew/dev-link`, an
+ * unauthenticated HTTP route whose only job was to mint a session for any subject. That route
+ * is being deleted, and 52 of 56 specs went through it. Minting here does the same work the
+ * route did internally, with no endpoint standing between the public internet and a session.
+ *
+ * **It also makes the suite MORE production-like, not less.** `dev-link`'s button was, in its
+ * own words, "the dev shortcut" — it posted straight to the consume endpoint and skipped the
+ * interstitial. The path returned here is the real one: `/crew/auth` renders a prefetch-safe
+ * GET page with a "Tap to sign in →" button, which exists because SMS link-preview bots fetch
+ * the URL before the human does and a consuming GET would burn every relayed link in transit
+ * (DEC-030). Every sign-in in the suite now goes through the page a crew member actually meets.
+ */
+async function mintAuthPath(
+  subjectKind: "crew" | "admin",
+  subjectId: string,
+): Promise<string> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const { secret } = await issueMagicLink(
+      repo,
+      { subjectKind, subjectId, ttlMs: 15 * 60_000 },
+      { now: new Date(), mintSecret: randomSecret },
+    );
+    return `/crew/auth?t=${encodeURIComponent(secret)}`;
+  } finally {
+    await repo.close();
+  }
+}
+
+/** Mint a crew magic link without consuming it — for specs about the link itself (DEC-150). */
+export async function crewAuthPath(crewId: string): Promise<string> {
+  return mintAuthPath("crew", crewId);
+}
+
+/**
+ * Tap the interstitial's button — **if it rendered at all**.
+ *
+ * DEC-150 (`crew/auth/route.ts:112-130`): a visitor already carrying a valid session for the very
+ * subject the token names is redirected straight to their world and never sees a button. Signing
+ * in twice inside one spec is ordinary — `island-hydration.spec.ts` does it, deliberately, to get
+ * a second render with the JS bundle unblocked — so the fixture has to tolerate both shapes.
+ *
+ * `dev-link` hid this: its own button posted straight to the consume endpoint and always rendered,
+ * whatever session you were holding. The first cut of this rewrite clicked unconditionally and
+ * that one spec timed out waiting for a button the redirect had skipped.
+ */
+async function tapIfPresent(page: Page): Promise<void> {
+  const tap = page.getByRole("button", { name: /tap to sign in/i });
+  if ((await tap.count()) > 0) await tap.click();
+}
+
+/** Sign in as a crew member through the real `/crew/auth` interstitial. */
 export async function signInAsCrew(page: Page, crewId: string): Promise<void> {
-  await page.goto(`/crew/dev-link?crew=${encodeURIComponent(crewId)}`);
-  await page.getByRole("button", { name: /tap to sign in/i }).click();
+  await page.goto(await mintAuthPath("crew", crewId));
+  await tapIfPresent(page);
   // Success lands on a clean /crew; a FAILED consume lands on /crew?auth=<reason>.
   // Exclude the failure param so a broken sign-in fails here, loudly, not later.
   await page.waitForURL((u) => u.pathname === "/crew" && !u.searchParams.has("auth"));
 }
 
-/** Same flow, operator subject — lands on the at-risk board. */
+/**
+ * Same flow, operator subject — lands on the at-risk board.
+ *
+ * Takes a HANDLE and resolves it to the admin's crew id, which is the lookup `dev-link` used to
+ * do (`getAdminByHandle`, DEC-092). Specs say `signInAsAdmin(page, "eric")` and are unchanged.
+ *
+ * Deliberately mints an admin subject rather than signing in as crew and driving the drawer's
+ * "Switch to admin" control. The switch is the real operator path and it has its own coverage in
+ * `switcher.spec.ts`, `admin-nav.spec.ts` and `admin-gate.spec.ts`; making all 52 sign-ins walk
+ * through a drawer would slow the suite and couple every admin spec to that component's markup.
+ */
 export async function signInAsAdmin(page: Page, handle: string): Promise<void> {
-  await page.goto(`/crew/dev-link?admin=${encodeURIComponent(handle)}`);
-  await page.getByRole("button", { name: /tap to sign in/i }).click();
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  let adminId: string;
+  try {
+    const admin = await repo.getAdminByHandle(handle);
+    if (!admin) throw new Error(`signInAsAdmin: no admin with handle "${handle}"`);
+    adminId = String(admin.id);
+  } finally {
+    await repo.close();
+  }
+  await page.goto(await mintAuthPath("admin", adminId));
+  await tapIfPresent(page);
   await page.waitForURL(/\/admin\/at-risk/);
 }
 

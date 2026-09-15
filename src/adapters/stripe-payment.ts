@@ -17,6 +17,7 @@ import {
   type CreatePaymentIntentInput,
   type DisputeState,
   type PaymentEvent,
+  type PaymentIntentState,
   type PaymentPort,
   type PaymentSucceeded,
   type RefundInput,
@@ -40,6 +41,47 @@ type NamedOnly<T> = T extends string ? (string extends T ? never : T) : never;
 
 /** Fails to compile unless `T` is `never`. The error names the offending literal. */
 type AssertNever<T extends never> = T;
+
+/**
+ * Stripe's seven PaymentIntent statuses → the three states a retry can act on (15.8).
+ *
+ * **`requires_capture` is `settled`, not `reusable`, and that is the entry worth arguing about.**
+ * Muster does not use manual capture today, so nothing should ever produce it — but if issue #1012
+ * lands, an authorized-and-uncaptured intent is money already committed by the customer, and
+ * handing it back to a retry to re-price would be the worst possible reading. Classified for the
+ * world we might be in, not only the one we are in.
+ *
+ * `processing` is `settled` for the same reason: the payment is in flight and nobody may change
+ * its amount underneath it.
+ *
+ * The same open-union treatment as the dispute map below — an unlisted NAMED status fails
+ * typecheck, and anything else falls to `"unknown"` at runtime, which means mint fresh.
+ */
+type HandledIntentStatus =
+  | "requires_payment_method"
+  | "requires_confirmation"
+  | "requires_action"
+  | "processing"
+  | "requires_capture"
+  | "canceled"
+  | "succeeded";
+
+const INTENT_STATE: Readonly<Record<HandledIntentStatus, PaymentIntentState>> = {
+  // Awaiting the customer. These are the ones a retry may raise and re-offer.
+  requires_payment_method: "reusable",
+  requires_confirmation: "reusable",
+  requires_action: "reusable",
+  // The money is committed or gone. Never re-price these.
+  processing: "settled",
+  requires_capture: "settled",
+  succeeded: "settled",
+  // Dead. Not reusable, and not an error either — mint a new one.
+  canceled: "unknown",
+};
+
+type _AllNamedIntentStatusesHandled = AssertNever<
+  Exclude<NamedOnly<Stripe.PaymentIntent.Status>, HandledIntentStatus>
+>;
 
 /** The dispute statuses this mapping handles by name. Paired with the switch below. */
 type HandledDisputeStatus =
@@ -263,6 +305,34 @@ export class StripePaymentPort implements PaymentPort {
     } catch {
       return null;
     }
+  }
+
+  async getPaymentIntentState(paymentIntentId: string): Promise<PaymentIntentState> {
+    try {
+      const pi = await this.#stripe.paymentIntents.retrieve(paymentIntentId);
+      // The runtime half of the guard above. A status the build does not know reads `"unknown"`
+      // rather than `undefined`, and `Object.hasOwn` keeps `"__proto__"` and friends out of the
+      // lookup — the same LOW that `/security-review` found in the dispute map at 15.2.
+      return Object.hasOwn(INTENT_STATE, pi.status)
+        ? INTENT_STATE[pi.status as HandledIntentStatus]
+        : "unknown";
+    } catch {
+      // A read we could not make is not a licence to reuse. Mint fresh.
+      return "unknown";
+    }
+  }
+
+  async updatePaymentIntentAmount(
+    paymentIntentId: string,
+    amountCents: number,
+  ): Promise<{ clientSecret: string }> {
+    // Deliberately NOT caught. The caller has to know the difference between "raised it" and
+    // "could not" — the customer may have completed the first confirm in another tab between the
+    // state read and this call, and silently swallowing that would leave them paying the old
+    // amount for the new booking, which is the exact defect 15.8 exists to remove.
+    const pi = await this.#stripe.paymentIntents.update(paymentIntentId, { amount: amountCents });
+    if (!pi.client_secret) throw new Error("Stripe payment intent update returned no client_secret");
+    return { clientSecret: pi.client_secret };
   }
 
   async getReceiptUrl(paymentIntentId: string): Promise<string | undefined> {

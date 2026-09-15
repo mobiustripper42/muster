@@ -209,6 +209,14 @@ export async function createDeparturePaymentIntent(
       // re-reading it would silently re-date the agreement to a document they never saw.
       waiverConsentAt,
       waiverVersion: prior?.waiverVersion ?? waiverVersion,
+      // **Carried forward, and 15.8 depends on it.** The reuse path reads the last id this row
+      // minted to decide whether to raise that intent or start another; without this the returned
+      // row has none and every retry mints, which is the behaviour 15.8 exists to remove. Note the
+      // reason is the OPPOSITE of the durations above: those are frozen so a later read cannot
+      // change them, this is carried so a later read can see them.
+      ...(prior?.paymentIntentIds !== undefined
+        ? { paymentIntentIds: prior.paymentIntentIds }
+        : {}),
       updatedAt: at,
     };
   };
@@ -244,6 +252,42 @@ export async function createDeparturePaymentIntent(
   // `config` — the comment claimed the freeze and the code did not have it, and an operator
   // moving `depositPercent` mid-checkout moved the charge away from the row that described it.
   const amountCents = invoice.amountDueNowCents;
+
+  // ── Reuse this checkout's own intent, or mint a fresh one (15.8) ─────────────
+  //
+  // Stripe: *"If the checkout process is interrupted and resumes later, attempt to reuse the same
+  // PaymentIntent instead of creating a new one"*, and *"you might need to update the amount when
+  // they start the checkout process again"*.
+  //
+  // **Why this is a correctness fix and not tidiness.** Minting per attempt left every superseded
+  // intent payable at the amount it was minted with. The row re-prices on each attempt, so a stale
+  // tab could pay the four-guest quote against a six-guest booking, and after 15.6 the booking
+  // records the row's numbers — so the crew tip on that booking is one the customer never paid.
+  //
+  // The reused id is the LAST one this row minted. Earlier ids stay on the row (§2.8.5) so a
+  // superseded success is still findable; they are simply never offered to the customer again.
+  const priorIntentId = pending.paymentIntentIds?.at(-1);
+  // Caught here even though the port says this resolves `"unknown"` rather than throwing, and the
+  // live adapter honours that. A docstring is not a guarantee — an adapter that throws would
+  // otherwise take down a checkout that could simply have minted a new intent, and "the comment
+  // said it could not happen" is how three defects got past review this week.
+  const priorState = priorIntentId
+    ? await payments.getPaymentIntentState(priorIntentId).catch(() => "unknown" as const)
+    : ("unknown" as const);
+
+  if (priorIntentId && priorState === "reusable") {
+    try {
+      const raised = await payments.updatePaymentIntentAmount(priorIntentId, amountCents);
+      // Nothing new to append — this attempt minted no id. The invoice and the customer's answers
+      // still re-freeze, which is what `null` means here.
+      await repo.recordCheckoutAttempt(pending, null);
+      return { ok: true, clientSecret: raised.clientSecret, paymentIntentId: priorIntentId };
+    } catch {
+      // The customer completed the first confirm in another tab between the state read above and
+      // this update, and Stripe refused it. Not an error to surface — fall through and mint a
+      // fresh intent, which is what this path did unconditionally before 15.8.
+    }
+  }
 
   const intent = await payments.createPaymentIntent({
     amountCents,

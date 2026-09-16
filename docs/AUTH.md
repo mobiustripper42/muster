@@ -38,7 +38,7 @@ Three mint a session from nothing. The fourth converts one you already have.
 
 | Door | Kinds it can mint | How | Notes |
 |------|-------------------|-----|-------|
-| **Code-login** | **crew only** | `/crew` → enter email → 6-digit code | The prod front door. Flag-gated by `CREW_SELF_SERVE`. Validated against the roster, no-enumeration. (DEC-081) |
+| **Code-login** | **crew only** | `/crew` → enter email → 6-digit code | The front door, and since DEC-174 the only one. Validated against the roster, no-enumeration. (DEC-081) |
 | **Magic link** | **crew or admin** | Minted by the DEC-030 relay, or by the e2e fixtures against the test DB; consumed at `/crew/auth` | Single-use, hashed token. No longer mintable by hand: `db:mint` and `/crew/dev-link` are both deleted. |
 | **Switcher** | **crew → admin, admin → crew** | A form on `/crew` (`switchToAdmin`) and the admin surfaces (`switchToCrew`) — re-mints the other-kind session for the **same id**, no re-auth | **The escalation seam** (DEC-093). `switchToAdmin` is gated on the same `getAdmin(active)` check `readSubject` enforces, so a non-admin or revoked admin is bounced to `/crew` with no session change. `app/lib/switch-actions.ts` |
 
@@ -103,16 +103,12 @@ if (!subject || subject.kind !== "crew") redirect("/crew"); // or notFound(), or
 
 - **Pages** typically render a signed-out notice or `redirect`/`notFound`.
 - **Server actions** `redirect` (it throws by design — keep it outside `try`).
-- **Flag-gated surfaces** (e.g. `/crew/open`) check `selfServeEnabled()` on **both**
-  the page and the action, so a flag-off prod can neither render nor POST.
 - **Never trust an id from the request body.** The domain re-validates
   (e.g. `claimSeat` re-checks the full claimable predicate before its guarded write).
 
 ## Dev-only vs prod
 
 `app/lib/flags.ts`:
-- `selfServeEnabled()` → `CREW_SELF_SERVE === "1"`. Gates the crew code-login front
-  door. OFF by default so `main` stays promotable.
 - `isProdDeploy()` → true on a real prod deploy. The dev-only affordances
   (the `/crew/dev-code` echo, login-code logging) all 404/inert
   when it's true.

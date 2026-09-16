@@ -112,7 +112,7 @@ The crew surfaces require a session, so you can't visit `/crew` cold — you sig
 > seeds — they never rot on a future clock. Re-run `npm run db:seed:crew` to re-anchor + reset state.
 
 ### About the code delivery
-The flow above IS the front door (DEC-081, needs `CREW_SELF_SERVE=1`). Worth knowing why step 2
+The flow above IS the front door (DEC-081). Worth knowing why step 2
 exists: **the code will never reach an inbox in dev**:
 the seeded crew all have undeliverable addresses (`quint@bb.test`). If `RESEND_API_KEY` +
 `EMAIL_FROM` are set in `.env.local`, a real send is attempted and dropped, and because it runs in

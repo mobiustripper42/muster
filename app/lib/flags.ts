@@ -6,19 +6,14 @@
  * flow off with no error and no warning. Read the value through `flagOn` — a flag hand-spelled
  * against `process.env` is how the asymmetry got in.
  *
- * `CREW_SELF_SERVE` (DEC-081, DEC-059): the crew code-login front door. OFF by
- * default so `main` stays promotable to production at all times — until 7.0b
- * wires real email delivery (Resend on a DKIM-verified `crew.brewcle.com`), a
- * login that says "check your email" and emails nothing would be a broken prod
- * login. Flip it on (set the env var) once delivery is real. e2e turns it on to
- * exercise the flow against the fake channel.
+ * `CREW_SELF_SERVE` lived here until DEC-175. It gated the crew code login while email delivery
+ * was unwired, was turned on in production once it was, and then guarded a state that no longer
+ * existed anywhere — on in prod, on in e2e, so its off-branch never executed. What a flag like
+ * that buys is an untested path: nobody knew what `/crew` rendered with it off, because nothing
+ * ran that way. Deleted rather than left as reassurance.
  */
 function flagOn(name: string): boolean {
   return process.env[name] === "1";
-}
-
-export function selfServeEnabled(): boolean {
-  return flagOn("CREW_SELF_SERVE");
 }
 
 /**

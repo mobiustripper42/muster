@@ -13,7 +13,6 @@ import { answeredNoticeCode } from "@core/crewapp/answered-code.js";
 import { asId } from "@core/domain/ids.js";
 import { endSession, readSubject, startSession } from "../../lib/auth";
 import { echoLoginCodeForDev, sendLoginCodeEmail } from "../../lib/auth-delivery";
-import { selfServeEnabled } from "../../lib/flags";
 import {
   LOGIN_EMAIL_COOKIE,
   LOGIN_EMAIL_TTL_S,
@@ -94,7 +93,6 @@ export async function signOut(): Promise<void> {
  * the URL (DEC-026); `redirect()` stays outside the try.
  */
 export async function requestLoginCode(formData: FormData): Promise<void> {
-  if (!selfServeEnabled()) redirect("/crew");
 
   const email = String(formData.get("email") ?? "").trim();
   // SMS opt-in (Twilio 10DLC): voluntary, NEVER gates login — just a checkbox we
@@ -189,7 +187,6 @@ async function recordConsentBestEffort(
  * offers a fresh code, which is the same affordance the old branch gave them.
  */
 export async function verifyLoginCode(formData: FormData): Promise<void> {
-  if (!selfServeEnabled()) redirect("/crew");
 
   const jar = await cookies();
   const email = jar.get(LOGIN_EMAIL_COOKIE)?.value ?? "";

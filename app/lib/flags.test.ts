@@ -19,11 +19,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { messagingEnabled, reservationsEnabled, selfServeEnabled, timeClockEnabled } from "./flags";
+import { messagingEnabled, reservationsEnabled, timeClockEnabled } from "./flags";
 
 /** Every env flag in `flags.ts`, paired with its predicate. */
 const FLAGS: ReadonlyArray<{ env: string; fn: () => boolean }> = [
-  { env: "CREW_SELF_SERVE", fn: selfServeEnabled },
   { env: "MESSAGING", fn: messagingEnabled },
   { env: "RESERVATIONS", fn: reservationsEnabled },
   { env: "TIME_CLOCK", fn: timeClockEnabled },
@@ -54,9 +53,11 @@ describe("feature flags accept one spelling across the board (#736)", () => {
   });
 
   it("covers every flag the module exports", () => {
-    // Guards the vacuous pass: a fifth flag added without a row here would make every assertion
-    // below true of a set that no longer describes the module.
-    expect(FLAGS.length).toBe(4);
+    // Guards the vacuous pass: a flag added without a row here would make every assertion below
+    // true of a set that no longer describes the module. Three since DEC-175 deleted
+    // `CREW_SELF_SERVE` — and this is the assertion that caught the deletion, which is the point
+    // of counting rather than iterating whatever happens to be imported.
+    expect(FLAGS.length).toBe(3);
   });
 
   for (const { env, fn } of FLAGS) {

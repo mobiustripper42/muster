@@ -159,7 +159,6 @@ cross-reference left, and it points at the spec, never at another decision.
 ### Crew self-serve, auth & admin identity
 - DEC-010 — Crew auth is magic-link passwordless; crew don't self-register
 - DEC-034 — Production auth path — operator link mint, dev-link stays 404, NO email provider
-- DEC-057 — The dev-link minter is gated by `VERCEL_ENV`, not `NODE_ENV` — live on previews, off in prod
 - DEC-074 — Crew self-serve is a fourth crew surface — a knowing, recorded exception to "insultingly small"
 - DEC-075 — Self-claim is auto-lock (`Open → Confirmed`), bypassing `Asked`; operator-confirm-required is a built-in seam, not built
 - DEC-076 — Two eligibility doors — self-claim is native-role-only; operator-assign is ratings-inclusive (the dual-rating escape hatch)
@@ -229,6 +228,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-033 — Hosted deploy — provider pick (OPEN), Vercel topology, `tick` cron, `production` branch
 - DEC-059 — `main` stays promotable — multi-PR features land on a feature branch, not piecemeal on `main`
 - DEC-121 — Timestamp-prefixed migration filenames — cross-branch collision made structurally impossible (refines DEC-020)
+- DEC-173 — Vercel previews are not built, and are not a test surface
 
 ### Open questions
 - DEC-TBD — Open questions (carried from the spec; not Claude's to set alone)

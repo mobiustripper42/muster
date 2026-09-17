@@ -101,7 +101,7 @@ test.describe("crew /crew/open — pick up a shift", () => {
 
     // The claimable seat now sits under a day-section header (not a flat stack).
     // Date-agnostic: the seed shift is ~7d out, so assert the header SHAPE — a
-    // full weekday + the per-day open count — and that the Hops row is under it.
+    // full weekday + the per-day count — and that the Hops row is under it.
     // #440 lists a second row (the Asked seat, a different day) → one header per
     // day, so scope to the first.
     const dayHeader = page.getByRole("heading", { level: 2 }).first();
@@ -109,7 +109,9 @@ test.describe("crew /crew/open — pick up a shift", () => {
     await expect(dayHeader).toContainText(
       /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday),/,
     );
-    await expect(dayHeader).toContainText("open");
+    // #968: "open" became "to claim" — the count is of seats THIS viewer can take,
+    // which is not the same set as the seats that are open.
+    await expect(dayHeader).toContainText("to claim");
     await expect(page.locator("details", { hasText: "1:00" })).toBeVisible();
   });
 
@@ -127,6 +129,52 @@ test.describe("crew /crew/open — pick up a shift", () => {
     await signInAsCrew(page, "crew-quint");
     await page.goto("/crew/open?claim_error=conflict");
     await expect(page.getByText(/already have a shift that day/i)).toBeVisible();
+  });
+});
+
+test.describe("crew /crew/open — the team's schedule below the claim list (#968)", () => {
+  test.beforeEach(async () => {
+    await resetAndSeed("crew");
+  });
+
+  test("shows boats Quint has nothing to claim on, with who is aboard", async ({
+    page,
+  }) => {
+    await signInAsCrew(page, "crew-quint");
+    await page.goto(ALL);
+
+    const team = page.getByRole("region", { name: "Other shifts" });
+    await expect(team).toBeVisible();
+
+    // Growler is fully Crewed in the seed (Gilly, captain) — so it is NOT in the
+    // claim list, and before #968 it appeared nowhere on this page. That is the
+    // whole point: Quint can see the boat is out and who is on it.
+    await expect(team.getByText("Growler")).toBeVisible();
+    await expect(team.getByText(/Gilly · captain/)).toBeVisible();
+    // Hooper is the mate on the crewed Hops shift — a co-worker's name Quint had
+    // no way to see from this surface.
+    await expect(team.getByText(/Hooper · mate/)).toBeVisible();
+  });
+
+  test("nothing in the team section is pressable, and it carries no state or pax", async ({
+    page,
+  }) => {
+    await signInAsCrew(page, "crew-quint");
+    await page.goto(ALL);
+
+    const team = page.getByRole("region", { name: "Other shifts" });
+
+    // The visual-affordance contract: a team row must not look like a claim row.
+    // No <details>, so no chevron and nothing that opens on tap — an identical
+    // row that does nothing when tapped teaches crew the screen is broken.
+    await expect(team.locator("details")).toHaveCount(0);
+    await expect(team.getByRole("button")).toHaveCount(0);
+    await expect(team.getByRole("link")).toHaveCount(0);
+
+    // DEC-042: the shift state belongs on the operator's board, not here.
+    await expect(team.getByText(/At Risk|Filling|Crewed|Pending/)).toHaveCount(0);
+    // The other-shifts.ts PII boundary: crew see who is working, never guests.
+    await expect(team.getByText(/pax|guest/i)).toHaveCount(0);
   });
 });
 

@@ -7,6 +7,7 @@ import {
   type ClaimableSeatView,
   type DateRange,
 } from "@core/crewapp/claimable-view.js";
+import { buildTeamView, type TeamViewRow } from "@core/crewapp/team-view.js";
 import { addDays, vesselDateOf } from "@core/config/tenant.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../../components/ui/notice";
@@ -34,6 +35,21 @@ import { claimSeat } from "./actions";
  * Server-rendered, no client JS: presets are GET links, the confirm "sheet" is a
  * native <details> disclosure (the bail pattern), Claim is a <form action>.
  * Live everywhere since DEC-175 — the CREW_SELF_SERVE gate that 404'd this in prod is gone.
+ *
+ * **Two sections since #968.** Above the rule, the claim list — unchanged. Below it,
+ * the team's schedule for the same window (`buildTeamView`), display only. The reason
+ * is that a fully-crewed fleet has nothing claimable and so rendered as "Nothing open
+ * in this window" — absence, in the same words a dead season would use. The operator:
+ * *"I checked the available shifts and it's always blank."* A boat carrying a claimable
+ * seat appears in BOTH sections deliberately: above it is a seat you can take, below it
+ * is the crew already aboard, which is otherwise invisible on the one boat you care
+ * most about.
+ *
+ * The two sections must not look alike. The claim rows are filled cards (`bg-card` +
+ * `shadow-sm`) with a chevron that rotates on open; the team rows keep the border and
+ * drop the fill, the shadow and the chevron — enough edge to read as rows, nothing
+ * that looks pressable. An identical-looking row that does nothing on tap teaches crew
+ * the screen is broken.
  */
 export const dynamic = "force-dynamic"; // DEC-042: dynamic on navigation, never polled
 
@@ -76,6 +92,16 @@ export default async function CrewOpenPage({
     );
   }
 
+  // Its own try, deliberately: the team schedule is context, claiming is the
+  // function. A failed fleet read must not take the claim list down with it, so
+  // this degrades to an absent section rather than the whole-page notice above.
+  let team: TeamViewRow[] = [];
+  try {
+    team = await buildTeamView(getRepo(), range, new Date());
+  } catch (e) {
+    logSwallowed("crew/open", e, "the team schedule did not build");
+  }
+
   const claimError = sp.claim_error ? CLAIM_ERROR_COPY[sp.claim_error] ?? null : null;
 
   return (
@@ -83,7 +109,7 @@ export default async function CrewOpenPage({
       <CrewHeader title="Pick up a shift" back={{ href: "/crew", label: "My shifts" }} />
       <header className="flex flex-col gap-1">
         <p className="text-sm text-muted">
-          Open spots you’re cleared for. Claiming puts you on for the whole day.
+          Shifts you’re cleared to claim. Claiming puts you on for the whole day.
         </p>
       </header>
 
@@ -92,11 +118,21 @@ export default async function CrewOpenPage({
       {claimError && <Notice>{claimError}</Notice>}
 
       {rows.length === 0 ? (
-        <Notice>Nothing open in this window. Check back, or widen the dates above.</Notice>
+        // Two different facts, two different sentences. "Nothing to claim" is good
+        // news when the team section below explains why; it is the old dead-screen
+        // only when there is genuinely nothing scheduled, and then it says so.
+        <Notice>
+          {team.length > 0
+            ? "Nothing for you to claim right now — here’s who’s on the other shifts."
+            : "No shifts scheduled in this window. Try widening the dates above."}
+        </Notice>
       ) : (
         <div className="flex flex-col gap-5">
-          <p className="text-xs uppercase tracking-wide text-muted">
-            {rows.length} open
+          {/* A section title, not a micro-label: it and "Other shifts" below are the
+              two things that tell you what part of the page you're in, so they carry
+              the same weight as each other and more than the day headers under them. */}
+          <p className="text-base font-semibold text-ink">
+            {rows.length} you can claim
           </p>
           {/* Day-grouped (#313): the flat list read as one dense stack. Same
               pattern as the admin board — a full-weekday header per day, rows
@@ -107,8 +143,10 @@ export default async function CrewOpenPage({
                 <span className="text-sm font-semibold text-ink">
                   {fmtDayHeader(day.date)}
                 </span>
-                <span className="text-xs text-faint">
-                  {day.rows.length} open
+                {/* `text-muted`, not `text-faint` (#951) — 10px words at 2.36:1 are
+                    the worst case of that token, not a mild one. */}
+                <span className="text-xs text-muted">
+                  {day.rows.length} to claim
                 </span>
               </h2>
               {day.rows.map((r) => (
@@ -119,8 +157,103 @@ export default async function CrewOpenPage({
         </div>
       )}
 
+      <TeamSchedule rows={team} />
+
       <VersionTag />
     </Shell>
+  );
+}
+
+/**
+ * The display-only lower section (#968) — the other shifts scheduled in the same
+ * window. Renders nothing at all when the fleet read came back empty: the notice
+ * above already covers "nothing scheduled", and an empty heading over a blank space
+ * is the dead screen this task exists to remove.
+ */
+function TeamSchedule({ rows }: { rows: TeamViewRow[] }) {
+  if (rows.length === 0) return null;
+  return (
+    // `aria-labelledby` rather than a bare heading: a <section> only takes the
+    // `region` role once it has an accessible name, and without one this whole
+    // block is anonymous to a screen reader — the same undifferentiated run of
+    // text as the claim list above it.
+    <section
+      aria-labelledby="team-schedule-heading"
+      className="flex flex-col gap-5 border-t border-line pt-5"
+    >
+      {/* No subhead. "Other shifts" over a list of shifts needs no gloss, and the
+          sentence that was here restated the heading in more words. */}
+      <h2 id="team-schedule-heading" className="text-base font-semibold text-ink">
+        Other shifts
+      </h2>
+      {groupByDay(rows).map((day) => (
+        <section key={day.date} className="flex flex-col gap-3">
+          <h3 className="border-b border-line pb-1 text-sm font-semibold text-ink">
+            {fmtDayHeader(day.date)}
+          </h3>
+          {day.rows.map((r) => (
+            <TeamRow key={r.shiftId} row={r} />
+          ))}
+        </section>
+      ))}
+    </section>
+  );
+}
+
+/**
+ * One boat's day, flat. No card, no border, no chevron, no touch target — the
+ * deliberate visual break from `ClaimRow` above, so nothing here reads as
+ * pressable. Crew names are the feature; there is no state badge, no pax count and
+ * no way to tell an Asked seat from an untouched one (DEC-008, enforced in the core
+ * view rather than here).
+ */
+function TeamRow({ row }: { row: TeamViewRow }) {
+  // Border but no fill: enough edge to read as a row rather than loose text, while
+  // the missing `bg-card` + `shadow-sm` + chevron keep it clearly not a claim row.
+  // The card background is what makes ClaimRow look liftable, so it is the one that
+  // has to stay on that side of the rule.
+  //
+  // `border-faint` (#93a0b0), not `border-line` (#e7ebf1). A hairline that reads on
+  // white `bg-card` disappears on the page's own `bg-bg` — 1.06:1 against it — and
+  // these rows have no fill to sit on. Faint is 2.36:1, which is a visible edge.
+  // The existing token rather than a new one: a bespoke grey for a single border is
+  // how a palette stops being a palette.
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-card border border-faint px-4 py-3">
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+          <span
+            className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(row.vesselId, row.vesselHue)}`}
+            aria-hidden
+          />
+          {row.vesselName}
+        </span>
+        {row.crew.length > 0 ? (
+          <span className="text-sm text-muted">
+            {row.crew.map((c) => `${c.name} · ${c.role}`).join(", ")}
+          </span>
+        ) : (
+          // `text-muted`, not `text-faint` (#951): faint is 2.36:1 against the page
+          // background these fill-less rows sit on — legible as a border, not as
+          // words. Muted is 5.18:1. The quiet look here comes from size and from
+          // sitting under the vessel name, not from washing the ink out.
+          <span className="text-sm text-muted">Nobody on yet</span>
+        )}
+        {row.openRoles.length > 0 && (
+          <span className="text-xs text-muted">
+            {row.openRoles.join(", ")} open
+          </span>
+        )}
+      </span>
+      <span className="flex shrink-0 flex-col items-end">
+        <span className="font-mono text-sm text-ink">
+          {row.firstDeparture ? fmt12(row.firstDeparture) : "TBD"}
+        </span>
+        {row.tripCount > 1 && (
+          <span className="text-xs text-muted">{row.tripCount} trips</span>
+        )}
+      </span>
+    </div>
   );
 }
 
@@ -198,11 +331,15 @@ function fmtDayHeader(iso: string): string {
 
 /** Group the already-sorted (date → departure) rows into chronological day
  *  buckets — order within a day is preserved, so a day reads in time order. Pure
- *  presentation; the core view already clamps + sorts (#313, admin-board pattern). */
-function groupByDay(
-  rows: ClaimableSeatView[],
-): { date: string; rows: ClaimableSeatView[] }[] {
-  const byDate = new Map<string, ClaimableSeatView[]>();
+ *  presentation; the core view already clamps + sorts (#313, admin-board pattern).
+ *
+ *  Generic over anything carrying a `date` since #968, so the claim list and the
+ *  team schedule below it group identically — one day spine down the page rather
+ *  than two that could drift apart. */
+function groupByDay<T extends { date: string }>(
+  rows: T[],
+): { date: string; rows: T[] }[] {
+  const byDate = new Map<string, T[]>();
   for (const r of rows) {
     const bucket = byDate.get(r.date);
     if (bucket) bucket.push(r);

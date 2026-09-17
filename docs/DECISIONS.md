@@ -172,6 +172,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-150 — An already-authenticated crew member skips the tap-to-sign-in interstitial
 - DEC-174 — The session minters are deleted — one door in
 - DEC-175 — CREW_SELF_SERVE is deleted — a flag with no off-state
+- DEC-176 — Crew see the whole fleet — boats and names, never a ranking
 
 ### Reservations & payments
 - DEC-105 — Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover

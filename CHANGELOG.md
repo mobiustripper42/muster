@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.2.2] - 2026-09-17
+
+Six days, 26 pull requests. The second half of the move off Neon, the Phase 15
+reservations spine, and three deletions of things that were built and gated but
+never used.
+
+**Infrastructure — the Crunchy Bridge move finished (issue #960)**
+- Every database connection carries the Crunchy CA, not just the app's. `PostgresRepository.fromConnectionString` applies the TLS config itself, covering 17 terminal scripts that had been failing against production since the cutover (PR #1035)
+- `/api/health` had been reporting `db.reachable: false` in production the whole time, while the app worked. It built its own pool (PR #1035)
+- DEC-177 records the provider — DEC-033 left it OPEN and nothing ever closed it, which is why `docs/DEPLOY.md` named a deleted Neon project for weeks (PR #1035)
+- One answer to an unset `APP_BASE_URL`, across eleven sites; previews get their own origin (PR #1020)
+- Previews are not a test surface — DEC-173 (PR #1022)
+
+**Crew**
+- `/crew/open` shows the team's other shifts below the claim list, so a fully-crewed fleet stops reading as "nothing here" (PR #1032)
+- `/crew/dev-link` and `db:mint` deleted — one door in, DEC-174 (PR #1025)
+- `CREW_SELF_SERVE` deleted; its off-branch ran in no environment, DEC-175 (PR #1027)
+- Every tooltip removed (PRs #994, #996)
+- Crew menu labelled "Time Clock"
+
+**Reservations — Phase 15.1 through 15.9, behind the `RESERVATIONS` flag**
+- The booking charge is a raw PaymentIntent, API version pinned, SDK bumped (PRs #992, #995)
+- `amountDueNowCents` frozen onto the invoice (PR #1011)
+- The charge sends no metadata; the booking reads the row (PR #1019)
+- One PaymentIntent per pending row, raised rather than re-minted (PR #1026)
+- The row counts its own checkout attempts (PR #1029)
+- The confirmation that never arrived, and the notice that said "you have NOT been charged" while the money was captured (PRs #1005, #1014)
+
+**Engine**
+- One unmanned boat no longer 500s the cron for the whole fleet (PR #1018)
+- One bad vessel-day no longer costs the fleet its shifts (PR #1004)
+- An unformed shift texts the office (PR #1016)
+- A formation run states which vessel-days it covers; ties break by vessel, not by the database (PRs #1010, #1013)
+- One SMS construction, so there is nowhere left to put a tenth answer (PR #1008)
+
 ## [1.2.1] - 2026-09-11
 
 Ships the Phase 14 close plus the first half of the move off Neon.

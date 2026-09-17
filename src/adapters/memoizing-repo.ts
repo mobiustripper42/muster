@@ -30,8 +30,19 @@
 
 import type { Repository } from "../ports/repository.js";
 
-/** Idempotent no-arg reads — one memo slot each. */
-const SINGLE = new Set(["listCrewMembers", "listShifts", "listEvents"]);
+/** Idempotent no-arg reads — one memo slot each.
+ *
+ *  `listAllSeats` joined at #968. It is a full seat-table read reached once per
+ *  understaffed shift — `resolveShiftStateOnRead` → `poolExhaustedFor` →
+ *  `committedDatesByCrew` (`oracle.ts:70`) — so every caller of this wrapper was
+ *  paying for it N times while the three reads beside it were paying once. Same
+ *  shape as the others: no arguments, no writes, a snapshot for the wrapper's life. */
+const SINGLE = new Set([
+  "listCrewMembers",
+  "listShifts",
+  "listEvents",
+  "listAllSeats",
+]);
 
 /** Idempotent reads keyed by their first (id) argument — one slot per key. */
 const KEYED = new Set([

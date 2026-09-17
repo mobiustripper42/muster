@@ -31,6 +31,7 @@ interface SeatSpec {
   role?: typeof CAPTAIN | typeof MATE;
   state?: SeatState;
   crew?: { id: string; name: string };
+  kind?: "required" | "supernumerary";
 }
 
 /** Mirrors the `other-shifts.test.ts` fixture — one boat, one shift, N trips. */
@@ -79,7 +80,7 @@ async function addShift(
       id: asId<"SeatId">(`seat-${id}-${i}`),
       shiftId: asId<"ShiftId">(id),
       role: s.role ?? CAPTAIN,
-      kind: "required",
+      kind: s.kind ?? "required",
       state: s.state ?? "Open",
       ...(s.crew ? { assignedCrewMemberId: asId<"CrewMemberId">(s.crew.id) } : {}),
     };
@@ -164,6 +165,44 @@ describe("buildTeamView (#968)", () => {
 
     expect(row!.crew).toEqual([]);
     expect(row!.openRoles).toEqual(["captain"]);
+  });
+
+  it("clamps to [today, today+45d] however wide the caller asks — the URL is not a trusted window", async () => {
+    // `/crew/open?from=2020-01-01&to=2099-12-31` is a plain URL edit, and it is
+    // literally the `ALL` constant the e2e suite uses. Unclamped it runs
+    // `deriveAllShifts` over every shift the fleet has ever had — the ~480-round-trip
+    // fan-out of #960, on a screen crew are meant to open habitually.
+    // `claimableSeatsFor` has enforced this guardrail since DEC-074; the section
+    // below it must not be the way around it.
+    await addShift("inside", "2026-07-04", "Orca", ["10:00"], [
+      { state: "Confirmed", crew: { id: "crew-bo", name: "Bo" } },
+    ]);
+    await addShift("past", "2020-01-02", "Hops", ["10:00"], [
+      { state: "Confirmed", crew: { id: "crew-q", name: "Quint" } },
+    ]);
+    await addShift("far", "2099-06-01", "Firkin", ["10:00"], [
+      { state: "Confirmed", crew: { id: "crew-a", name: "Ani" } },
+    ]);
+
+    const rows = await buildTeamView(repo, { from: "2020-01-01", to: "2099-12-31" }, NOW);
+
+    expect(rows.map((r) => r.shiftId)).toEqual(["inside"]);
+  });
+
+  it("does not count an unfilled supernumerary seat as a gap", async () => {
+    // A trainee seat is an optional extra, not a boat that needs a body.
+    // `all-shifts.ts` keeps the required-only definition for its fill counts for
+    // exactly this reason; folding both in would make a fully-crewed boat read as
+    // short-handed, which is the opposite of what this section is for.
+    await addShift("orca", "2026-07-04", "Orca", ["10:00"], [
+      { state: "Confirmed", crew: { id: "crew-bo", name: "Bo" } },
+      { role: MATE, kind: "supernumerary", state: "Open" },
+    ]);
+
+    const [row] = await buildTeamView(repo, WEEK, NOW);
+
+    expect(row!.crew).toEqual([{ name: "Bo", role: "captain" }]);
+    expect(row!.openRoles).toEqual([]);
   });
 
   it("narrows to the given range, and drops cancelled boats", async () => {

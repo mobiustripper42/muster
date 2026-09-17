@@ -29,6 +29,8 @@
 import { memoizingRepo } from "../adapters/memoizing-repo.js";
 import type { Repository } from "../ports/repository.js";
 import { deriveAllShifts } from "../admin/all-shifts.js";
+import { CLAIMABLE_WINDOW_DAYS } from "../oracle/claimable.js";
+import { addDays, vesselDateOf } from "../config/tenant.js";
 
 /** One crew member aboard — name + role, the whole of what a peer may see. */
 export interface TeamViewCrew {
@@ -59,6 +61,10 @@ export interface TeamViewRow {
    * reading as fully crewed — but neutrally: no ink, no count-down, no claim
    * affordance. This section is display; claiming happens above it.
    *
+   * Required seats only — an unfilled supernumerary (trainee) seat is an optional
+   * extra rather than a gap, the same required-only definition `all-shifts.ts` keeps
+   * for its fill counts.
+   *
    * "Unfilled" is `state !== "Confirmed"`, which deliberately folds `Open`, `Asked`,
    * `Bailed` and `Claimed` into one indistinguishable bucket. `Asked` and `Bailed`
    * are the DEC-008 privacy reason. `Claimed` is the DEC-075 confirm-gate seam: it
@@ -73,11 +79,22 @@ export interface TeamViewRow {
  * Every non-cancelled boat-day in `[from, to]`, projected for crew. Sorted by the
  * inherited date → earliest departure → vessel name.
  *
- * **`memoizingRepo` is not an optimization here, it is the price of admission.**
- * `deriveAllShifts` is the ~480-round-trip fan-out named in the DoS review §4.4
- * and issue #960: it re-reads events and reservations per shift. The operator's
- * board absorbs that because one person opens it deliberately; this screen is meant
- * to be opened habitually by every crew member, which is a different load entirely.
+ * **The caller's window only ever narrows.** It is intersected with
+ * `[today, today+CLAIMABLE_WINDOW_DAYS]` here, not trusted — `range` arrives from
+ * `searchParams`, whose only guard is an HTML `min`/`max` on a date input, which is
+ * a hint to a browser and nothing to a URL. `claimableSeatsFor` has enforced this
+ * same clamp internally since DEC-074; without it the section *below* the claim list
+ * is the way around the guardrail the claim list has.
+ *
+ * That matters more here than it looks: `deriveAllShifts` carries the read fan-out
+ * of issue #960, and `?from=2000-01-01&to=2099-12-31` would run it over every shift
+ * the fleet has ever had — on a screen meant to be opened habitually by everyone.
+ *
+ * `memoizingRepo` collapses part of that fan-out, not all of it. It caches the
+ * table-wide reads (`listShifts`, `listEvents`, `listCrewMembers`, `listAllSeats`)
+ * and the per-shift `listSeatsForShift`/`getShift`; `getEvent` and
+ * `listReservationsForEvent` are not cached and still run per event. The clamp above
+ * is what bounds the cost — the wrapper only flattens it.
  */
 export async function buildTeamView(
   baseRepo: Repository,
@@ -85,7 +102,16 @@ export async function buildTeamView(
   now: Date,
 ): Promise<TeamViewRow[]> {
   const repo = memoizingRepo(baseRepo);
-  const rows = await deriveAllShifts(repo, window, now);
+  // Vessel-local "today" (DEC-032), matching `claimableSeatsFor` — a UTC slice would
+  // slide the window a day in the evening Eastern hours.
+  const today = vesselDateOf(now);
+  const clamped = {
+    from: window.from > today ? window.from : today,
+    to: window.to < addDays(today, CLAIMABLE_WINDOW_DAYS)
+      ? window.to
+      : addDays(today, CLAIMABLE_WINDOW_DAYS),
+  };
+  const rows = await deriveAllShifts(repo, clamped, now);
   return rows.map((r) => ({
     shiftId: r.shiftId,
     vesselId: r.vesselId,
@@ -97,6 +123,11 @@ export async function buildTeamView(
     crew: r.seats
       .filter((s) => s.crewName)
       .map((s) => ({ name: s.crewName as string, role: s.roleName })),
-    openRoles: r.seats.filter((s) => !s.filled).map((s) => s.roleName),
+    // Required only, mirroring `all-shifts.ts`'s fill counts: a trainee seat is an
+    // optional extra, not a boat that needs a body. Folding both in would make a
+    // fully-crewed boat read as short-handed.
+    openRoles: r.seats
+      .filter((s) => !s.filled && !s.supernumerary)
+      .map((s) => s.roleName),
   }));
 }

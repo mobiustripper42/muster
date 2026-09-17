@@ -1297,6 +1297,102 @@ describe("processBookingWebhook — payment_intent.payment_failed is acked and i
 });
 
 /**
+ * **Once the sale is made, the row's other intents are retired (15.10, issue #978).**
+ *
+ * A checkout can leave more than one id on its row — §2.8.5 keeps them all so a superseded intent
+ * that succeeds late still resolves here. Keeping them FINDABLE is not the same as leaving them
+ * PAYABLE, and until now they stayed payable at whatever amount they were minted with. `SPEC.md`
+ * defines today's outcome for one that gets paid after the booking: *"this is a second charge for
+ * one sale: refund it and tell the customer"* — a charge, a refund, and an apology for a thing
+ * that should not have been possible.
+ *
+ * Cancelling the losers once the flip has committed removes all three. It cannot remove the case
+ * where the sibling ALREADY succeeded — that is the residual race, the money is taken, and the
+ * refund path still owns it. This makes that path rarer, not unreachable.
+ */
+describe("processBookingWebhook — superseded intents are retired once the row is booked (15.10)", () => {
+  const OTHER = "pi_superseded";
+
+  it("cancels the row's other intents, and never the one that paid", async () => {
+    const repo = new InMemoryRepository();
+    // The declined-then-retried shape §2.8.5 exists for: two ids, the LAST one paid.
+    await seedPending(repo, { paymentIntentIds: [OTHER, PI] });
+    const { deps, payments } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "booked" });
+    expect(payments.cancelled).toEqual([{ paymentIntentId: OTHER, reason: "duplicate" }]);
+  });
+
+  it("does not fail the webhook when the provider refuses the cancel", async () => {
+    // **The case that would cause real damage.** Stripe refuses a cancel from most terminal
+    // states, and a redelivery re-cancels an already-cancelled sibling every time. A throw here
+    // would 500 a booking that has already committed, and Stripe would retry a completed sale for
+    // three days.
+    const repo = new InMemoryRepository();
+    await seedPending(repo, { paymentIntentIds: [OTHER, PI] });
+    const { deps, payments, alert } = makeDeps(repo);
+    payments.cancelError = new Error("stripe: 400 — payment intent is already canceled");
+
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "booked" });
+    expect((await repo.getReservation(PEND))!.status).toBe("booked");
+    // Not an operator's problem: no money moved and the booking is fine. `alertPaidButUnbooked` is
+    // for a charge with no booking, which is the opposite of what happened here.
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it("cancels nothing when the row only ever minted the intent that paid", async () => {
+    // The ordinary booking, and the guard against a fix that cancels indiscriminately.
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps, payments } = makeDeps(repo);
+
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    expect(payments.cancelled).toEqual([]);
+  });
+});
+
+/**
+ * **`payment_intent.canceled` is acked and deliberately does nothing (15.10).**
+ *
+ * Named for the reason `payment_failed` is: ignored-on-purpose and unrecognised must not be the
+ * same signal. Every cancel Muster performs is one it already knows about — the port call returned
+ * before this event was written — so there is nothing to do when it arrives.
+ */
+describe("processBookingWebhook — payment_intent.canceled is acked and ignored (15.10)", () => {
+  const canceled = (pi = PI): string =>
+    JSON.stringify({ type: "payment_canceled", data: { paymentIntentId: pi, reason: "abandoned" } });
+
+  it("acks the event and reports it ignored", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, canceled(), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "ignored" });
+  });
+
+  it("leaves the pending row untouched and alerts nobody", async () => {
+    // A cancel we made ourselves on a row whose checkout has moved on, or one an operator made in
+    // the dashboard. Neither is money moving, and neither is this handler's business.
+    const repo = new InMemoryRepository();
+    const row = await seedPending(repo);
+    const { deps, alert } = makeDeps(repo);
+    const before = await repo.getReservation(row.id);
+
+    await processBookingWebhook(deps, canceled(), FAKE_SIGNATURE);
+
+    expect(await repo.getReservation(row.id)).toEqual(before);
+    expect(alert).not.toHaveBeenCalled();
+  });
+});
+
+/**
  * **A post-commit failure must not lose the confirmation forever (15.3, issue #971).**
  *
  * The chain this pins: the flip commits, then something after it throws, so the route 500s and

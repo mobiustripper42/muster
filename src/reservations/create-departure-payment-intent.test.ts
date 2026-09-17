@@ -836,6 +836,68 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     expect(row!.paymentIntentIds).toEqual(["pi_fake_1", "pi_fake_2"]);
   });
 
+  // ── 15.10: the intent we walked away from is retired, not left payable ──────
+  // 15.8 stopped minting a second intent in the ordinary case and said so in a comment at the
+  // mint site: when it mints ANYWAY, the prior intent is left behind, payable, at its old amount.
+  // These are the two paths that still reach that mint, and the point of each assertion is the
+  // OUTCOME — nobody can pay the old one — rather than the fact that a cancel was called.
+  it("an intent the provider cannot describe is retired, not just replaced (15.10)", async () => {
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    // The read throws, so the state is `unknown` and the checkout mints fresh. `unknown` is four
+    // facts wearing one word — a read that failed, a status we cannot describe, an id Stripe never
+    // knew, or an already-cancelled intent — and only the first leaves something payable. That is
+    // also why the cancel has to tolerate refusal: three of the four will refuse it.
+    pay.intentStateError = new Error("stripe: 503");
+    const again = await createDeparturePaymentIntent(repo, pay, req, now);
+
+    expect(again.ok).toBe(true);
+    expect(pay.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+    expect(pay.liveAmountCents.has("pi_fake_1")).toBe(false); // retired
+    expect(pay.liveAmountCents.has("pi_fake_2")).toBe(true); // the one we just handed the customer
+  });
+
+  it("an intent whose amount update was refused while it was still LIVE is retired (15.10)", async () => {
+    // The other path to the mint, and the dangerous one: the intent read `reusable` a moment ago,
+    // so unlike the case above it is genuinely payable at the old quote. 15.8's catch re-reads the
+    // state and refuses when it says `settled`; this is the branch where it does not.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering({ includedGuestCount: 4 }));
+    const pay = new FakePaymentPort();
+
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    pay.updateAmountError = new Error("stripe: intent is no longer updatable");
+    // Refused, but NOT because it was paid — so the caller falls through and mints, and the old
+    // intent is still sitting there at the four-guest amount.
+    pay.updateAmountRefusalState = "reusable";
+
+    const again = await createDeparturePaymentIntent(repo, pay, { ...req, guestCount: 6 }, now);
+    expect(again.ok).toBe(true);
+    expect(pay.intents).toHaveLength(2);
+    expect(pay.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+    expect(pay.liveAmountCents.has("pi_fake_1")).toBe(false);
+  });
+
+  it("a cancel the provider refuses does not fail the checkout (15.10)", async () => {
+    // Stripe refuses a cancel from most terminal states, and those are the ORDINARY cases here.
+    // The customer already has a fresh payable secret by the time this runs; letting a refused
+    // cancel surface would break a checkout that had already succeeded.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    pay.intentStateError = new Error("stripe: 503");
+    pay.cancelError = new Error("stripe: 400 — payment intent is already canceled");
+
+    const again = await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(again.ok).toBe(true);
+    expect(pay.intents).toHaveLength(2);
+  });
+
   it("a second checkout with a DIFFERENT cookie is NOT merged onto the first — possession, not identity (criterion 10)", async () => {
     const repo = await seededRepo();
     await repo.saveOffering(tripOffering());

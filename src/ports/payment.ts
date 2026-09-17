@@ -105,6 +105,19 @@ export interface CreatePaymentIntentInput {
  */
 export type PaymentIntentState = "reusable" | "settled" | "unknown";
 
+/**
+ * Why an intent is being cancelled (15.10) — Stripe's own enum, narrowed to the two Muster means.
+ *
+ * Its full set is `duplicate | fraudulent | requested_by_customer | abandoned`. The other two
+ * describe a judgment nobody here is making: we do not decide a charge was fraudulent, and a
+ * customer who walked away from a card form did not request anything.
+ *
+ * - `abandoned` — a checkout minted a replacement and this one was left behind.
+ * - `duplicate` — the row is booked by a different intent, so this one is a second charge for one
+ *   sale waiting to happen.
+ */
+export type CancelReason = "abandoned" | "duplicate";
+
 /** A verified `payment_intent.succeeded` event, normalized off the provider's shape. */
 export interface PaymentSucceeded {
   paymentIntentId: string;
@@ -185,6 +198,24 @@ export interface PaymentFailed {
 }
 
 /**
+ * A verified `payment_intent.canceled` event (15.10), normalized off the provider's shape.
+ *
+ * Named for the same reason `PaymentFailed` is: **ignored on purpose and unrecognised must not be
+ * the same signal.** Every cancel Muster performs is one it already knows about — the port call
+ * returned before this event was written — so the handler acks it and does nothing. The member
+ * exists so that a cancel Muster did NOT perform, one an operator made in the dashboard, is a thing
+ * the code has a word for the day somebody wants to act on it.
+ *
+ * **Subscribing the endpoint to this event is optional.** Nothing in 15.10 needs it to arrive; the
+ * cancel is an API call read synchronously. It buys visibility of dashboard-side cancels.
+ */
+export interface PaymentCanceled {
+  paymentIntentId: string;
+  /** Stripe's `cancellation_reason`, when it sends one. Includes reasons we never send. */
+  reason?: string;
+}
+
+/**
  * The verified-webhook event union (12.5, DEC-134; refunds #616; disputes issue #723;
  * declines 14.8). `checkout_completed` drives the hosted flows (balance + post-gratuity);
  * `payment_succeeded` drives the inline-Elements booking; `refund_recorded` reconciles a refund
@@ -197,6 +228,7 @@ export type PaymentEvent =
   | { type: "checkout_completed"; data: CheckoutCompleted }
   | { type: "payment_succeeded"; data: PaymentSucceeded }
   | { type: "payment_failed"; data: PaymentFailed }
+  | { type: "payment_canceled"; data: PaymentCanceled }
   | { type: "refund_recorded"; data: RefundRecorded }
   | { type: "dispute_updated"; data: DisputeUpdated };
 
@@ -287,6 +319,23 @@ export interface PaymentPort {
     paymentIntentId: string,
     amountCents: number,
   ): Promise<{ clientSecret: string }>;
+  /**
+   * Retire an intent so nobody can pay it (15.10).
+   *
+   * Stripe: *"You can cancel a PaymentIntent object when it's in one of these statuses:
+   * requires_payment_method, requires_capture, requires_confirmation, requires_action or, in rare
+   * cases, processing"*, and *"after it's canceled, no additional charges are made by the
+   * PaymentIntent and any operations on the PaymentIntent fail with an error"*.
+   *
+   * **Every caller treats this as best-effort and none may let it fail their work.** The states it
+   * refuses are ordinary here, not exceptional: an already-cancelled sibling on a webhook
+   * redelivery, an intent that succeeded between our read and this call, an id the provider never
+   * knew. A 500 from any of those would make Stripe retry a sale that has already completed.
+   *
+   * **Throws** when the provider refuses, matching `refund` and `updatePaymentIntentAmount`. The
+   * callers wrap it; the port does not pretend the failure did not happen.
+   */
+  cancelPaymentIntent(paymentIntentId: string, reason: CancelReason): Promise<void>;
   /**
    * Verify the webhook signature and normalize the event (12.5, DEC-134). Returns the
    * discriminated union for a `checkout.session.completed` or `payment_intent.succeeded`

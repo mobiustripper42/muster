@@ -337,6 +337,10 @@ const toReservation = (r: any): Reservation => ({
   ...opt("reservedAt", r.reserved_at),
   ...opt("holderToken", r.holder_token),
   ...opt("paymentIntentIds", r.payment_intent_ids),
+  // Not `opt` (15.9): the column is `not null default 0`, so a stored row always has a number and
+  // the in-memory double is held to the same promise by the contract. `?? 0` covers a row selected
+  // by a query written before the column existed, not a real absence.
+  checkoutAttempts: r.checkout_attempts ?? 0,
   ...opt("holdMinutes", r.hold_minutes),
   ...opt("tripMinutes", r.trip_minutes),
   ...opt("invoice", r.booking_invoice),
@@ -1835,12 +1839,18 @@ export class PostgresRepository implements Repository {
     // Every `case when status = 'pending'` below is that same guard, spelled out per column rather
     // than hoisted into a `where` clause — because the append above must run on a booked row and
     // none of these may.
+    //
+    // `checkout_attempts` is incremented unguarded for the same reason the append is (15.9): a
+    // submit that landed after a rival took the hull is still an attempt the customer made. This
+    // statement is the ONLY writer of that column — it is deliberately absent from
+    // `RESERVATION_COLUMNS`, so no whole-row upsert can rewind it from a stale copy of the row.
     await this.#pool.query(
       `update reservations
           set payment_intent_ids = case
                 when $2::text is null then payment_intent_ids
                 else array_append(coalesce(payment_intent_ids, '{}'::text[]), $2::text)
               end,
+              checkout_attempts = checkout_attempts + 1,
               booking_invoice = case when status = 'pending'
                                      then coalesce($3::jsonb, booking_invoice) else booking_invoice end,
               updated_at = case when status = 'pending'

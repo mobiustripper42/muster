@@ -612,8 +612,27 @@ export class InMemoryRepository implements Repository {
   }
 
   // ── Reservations ───────────────────────────────────────────────────────────
+  /**
+   * Store a caller-supplied whole row, keeping the attempt counter this repository owns (15.9).
+   *
+   * Postgres says this by leaving `checkout_attempts` out of `RESERVATION_COLUMNS` altogether: the
+   * upsert never names the column, so an insert takes `default 0` and an update leaves whatever is
+   * there. This double has no column list to omit it from, so it has to say the same thing out
+   * loud — never read `reservation.checkoutAttempts`, always take the stored one. A caller holding
+   * a row it read before two retries would otherwise rewind the count to zero here and not there.
+   */
+  #storeWholeReservation(reservation: Reservation): void {
+    this.#reservations.set(
+      reservation.id,
+      clone({
+        ...reservation,
+        checkoutAttempts: this.#reservations.get(reservation.id)?.checkoutAttempts ?? 0,
+      }),
+    );
+  }
+
   async saveReservation(reservation: Reservation): Promise<void> {
-    this.#reservations.set(reservation.id, clone(reservation));
+    this.#storeWholeReservation(reservation);
   }
   async getReservation(id: ReservationId): Promise<Reservation | null> {
     const r = this.#reservations.get(id);
@@ -778,7 +797,7 @@ export class InMemoryRepository implements Repository {
       }),
     ];
     if (hullIsBusy(busy, minutesOfDay(time), holdMinutes)) return { result: "lost" };
-    this.#reservations.set(reservation.id, clone(reservation));
+    this.#storeWholeReservation(reservation);
     return { result: "won" };
   }
 
@@ -802,13 +821,17 @@ export class InMemoryRepository implements Repository {
       paymentIntentId === null
         ? (row.paymentIntentIds ?? [])
         : [...(row.paymentIntentIds ?? []), paymentIntentId];
+    // Unconditional, for the same reason the append is (15.9): a customer whose submit landed after
+    // a rival took the hull still submitted. This is the only writer of the counter.
+    const checkoutAttempts = (row.checkoutAttempts ?? 0) + 1;
     if (row.status !== "pending") {
-      this.#reservations.set(attempt.id, clone({ ...row, paymentIntentIds }));
+      this.#reservations.set(attempt.id, clone({ ...row, paymentIntentIds, checkoutAttempts }));
       return;
     }
     const next: Reservation = {
       ...row,
       paymentIntentIds,
+      checkoutAttempts,
       // The customer's answers, re-stated (#946).
       customerName: attempt.customerName,
       partySize: attempt.partySize,

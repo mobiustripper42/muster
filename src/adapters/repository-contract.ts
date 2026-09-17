@@ -1012,6 +1012,55 @@ export function runRepositoryContract(
       expect(got.invoice).toEqual(INVOICE_2);
     });
 
+    // ── checkout_attempts — the count the screen actually claims to show (15.9, issue #977) ──
+    // `/admin/abandonment` has always said "Card form counts payment attempts" while deriving that
+    // number from `paymentIntentIds.length`. 15.8 made the two disagree: a retry that reuses its
+    // intent appends no id. The row counts attempts itself now, and the counter is owned by
+    // `recordCheckoutAttempt` alone — no whole-row write may move it.
+    it("recordCheckoutAttempt: counts every attempt, including one that minted no new intent (15.9)", async () => {
+      await repo.saveReservation(firstAttempt());
+      await repo.recordCheckoutAttempt({ ...firstAttempt(), updatedAt: NOW }, "pi_paid");
+      await repo.recordCheckoutAttempt({ ...firstAttempt(), updatedAt: NOW }, null);
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      // Two attempts, one new id. That gap IS the defect this task exists for — before it, the
+      // screen read the array's length and reported `2×` for these two calls only by accident of
+      // the first one minting.
+      expect(got.checkoutAttempts).toBe(2);
+      expect(got.paymentIntentIds).toEqual(["pi_declined", "pi_paid"]);
+    });
+
+    it("recordCheckoutAttempt: a BOOKED row still counts the attempt (15.9)", async () => {
+      // Same reasoning as the unconditional id append two cases up: a customer whose submit landed
+      // after a rival took the hull still submitted. Guarding this behind `status = 'pending'`
+      // would silently drop exactly the attempts the residual race (§2.8.7) produces — and 15.11
+      // keys a Stripe idempotency key on this ordinal, where a skipped increment is a collision.
+      await repo.saveReservation({ ...firstAttempt(), status: "booked", eventId: asId<"EventId">("evt-booked") });
+      await repo.recordCheckoutAttempt({ ...firstAttempt(), updatedAt: NOW }, "pi_late");
+      expect((await repo.getReservation(rid("pend-1")))!.checkoutAttempts).toBe(1);
+    });
+
+    it("a whole-row save does not rewind the attempt counter (15.9)", async () => {
+      // The reason this column is NOT in `RESERVATION_COLUMNS`. Every other column there is
+      // caller-owned; this one is monotonic and database-owned. In the list, any caller holding a
+      // stale copy — an admin edit, a cancel — resets the count to whatever it read, and a Stripe
+      // idempotency key built on it in 15.11 would then be reused against a live intent.
+      await repo.saveReservation(firstAttempt());
+      await repo.recordCheckoutAttempt({ ...firstAttempt(), updatedAt: NOW }, "pi_paid");
+      await repo.recordCheckoutAttempt({ ...firstAttempt(), updatedAt: NOW }, null);
+      // The ORIGINAL in-hand row, which never knew about either attempt.
+      await repo.saveReservation(firstAttempt());
+      expect((await repo.getReservation(rid("pend-1")))!.checkoutAttempts).toBe(2);
+    });
+
+    it("a row that has recorded no attempt reads 0, not absent (15.9)", async () => {
+      // The screen renders `—` for zero and would render it for `undefined` too, so this is not
+      // about the page — it is about the two adapters agreeing. Postgres cannot return `undefined`
+      // from a `not null default 0` column, so an in-memory double that does is a disagreement the
+      // page happens not to expose, which is exactly the kind DEC-020 exists to catch.
+      await repo.saveReservation(pendingRow({ id: rid("pend-never-tried") }));
+      expect((await repo.getReservation(rid("pend-never-tried")))!.checkoutAttempts).toBe(0);
+    });
+
     it("recordCheckoutAttempt: a BOOKED row takes the payment id and NOTHING else (the 14.6 concurrent-confirm guard)", async () => {
       // The race this guard exists for: the retry's read lands before a concurrent confirm commits
       // and its write after. A full-row write would revert a just-booked, PAID row to `pending`
@@ -2157,20 +2206,27 @@ export function runRepositoryContract(
     });
 
     it("reservations: nullable phone present and absent; listForEvent", async () => {
+      // `checkoutAttempts: 0` on every expectation below is the ONE field a stored row carries that
+      // its caller did not supply (15.9). The column is `not null default 0`, so Postgres cannot
+      // hand back anything else, and holding the double to the same promise is the point — a
+      // `toEqual` here is what would otherwise let the two adapters drift on it.
+      const stored = (over: Partial<Reservation> = {}): Reservation => ({
+        ...reservation(over),
+        checkoutAttempts: 0,
+      });
       await repo.saveReservation(reservation()); // no phone/email
       const got = await repo.getReservation(asId<"ReservationId">("resv-1"));
-      expect(got).toEqual(reservation());
+      expect(got).toEqual(stored());
       expect("phone" in got!).toBe(false);
       await repo.saveReservation(reservation({ phone: "555", email: "b@x.io" }));
       expect(await repo.listReservationsForEvent(EVENT)).toEqual([
-        reservation({ phone: "555", email: "b@x.io" }),
+        stored({ phone: "555", email: "b@x.io" }),
       ]);
       // updatedAt round-trips (DEC-029); absent stays absent
       expect("updatedAt" in got!).toBe(false);
-      const stamped = reservation({ updatedAt: "2026-06-10T12:00:00.000Z" });
-      await repo.saveReservation(stamped);
+      await repo.saveReservation(reservation({ updatedAt: "2026-06-10T12:00:00.000Z" }));
       expect(await repo.getReservation(asId<"ReservationId">("resv-1"))).toEqual(
-        stamped,
+        stored({ updatedAt: "2026-06-10T12:00:00.000Z" }),
       );
     });
 

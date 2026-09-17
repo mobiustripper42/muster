@@ -1,0 +1,29 @@
+-- 15.9 / issue #977 — the row counts its own checkout attempts.
+--
+-- `/admin/abandonment` has always told the operator "Card form counts payment attempts"
+-- (`app/(admin)/admin/abandonment/page.tsx:112`), and derived that number from
+-- `payment_intent_ids`' length. That was exact until 15.8, which taught the retry path to REUSE a
+-- PaymentIntent rather than mint a second one: two attempts now append one id, so a customer who
+-- tried twice renders `1×`. The column is not dead — an exhausted intent still reminted and still
+-- appends — which is worse, because the number still looks like it means something, and it is wrong
+-- precisely on the retries the screen exists to show.
+--
+-- `not null default 0`, not nullable. 15.3's `confirmation_sent_at` two migrations back is nullable
+-- because NULL there means "we cannot prove we told them" and a caller branches on the difference.
+-- Nothing branches here: the screen renders an em dash for zero and would render one for unknown,
+-- so a third state would be a distinction no reader can use.
+--
+-- **No backfill.** There are no reservations in production (operator, 2026-09-16), so the only
+-- existing rows are in development and the default answers for them. A first cut derived a starting
+-- count from `array_length(payment_intent_ids, 1)`, which is exact for any row written before 15.8
+-- — but writing a statement to correct a population that does not exist is how a migration acquires
+-- a paragraph defending it.
+--
+-- **Deliberately absent from `RESERVATION_COLUMNS`** (`postgres-repository.ts:353`). Every other
+-- column in that list is caller-owned; this one is monotonic and owned by `recordCheckoutAttempt`.
+-- In the list, `saveReservation`'s `on conflict do update set … = excluded.…` would let any caller
+-- holding a stale copy of the row — an admin edit, a cancel — silently rewind the count to whatever
+-- it last read. Leaving it out means the insert takes the default and the update never names it.
+-- 15.11 keys a Stripe idempotency key on this ordinal, where a rewind is a key reused against a
+-- live intent.
+alter table reservations add column checkout_attempts integer not null default 0;

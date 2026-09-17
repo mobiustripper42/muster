@@ -15,9 +15,15 @@
 --
 -- **The backfill restates a true number rather than asserting a new one.** For any row written
 -- before 15.8's reuse branch, every attempt minted an id, so `array_length(payment_intent_ids, 1)`
--- IS the attempt count — it is the number this screen has been displaying all along. Rows written
--- in the days since 15.8 merged may undercount by one; those are dev rows and `db:reset:dev` clears
--- them. `coalesce` because `array_length` of an empty or null array is NULL, not 0.
+-- IS the attempt count — it is the number this screen has been displaying all along. `coalesce`
+-- because `array_length` of an empty or null array is NULL, not 0.
+--
+-- **The gap, stated without a guess about who it hits.** A row whose retry took 15.8's reuse path
+-- between that merge and this migration running gets backfilled to its id count, which is one short
+-- per reused attempt — and permanently, because the increment below is a pure `+ 1` onto whatever
+-- base it lands on. Nobody has counted those rows. To know, query reservations updated between
+-- 15.8's merge and this migration with more than one attempt; to erase the question on a
+-- throwaway database, `db:reset:dev`.
 --
 -- **Deliberately absent from `RESERVATION_COLUMNS`** (`postgres-repository.ts:353`). Every other
 -- column in that list is caller-owned; this one is monotonic and owned by `recordCheckoutAttempt`.

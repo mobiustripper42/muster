@@ -28,6 +28,7 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { pgConnectionConfig } from "../src/config/db-ssl.js";
 import { DEFAULT_DATABASE_URL, migrate } from "./migrate.js";
 import { vesselDateOf } from "../src/config/tenant.js";
 
@@ -118,7 +119,7 @@ export function resolveTarget(rawUrl: string): Target {
 
 /** Drop every app table (and the migration ledger) so migrations re-run from zero. */
 async function dropSchema(url: string): Promise<void> {
-  const client = new pg.Client({ connectionString: url });
+  const client = new pg.Client(pgConnectionConfig(url));
   await client.connect();
   try {
     // `drop schema public cascade` also takes types/sequences a table drop would leave behind.
@@ -131,7 +132,7 @@ async function dropSchema(url: string): Promise<void> {
 
 /** Truncate every app table, preserving the schema and the migration ledger. */
 async function truncateAll(url: string): Promise<number> {
-  const client = new pg.Client({ connectionString: url });
+  const client = new pg.Client(pgConnectionConfig(url));
   await client.connect();
   try {
     const { rows } = await client.query<{ tablename: string }>(

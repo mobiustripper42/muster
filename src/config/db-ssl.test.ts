@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import tls from "node:tls";
 import pg from "pg";
-import { CRUNCHY_TEAM_CA, pgConnectionConfig } from "./db-ssl";
+import { CRUNCHY_TEAM_CA, pgConnectionConfig } from "./db-ssl.js";
 
 /**
  * The TLS half of the Neon → Crunchy Bridge move (issue #960).

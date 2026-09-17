@@ -10,6 +10,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { pgConnectionConfig } from "../src/config/db-ssl.js";
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "migrations");
 
@@ -21,7 +22,11 @@ export const DEFAULT_DATABASE_URL =
 export async function migrate(
   connectionString: string = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
 ): Promise<string[]> {
-  const client = new pg.Client({ connectionString });
+  // `pgConnectionConfig`, not a bare `connectionString` — a non-local host gets the
+  // Crunchy CA and an explicit `ssl`. Without it this connects unencrypted and Crunchy
+  // refuses with `no pg_hba.conf entry ... no encryption`, which reads like an
+  // allowlist problem and is not one.
+  const client = new pg.Client(pgConnectionConfig(connectionString));
   await client.connect();
   const applied: string[] = [];
   try {

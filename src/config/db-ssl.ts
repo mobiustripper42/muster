@@ -79,7 +79,8 @@ export function pgConnectionConfig(url: string): {
     // NON-fault, and deliberately silent (#854 exception): the only thing this catch
     // could log is the malformed value, and that value is a connection string with a
     // password in it. The failure is not discarded — it is handled, by requiring TLS.
-    // eslint-disable-next-line no-restricted-syntax -- logging the cause would log the credential
+    // (The `no-restricted-syntax` disable this carried in `app/` is gone: that rule
+    // does not reach `src/` yet — issue #902.)
   } catch {
     return { connectionString: url, ssl: TRUST };
   }

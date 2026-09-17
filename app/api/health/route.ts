@@ -1,6 +1,7 @@
 import pg from "pg";
 import { NextResponse } from "next/server";
 import { SEAT_STATES, SHIFT_STATES } from "@core/domain/states.js";
+import { pgConnectionConfig } from "@core/config/db-ssl.js";
 import { logSwallowed } from "../../lib/swallowed";
 
 /**
@@ -27,8 +28,13 @@ export async function GET() {
   const core = { shiftStates: SHIFT_STATES, seatStates: SEAT_STATES };
 
   // Short timeout so a down DB degrades fast instead of hanging the probe.
+  // `pgConnectionConfig`, not a bare connectionString: this probe builds its OWN
+  // pool rather than sharing the app's, so it needs the same trust decision. Without
+  // it the endpoint reported `db.reachable: false` in production for the whole Neon
+  // → Crunchy cutover (#960) while the app itself was fine — a probe that lies in the
+  // reassuring direction would be worse, but this one cried wolf until nobody looked.
   const pool = new pg.Pool({
-    connectionString: DATABASE_URL,
+    ...pgConnectionConfig(DATABASE_URL),
     connectionTimeoutMillis: 2000,
   });
   try {

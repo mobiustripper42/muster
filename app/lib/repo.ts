@@ -1,7 +1,7 @@
 import pg from "pg";
 import { PostgresRepository } from "@core/adapters/postgres-repository.js";
 import { PostgresPresence } from "@core/adapters/postgres-presence.js";
-import { pgConnectionConfig } from "./db-ssl";
+import { pgConnectionConfig } from "@core/config/db-ssl.js";
 
 /**
  * App-side repository access (DEC-020, DEC-DATA-1). The app talks to the domain

@@ -769,6 +769,22 @@ export interface Reservation {
    */
   paymentIntentIds?: string[];
   /**
+   * How many times this checkout has submitted the card form (15.9, issue #977) — every call to
+   * `recordCheckoutAttempt`, whether or not it minted a new PaymentIntent.
+   *
+   * **Not `paymentIntentIds.length`.** It was, derived at read time, until 15.8 taught the retry
+   * path to REUSE an intent instead of minting a second one. Two attempts then appended one id, so
+   * `/admin/abandonment` — which states in as many words that it counts payment attempts — rendered
+   * them as `1×`. Still a number, still wrong, which is worse than a blank.
+   *
+   * **The repository owns it; a caller never sets it.** Optional here because a `Reservation` you
+   * construct yourself has no business inventing a counter, but every row that came back OUT of a
+   * repository carries a number — `not null default 0` on the column, and the contract pins the
+   * in-memory adapter to the same promise. It is also deliberately absent from the whole-row write
+   * path, so a caller saving a stale copy cannot rewind it.
+   */
+  checkoutAttempts?: number;
+  /**
    * When the booking confirmation was sent to this customer (15.3, issue #971). Absent means
    * nobody has been told — or, on a row booked before this column existed, that we cannot prove
    * they were.

@@ -148,8 +148,11 @@ export default async function AdminAbandonment() {
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-muted">
                       {/* The count, not a verdict. Two attempts is a customer who tried twice;
-                          zero is "never reached the provider", which is three different things. */}
-                      {r.paymentIntentCount === 0 ? "—" : `${r.paymentIntentCount}×`}
+                          zero is "never reached the provider", which is three different things.
+                          `attemptCount`, not `paymentIntentCount` (15.9): since 15.8 a retry reuses
+                          the intent it already minted, so the id array undercounts exactly the
+                          repeat attempts this column is here to show. */}
+                      {r.attemptCount === 0 ? "—" : `${r.attemptCount}×`}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-faint">
                       {r.session ?? "—"}

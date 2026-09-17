@@ -1913,6 +1913,11 @@ script *or* a provider outage *or* a dropped connection — three facts wearing 
 shows what was stored and lets a person read it; categories can be added once somebody has looked at
 a season of them and knows what they are looking at.
 
+**Attempts and minted intents are two numbers, not one.** A retry reuses the PaymentIntent the
+checkout already has rather than minting a second one, so the count of ids understates how many
+times the card form was submitted. The row records the attempts itself; the ids answer the separate
+question of whether the provider was ever reached at all.
+
 It answers *"how many checkouts were started and walked away from last month, and how long did each
 hold a boat"* by being read, rather than by a query somebody has to remember how to write.
 

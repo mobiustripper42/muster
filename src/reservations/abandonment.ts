@@ -39,6 +39,14 @@ export interface AbandonedCheckout {
    */
   paymentIntentCount: number;
   /**
+   * How many times the card form was submitted (15.9). **Not the same number as above since 15.8**,
+   * which made a retry reuse the intent it had already minted — so a customer who tried twice has
+   * two attempts and one id. The screen shows this one, because "Card form" is what it claims to
+   * count; `reachedProvider` in the summary still reads `paymentIntentCount`, because reaching the
+   * provider and trying are different questions once they can disagree.
+   */
+  attemptCount: number;
+  /**
    * A short stable hash of the holder token, so repeat attempts by one customer group on screen.
    * NEVER the token itself: it is an httpOnly possession credential, and a page carrying one can
    * be screenshotted. Absent when the checkout carried no token — two anonymous attempts are two
@@ -83,6 +91,7 @@ export function abandonedCheckouts(
       partySize: r.partySize,
       reservedAt: r.reservedAt,
       paymentIntentCount: r.paymentIntentIds?.length ?? 0,
+      attemptCount: r.checkoutAttempts ?? 0,
       ...(r.offeringId !== undefined ? { offeringId: r.offeringId } : {}),
       ...(r.holderToken ? { session: sessionLabel(r.holderToken) } : {}),
     });

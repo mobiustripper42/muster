@@ -393,6 +393,11 @@ export interface Repository {
    * `paymentIntentIds` unconditionally — additive, so a superseded id stays findable (§2.8.5) —
    * and re-freezes the customer's answers ONLY while the row is still `pending`.
    *
+   * **Also increments `checkoutAttempts`, unguarded** (15.9, issue #977) — this is the only writer
+   * of that counter, and it counts the submit whether or not the attempt minted a new intent.
+   * `/admin/abandonment` reads it because the id array stopped being a count of attempts in 15.8,
+   * when the retry path began reusing an intent it had already minted.
+   *
    * **The rule: the customer's answers get re-stated; the world's facts stay frozen.**
    *
    * Written from `attempt` while pending: `customerName`, `partySize`, `email`, `phone`,

@@ -96,6 +96,22 @@ describe("abandonedCheckouts — what each row reports", () => {
     expect(abandonedCheckouts([row()], NOW)[0]!.paymentIntentCount).toBe(0);
   });
 
+  it("counts checkout ATTEMPTS, which since 15.8 is not the number of intents (15.9)", () => {
+    // The screen says "Card form counts payment attempts". Since 15.8 a retry REUSES the intent it
+    // already minted, so deriving that count from the id array renders two attempts as `1×` — the
+    // number still looks like it means something, which is worse than it being absent. The row
+    // carries its own count now, and this fixture makes the two numbers deliberately different so
+    // an implementation that quietly falls back to the array cannot pass.
+    const [got] = abandonedCheckouts([row({ paymentIntentIds: ["pi_1"], checkoutAttempts: 3 })], NOW);
+    expect(got!.attemptCount).toBe(3);
+    // Kept, not replaced: `reachedProvider` in the summary reads this one, and "tried" and
+    // "reached the provider" are genuinely different questions now.
+    expect(got!.paymentIntentCount).toBe(1);
+    // Zero stays zero rather than becoming absent — the screen renders `—` for it, and that dash
+    // is the only thing saying a checkout never got as far as the card form.
+    expect(abandonedCheckouts([row()], NOW)[0]!.attemptCount).toBe(0);
+  });
+
   it("groups repeat attempts by a HASH of the holder token, never the token", () => {
     // The token is an httpOnly possession credential — it is what proves a checkout is yours.
     // Its only job on this screen is showing that six rows are one determined customer rather

@@ -24,6 +24,7 @@ import pg from "pg";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { canonicalizePhone } from "../src/customers/identity.js";
 import { customerIdForPhone, resolveCustomerId } from "../src/customers/resolve.js";
+import { pgConnectionConfig } from "../src/config/db-ssl.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 if (existsSync(".env.local")) {
@@ -36,7 +37,7 @@ const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 const confirm = process.env.BACKFILL_CONFIRM === "yes";
 
 async function main(): Promise<void> {
-  const pool = new pg.Pool({ connectionString: url });
+  const pool = new pg.Pool(pgConnectionConfig(url));
   const repo = new PostgresRepository(pool);
   try {
     const reservations = await repo.listAllReservations();

@@ -9,6 +9,7 @@
  */
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { pgConnectionConfig } from "../src/config/db-ssl.js";
 import { migrate } from "./migrate.js";
 
 /** The throwaway test DB the harness drives. Overridable for CI. `||` (not `??`)
@@ -28,7 +29,7 @@ export async function resetTestDb(
   connectionString: string = TEST_DATABASE_URL,
 ): Promise<void> {
   await migrate(connectionString);
-  const client = new pg.Client({ connectionString });
+  const client = new pg.Client(pgConnectionConfig(connectionString));
   await client.connect();
   try {
     const { rows } = await client.query<{ tablename: string }>(

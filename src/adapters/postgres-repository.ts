@@ -14,6 +14,7 @@
  * `undefined`) on read — `exactOptionalPropertyTypes`.
  */
 import pg from "pg";
+import { pgConnectionConfig } from "../config/db-ssl.js";
 import type {
   Admin,
   AddOn,
@@ -681,9 +682,25 @@ export class PostgresRepository implements Repository {
     this.#pool = pool;
   }
 
-  /** Convenience: build a pool from a connection string (caller owns `close`). */
+  /**
+   * Build a pool from a connection string (caller owns `close`).
+   *
+   * **The TLS config is applied HERE, not by the caller.** It used to be the
+   * caller's job, and exactly one of eighteen callers did it — `app/lib/repo.ts`.
+   * The other seventeen (`db:admin`, `db:crew`, `db:pay`, `db:seed:fleet`, every
+   * seed, the e2e fixtures) built a bare pool, which is fine against a local
+   * Postgres and against Neon's publicly-chained certificate, and refuses against
+   * Crunchy Bridge with `no pg_hba.conf entry ... no encryption` — an error that
+   * reads like an IP allowlist and is not one.
+   *
+   * Nothing surfaced for the whole Neon → Crunchy cutover (#960) because none of
+   * those seventeen run in the request path; they are terminal scripts, so the
+   * first one to be pointed at production failed at the worst possible moment.
+   * Putting the trust decision inside the constructor is what stops the next
+   * caller getting it wrong by writing the obvious thing.
+   */
   static fromConnectionString(connectionString: string): PostgresRepository {
-    return new PostgresRepository(new pg.Pool({ connectionString }));
+    return new PostgresRepository(new pg.Pool(pgConnectionConfig(connectionString)));
   }
 
   /** Release the pool. The app holds one repository for its lifetime. */

@@ -1,9 +1,22 @@
-# Muster — Deploy Runbook (Vercel + Neon Postgres)
+# Muster — Deploy Runbook (Vercel + Crunchy Bridge Postgres)
 
 The **go-live** reference (Phase 5.1, DEC-033). Muster is a Next.js (App Router) app on **Vercel**,
-talking to **Vercel-provisioned Postgres (Neon-backed)** via the `pg` driver — plain Postgres behind
-the `Repository` port, so this is a hosting choice, not a rewrite. Local dev is unchanged
-(`docs/RUNNING.md`); this is the *deploy* path.
+talking to **Crunchy Bridge Postgres** via the `pg` driver — plain Postgres behind the `Repository`
+port, so this is a hosting choice, not a rewrite. Local dev is unchanged (`docs/RUNNING.md`); this is
+the *deploy* path.
+
+> **Production moved Neon → Crunchy Bridge (issue #960) and this runbook was not updated for
+> weeks.** Nothing surfaced it: the app's own pool carried the new CA, so production kept working,
+> while every terminal script and this document still assumed Neon. **Sections below still marked
+> `NEON — NEEDS REWRITE` describe provisioning steps nobody has redone against Crunchy.** Trust the
+> environment-variable table and the pre-promote check; treat the dashboard walkthroughs as history
+> until someone runs them.
+>
+> **TLS is not optional and is not configured per-caller.** Crunchy issues each team a self-signed
+> root; it is committed at `src/config/db-ssl.ts` (a CA certificate is public — the private key never
+> leaves Crunchy). `pgConnectionConfig` applies it, and every pool and client in the repo goes through
+> that function. A bare `new pg.Client({ connectionString })` connects unencrypted and Crunchy refuses
+> with `no pg_hba.conf entry … no encryption`, which reads like an IP-allowlist problem and is not one.
 
 > **This is a hosted _pilot_, not production.** What keeps it pilot-grade is the channel (#70: manual
 > SMS relay, single hardcoded operator), **not** the database. Say so in any external comms.
@@ -25,8 +38,8 @@ What's **yours** to do: provision the DB, set secrets, run migrations, deploy. T
 
 | Var | Where it comes from | Used for |
 |-----|---------------------|----------|
-| `DATABASE_URL` | **auto-injected** by the Neon integration — the **pooled** (PgBouncer) endpoint | app queries (`app/lib/repo.ts`) |
-| `DATABASE_URL_UNPOOLED` | auto-injected — the **direct** endpoint | **migrations / seeds only** (DDL + long scripts break through PgBouncer) |
+| `DATABASE_URL` | **you set it** in Vercel — the Crunchy Bridge connection string | every database connection: app queries (`app/lib/repo.ts`), the health probe, and every `db/` script |
+| ~~`DATABASE_URL_UNPOOLED`~~ | **gone with Neon** — not set, nothing reads it | *(was: the direct endpoint for migrations/seeds, because PgBouncer broke DDL)* |
 | `SESSION_SECRET` | **you set it** (`openssl rand -base64 32`) | magic-link session signing |
 | `CRON_SECRET` | **you set it** (`openssl rand -base64 32`) | cron auth — Vercel sends it as `Authorization: Bearer …` |
 | `APP_BASE_URL` | **you set it** — the real production origin (e.g. `https://muster.vercel.app`) | minting **delivered** magic links; MUST be set or (a) links are host-spoofable (`app/lib/base-url.ts`) and (b) **the cron silently enqueues outbox links pointing at `localhost`** — it runs with no request Host header, so the fallback is wrong there |
@@ -129,7 +142,20 @@ GitHub repo (authorize the Vercel GitHub app for the repo if it's the first impo
 > Do **step 4 (set Production Branch = `production`) before you rely on a prod deploy** — on import
 > Vercel treats `main` as production; we want `production` to be the deploy pointer (DEC-S022).
 
-### 1. Provision Postgres
+### 1. Provision Postgres — **NEON — NEEDS REWRITE**
+> The steps below describe the Vercel→Neon integration muster no longer uses. Production is on
+> **Crunchy Bridge** (issue #960). Nobody has re-provisioned from scratch since the move, so the
+> Crunchy equivalent is unwritten rather than wrong-and-corrected. **Write it the next time you
+> stand an environment up**, while the clicks are in front of you.
+>
+> What is known, from the working production deploy: the connection string is a plain
+> `postgres://application:<password>@<host>.db.postgresbridge.com:5432/postgres`, it carries **no
+> `sslmode` parameter**, and the database is named `postgres`. **`DATABASE_URL_UNPOOLED` is not set and
+> nothing reads it** — verified in the repo, not in the dashboard. *How* `DATABASE_URL` reaches Vercel
+> (hand-set, or some Crunchy integration) is **not recorded anywhere and was not checked** — find out
+> before you rebuild an environment from this page.
+
+*(Historical — the Neon path.)*
 In the **project** from step 0 → **Storage** → **Create Database** → **Neon** → follow the modal.
 Billing stays in Vercel. This auto-injects `DATABASE_URL` (pooled) + `DATABASE_URL_UNPOOLED` (direct)
 into the project's env for Production (and per-deployment for Preview).
@@ -144,23 +170,25 @@ APP_BASE_URL     = https://<your-vercel-domain>
 ```
 Env changes only apply to **new** deployments — redeploy after adding.
 
-### 3. Run migrations (against the DIRECT endpoint)
-PgBouncer (the pooled URL) discards session state between transactions and breaks DDL/prepared
-statements — so migrate through the **direct/unpooled** connection string.
+### 3. Run migrations
 
-**Get the string from the dashboard, NOT `vercel env pull`.** Neon marks its connection vars
-**Sensitive**, and `vercel env pull` returns Sensitive vars **empty** (keys only) — pull-then-source
-gives you `DATABASE_URL=""`, which falls through to `migrate.ts`'s localhost default →
-`ECONNREFUSED ::1:5432`. So:
+One connection string, used inline for the run (nothing persists the secret to disk):
 
-1. Vercel → **Storage** → your Neon DB → copy the **direct** connection string (host has **no**
-   `-pooler`; in the Neon console it's the "Direct connection" / unpooled one). Or open the DB in the
-   Neon console → Connection Details → toggle off pooling.
-2. Run migrations with it inline (one-off; nothing persists the secret to disk):
-   ```bash
-   DATABASE_URL="<paste-direct-unpooled-string>" npm run db:migrate
-   ```
-`db/migrate.ts` reads `DATABASE_URL`; we hand it the direct value just for this run.
+```bash
+DATABASE_URL="<prod connection string>" npm run db:migrate
+```
+
+Verified against production 2026-09-17.
+
+**There is no pooled/unpooled split to worry about.** That was a Neon-via-Vercel concern —
+`DATABASE_URL_UNPOOLED` was auto-injected there, PgBouncer discarded session state between
+transactions, and DDL had to go through the direct endpoint. Crunchy's string is the database
+itself. `DATABASE_URL_UNPOOLED` is **not set** on this deploy and nothing reads it.
+
+**`db/migrate.ts` reads `DATABASE_URL`** and builds its client through `pgConnectionConfig`, so the
+Crunchy CA is attached automatically. Until 2026-09-17 it did not, and the failure was
+`no pg_hba.conf entry for host <your ip>, user "application", database "postgres", no encryption` —
+which names your IP first and reads like an allowlist rejection. It was the missing TLS.
 
 ### 4. Configure the production branch
 - Vercel project → **Settings → Git** → set the **Production Branch** to **`production`** (DEC-S022;
@@ -207,10 +235,10 @@ known at migration time). So the launch sequence is: import the crew roster → 
 record) → add them:
 
 ```bash
-DATABASE_URL="<neon-direct-unpooled>" npm run db:admin -- add --email=eric@stoffer.net --handle=eric
+DATABASE_URL="<prod connection string>" npm run db:admin -- add --email=eric@stoffer.net --handle=eric
 #   → resolves the crew member with that email, makes them an admin (id = their crew id)
-DATABASE_URL="<neon-direct>" npm run db:admin -- add --crew=<crewId> --handle=drew   # or explicit id
-DATABASE_URL="<neon-direct>" npm run db:admin -- list
+DATABASE_URL="<prod connection string>" npm run db:admin -- add --crew=<crewId> --handle=drew   # or explicit id
+DATABASE_URL="<prod connection string>" npm run db:admin -- list
 ```
 
 The **only sign-in is the crew code login** (DEC-081, live now that email is wired): sign in with a
@@ -233,9 +261,9 @@ and **scoped** (no other admin is affected; contrast rotating `SESSION_SECRET`, 
 Use the CLI — same DB wiring as `db:migrate` (direct/unpooled prod string):
 
 ```bash
-DATABASE_URL="<neon-direct>" npm run db:admin -- revoke drew        # immediate, scoped
-DATABASE_URL="<neon-direct>" npm run db:admin -- reactivate drew
-DATABASE_URL="<neon-direct>" npm run db:admin -- list               # who's active (● / ○)
+DATABASE_URL="<prod connection string>" npm run db:admin -- revoke drew        # immediate, scoped
+DATABASE_URL="<prod connection string>" npm run db:admin -- reactivate drew
+DATABASE_URL="<prod connection string>" npm run db:admin -- list               # who's active (● / ○)
 ```
 
 There is no admin-management UI at launch (DEC-092 — deferred); `db:admin` is the interface for ~3 admins
@@ -286,19 +314,29 @@ required). Upload → the board fills with upcoming trips + their crew seats.
 
 `/promote-production` Step 0.5 reads `.claude/CLAUDE-context.md` § Migration Protocol (project), which points here. Run this before every ff-merge to `production`.
 
-Confirm prod has applied every migration in the repo. Read prod's applied set via the **Neon MCP** — `run_sql` against project **`delicate-art-65084110`** (neon-red-pendant, org `org-spring-feather-31353161`, in the Vercel-managed Neon org), **default branch = the prod DB**:
+Confirm prod has applied every migration in the repo. **There is no MCP for Crunchy Bridge**, so
+this is the operator's to run and paste — a session cannot read prod's ledger itself:
 
-```sql
-select filename from _migrations order by filename;
+```
+psql "$PROD_DATABASE_URL" -tAc "select filename from _migrations order by filename"
 ```
 
 Diff that against `db/migrations/*.sql` basenames.
 
 - **Repo has a file prod's `_migrations` lacks → STOP.** List the unapplied migration(s), apply them to prod first, then re-run `/promote-production`. Promoting now ships code ahead of the schema, and this project applies prod migrations by hand and out-of-band — the deploy will not do it for you.
 - **Prod ahead of repo** (an applied migration not in the repo) → warn, then ask promote or abort. Unusual; it means a hand-applied migration was never committed.
-- **Neon MCP unavailable** (headless or cron) → have the operator paste the query's output from prod and diff against that.
 
-**Naming trap.** Neon's default branch *is* the prod DB. Neon calls its root branch "main" in the dashboard, which is unrelated to git `main` — git `main` never deploys here, per `vercel.json`'s `git.deploymentEnabled.main:false`.
+Applying them is the same command against the same string:
+
+```
+DATABASE_URL="<prod connection string>" npm run db:migrate
+```
+
+> **This block described the Neon MCP and a project id (`delicate-art-65084110`) until 2026-09-17.**
+> That project had been deleted and the id 404s. The gate ran, could not read anything, and the
+> promote stopped — which is the gate working, but it cost an hour proving the database had moved
+> rather than broken. **A runbook that names a specific hosted resource is a claim with an expiry
+> date.** If prod moves again, this block is the first thing to change.
 
 ## Stripe webhook events (#616)
 
@@ -373,17 +411,18 @@ Stripe's processing fee behind on each charge even after a full refund.
 
 ## Running the management CLIs against prod (`db:crew`, `db:admin`)
 
-This is the recipe for every operator CLI. Both connect through **`DATABASE_URL` = the Neon
-direct/unpooled prod string** (same as `db:migrate`, step 3). They auto-source `.env.local`, but an inline
-`DATABASE_URL` always wins. Neither needs `APP_BASE_URL` — they mint no links, and nothing does now
+This is the recipe for every operator CLI. Both connect through **`DATABASE_URL` = the Crunchy prod
+string** — the same one `db:migrate` uses, and the only one there is. They auto-source `.env.local`, but
+an inline `DATABASE_URL` always wins. Neither needs `APP_BASE_URL` — they mint no links, and nothing does now
 that `db:mint` is gone.
 
-**The catch (see step 7):** the Neon string is a **Sensitive** Vercel var, so `vercel env pull` returns it
-*empty* — you paste the direct/unpooled string yourself. On the dev box **don't edit `.env.local`** (it
+**The catch (see step 7):** `DATABASE_URL` was a **Sensitive** Vercel var under Neon, so `vercel env pull`
+returned it *empty*. **Unverified since the Crunchy move** — nobody has re-run `vercel env pull` against
+this deploy. Assume you paste it yourself; if the pull works now, delete this paragraph. On the dev box **don't edit `.env.local`** (it
 points at local dev); pass it inline, or reuse the one-time prod-db file + an alias:
 
 ```bash
-echo 'postgres://<neon-direct-unpooled>' > ~/.muster-prod-db                    # once; gitignored home file
+echo 'postgres://<prod connection string>' > ~/.muster-prod-db                    # once; gitignored home file
 # add to ~/.bashrc:
 alias crew-prod='DATABASE_URL="$(cat ~/.muster-prod-db)" npm run db:crew --'
 alias admin-prod='DATABASE_URL="$(cat ~/.muster-prod-db)" npm run db:admin --'
@@ -394,11 +433,11 @@ Then `crew-prod list`, `crew-prod add --name="…" --phone=… --ratings=captain
 unquoted `&` in it is a bash background operator and splits the command):
 
 ```bash
-DATABASE_URL="<paste-direct-unpooled>" npm run db:crew -- list
+DATABASE_URL="<prod connection string>" npm run db:crew -- list
 ```
 
 **Two checks before you trust a write:**
-1. Every run prints `(db: <host>)` on the last line — confirm it's the **Neon host**, not `localhost:5432`.
+1. Every run prints `(db: <host>)` on the last line — confirm it's the **Crunchy host** (`*.db.postgresbridge.com`), not `localhost:5432`.
    Wrong host ⇒ the env var didn't take (usually `.env.local` winning because the inline string was unquoted).
 2. **Run `list` first.** If it shows the real roster, you're pointed at prod — then `add`/`set`/`disable` safely.
 
@@ -431,7 +470,7 @@ revoke** (crew sessions are stateless by design — #300); the only crew-session
 
 ## Follow-ups (not blocking the pilot)
 - `attachDatabasePool` from `@vercel/functions` closes idle connections before a function suspends —
-  a connection-churn optimization worth adding if Neon shows connection pressure. One small dep; left
+  a connection-churn optimization worth adding if the database shows connection pressure. One small dep; left
   out of the initial deploy to keep it dependency-clean.
 - The `<VersionTag />` build-stamp (`templates/VersionTag.tsx`) can be wired into a layout so a
   deployed build shows its version/commit.

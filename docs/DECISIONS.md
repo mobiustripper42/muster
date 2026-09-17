@@ -230,6 +230,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-059 — `main` stays promotable — multi-PR features land on a feature branch, not piecemeal on `main`
 - DEC-121 — Timestamp-prefixed migration filenames — cross-branch collision made structurally impossible (refines DEC-020)
 - DEC-173 — Vercel previews are not built, and are not a test surface
+- DEC-177 — Production Postgres is Crunchy Bridge, and TLS belongs in the constructor
 
 ### Open questions
 - DEC-TBD — Open questions (carried from the spec; not Claude's to set alone)

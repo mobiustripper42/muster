@@ -26,7 +26,7 @@ Roles:
 - **Language/runtime:** Node + TypeScript (strict). Vitest (task 0.3).
 - **Web framework / host:** **Next.js (App Router) on Vercel**. Next imports the core via the `@core/*` alias.
 - **Build:** `npm run build` = `next build --webpack`. **Webpack, not Turbopack** — the core's NodeNext `.js` import specifiers need `extensionAlias` (`.js`→`.ts`), which Turbopack lacks (DEC-020). Two TS profiles: `tsconfig.core.json` (strict NodeNext, the core — `npm run typecheck`) and root `tsconfig.json` (Next/bundler, the app — `typecheck:app`).
-- **Persistence:** **Postgres behind the `Repository` port**, **local Postgres in dev**; schema is plain Postgres DDL (DEC-DATA-1). **Hosted Postgres = Neon** (DEC-033 — see `docs/DEPLOY.md`); the port keeps it vendor-swappable. The in-memory adapter stays as the test substrate.
+- **Persistence:** **Postgres behind the `Repository` port**, **local Postgres in dev**; schema is plain Postgres DDL (DEC-DATA-1). **Hosted Postgres = Crunchy Bridge** (issue #960 moved it off Neon — see `docs/DEPLOY.md`); the port keeps it vendor-swappable, and it has now been swapped once. Crunchy requires TLS against a team-specific self-signed root, committed at `src/config/db-ssl.ts`; **every pool and client goes through `pgConnectionConfig`** and a bare `new pg.Client({ connectionString })` is refused by the server. The in-memory adapter stays as the test substrate.
 - **Auth:** **self-rolled magic-link in the service layer** (no auth platform) — same for admin + crew.
 - **Channel (crew ask):** one port (DEC-MSG-3), many adapters — `ls src/adapters/*-channel.ts`. SMS is live in production (DEC-MSG-1); the fakes are permanent test infra.
 
@@ -66,7 +66,7 @@ Project-specific docs beyond the baseline `## Key Docs` table in the `CLAUDE.md`
 | `docs/DEV_REFERENCE.md` | Deploy + review reference — `<VersionTag />` wiring, the `NEXT_PUBLIC_` gotcha that silently renders `v0.0.0`, CHANGELOG format, phone PR-review notes. Also left the shell in seeds PR #206. |
 | `docs/FUTURE_IDEAS.md` | The shiny-object parking lot. New ideas land here, not in the locked spec (DEC-014). |
 | `docs/RUNNING.md` | How to run the app locally, see the UI (Tailscale host, magic-link dev flow), check a change. PRs link here for setup. |
-| `docs/DEPLOY.md` | Go-live runbook — Vercel + Neon Postgres (Phase 5.1, DEC-033). |
+| `docs/DEPLOY.md` | Go-live runbook — Vercel + Crunchy Bridge Postgres (Phase 5.1, DEC-033; moved off Neon by issue #960). Its provisioning walkthrough is still the Neon one and is marked as such. |
 | `docs/design/DESIGN-REFERENCE.md` | How to consume the UI mockups: spec wins on *what*, mockups inform *how*; **read JSX, never import**. Read before building any surface (M4). |
 | `docs/design/mockups/` | Claude Design export (HTML + JSX) per surface §2.1–2.6.3. **Visual-direction reference, not spec.** |
 
@@ -96,7 +96,7 @@ Muster is Next.js over a framework-free domain core.
 | **Proof command** | The relevant Vitest file or suite, not the whole thing. The full suite is my call, never automatic. |
 | **Surface check** | **Every page works at 375px.** Playwright's `mobile` project already runs that pass over ~30 named specs and feeds failure screenshots to `@ui-reviewer` — read `testMatch` in `playwright.config.ts` for the current set, and add to it when a surface with real mobile layout risk lands. A surface outside that set is eyeballed at `mill-dev:3000` per `docs/RUNNING.md`. Looking is still a separate step from the proof: the automated pass catches overflow and clipping, never whether a control is reachable or a surface can be escaped. |
 
-**Vercel previews are not a test surface.** Preview builds are cancelled at the dashboard (Settings → Build and Deployment → Ignored Build Step, keyed on `VERCEL_GIT_COMMIT_REF`), and there is no preview database — the Neon project was deleted 2026-09-15. A preview that serves pages cannot reach Postgres, so "open the preview and check" verifies nothing; a hand-test step that says so has been written twice and was wrong both times. The preview code path is selected by two environment variables and runs locally: `VERCEL_ENV=preview VERCEL_URL=<host> npm run dev`. DEC-057 still describes previews as running against an isolated Neon branch, which is now false and needs a superseding record rather than an edit.
+**Vercel previews are not a test surface.** Preview builds are cancelled at the dashboard (Settings → Build and Deployment → Ignored Build Step, keyed on `VERCEL_GIT_COMMIT_REF`), and there is no preview database — the Neon project was deleted 2026-09-15. A preview that serves pages cannot reach Postgres, so "open the preview and check" verifies nothing; a hand-test step that says so has been written twice and was wrong both times. The preview code path is selected by two environment variables and runs locally: `VERCEL_ENV=preview VERCEL_URL=<host> npm run dev`. DEC-173 superseded DEC-057, which had described previews as running against an isolated Neon branch; DEC-057 is in `docs/decisions/archive/`.
 
 **The gate** is `npm run verify`, run by `/kill-this`.
 
@@ -129,13 +129,13 @@ Read by `/kill-this` Step 3.5 and matched against the branch diff. On a hit the 
 
 ## Migration Protocol (project)
 
-Persistence is **Postgres behind the `Repository` port**: **local Postgres in dev**, **Neon in production** (Vercel + Neon, DEC-033 — `docs/DEPLOY.md`), schema as **plain Postgres DDL** (DEC-DATA-1). The in-memory adapter is the test substrate and never goes away. The shell's universal migration *discipline* still holds: schema changes go through migration files (plain DDL here), migrations are the source of truth, never hand-patch an applied migration, and check for open PRs touching the same tables before adding one.
+Persistence is **Postgres behind the `Repository` port**: **local Postgres in dev**, **Crunchy Bridge in production** (issue #960 — `docs/DEPLOY.md`), schema as **plain Postgres DDL** (DEC-DATA-1). The in-memory adapter is the test substrate and never goes away. The shell's universal migration *discipline* still holds: schema changes go through migration files (plain DDL here), migrations are the source of truth, never hand-patch an applied migration, and check for open PRs touching the same tables before adding one.
 
 **Migration filenames are timestamped (DEC-121).** New migrations are `YYYYMMDDHHMMSS_name.sql` (UTC) — **never** a new `00NN_` number. Generate with `npm run db:new-migration <name>` (never hand-name one). The runner (`db/migrate.ts`) orders by filename sort and keys on the filename, so timestamps sort chronologically after every legacy `00NN_` and can't collide across branches (the fix for the long-lived `feature/reservations` vs `main` clash). One-time trap: renaming an already-applied migration re-runs its DDL — reconcile that dev DB's `_migrations` before the next `db:migrate`.
 
 **Prod migrations are applied by hand, out-of-band** — they are *not* part of the Vercel deploy. So code on `production` can outrun the prod schema. Apply the migration to prod *before* promoting the code that needs it.
 
-**Pre-promote check: migration-ledger drift.** `/promote-production` Step 0.5 reads this section and runs what it finds. Before any ff-merge, confirm prod has applied every migration in the repo — the procedure, the Neon project identifiers and the two failure branches are the runbook in `docs/DEPLOY.md`.
+**Pre-promote check: migration-ledger drift.** `/promote-production` Step 0.5 reads this section and runs what it finds. Before any ff-merge, confirm prod has applied every migration in the repo — the procedure and the two failure branches are the runbook in `docs/DEPLOY.md`. **There is no MCP for Crunchy**, so the operator runs the query and pastes it; a session cannot read the ledger itself.
 
 **A repo migration prod has not applied means STOP**, not "promote and apply after." That ordering is the whole point: promoting first ships code ahead of the schema, and this project applies prod migrations by hand.
 
@@ -176,7 +176,7 @@ The shell's `## Pull Request Workflow` is the baseline. Muster adds:
 
 - **Small docs / idea-parking PRs ship standalone** off `main` (own branch + PR) and are **not** logged in the session file — `## Task` blocks and `pr_numbers` are reserved for substantive, issue-closing task PRs.
 - **The eyeball path** is the Vercel preview URL once deployed, else `mill-dev:3000` per `docs/RUNNING.md`. Link that file rather than re-explaining setup each PR.
-- **`production` is a deploy pointer, never a PR base.** It went live with the Neon deploy (DEC-033/DEC-S022); `main` is always the active trunk.
+- **`production` is a deploy pointer, never a PR base.** It went live with the original hosted deploy (DEC-033/DEC-S022); `main` is always the active trunk.
 
 ### Every PR ships a state the operator can actually test
 
@@ -222,10 +222,15 @@ The `## Blast-Radius Triggers` table above is the trigger, matched against the d
 
 Project-scoped MCP servers in `.mcp.json` (checked in): **Neon** (`https://mcp.neon.tech/mcp`) and
 **Vercel** (`https://mcp.vercel.com`), both remote/OAuth. One-time per machine: run `/mcp` in a
-session and authenticate each (browser OAuth). After that any session can read prod state directly —
-Neon: query/diagnose the production DB; Vercel: build logs, deploy status, env vars, preview URLs.
+session and authenticate each (browser OAuth). Vercel: build logs, deploy status, env vars, preview URLs.
 
-**Write discipline (the DEC-S009 posture, MCP edition):** Neon MCP can execute arbitrary SQL — treat
+**Neon MCP no longer reaches production and is not a route to the database.** Production moved to
+Crunchy Bridge (issue #960), which has no MCP at all, and the Neon project this file used to name was
+deleted. A session that wants prod's state has to ask the operator to run a query and paste it — there
+is no tool here that can read it. Neon MCP is left wired for whatever else is still on Neon; assume it
+is not muster's production data.
+
+**Write discipline (the DEC-S009 posture, MCP edition):** any MCP that can execute arbitrary SQL — treat
 it as **read/diagnose only**. Schema changes STILL go through `db/migrations/*.sql` applied by the
 operator (see Migration Protocol); ad-hoc prod data fixes are the operator's explicit call, never a
 silent Claude action. If a provider URL ever 404s, check that provider's MCP docs — the endpoints are

@@ -32,6 +32,7 @@
  */
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { pgConnectionConfig } from "../src/config/db-ssl.js";
 
 /** Reference data the reset preserves — vessels, crew, and their attributes. */
 const KEEP = new Set<string>([
@@ -95,7 +96,7 @@ export async function resetPilot(): Promise<void> {
   }
   const confirmed = process.env.RESET_PILOT_CONFIRM === "yes";
 
-  const client = new pg.Client({ connectionString });
+  const client = new pg.Client(pgConnectionConfig(connectionString));
   await client.connect();
   try {
     // Authoritative connected-DB name (from the server, not the URL parse) — the

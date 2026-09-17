@@ -175,3 +175,20 @@
 - term: booking invoice
   says: the frozen record of what a customer was quoted — every charged component and the rate behind it, kept on the booking and never recomputed
   not: []
+
+# ── The Crunchy Bridge move (DEC-177) ───────────────────────────────────────────
+#
+# Two acronyms the corpus had never needed, because nothing before this required a caller to
+# reason about the transport. Registered rather than spelled out at each use: the expansions are
+# longer than the terms and say less to the reader who has to act on them.
+
+# `not: [SSL]` is deliberately absent. "SSL" is the right word to ban in prose, but the checker
+# matches substrings and the module is `src/config/db-ssl.ts` — named for pg's own `ssl` option.
+# A rule that fires on a filename fires forever and gets suppressed, which costs more than it buys.
+- term: TLS
+  says: the encrypted transport Crunchy Bridge requires on every connection; applied by pgConnectionConfig, never by a caller
+  not: []
+
+- term: CA
+  says: a certificate authority root — the public half that proves a server is who it claims. Crunchy's is self-signed per team and committed at src/config/db-ssl.ts
+  not: []

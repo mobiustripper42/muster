@@ -7,7 +7,7 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-25 terms.
+27 terms.
 
 | Term | Says | Not |
 |---|---|---|
@@ -16,6 +16,7 @@ alternates start being caught.
 | **booking invoice** | the frozen record of what a customer was quoted — every charged component and the rate behind it, kept on the booking and never recomputed | — |
 | **bps** | hundredths of a percent, so 800 bps is 8 percent — used for rates so nothing has to store a fraction | `basis points` |
 | **busy** | a slot nobody bought, on a boat that is out on another trip overlapping it. The code calls it unavailable. | `unavailable` |
+| **CA** | a certificate authority root — the public half that proves a server is who it claims. Crunchy's is self-signed per team and committed at src/config/db-ssl.ts | — |
 | **CAS** | write a row only if it still holds the value you read, so two people racing for the same seat cannot both win | `compare-and-swap` |
 | **COI** | the Coast Guard inspection certificate that sets a boat's legal passenger limit and the crew it must carry | — |
 | **held** | a slot somebody is at the checkout for — a live pending reservation on it | — |
@@ -33,6 +34,7 @@ alternates start being caught.
 | **SAQ-A** | the lightest card-industry compliance tier, which applies because card numbers never reach our servers | — |
 | **SCA** | a European rule requiring that extra bank check on most card payments | — |
 | **sold** | a slot somebody bought — a booked reservation on it. The code calls the slot booked. | — |
+| **TLS** | the encrypted transport Crunchy Bridge requires on every connection; applied by pgConnectionConfig, never by a caller | — |
 | **trip** | one boat leaving at one time on one day — what a customer buys and crew sail. The code calls it a slot. | — |
 | **trip time** | how long the customer is actually on the water, always less than the hold minutes for that trip | — |
 | **turnaround** | the boat sitting at the dock between trips, cleaned and made ready; hold minutes minus trip time | — |

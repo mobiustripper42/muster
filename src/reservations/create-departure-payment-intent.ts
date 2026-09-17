@@ -332,9 +332,12 @@ export async function createDeparturePaymentIntent(
   // intent, and three of those four will refuse. A refusal must never reach the customer: by the
   // time this runs they are about to receive a working client secret for a fresh intent.
   if (priorIntentId) {
-    await payments
-      .cancelPaymentIntent(priorIntentId, "abandoned")
-      .catch(() => undefined);
+    await payments.cancelPaymentIntent(priorIntentId, "abandoned").catch((e: unknown) => {
+      // Logged, then swallowed (`@code-review`). Swallowing silently makes the ordinary refusals
+      // above indistinguishable from a real fault — a wrong id, a permissions error — and the
+      // whole point of this call is that somebody could otherwise still pay this intent.
+      console.error(`[reservations] could not retire superseded intent ${priorIntentId}`, e);
+    });
   }
 
   const intent = await payments.createPaymentIntent({

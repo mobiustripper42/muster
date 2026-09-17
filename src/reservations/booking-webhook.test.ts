@@ -335,6 +335,36 @@ describe("processBookingWebhook", () => {
     expect((await repo.getReservation(PEND))!.status).toBe("pending");
   });
 
+  it("retires the loser's OTHER intents — this row will never book (15.10)", async () => {
+    // `@code-review` caught this: the first cut of 15.10 retired siblings only on the booked path.
+    // A residual-race loser is the one row class where an un-retired intent stays payable FOREVER
+    // rather than for a window — its flip is refused and no later delivery can succeed, nothing
+    // reaps lapsed rows, and these are the only two places anything cancels an intent. So a stale
+    // tab could pay a duplicate charge against a reservation that lost the boat, indefinitely.
+    const repo = new InMemoryRepository();
+    await seedPending(repo, { paymentIntentIds: ["pi_earlier", PI] });
+    await repo.saveEvent(musterEvent({ id: SLOT }));
+    await repo.saveReservation({
+      id: asId<"ReservationId">("r-rival"),
+      eventId: SLOT,
+      source: "muster",
+      customerName: "Rival",
+      partySize: 4,
+      status: "booked",
+    });
+    const payments = new FakePaymentPort();
+    const { deps } = makeDeps(repo, payments);
+
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    expect(r).toEqual({ handled: true, outcome: "lost" });
+    // The earlier one is retired; the one that PAID is refunded, not cancelled — Stripe refuses a
+    // cancel on a succeeded intent anyway, so asking would be both wrong and futile.
+    expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_earlier", reason: "duplicate" }]);
+    expect(payments.refunds).toHaveLength(1);
+    expect(payments.refunds[0]!.paymentIntentId).toBe(PI);
+  });
+
   it("takes the money from the row's frozen invoice, not the succeeded intent's metadata", async () => {
     // DEC-164 and SPEC 2.8's negative list: "No booking assembled from data Stripe hands back."
     // The metadata below is deliberately wrong. After 15.6 there is no parameter it could travel

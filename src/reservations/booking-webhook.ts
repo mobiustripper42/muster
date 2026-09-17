@@ -338,11 +338,19 @@ function safeForAlert(name: string): string {
 async function retireSiblingIntents(
   deps: WebhookDeps,
   row: Reservation,
-  paid: string,
+  paid: string | undefined,
 ): Promise<void> {
   const others = (row.paymentIntentIds ?? []).filter((id) => id !== paid);
   for (const id of others) {
-    await deps.payments.cancelPaymentIntent(id, "duplicate").catch(() => undefined);
+    await deps.payments.cancelPaymentIntent(id, "duplicate").catch((e: unknown) => {
+      // Logged before swallowing, like every other best-effort catch in this file
+      // (`@code-review`). "Must not throw" and "must leave no trace" are different
+      // requirements, and conflating them makes an ordinary refusal — an already-cancelled
+      // sibling on a redelivery — indistinguishable from a persistent bug such as a
+      // permissions error, forever. Not an operator alert: no money moved and the booking is
+      // fine, so this is a log line for whoever is already looking.
+      console.error(`[reservations] could not retire superseded intent ${id} on ${row.id}`, e);
+    });
   }
 }
 
@@ -394,6 +402,19 @@ async function compensateResidualRaceLoss(
     );
     return { handled: true, outcome: "lost" };
   }
+  // **This row will never book, so nothing on it may stay payable (15.10, `@code-review`).**
+  //
+  // The first cut retired siblings only on the BOOKED path, and missed the one row class where an
+  // un-retired intent is payable *forever* rather than for a window. A residual-race loser lost the
+  // hull to somebody else; its flip is refused and no later delivery can succeed. Any other live id
+  // on it — an earlier mint whose best-effort cancel failed at checkout time — has no other route to
+  // retirement, because nothing reaps lapsed rows (`abandonment.ts`: "Nothing deletes a lapsed row")
+  // and these are the only two call sites of `cancelPaymentIntent` in the codebase.
+  //
+  // The just-refunded id is excluded by the same argument as the booked path, and by Stripe's rules:
+  // it succeeded, so a cancel would be refused anyway.
+  await retireSiblingIntents(deps, row, charge.paymentIntentId);
+
   // Refunded — tell the customer. Best-effort: a notify failure must not 500 (a retry would
   // re-run this path, and the keyed refund would no-op, but re-notify needlessly).
   try {

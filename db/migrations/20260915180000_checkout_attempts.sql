@@ -13,17 +13,11 @@
 -- Nothing branches here: the screen renders an em dash for zero and would render one for unknown,
 -- so a third state would be a distinction no reader can use.
 --
--- **The backfill restates a true number rather than asserting a new one.** For any row written
--- before 15.8's reuse branch, every attempt minted an id, so `array_length(payment_intent_ids, 1)`
--- IS the attempt count — it is the number this screen has been displaying all along. `coalesce`
--- because `array_length` of an empty or null array is NULL, not 0.
---
--- **The gap, stated without a guess about who it hits.** A row whose retry took 15.8's reuse path
--- between that merge and this migration running gets backfilled to its id count, which is one short
--- per reused attempt — and permanently, because the increment below is a pure `+ 1` onto whatever
--- base it lands on. Nobody has counted those rows. To know, query reservations updated between
--- 15.8's merge and this migration with more than one attempt; to erase the question on a
--- throwaway database, `db:reset:dev`.
+-- **No backfill.** There are no reservations in production (operator, 2026-09-16), so the only
+-- existing rows are in development and the default answers for them. A first cut derived a starting
+-- count from `array_length(payment_intent_ids, 1)`, which is exact for any row written before 15.8
+-- — but writing a statement to correct a population that does not exist is how a migration acquires
+-- a paragraph defending it.
 --
 -- **Deliberately absent from `RESERVATION_COLUMNS`** (`postgres-repository.ts:353`). Every other
 -- column in that list is caller-owned; this one is monotonic and owned by `recordCheckoutAttempt`.
@@ -33,5 +27,3 @@
 -- 15.11 keys a Stripe idempotency key on this ordinal, where a rewind is a key reused against a
 -- live intent.
 alter table reservations add column checkout_attempts integer not null default 0;
-
-update reservations set checkout_attempts = coalesce(array_length(payment_intent_ids, 1), 0);

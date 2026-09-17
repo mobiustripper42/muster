@@ -150,8 +150,10 @@ GitHub repo (authorize the Vercel GitHub app for the repo if it's the first impo
 >
 > What is known, from the working production deploy: the connection string is a plain
 > `postgres://application:<password>@<host>.db.postgresbridge.com:5432/postgres`, it carries **no
-> `sslmode` parameter**, and the database is named `postgres`. It is set manually in Vercel's env —
-> there is no auto-injecting integration, and therefore **no `DATABASE_URL_UNPOOLED`**; see step 3.
+> `sslmode` parameter**, and the database is named `postgres`. **`DATABASE_URL_UNPOOLED` is not set and
+> nothing reads it** — verified in the repo, not in the dashboard. *How* `DATABASE_URL` reaches Vercel
+> (hand-set, or some Crunchy integration) is **not recorded anywhere and was not checked** — find out
+> before you rebuild an environment from this page.
 
 *(Historical — the Neon path.)*
 In the **project** from step 0 → **Storage** → **Create Database** → **Neon** → follow the modal.
@@ -409,13 +411,14 @@ Stripe's processing fee behind on each charge even after a full refund.
 
 ## Running the management CLIs against prod (`db:crew`, `db:admin`)
 
-This is the recipe for every operator CLI. Both connect through **`DATABASE_URL` = the Crunchy
-direct/unpooled prod string** (same as `db:migrate`, step 3). They auto-source `.env.local`, but an inline
-`DATABASE_URL` always wins. Neither needs `APP_BASE_URL` — they mint no links, and nothing does now
+This is the recipe for every operator CLI. Both connect through **`DATABASE_URL` = the Crunchy prod
+string** — the same one `db:migrate` uses, and the only one there is. They auto-source `.env.local`, but
+an inline `DATABASE_URL` always wins. Neither needs `APP_BASE_URL` — they mint no links, and nothing does now
 that `db:mint` is gone.
 
-**The catch (see step 7):** the connection string is a **Sensitive** Vercel var, so `vercel env pull` returns it
-*empty* — you paste the direct/unpooled string yourself. On the dev box **don't edit `.env.local`** (it
+**The catch (see step 7):** `DATABASE_URL` was a **Sensitive** Vercel var under Neon, so `vercel env pull`
+returned it *empty*. **Unverified since the Crunchy move** — nobody has re-run `vercel env pull` against
+this deploy. Assume you paste it yourself; if the pull works now, delete this paragraph. On the dev box **don't edit `.env.local`** (it
 points at local dev); pass it inline, or reuse the one-time prod-db file + an alias:
 
 ```bash
@@ -430,7 +433,7 @@ Then `crew-prod list`, `crew-prod add --name="…" --phone=… --ratings=captain
 unquoted `&` in it is a bash background operator and splits the command):
 
 ```bash
-DATABASE_URL="<paste-direct-unpooled>" npm run db:crew -- list
+DATABASE_URL="<prod connection string>" npm run db:crew -- list
 ```
 
 **Two checks before you trust a write:**

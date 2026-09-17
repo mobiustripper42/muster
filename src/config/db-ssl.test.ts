@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import tls from "node:tls";
 import pg from "pg";
+import { PostgresRepository } from "../adapters/postgres-repository.js";
 import { CRUNCHY_TEAM_CA, pgConnectionConfig } from "./db-ssl.js";
 
 /**
@@ -103,5 +104,55 @@ describe("pgConnectionConfig — the decision itself", () => {
   it("carries a real certificate, not a placeholder", () => {
     expect(CRUNCHY_TEAM_CA).toMatch(/^-----BEGIN CERTIFICATE-----/);
     expect(CRUNCHY_TEAM_CA.trimEnd()).toMatch(/-----END CERTIFICATE-----$/);
+  });
+});
+
+/**
+ * The call site, not the helper — #968's own lesson applied to itself.
+ *
+ * Everything above proves `pgConnectionConfig` builds the right object. That was
+ * ALREADY true before this change and production still refused every terminal
+ * script, because seventeen callers never called it. So a green helper test is
+ * exactly the evidence that was already there and was not enough.
+ *
+ * `fromConnectionString` is the one function all seventeen reach — `db:admin`,
+ * `db:crew`, `db:pay`, `db:seed:fleet`, every seed, the e2e fixtures. `#pool` is a
+ * true private field, so the pool cannot be read off the instance; spying on the
+ * constructor is what lets us see what it was handed.
+ */
+describe("PostgresRepository.fromConnectionString — the call site 17 scripts use", () => {
+  it("hands the pool the Crunchy CA, without the caller asking", () => {
+    // A class, not an arrow: `fromConnectionString` calls `new pg.Pool(...)`, and
+    // an arrow function is not a constructor.
+    const spy = vi.spyOn(pg, "Pool").mockImplementation(
+      class {
+        async end(): Promise<void> {}
+      } as unknown as typeof pg.Pool,
+    );
+    try {
+      PostgresRepository.fromConnectionString(CRUNCHY);
+      expect(spy).toHaveBeenCalledTimes(1);
+      const config = spy.mock.calls[0]?.[0] as { ssl?: { ca?: string[] } };
+      expect(config.ssl?.ca).toContain(CRUNCHY_TEAM_CA);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("still hands a local pool NO ssl — every database test depends on this", () => {
+    // A class, not an arrow: `fromConnectionString` calls `new pg.Pool(...)`, and
+    // an arrow function is not a constructor.
+    const spy = vi.spyOn(pg, "Pool").mockImplementation(
+      class {
+        async end(): Promise<void> {}
+      } as unknown as typeof pg.Pool,
+    );
+    try {
+      PostgresRepository.fromConnectionString(LOCAL);
+      const config = spy.mock.calls[0]?.[0] as { ssl?: unknown };
+      expect(config.ssl).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

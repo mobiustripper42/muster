@@ -324,13 +324,23 @@ export async function createDeparturePaymentIntent(
   // a stale tab could still pay the four-guest quote against a six-guest booking, which is the
   // defect 15.8 set out to remove and closed only for the path where reuse succeeded.
   //
-  // **Best-effort, and the refusals are the ordinary case rather than the exception.** Stripe
-  // cancels only from `requires_payment_method`, `requires_confirmation`, `requires_action`,
-  // `requires_capture` and rarely `processing`; an intent that is already cancelled or already
-  // succeeded refuses. `unknown` — the state that brought most callers here — covers a read that
-  // failed, a status we cannot describe, an id the provider never knew, and an already-cancelled
-  // intent, and three of those four will refuse. A refusal must never reach the customer: by the
-  // time this runs they are about to receive a working client secret for a fresh intent.
+  // **How rare, said precisely, because the obvious story is wrong.** An abandoned 3D Secure
+  // challenge does NOT reach here: Stripe permits an amount update at `requires_action`, in its own
+  // words — *"You may only update the amount of a PaymentIntent with one of the following statuses:
+  // requires_payment_method, requires_confirmation, requires_action"* (its refusal text, read back
+  // from the sandbox by `db:stripe:cancel` on 2026-09-18). So that retry raises this intent and
+  // mints nothing. What actually lands here is a state read that THREW — a provider outage or a
+  // timeout outliving the SDK's two retries — which is infrastructure failing, not a customer doing
+  // anything. Rare, and not stageable from a browser.
+  //
+  // **Best-effort, and the refusals are the ordinary case rather than the exception.** Stripe's own
+  // cancel refusal names the statuses it accepts: *"requires_payment_method, requires_capture,
+  // requires_reauthorization, requires_confirmation, requires_action, expired, processing"*. An
+  // intent that is already cancelled or already succeeded is refused. `unknown` — the state that
+  // brought us here — covers a read that failed, a status we cannot describe, an id the provider
+  // never knew, and an already-cancelled intent, and three of those four will refuse. A refusal
+  // must never reach the customer: by the time this runs they are about to receive a working client
+  // secret for a fresh intent.
   if (priorIntentId) {
     await payments.cancelPaymentIntent(priorIntentId, "abandoned").catch((e: unknown) => {
       // Logged, then swallowed (`@code-review`). Swallowing silently makes the ordinary refusals

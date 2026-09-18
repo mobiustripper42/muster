@@ -27,6 +27,7 @@
  * repointed, because a citation for a rule nobody made is worse than none.
  */
 import { randomUUID } from "node:crypto";
+import { logSwallowed } from "../log.js";
 import type { BookingInvoice, Reservation } from "../domain/entities.js";
 import { asId, type OfferingId, type ReservationId, type VesselId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
@@ -276,7 +277,14 @@ export async function createDeparturePaymentIntent(
   // otherwise take down a checkout that could simply have minted a new intent, and "the comment
   // said it could not happen" is how three defects got past review this week.
   const priorState = priorIntentId
-    ? await payments.getPaymentIntentState(priorIntentId).catch(() => "unknown" as const)
+    ? await payments.getPaymentIntentState(priorIntentId).catch((e: unknown) => {
+        logSwallowed(
+          "reservations:priorIntentState",
+          e,
+          `the payment port threw against its own contract for intent ${priorIntentId}; treating the state as unknown`,
+        );
+        return "unknown" as const;
+      })
     : ("unknown" as const);
 
   // **When this mints anyway, the prior intent is left behind, payable, at its old amount.**
@@ -304,12 +312,29 @@ export async function createDeparturePaymentIntent(
     // ours and belongs to the caller as a failure, not as a reassurance.
     try {
       raised = await payments.updatePaymentIntentAmount(priorIntentId, amountCents);
-    } catch {
+    } catch (e) {
       // Refused. Ask why before minting: the dominant reason is that it just succeeded, in the
-      // other tab, between the read above and this call.
+      // other tab, between the read above and this call — an ordinary outcome, not a fault,
+      // which is why this stays swallowed and the `already_paid` answer below is the point.
+      //
+      // Logged anyway: the OTHER reason a raise is refused is that Stripe rejected the amount
+      // change, and that one is a defect in what we asked for. The two are indistinguishable
+      // from the outcome, and only this line separates them.
+      logSwallowed(
+        "reservations:raiseIntentAmount",
+        e,
+        `could not raise intent ${priorIntentId} to ${amountCents}c — checking whether it was already paid`,
+      );
       const nowSettled = await payments
         .getPaymentIntentState(priorIntentId)
-        .catch(() => "unknown" as const);
+        .catch((e: unknown) => {
+          logSwallowed(
+            "reservations:raiseIntentAmount",
+            e,
+            `could not re-read intent ${priorIntentId} after a refused raise; minting a fresh one and leaving it behind`,
+          );
+          return "unknown" as const;
+        });
       if (nowSettled === "settled") return { ok: false, reason: "already_paid" };
       // Genuinely dead or unreadable: fall through and mint, accepting that the old intent is left
       // behind. Retiring it is 15.10, which exists for exactly this residue.

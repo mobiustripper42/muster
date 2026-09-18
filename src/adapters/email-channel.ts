@@ -17,6 +17,7 @@
  * request hot path (`after()`), so a throw here never reaches the crew member.
  */
 
+import { logSwallowed } from "../log.js";
 import type {
   ChannelPort,
   MessageKind,
@@ -93,6 +94,10 @@ export class EmailChannel implements ChannelPort {
     });
 
     if (!res.ok) {
+      // NOT a swallowed fault: this reads the body of an error we are already throwing
+      // about on the next line. Failing to read the detail costs detail, and a second log
+      // line about it would say nothing the throw does not.
+      // eslint-disable-next-line no-restricted-syntax -- see above
       const detail = await res.text().catch(() => "");
       throw new Error(`Resend send failed (${res.status}): ${detail}`);
     }
@@ -103,7 +108,20 @@ export class EmailChannel implements ChannelPort {
     let ref: string | undefined;
     try {
       ref = (JSON.parse(await res.text()) as { id?: string }).id;
-    } catch {
+    } catch (e) {
+      // The send SUCCEEDED; only the audit ref is lost, and the ref is how a delivery is
+      // traced back at the provider later. Otherwise invisible — the caller gets a
+      // `deliveredAt` and no hint that the reference is missing.
+      //
+      // **The error's MESSAGE is deliberately not logged.** This is a `JSON.parse` failure,
+      // whose message embeds the input it choked on — and the input is the provider's
+      // message resource, which carries the sent body, which carries a live magic link. The
+      // error's TYPE is the part that is safe and is most of the signal anyway.
+      logSwallowed(
+        "email:send",
+        e instanceof Error ? e.name : "unknown error type",
+        "the send succeeded but its provider reference could not be parsed — no audit ref",
+      );
       ref = undefined;
     }
     const deliveredAt = this.#now().toISOString();

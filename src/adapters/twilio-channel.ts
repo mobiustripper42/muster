@@ -25,6 +25,7 @@
  * Twilio — every caller is a best-effort forwarder that swallows per-message.
  */
 
+import { logSwallowed } from "../log.js";
 import { issueMagicLink, randomSecret } from "../auth/magic-link.js";
 import type { CrewMemberId } from "../domain/ids.js";
 import {
@@ -183,6 +184,10 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
     if (!res.ok) {
       // Surface status + Twilio's error body; the message text (which embeds a
       // live magic link) is deliberately NOT echoed into the error.
+      // NOT a swallowed fault: this reads the body of an error we are already throwing
+      // about on the next line. Failing to read the detail costs detail, and a second log
+      // line about it would say nothing the throw does not.
+      // eslint-disable-next-line no-restricted-syntax -- see above
       const detail = await res.text().catch(() => "");
       throw new Error(`Twilio send failed (${res.status}): ${detail}`);
     }
@@ -192,7 +197,20 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
     let ref: string | undefined;
     try {
       ref = (JSON.parse(await res.text()) as { sid?: string }).sid;
-    } catch {
+    } catch (e) {
+      // The send SUCCEEDED; only the audit ref is lost, and the ref is how a delivery is
+      // traced back at the provider later. Otherwise invisible — the caller gets a
+      // `deliveredAt` and no hint that the reference is missing.
+      //
+      // **The error's MESSAGE is deliberately not logged.** This is a `JSON.parse` failure,
+      // whose message embeds the input it choked on — and the input is the provider's
+      // message resource, which carries the sent body, which carries a live magic link. The
+      // error's TYPE is the part that is safe and is most of the signal anyway.
+      logSwallowed(
+        "sms:send",
+        e instanceof Error ? e.name : "unknown error type",
+        "the send succeeded but its provider reference could not be parsed — no audit ref",
+      );
       ref = undefined;
     }
     const deliveredAt = this.#now().toISOString();

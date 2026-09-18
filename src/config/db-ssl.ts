@@ -76,11 +76,14 @@ export function pgConnectionConfig(url: string): {
   let parsed: URL;
   try {
     parsed = new URL(url);
-    // NON-fault, and deliberately silent (#854 exception): the only thing this catch
-    // could log is the malformed value, and that value is a connection string with a
-    // password in it. The failure is not discarded — it is handled, by requiring TLS.
-    // (The `no-restricted-syntax` disable this carried in `app/` is gone: that rule
-    // does not reach `src/` yet — issue #902.)
+    // NON-fault, and deliberately silent: the only thing this catch could log is the
+    // malformed value, and that value is a connection string with a password in it.
+    // The failure is not discarded — it is HANDLED, by requiring TLS, which is the
+    // safe answer. `logSwallowed` cannot help here; there is nothing safe to pass it.
+    //
+    // This is the one site in `src/` that stays bare after #902, and it is the case
+    // the rule's own message names: "a catch whose only loggable value is a secret".
+    // eslint-disable-next-line no-restricted-syntax -- see above
   } catch {
     return { connectionString: url, ssl: TRUST };
   }

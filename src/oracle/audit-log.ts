@@ -16,6 +16,7 @@
  */
 
 import type { CrewMemberId } from "../domain/ids.js";
+import { logSwallowed } from "../log.js";
 import { asId } from "../domain/ids.js";
 import type {
   AuditActor,
@@ -142,7 +143,11 @@ export async function logFormAudit(
     try {
       await loggers[type](repo, crewMemberId, actor, now, { shiftId, ...extraMeta });
     } catch (e) {
-      console.error("[audit] form-audit append failed (mutation stands):", e);
+      logSwallowed(
+        "audit:formAudit",
+        e,
+        `the ${type} entry for crew ${crewMemberId} on shift ${shiftId} is missing; the mutation stands`,
+      );
     }
   }
 }

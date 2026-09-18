@@ -28,6 +28,7 @@
 import { formShifts, type FormResult } from "../builder/form-shifts.js";
 import { confirmBookingFromIntent } from "./confirm-booking.js";
 import { logFormAudit } from "../oracle/audit-log.js";
+import { logSwallowed } from "../log.js";
 import { eventIdOfBooked, isBooked } from "../domain/entities.js";
 import type { BookingInvoice, Payment, Reservation } from "../domain/entities.js";
 import {
@@ -364,8 +365,17 @@ async function compensateResidualRaceLoss(
   // re-run this path, and the keyed refund would no-op, but re-notify needlessly).
   try {
     await deps.notifyCustomerSoldOut({ chargeRef: charge.key, contact });
-  } catch {
-    // swallowed by contract — the refund succeeded; a missing notice is not a 500
+  } catch (e) {
+    // Swallowed by contract — the refund succeeded; a missing notice is not a 500.
+    // But the customer is now owed an explanation nobody gave them: their card was
+    // charged, the money is coming back over days, and the only message saying so
+    // did not send. The office alert below still fires, so the operator learns a
+    // race happened — this line is what says the customer was not told about it.
+    logSwallowed(
+      "reservations:soldOutRefund",
+      e,
+      `the sold-out refund notice did not reach the customer for charge ${charge.key}`,
+    );
   }
   // **And tell the office, every single time (15.5).** This path alerted nobody until now, on the
   // reasoning that a self-resolving outcome needs no operator. That reasoning was about ACTION and
@@ -394,8 +404,16 @@ async function compensateResidualRaceLoss(
         `No action needed; the customer has been told. This should not happen - if you are ` +
         `seeing it more than rarely, say so. Customer: ${who}`,
     );
-  } catch {
-    // swallowed for the reason above
+  } catch (e) {
+    // Swallowed for the reason above. The edge implementation writes its log line
+    // first and unconditionally, so the alert's own content is already on record —
+    // what is lost here is the knowledge that the SEND failed, which is the half
+    // that decides whether an operator ever saw it.
+    logSwallowed(
+      "reservations:soldOutRefund",
+      e,
+      `the office was not alerted that charge ${charge.key} was auto-refunded`,
+    );
   }
   return { handled: true, outcome: "lost" };
 }
@@ -589,9 +607,10 @@ export async function processBookingCharge(
       // The message no longer promises the tick will re-form. It was false about the notices
       // when written (#766), and it is false about the shifts too: the tick calls this same
       // function against this same repo and fails the same way.
-      console.error(
-        `[reservations] formShifts after booking ${reservationId} failed before forming anything`,
+      logSwallowed(
+        "reservations:formShifts",
         e,
+        `booking ${reservationId} is paid and booked, but no vessel-day formed — nobody is rostered`,
       );
     }
     // **A CLAIM on the row, not a check of it (15.3, issue #971).**
@@ -624,15 +643,39 @@ export async function processBookingCharge(
       let told = false;
       try {
         told = await deps.sendConfirmation(result.reservation);
-      } catch {
+      } catch (e) {
         // The dep's contract says it never throws; this is the belt for a dep that breaks it.
+        // Logged rather than only counted: `told = false` releases the claim so the next
+        // caller retries, which means a dep throwing every time produces an endless quiet
+        // retry loop and a customer who is never told. This line is what distinguishes
+        // that from a channel that is merely down for a minute.
+        logSwallowed(
+          "reservations:sendConfirmation",
+          e,
+          `the confirmation dep threw for booking ${reservationId}, against its own contract`,
+        );
         told = false;
       }
       // **Give the claim back when nobody was told**, so the next caller — a provider redelivery,
       // the success page, §2.8.9's reconciler — can claim and try. Holding a claim over a send
       // that did not happen records a confirmation the customer never received, which is this
       // task's own defect wearing better clothes.
-      if (!told) await deps.repo.releaseConfirmationSend(reservationId).catch(() => {});
+      // Swallowed deliberately: the booking is committed, and letting a failed
+      // cleanup escape would 500 the webhook and make Stripe redeliver the whole
+      // thing. But it must not be SILENT — if the release fails the claim stays
+      // held, which records a confirmation the customer never received, and that is
+      // precisely the state this claim/release pair exists to prevent.
+      if (!told) {
+        await deps.repo
+          .releaseConfirmationSend(reservationId)
+          .catch((e: unknown) =>
+            logSwallowed(
+              "reservations:releaseConfirmationSend",
+              e,
+              `booking ${reservationId} is marked as confirmed but nobody was told — the claim is stuck`,
+            ),
+          );
+      }
     }
 
     // Record the PRE-gratuity (DEC-124) — crew money, keyed to the event pool. Slot
@@ -737,13 +780,13 @@ async function relayAndAudit(deps: WebhookDeps, form: FormResult): Promise<void>
   try {
     await deps.relayFormNotices?.(form);
   } catch (e) {
-    console.error("[reservations] form-notice relay failed — crew may not have been told", e);
+    logSwallowed("reservations:relayFormNotices", e, "crew may not have been told about a booking");
   }
   try {
     // Actor `engine`: nobody pressed anything. The booking webhook is autonomous (DEC-118).
     await logFormAudit(deps.repo, form, { kind: "engine" }, new Date(deps.now()));
   } catch (e) {
-    console.error("[reservations] form audit failed — the transition is unrecorded", e);
+    logSwallowed("reservations:formAudit", e, "the shift transition is unrecorded in the audit log");
   }
 }
 
@@ -763,7 +806,15 @@ async function recordPayment(
   if (charge.paymentIntentId) {
     try {
       receiptUrl = await deps.payments.getReceiptUrl(charge.paymentIntentId);
-    } catch {
+    } catch (e) {
+      // Stays best-effort — the payment row is the ledger and the receipt link is a
+      // convenience, so this must cost the link and nothing else. Logged because the
+      // guest's manage page will show no receipt and nothing else explains why.
+      logSwallowed(
+        "reservations:receiptUrl",
+        e,
+        `no Stripe receipt link on the manage page for charge ${charge.key}`,
+      );
       receiptUrl = undefined;
     }
   }

@@ -24,6 +24,7 @@
  * path whose job is to keep going.
  */
 import type { VesselId } from "../domain/ids.js";
+import { logSwallowed } from "../log.js";
 import type { ChannelPort } from "../ports/channel.js";
 import type { Repository } from "../ports/repository.js";
 import { listActiveAdminRecipients } from "./forward-board-alerts.js";
@@ -63,8 +64,16 @@ export async function forwardFormationAlert(
   let recipients;
   try {
     recipients = await listActiveAdminRecipients(repo);
-  } catch {
-    return 0; // a repo outage must not take the tick's own response down; the log line stands
+  } catch (e) {
+    // A repo outage must not take the tick's own response down. But returning 0 is
+    // indistinguishable from "no admins are configured", and the difference is whether
+    // a boat with no crew went unreported or whether nobody was ever going to be told.
+    logSwallowed(
+      "alerts:formation",
+      e,
+      `${failures.length} vessel-day(s) failed to form and no admin could be looked up to tell`,
+    );
+    return 0;
   }
   if (recipients.length === 0) return 0;
 
@@ -110,8 +119,10 @@ export async function forwardFormationAlert(
       try {
         const vessel = await repo.getVessel(f.vesselId);
         if (vessel?.name) name = vessel.name;
-      } catch {
-        // keep the id
+      } catch (e) {
+        // Keep the id — an unreadable vessel row is not a reason to stop telling somebody
+        // a boat has no crew. The alert still goes out; this says why it names an id.
+        logSwallowed("alerts:formation", e, `vessel ${f.vesselId} unreadable — alerting by id`);
       }
       body = outbound(
         "admin",
@@ -127,9 +138,15 @@ export async function forwardFormationAlert(
           link,
         });
         sent++;
-      } catch {
+      } catch (e) {
         // Best-effort per recipient — one dead number cannot mute the rest, on the one message
-        // that means a boat is uncrewed.
+        // that means a boat is uncrewed. The `sent` count already tells you how many landed;
+        // this tells you WHICH admin did not get it, which is the half that finds a dead number.
+        logSwallowed(
+          "alerts:formation",
+          e,
+          `admin ${r.crewMemberId} was not told that a boat has no crew shift`,
+        );
       }
     }
   }

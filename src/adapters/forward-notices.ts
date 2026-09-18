@@ -1,4 +1,5 @@
 import type { CrewMemberId, ShiftId } from "../domain/ids.js";
+import { logSwallowed } from "../log.js";
 import type { AssignmentAction } from "../domain/entities.js";
 import type { NoticePort } from "../ports/notice.js";
 import type { Repository } from "../ports/repository.js";
@@ -94,8 +95,15 @@ export async function forwardNotices(
         body,
       });
       forwarded++;
-    } catch {
-      // Best-effort (see header): the merge already succeeded.
+    } catch (e) {
+      // Best-effort (see header): the merge already succeeded. But the shift changed
+      // under a crew member who was not told, and nothing else on this path will ever
+      // say so — they turn up at the old call time.
+      logSwallowed(
+        "notices:relay",
+        e,
+        `crew ${change.crewMemberId} was not told their shift changed (${change.action} on ${change.shiftId})`,
+      );
     }
   }
   return forwarded;

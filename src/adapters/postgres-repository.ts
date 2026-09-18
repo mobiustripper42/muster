@@ -15,6 +15,7 @@
  */
 import pg from "pg";
 import { pgConnectionConfig } from "../config/db-ssl.js";
+import { logSwallowed } from "../log.js";
 import type {
   Admin,
   AddOn,
@@ -2876,7 +2877,13 @@ function parseIdArray(raw: string): string[] {
   try {
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
-  } catch {
+  } catch (e) {
+    // Reading as empty is the safe answer — a caller that sees no prior ids mints a
+    // fresh one rather than reusing something it cannot name. But "this column is
+    // corrupt" and "this row genuinely has no ids" are the same value to every caller,
+    // and only this line separates them. On `reservations.payment_intent_ids` that is
+    // the difference between a row with no history and a row whose history was lost.
+    logSwallowed("postgres:parseIdArray", e, "a stored id array was unparseable and read as empty");
     return [];
   }
 }

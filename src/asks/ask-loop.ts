@@ -19,6 +19,7 @@
  */
 
 import type { Ask, AskAnswer, CrewMember, Event, Seat } from "../domain/entities.js";
+import { logSwallowed } from "../log.js";
 import { asId } from "../domain/ids.js";
 import type { AskId, CrewMemberId, SeatId } from "../domain/ids.js";
 import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
@@ -757,7 +758,12 @@ export async function bailWithDerivedLateness(
       seat.assignedCrewMemberId,
     );
     return { code: null };
-  } catch {
+  } catch (e) {
+    // `raced` is the expected reason — somebody answered between the read and the
+    // write, which is an ordinary outcome and not a fault. But a repository outage
+    // produces exactly the same answer, and a seat reported as raced when the database
+    // was simply unreachable is a bail that never happened and nobody chased.
+    logSwallowed("asks:bail", e, `seat ${seatId} reported as raced; it may instead have failed to bail`);
     return { code: "raced" };
   }
 }

@@ -21,6 +21,7 @@
  */
 
 import { asId } from "../domain/ids.js";
+import { logSwallowed } from "../log.js";
 import type { NotificationDecision } from "../messaging/doorbell-decider.js";
 import type { NotificationPort } from "../ports/notification.js";
 import type { Repository } from "../ports/repository.js";
@@ -49,8 +50,15 @@ export async function forwardNotifications(
         messageIds: d.messageIds,
       });
       forwarded++;
-    } catch {
-      // Best-effort (see header): the ring is already recorded.
+    } catch (e) {
+      // Best-effort (see header): the ring is already recorded, so the decider's own
+      // history stays honest. The delivery is what failed, and a recorded ring nobody
+      // received is indistinguishable from one they ignored.
+      logSwallowed(
+        "doorbell:relay",
+        e,
+        `the doorbell ring for thread ${d.threadId} was recorded but not delivered`,
+      );
     }
   }
   return forwarded;

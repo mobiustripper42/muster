@@ -221,6 +221,13 @@ export async function createDeparturePaymentIntent(
       ...(prior?.paymentIntentIds !== undefined
         ? { paymentIntentIds: prior.paymentIntentIds }
         : {}),
+      // **Carried for the same reason, and 15.11 depends on it.** The idempotency key below is
+      // keyed on this count, so a row handed back without it computes ordinal 1 on every attempt —
+      // and the key then collides on precisely the re-mint it exists to keep separate. The column
+      // is correct on disk from 15.9; this is the line that makes the in-hand row agree with it.
+      ...(prior?.checkoutAttempts !== undefined
+        ? { checkoutAttempts: prior.checkoutAttempts }
+        : {}),
       updatedAt: at,
     };
   };
@@ -353,6 +360,21 @@ export async function createDeparturePaymentIntent(
   const intent = await payments.createPaymentIntent({
     amountCents,
     currency: "usd",
+    // **One key per ATTEMPT (15.11).** Two concurrent submits — a double tap on a slow connection,
+    // where the button re-enables in a `finally` that only guards a COMPLETED request — both claim
+    // this row, both read no prior intent id (the append happens after the provider call), and
+    // before this both minted. The customer ended up holding two payable client secrets for one
+    // booking, and nothing removed the second until the booking flipped.
+    //
+    // **Not the row id alone**, which is the obvious key and the wrong one: it is constant for the
+    // life of a checkout (`prior?.id ?? mint` above), so a deliberate re-mint would be handed back
+    // the very intent it is replacing, or 400 on the changed amount. The ordinal is what keeps a
+    // retry free to mint while two copies of the SAME attempt collapse.
+    //
+    // `+ 1` because `recordCheckoutAttempt` runs after this call: the stored count is attempts
+    // completed, and this one is in flight. Moving the increment earlier would count an attempt
+    // Stripe then refused.
+    idempotencyKey: `booking_${pending.id}_${(pending.checkoutAttempts ?? 0) + 1}`,
     // What a HUMAN reads on the charge (#679) — without it the dashboard's payments list is a
     // column of bare dollar amounts. Offering, departure, party size, who booked: enough to
     // answer a phone call without opening anything.

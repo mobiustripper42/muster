@@ -280,7 +280,14 @@ export class StripePaymentPort implements PaymentPort {
       // email settings, so passing it IS the decision to send one.
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.receiptEmail !== undefined ? { receipt_email: input.receiptEmail } : {}),
-    });
+    },
+    // **The options argument, and 15.11 is inert without it.** The first cut of that task computed
+    // the key, added it to the port type and threaded it here — and stopped, leaving this call with
+    // a single argument. Every test stayed green because every test runs against `FakePaymentPort`,
+    // which honoured the key; production dropped it silently. Caught by `/security-review`, not by
+    // the suite, and `db:stripe:cancel` now asserts the round trip so the suite is not the only
+    // thing standing between this line and a silent regression. Same shape as `refund` above.
+    { idempotencyKey: input.idempotencyKey });
     if (!intent.client_secret) throw new Error("Stripe payment intent returned no client_secret");
     return { clientSecret: intent.client_secret, paymentIntentId: intent.id };
   }

@@ -1,5 +1,6 @@
 /**
- * `db:stripe:cancel` — execute 15.10's cancel against REAL Stripe, through our own port.
+ * `db:stripe:cancel` — execute 15.10's cancel and 15.11's idempotency key against REAL Stripe,
+ * through our own port.
  *
  *   npm run db:stripe:cancel
  *
@@ -73,18 +74,39 @@ async function threw(fn: () => Promise<unknown>): Promise<string | null> {
 }
 
 async function main(): Promise<void> {
-  console.log("\n15.10 — retiring a PaymentIntent, against real Stripe, through our own port\n");
+  console.log(
+    "\nThe idempotency key (15.11) and retiring an intent (15.10), against real Stripe,\n" +
+      "through our own port\n",
+  );
 
   // 1. Mint one, exactly as the checkout does.
-  const created = await payments.createPaymentIntent({
+  const key = `muster_check_${Date.now()}`;
+  const createInput = {
     amountCents: 100,
     currency: "usd",
-    description: "muster db:stripe:cancel — 15.10 verification, never confirmed",
+    description: "muster db:stripe:cancel — verification, never confirmed",
     metadata: {},
-  });
+    idempotencyKey: key,
+  };
+  const created = await payments.createPaymentIntent(createInput);
   console.log(`  Minted ${created.paymentIntentId} for $1.00\n`);
 
-  // 2. It must read as something a retry could be handed back.
+  // 2. **The idempotency key is actually SENT (15.11).** This check exists because the first cut
+  //    of 15.11 computed the key, put it on the port type, threaded it to the adapter — and never
+  //    passed it to Stripe. The whole suite stayed green, because every test runs against
+  //    `FakePaymentPort`, which honoured it. Only a real round trip can tell the difference between
+  //    a key that is sent and a key that is dropped, which is the entire argument for this script.
+  const repeated = await payments.createPaymentIntent(createInput);
+  check(
+    "the same key returns the SAME intent — the key reaches Stripe",
+    repeated.paymentIntentId === created.paymentIntentId,
+    repeated.paymentIntentId === created.paymentIntentId
+      ? `both creates returned ${created.paymentIntentId}`
+      : `got ${repeated.paymentIntentId} and ${created.paymentIntentId} — the key was DROPPED, ` +
+        `so two payable intents exist where there should be one`,
+  );
+
+  // 3. It must read as something a retry could be handed back.
   const before = await payments.getPaymentIntentState(created.paymentIntentId);
   check(
     "a fresh intent reads `reusable`",
@@ -92,7 +114,7 @@ async function main(): Promise<void> {
     `getPaymentIntentState → "${before}" (expected "reusable")`,
   );
 
-  // 3. And it must actually be re-priceable, which is what "payable" means for our purposes —
+  // 4. And it must actually be re-priceable, which is what "payable" means for our purposes —
   //    this is the 15.8 behaviour whose residue 15.10 cleans up.
   const raiseBefore = await threw(() =>
     payments.updatePaymentIntentAmount(created.paymentIntentId, 200),
@@ -103,7 +125,7 @@ async function main(): Promise<void> {
     raiseBefore === null ? "updatePaymentIntentAmount(200) succeeded" : `threw: ${raiseBefore}`,
   );
 
-  // 4. **The call this whole script exists for.** If Stripe rejects our argument shape or the
+  // 5. **15.10's call.** If Stripe rejects our argument shape or the
   //    reason string, it fails here — and nothing in the test suite would ever have told us.
   const cancelError = await threw(() =>
     payments.cancelPaymentIntent(created.paymentIntentId, "abandoned"),
@@ -114,7 +136,7 @@ async function main(): Promise<void> {
     cancelError === null ? "returned without throwing" : `threw: ${cancelError}`,
   );
 
-  // 5. The status mapping, end to end: Stripe's `canceled` must arrive as `unknown`, which is what
+  // 6. The status mapping, end to end: Stripe's `canceled` must arrive as `unknown`, which is what
   //    tells a retry to mint fresh rather than reuse a dead object.
   const after = await payments.getPaymentIntentState(created.paymentIntentId);
   check(
@@ -123,7 +145,7 @@ async function main(): Promise<void> {
     `getPaymentIntentState → "${after}" (expected "unknown")`,
   );
 
-  // 6. **The outcome, not the call.** Everything above could pass while the intent stayed payable;
+  // 7. **The outcome, not the call.** Everything above could pass while the intent stayed payable;
   //    this is the assertion that matches what the PR claims — nobody can pay it now.
   const raiseAfter = await threw(() =>
     payments.updatePaymentIntentAmount(created.paymentIntentId, 300),
@@ -134,7 +156,7 @@ async function main(): Promise<void> {
     raiseAfter !== null ? `threw, as it must: ${raiseAfter}` : "SUCCEEDED — the intent is still live",
   );
 
-  // 7. The refusal both call sites swallow. On a webhook redelivery this happens every single
+  // 8. The refusal both call sites swallow. On a webhook redelivery this happens every single
   //    time, and if it did NOT throw, the best-effort catches would be dead code hiding nothing.
   const secondCancel = await threw(() =>
     payments.cancelPaymentIntent(created.paymentIntentId, "duplicate"),

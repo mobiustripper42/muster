@@ -8,7 +8,16 @@ import { processBookingWebhook } from "@core/reservations/booking-webhook.js";
  * spine. Handles `checkout.session.completed` (hosted: balance + post-gratuity) AND
  * `payment_intent.payment_failed` (declines — acked and ignored, 14.8) AND
  * `payment_intent.succeeded` (inline Elements bookings — the Stripe dashboard endpoint must
- * subscribe to BOTH event types). Verifies the signature, writes the reservation under the
+ * subscribe to BOTH event types).
+ *
+ * **`payment_intent.canceled` is parsed and acked (15.10), and subscribing to it is OPTIONAL.**
+ * Muster cancels superseded intents through the API and reads the result synchronously, so nothing
+ * depends on the event arriving. Subscribing buys visibility of cancels made by a PERSON in the
+ * Stripe dashboard; not subscribing costs nothing. Either way it is named rather than left to fall
+ * out as an unrecognised type, so "we decided to do nothing" and "we have never heard of this"
+ * stay distinguishable.
+ *
+ * Verifies the signature, writes the reservation under the
  * atomic whole-boat claim (14.5 `confirmPendingRow` flips the pending row, keyed on the intent id),
  * and records the `Payment`. On a
  * DEC-109 residual-race loss it AUTO-refunds (keyed-idempotent) + notifies the customer

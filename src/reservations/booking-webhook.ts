@@ -209,6 +209,13 @@ export async function processBookingWebhook(
   // be the same signal.
   if (event.type === "payment_failed") return { handled: true, outcome: "ignored" };
 
+  // A retired intent (15.10), and there is nothing to do with it. Every cancel Muster makes is one
+  // it already knows about — the port call returned before Stripe wrote this event — so acting on
+  // it here would be acting twice. Named for the same reason as the line above: a cancel an
+  // operator made in the dashboard is then a thing this code has a word for, rather than noise
+  // indistinguishable from an event type we have never heard of.
+  if (event.type === "payment_canceled") return { handled: true, outcome: "ignored" };
+
   // Everything past here is a hosted `checkout.session.completed`. The union is closed and every
   // other member returned above, so this narrows — but say it, because an event type added to the
   // port and not handled here would otherwise arrive at `completed.metadata` and throw on a shape
@@ -312,6 +319,41 @@ function safeForAlert(name: string): string {
   return (cleaned.length > 40 ? `${cleaned.slice(0, 40)}...` : cleaned) || "customer";
 }
 
+/**
+ * Cancel every intent on a booked row except the one that paid for it (15.10, issue #978).
+ *
+ * **One function so the best-effort contract lives in one place.** Each cancel is an independent
+ * failure — Stripe refuses from most terminal states, and a webhook REDELIVERY re-cancels an
+ * already-cancelled sibling every single time — and a throw escaping here would 500 a booking that
+ * has already committed, which makes Stripe retry a completed sale for three days. That is a worse
+ * outcome than the payable intent this exists to remove, so nothing in here may reject.
+ *
+ * `paid` is excluded by id rather than by position: it is the intent this webhook is FOR, and the
+ * row's array is ordered by when each was minted, not by which one succeeded.
+ *
+ * **What it cannot fix**: a sibling that already succeeded. Stripe will not cancel it, the money is
+ * taken, and that is the residual race — `compensateResidualRaceLoss` below still owns it. This
+ * makes that path rarer rather than unreachable.
+ */
+async function retireSiblingIntents(
+  deps: WebhookDeps,
+  row: Reservation,
+  paid: string | undefined,
+): Promise<void> {
+  const others = (row.paymentIntentIds ?? []).filter((id) => id !== paid);
+  for (const id of others) {
+    await deps.payments.cancelPaymentIntent(id, "duplicate").catch((e: unknown) => {
+      // Logged before swallowing, like every other best-effort catch in this file
+      // (`@code-review`). "Must not throw" and "must leave no trace" are different
+      // requirements, and conflating them makes an ordinary refusal — an already-cancelled
+      // sibling on a redelivery — indistinguishable from a persistent bug such as a
+      // permissions error, forever. Not an operator alert: no money moved and the booking is
+      // fine, so this is a log line for whoever is already looking.
+      console.error(`[reservations] could not retire superseded intent ${id} on ${row.id}`, e);
+    });
+  }
+}
+
 async function compensateResidualRaceLoss(
   deps: WebhookDeps,
   charge: BookingCharge,
@@ -360,6 +402,19 @@ async function compensateResidualRaceLoss(
     );
     return { handled: true, outcome: "lost" };
   }
+  // **This row will never book, so nothing on it may stay payable (15.10, `@code-review`).**
+  //
+  // The first cut retired siblings only on the BOOKED path, and missed the one row class where an
+  // un-retired intent is payable *forever* rather than for a window. A residual-race loser lost the
+  // hull to somebody else; its flip is refused and no later delivery can succeed. Any other live id
+  // on it — an earlier mint whose best-effort cancel failed at checkout time — has no other route to
+  // retirement, because nothing reaps lapsed rows (`abandonment.ts`: "Nothing deletes a lapsed row")
+  // and these are the only two call sites of `cancelPaymentIntent` in the codebase.
+  //
+  // The just-refunded id is excluded by the same argument as the booked path, and by Stripe's rules:
+  // it succeeded, so a cancel would be refused anyway.
+  await retireSiblingIntents(deps, row, charge.paymentIntentId);
+
   // Refunded — tell the customer. Best-effort: a notify failure must not 500 (a retry would
   // re-run this path, and the keyed refund would no-op, but re-notify needlessly).
   try {
@@ -514,6 +569,16 @@ export async function processBookingCharge(
   // `postgres-repository.test.ts`, which is the only place it can be proven.
   if (result.outcome === "booked" || result.outcome === "already") {
     const reservationId = result.reservation.id;
+
+    // **The sale is made, so nothing else on this row may still be payable (15.10).** §2.8.5 keeps
+    // every id the checkout minted so a superseded one that succeeds late still RESOLVES here —
+    // that is about findability and was never a licence to leave them chargeable. SPEC's own answer
+    // for one that gets paid afterwards is "refund it and tell the customer": a charge, a refund
+    // and an apology for something that should not have been possible.
+    //
+    // After the flip, never before it. Cancelling first would kill a payable intent on the strength
+    // of a booking that might then fail to commit.
+    await retireSiblingIntents(deps, result.reservation, charge.paymentIntentId);
 
     // **Form the shift the booking just earned (#614).** `writeSlotBooking` writes the Event and
     // the Reservation and stops; nothing downstream created a Shift, so a Muster-native booking

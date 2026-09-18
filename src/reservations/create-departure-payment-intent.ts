@@ -279,12 +279,6 @@ export async function createDeparturePaymentIntent(
     ? await payments.getPaymentIntentState(priorIntentId).catch(() => "unknown" as const)
     : ("unknown" as const);
 
-  // **When this mints anyway, the prior intent is left behind, payable, at its old amount.**
-  // That happens on a state we cannot read and on a state we can read but cannot reuse. It is a
-  // narrower instance of the defect this task removes, and closing it means cancelling the old
-  // intent — which is task 15.10, named for exactly this residue. Stated here rather than left for
-  // someone to rediscover: `@code-review` found it, and the honest answer was that 15.8 shrinks
-  // the window and 15.10 closes it.
   // **Already paid: refuse, never mint.** The row stays `pending` until the webhook lands or
   // `/book/success` runs, so there is an ordinary window — a dropped 3DS return, a closed tab, a
   // slow webhook — in which a paid intent is read back on a retry. Minting there gives the
@@ -311,8 +305,8 @@ export async function createDeparturePaymentIntent(
         .getPaymentIntentState(priorIntentId)
         .catch(() => "unknown" as const);
       if (nowSettled === "settled") return { ok: false, reason: "already_paid" };
-      // Genuinely dead or unreadable: fall through and mint, accepting that the old intent is left
-      // behind. Retiring it is 15.10, which exists for exactly this residue.
+      // Genuinely dead, or refused for a reason we cannot see: fall through and mint. The old
+      // intent is retired below rather than left behind (15.10).
     }
     if (raised) {
       // Nothing new to append — this attempt minted no id. The invoice and the customer's answers
@@ -320,6 +314,40 @@ export async function createDeparturePaymentIntent(
       await repo.recordCheckoutAttempt(pending, null);
       return { ok: true, clientSecret: raised.clientSecret, paymentIntentId: priorIntentId };
     }
+  }
+
+  // ── Retire the intent we are about to replace (15.10) ───────────────────────
+  //
+  // Reaching here with a `priorIntentId` means we decided not to offer that intent again — the
+  // state was unreadable, or the amount update was refused for a reason that was not "it is already
+  // paid" (that case returned above). 15.8 left it alone, which left it PAYABLE at its old amount:
+  // a stale tab could still pay the four-guest quote against a six-guest booking, which is the
+  // defect 15.8 set out to remove and closed only for the path where reuse succeeded.
+  //
+  // **How rare, said precisely, because the obvious story is wrong.** An abandoned 3D Secure
+  // challenge does NOT reach here: Stripe permits an amount update at `requires_action`, in its own
+  // words — *"You may only update the amount of a PaymentIntent with one of the following statuses:
+  // requires_payment_method, requires_confirmation, requires_action"* (its refusal text, read back
+  // from the sandbox by `db:stripe:cancel` on 2026-09-18). So that retry raises this intent and
+  // mints nothing. What actually lands here is a state read that THREW — a provider outage or a
+  // timeout outliving the SDK's two retries — which is infrastructure failing, not a customer doing
+  // anything. Rare, and not stageable from a browser.
+  //
+  // **Best-effort, and the refusals are the ordinary case rather than the exception.** Stripe's own
+  // cancel refusal names the statuses it accepts: *"requires_payment_method, requires_capture,
+  // requires_reauthorization, requires_confirmation, requires_action, expired, processing"*. An
+  // intent that is already cancelled or already succeeded is refused. `unknown` — the state that
+  // brought us here — covers a read that failed, a status we cannot describe, an id the provider
+  // never knew, and an already-cancelled intent, and three of those four will refuse. A refusal
+  // must never reach the customer: by the time this runs they are about to receive a working client
+  // secret for a fresh intent.
+  if (priorIntentId) {
+    await payments.cancelPaymentIntent(priorIntentId, "abandoned").catch((e: unknown) => {
+      // Logged, then swallowed (`@code-review`). Swallowing silently makes the ordinary refusals
+      // above indistinguishable from a real fault — a wrong id, a permissions error — and the
+      // whole point of this call is that somebody could otherwise still pay this intent.
+      console.error(`[reservations] could not retire superseded intent ${priorIntentId}`, e);
+    });
   }
 
   const intent = await payments.createPaymentIntent({

@@ -12,6 +12,7 @@
 import Stripe from "stripe";
 import {
   PaymentSignatureError,
+  type CancelReason,
   type CheckoutSession,
   type CreateCheckoutInput,
   type CreatePaymentIntentInput,
@@ -335,6 +336,15 @@ export class StripePaymentPort implements PaymentPort {
     return { clientSecret: pi.client_secret };
   }
 
+  async cancelPaymentIntent(paymentIntentId: string, reason: CancelReason): Promise<void> {
+    // Deliberately NOT caught here, for the same reason as the update above: the adapter reports
+    // what the provider said and the CALLER decides what it means. Both callers treat a refusal as
+    // ordinary and log it, because the states Stripe refuses from are the states we most often find
+    // these intents in — already cancelled on a webhook redelivery, or succeeded since we last
+    // looked. Swallowing it in the adapter would make "retired" unfalsifiable.
+    await this.#stripe.paymentIntents.cancel(paymentIntentId, { cancellation_reason: reason });
+  }
+
   async getReceiptUrl(paymentIntentId: string): Promise<string | undefined> {
     // `latest_charge` comes back as a bare id unless expanded, and the receipt url lives on the
     // charge — so this is one retrieve with an expand rather than two round trips.
@@ -451,6 +461,21 @@ export class StripePaymentPort implements PaymentPort {
         data: {
           paymentIntentId: pi.id,
           ...(code !== undefined && code !== null ? { declineCode: code } : {}),
+        },
+      };
+    }
+    if (event.type === "payment_intent.canceled") {
+      // A retired intent (15.10). Named on exactly the reasoning above: every cancel Muster makes
+      // is one it already knows about — `cancelPaymentIntent` returned before this event existed —
+      // so the handler does nothing with it. What the NAME buys is that a cancel made in the Stripe
+      // dashboard, by a person, is a thing this code has a word for rather than noise.
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const reason = pi.cancellation_reason;
+      return {
+        type: "payment_canceled",
+        data: {
+          paymentIntentId: pi.id,
+          ...(reason !== undefined && reason !== null ? { reason } : {}),
         },
       };
     }

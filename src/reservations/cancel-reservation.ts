@@ -24,6 +24,7 @@
  */
 import { formShifts, type FormResult } from "../builder/form-shifts.js";
 import { logFormAudit } from "../oracle/audit-log.js";
+import { logSwallowed } from "../log.js";
 import { eventIdOfBooked, isBooked } from "../domain/entities.js";
 import type { CancelledBy, Payment } from "../domain/entities.js";
 import type { EventId, ReservationId } from "../domain/ids.js";
@@ -200,14 +201,14 @@ export async function cancelReservation(
     try {
       await deps.relayFormNotices?.(form);
     } catch (e) {
-      console.error("[reservations] cancel: form-notice relay failed — crew may not know", e);
+      logSwallowed("reservations:cancel:relayFormNotices", e, "crew may not know their shift changed after a cancellation");
     }
     try {
       // Actor `engine` matches the booking webhook's own audit posture: the re-form is a
       // derived consequence, not the operator's direct act on a seat.
       await logFormAudit(deps.repo, form, { kind: "engine" }, new Date(deps.now()));
     } catch (e) {
-      console.error("[reservations] cancel: form audit failed — the transition is unrecorded", e);
+      logSwallowed("reservations:cancel:formAudit", e, "the shift transition is unrecorded in the audit log");
     }
   } catch (e) {
     // Since #957 only a failure OUTSIDE the per-vessel-day loop reaches here — reading the event
@@ -218,9 +219,10 @@ export async function cancelReservation(
     // was written (#766: the failed run's rows are durable, so the next tick sees no diff and
     // stays silent) and it is false now for a different reason — the tick calls this same
     // function and fails the same way on the same unreadable repo.
-    console.error(
-      `[reservations] formShifts after cancelling ${reservationId} failed before forming anything`,
+    logSwallowed(
+      "reservations:cancel:formShifts",
       e,
+      `reservation ${reservationId} is cancelled but no vessel-day re-formed — the roster still reflects the booking`,
     );
   }
 

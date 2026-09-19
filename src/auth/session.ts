@@ -16,6 +16,7 @@
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { logSwallowed } from "../log.js";
 import type { AuthSubjectKind } from "../domain/entities.js";
 import type { AuthSubject } from "./magic-link.js";
 
@@ -70,7 +71,18 @@ export function verifySession(
   let session: Session;
   try {
     session = JSON.parse(unb64url(payloadB64)) as Session;
-  } catch {
+  } catch (e) {
+    // The signature already verified above, so this payload is OURS — a parse failure
+    // here means we signed something malformed, which is a defect rather than a forged
+    // cookie. The caller sees `malformed` either way and cannot tell the two apart.
+    //
+    // **Error TYPE only, never the message.** A `JSON.parse` failure embeds the input it
+    // choked on, and the input is a session payload.
+    logSwallowed(
+      "auth:session",
+      e instanceof Error ? e.name : "unknown error type",
+      "a correctly-signed session payload did not parse — it was minted malformed",
+    );
     return { ok: false, reason: "malformed" };
   }
   if (

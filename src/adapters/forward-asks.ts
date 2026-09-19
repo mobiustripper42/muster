@@ -23,6 +23,8 @@
  */
 
 import type { Ask } from "../domain/entities.js";
+import { logSwallowed } from "../log.js";
+import { describeSendFailure } from "../ports/channel.js";
 import type { CrewMemberId } from "../domain/ids.js";
 import type { ChannelPort } from "../ports/channel.js";
 import type { Repository } from "../ports/repository.js";
@@ -120,8 +122,24 @@ export async function forwardAsks(
         askId: rep.id,
       });
       forwarded += group.length;
-    } catch {
-      // Best-effort (see header): the domain action already succeeded.
+    } catch (e) {
+      // Best-effort (see header): the domain action already succeeded — the ask is
+      // recorded whether or not the text lands. What is lost without this line is that
+      // a crew member was asked to work and never heard about it, which looks from the
+      // outside exactly like somebody ignoring an ask.
+              // **Never the error itself.** A `ChannelSendError`'s message carries the provider's
+        // raw response body, and what we sent it was a crew member's 6-digit sign-in code
+        // or — until issue #1030 retires ask links — a live magic link. Credentials do not
+        // go in logs. That is the rule, not a judgement about whether Resend or Twilio
+        // happen to echo request content back.
+        //
+        // `describeSendFailure` keeps the status, which is the useful half and carries
+        // none of it: 422 is a misconfigured sender, 429 is rate limiting, 503 is wait.
+logSwallowed(
+        "asks:relay",
+        describeSendFailure(e),
+        `${group.length} ask(s) recorded but not delivered to crew ${group[0]?.crewMemberId}`,
+      );
     }
   }
   return forwarded;

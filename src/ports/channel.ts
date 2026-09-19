@@ -116,3 +116,51 @@ export interface ChannelPort {
   /** Hand one message to the delivery medium. Throws if the medium rejects it. */
   send(message: OutboundMessage): Promise<SendResult>;
 }
+
+/**
+ * A delivery medium rejected the send, with the HTTP status it rejected it with (#902).
+ *
+ * The status is a **property**, not only a substring of the message, and that is the
+ * whole reason this type exists. The relays that catch this error log it, and they
+ * deliberately do not log the error's message: a provider's error body may quote back
+ * what was sent, and what was sent is a crew member's 6-digit sign-in code or — until
+ * issue #1030 retires ask links — a live magic link. Credentials do not go in logs,
+ * whether or not a given provider happens to echo.
+ *
+ * The status carries none of that and is the half worth having: `422` says somebody
+ * misconfigured a sender, `429` says we are being rate-limited, `503` says wait. A bare
+ * "Error" says none of them, and that was the cost of the first cut of this narrowing.
+ *
+ * The message still carries the provider's detail, because a caller that HANDLES this
+ * error rather than logging it wants the reason, and `email-channel.test.ts` pins it.
+ */
+export class ChannelSendError extends Error {
+  readonly status: number;
+
+  constructor(medium: string, status: number, detail: string) {
+    super(`${medium} send failed (${status}): ${detail}`);
+    this.name = "ChannelSendError";
+    this.status = status;
+  }
+}
+
+/**
+ * What a relay may safely log about a failed send (#902).
+ *
+ * The relays are best-effort: a dead number cannot mute the rest, so they catch and
+ * carry on. Since #902 they also log — and the one thing they must not log is the
+ * error's message, for the reason on `ChannelSendError` above.
+ *
+ * So this is the redaction, in one place rather than repeated at six catch sites where
+ * the next one would be written slightly differently and nobody would notice. Same
+ * lesson as the helper this whole task exists to consolidate.
+ *
+ * A non-`ChannelSendError` gets its type name only. That is deliberate rather than
+ * lazy: an unexpected error type from inside a channel adapter is exactly the case
+ * where nobody has reasoned about what its message contains.
+ */
+export function describeSendFailure(e: unknown): string {
+  if (e instanceof ChannelSendError) return `${e.name} (status ${e.status})`;
+  if (e instanceof Error) return e.name;
+  return "unknown error type";
+}

@@ -470,22 +470,93 @@ export default tseslint.config(
           message:
             "Bind the error and log it — `catch (e) { logSwallowed('<surface>', e); … }` from app/lib/swallowed (#854). A bare `catch {}` is the only place that knows why something failed, and it discards it: an unapplied migration rendered a calm 'try again in a moment' with an empty server log, and recovering the cause took a throwaway script. For a genuine NON-fault — malformed user input, a clipboard rejection — add an eslint-disable-next-line no-restricted-syntax saying which.",
         },
-        // READ THE CEILING of the catch ban above (DEC-159 rule 5). This block is
-        // `app/**` + `components/**`, so the ban stops at the framework boundary.
-        // **23 bare catches remain in `src/` and `db/` and are NOT covered** — three of
-        // them on the money path: `src/reservations/booking-webhook.ts:461,546,605`,
-        // the confirmation send, the sold-out notify, and the Stripe receipt URL.
-        //
-        // That gap is structural rather than an oversight. `src/` is the framework-free
-        // core (DEC-013/DEC-020) and cannot import `app/lib/swallowed.ts` — the
-        // core-purity ban further down enforces exactly that — so closing it needs a
-        // core-local logger or a decision to leave it. Filed as issue #902.
-        //
-        // Do not read "we fixed the bare catches" as covering the core. It does not,
-        // and an undocumented blind spot gets trusted for things it never checked
-        // (DEC-144).
+        // CEILING of the catch ban above (DEC-159 rule 5): this block is `app/**` +
+        // `components/**`. `src/**` gets the same ban from its own block below, via
+        // `src/log.ts` (#902 closed that gap). **`db/**` is still uncovered and that
+        // is deliberate** — those are scripts run at a terminal where an unhandled
+        // throw is already on screen, so the invisibility this ban exists to fix does
+        // not apply. Recorded rather than left to be rediscovered as debt.
       ],
     },
+  },
+  {
+    // ── The core's half of the swallowed-error ban (#902) ────────────────────
+    //
+    // #854 closed `app/**` + `components/**` and stopped at the framework boundary
+    // because `src/` cannot import `app/lib/swallowed.ts` — the core-purity ban
+    // below enforces it, and `tsconfig.core.json` declares no alias, so the import
+    // could not resolve regardless. `src/log.ts` is the core-local destination that
+    // made closing it possible.
+    //
+    // TWO selectors, and the second one is the point. Banning the bare `catch {}`
+    // alone would have left the 13 hand-rolled `console.error` calls the core
+    // already had — functionally equivalent to the helper on the day they are
+    // written, and free to drift apart afterwards with nothing to notice.
+    //
+    // That is not hypothetical here. It is what issue #960 cost: `pgConnectionConfig`
+    // existed, one caller of eighteen used it, the other seventeen hand-rolled the
+    // equivalent, and they stayed equivalent right up until production moved to a
+    // database with a different certificate. Nothing failed in the request path, so
+    // nothing surfaced for weeks. **A helper with a second way of doing the same
+    // thing is a helper waiting to diverge**, and the only fix that holds is making
+    // the second way fail the build.
+    files: ["src/**/*.ts"],
+    ignores: ["src/**/*.test.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "CatchClause[param=null]",
+          message:
+            "Bind the error and log it — `catch (e) { logSwallowed('<surface>', e); … }` from src/log.js (#902). A bare `catch {}` is the only place that knows why something failed, and it discards it. For a genuine NON-fault — malformed input where the throw is an expected value, or a catch whose only loggable value is a secret — add an eslint-disable-next-line no-restricted-syntax saying which.",
+        },
+        {
+          // Matches `console.*` anywhere inside a catch, including nested in an `if`.
+          // Does NOT match console outside a catch, which is why `log-channel.ts`
+          // (whose console output is its product, not a failure record) needs no
+          // exemption.
+          selector: "CatchClause CallExpression[callee.object.name='console']",
+          message:
+            "Use `logSwallowed('<surface>', e, '<consequence>')` from src/log.js, not a raw console.* — one shape for every swallowed error in the core, so `[surface]` is greppable and the error is passed as a second argument rather than interpolated (which drops the stack). #902.",
+        },
+        {
+          // The promise form of `catch {}`, and the same rule stated in the same terms:
+          // **a handler that binds no parameter cannot log what it caught.** So this is
+          // `CatchClause[param=null]` for `.catch()` — not a ban on the pattern.
+          //
+          // `.catch(() => {})` is frequently the RIGHT behaviour and stays legal: at
+          // `booking-webhook.ts` the booking is already committed, and letting a failed
+          // cleanup escape would 500 the webhook and make Stripe redeliver the whole
+          // thing. Swallowing is correct there. Being silent about it is not — a failed
+          // release leaves a claim recording a confirmation the customer never got.
+          //
+          // `.catch((e) => …)` passes, whatever it then does with `e` — including
+          // returning a fallback value. `.catch(handleIt)` passes; a named handler is
+          // somebody else's business.
+          // Both callable shapes. An arrow is what the codebase writes, but
+          // `.catch(function () {})` is the same discard and would have passed a
+          // selector naming only `ArrowFunctionExpression` — a hole in a rule whose
+          // whole promise is that the count stays at zero.
+          //
+          // Still not exhaustive, and the gap is stated rather than implied:
+          // `.catch(namedHandler)` passes, because what a named function does with its
+          // arguments is not decidable here. `.catch` on a non-Promise object exposing
+          // a method of that name would match spuriously; there is none in `src/`.
+          selector:
+            "CallExpression[callee.property.name='catch'] > :matches(ArrowFunctionExpression, FunctionExpression)[params.length=0]",
+          message:
+            "Bind the error: `.catch((e) => logSwallowed('<surface>', e, '<consequence>'))` from src/log.js (#902). A zero-parameter `.catch()` is `catch {}` in promise clothing — it discards the only record of why something failed. Swallowing may well be right; being silent about it is not. For a genuine non-fault (failing to read the body of an error you are already reporting), add an eslint-disable-next-line no-restricted-syntax saying which.",
+        },
+      ],
+    },
+  },
+  {
+    // `src/log.ts` IS the destination, so it cannot route through itself: its
+    // `console.error` is the write, and its bare catch is the guard that stops a
+    // broken console turning a recoverable failure into a crash. Both are explained
+    // at the site. Per-file rather than per-line so the reason lives in one place.
+    files: ["src/log.ts"],
+    rules: { "no-restricted-syntax": "off" },
   },
   {
     // The wrappers legitimately use the raw primitives they encapsulate.

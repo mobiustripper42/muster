@@ -1,4 +1,6 @@
 import type { CrewMemberId, ShiftId } from "../domain/ids.js";
+import { logSwallowed } from "../log.js";
+import { describeSendFailure } from "../ports/channel.js";
 import type { AssignmentAction } from "../domain/entities.js";
 import type { NoticePort } from "../ports/notice.js";
 import type { Repository } from "../ports/repository.js";
@@ -94,8 +96,23 @@ export async function forwardNotices(
         body,
       });
       forwarded++;
-    } catch {
-      // Best-effort (see header): the merge already succeeded.
+    } catch (e) {
+      // Best-effort (see header): the merge already succeeded. But the shift changed
+      // under a crew member who was not told, and nothing else on this path will ever
+      // say so — they turn up at the old call time.
+              // **Never the error itself.** A `ChannelSendError`'s message carries the provider's
+        // raw response body, and what we sent it was a crew member's 6-digit sign-in code
+        // or — until issue #1030 retires ask links — a live magic link. Credentials do not
+        // go in logs. That is the rule, not a judgement about whether Resend or Twilio
+        // happen to echo request content back.
+        //
+        // `describeSendFailure` keeps the status, which is the useful half and carries
+        // none of it: 422 is a misconfigured sender, 429 is rate limiting, 503 is wait.
+logSwallowed(
+        "notices:relay",
+        describeSendFailure(e),
+        `crew ${change.crewMemberId} was not told their shift changed (${change.action} on ${change.shiftId})`,
+      );
     }
   }
   return forwarded;

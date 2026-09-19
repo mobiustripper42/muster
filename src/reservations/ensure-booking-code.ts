@@ -19,6 +19,7 @@
  */
 
 import type { Buffer } from "node:buffer";
+import { logSwallowed } from "../log.js";
 import type { BookingCode } from "../domain/entities.js";
 import type { ReservationId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
@@ -127,7 +128,16 @@ export async function reissueBookingCode(
       if (prior.revokedAt) continue;
       try {
         await repo.revokeBookingCode(prior.code, now());
-      } catch {
+      } catch (e) {
+        // Reported, not raised — the new code already exists and throwing would lose it.
+        // `staleCodes` is the honest remainder the caller surfaces, so the customer-facing
+        // half is covered; what it cannot say is WHY the revoke failed, and a link the
+        // operator asked to be shut is still open either way.
+        logSwallowed(
+          "reservations:revokeBookingCode",
+          e,
+          `a prior booking link stayed live after the operator reissued it`,
+        );
         staleCodes.push(prior.code);
       }
     }

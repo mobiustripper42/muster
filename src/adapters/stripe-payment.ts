@@ -10,6 +10,7 @@
  * and passed to the constructor — the adapter itself is env-agnostic + unit-constructable.
  */
 import Stripe from "stripe";
+import { logSwallowed } from "../log.js";
 import {
   PaymentSignatureError,
   type CancelReason,
@@ -310,7 +311,15 @@ export class StripePaymentPort implements PaymentPort {
         currency: pi.currency,
         metadata: pi.metadata ?? {},
       };
-    } catch {
+    } catch (e) {
+      // `null` reads as "not a succeeded payment", and a Stripe outage produces the same
+      // answer as a genuinely unpaid intent. The caller cannot tell those apart and does
+      // not need to; this line is the only thing that ever will.
+      logSwallowed(
+        "stripe:getSucceededPaymentIntent",
+        e,
+        `intent ${paymentIntentId} read as not-succeeded because Stripe could not be reached`,
+      );
       return null;
     }
   }
@@ -324,8 +333,17 @@ export class StripePaymentPort implements PaymentPort {
       return Object.hasOwn(INTENT_STATE, pi.status)
         ? INTENT_STATE[pi.status as HandledIntentStatus]
         : "unknown";
-    } catch {
+    } catch (e) {
       // A read we could not make is not a licence to reuse. Mint fresh.
+      //
+      // Logged because "unknown" is also what a status Stripe newly invented returns, and
+      // the two have opposite meanings for whether our map needs updating. Minting a fresh
+      // intent is the safe answer to both and tells you nothing about which happened.
+      logSwallowed(
+        "stripe:getPaymentIntentState",
+        e,
+        `intent ${paymentIntentId} state unreadable — a fresh intent will be minted`,
+      );
       return "unknown";
     }
   }

@@ -75,6 +75,41 @@ const recommended = (mod) => {
  * If the gate ever feels slow, this line is where to start, and `sonarjs` (217 of the
  * 298) is the first thing to profile.
  */
+/**
+ * ## Shared `no-restricted-syntax` selectors (#904)
+ *
+ * **Flat config REPLACES a rule's options, it does not merge them.** A later block
+ * setting `no-restricted-syntax` for files an earlier block already covered silently
+ * drops every selector the earlier one had.
+ *
+ * That is not a hypothetical. The first cut of #904 added an `app/**` block for the
+ * clock rule below and **switched off issue #854's bare-`catch {}` ban across all of
+ * `app/` and `components/`** — a PR adding lint rules, turning one off. It surfaced only
+ * because eleven files carried `eslint-disable` comments that went unused; without those
+ * the gate would have gone quiet with nothing to say so.
+ *
+ * So the selectors live here as named constants and blocks COMPOSE them. Adding a rule
+ * to a directory means spreading the list, never rebuilding it.
+ */
+const CLOCK_SELECTOR = {
+  // An instant formatted without an explicit `timeZone` renders the SERVER's zone in a
+  // server component and the VIEWER's in a client island. DEC-032 settled it: vessel-local
+  // for everyone, because that is what is true on the dock.
+  //
+  // **0 findings, and that is luck rather than discipline.** The two that motivated this
+  // were real bugs in shipped code — `fmtTime` in the admin outbox printing UTC to the
+  // operator, and a client island whose comment claimed to "match the page's server-rendered
+  // fmtTime" while rendering the browser's zone. Both are gone because PR #943 deleted the
+  // outbox, not because anything was learned.
+  //
+  // Deliberately NOT widened to bare `toLocaleString`: measured at 8 findings, 8/8 false
+  // positives, all `(cents / 100).toLocaleString("en-US")` money formatting.
+  selector:
+    "CallExpression[callee.property.name=/^toLocale(Date|Time)String$/]:not(:has(Property[key.name='timeZone']))",
+  message:
+    'Pass an explicit timeZone (DEC-032): `TENANT_TIMEZONE` for an event-derived instant, `"UTC"` for a date-only label parsed as `<iso>T00:00:00Z`. Without one this renders the server\'s zone on the server and the viewer\'s in a client island, and the two disagree by hours.',
+};
+
 const OFF = {
   // --- playwright (e2e/ only) ---
   // 105 findings across 8 spec files, and OFF for the same reason as the playwright block
@@ -91,7 +126,7 @@ const OFF = {
   // on purpose. Each was read; none is a defect.
   "playwright/no-force-option": "off",              //  16 legitimate — `force: true` on sr-only inputs styled as chips
   "playwright/no-conditional-in-test": "off",       //  10 legitimate — viewport/project branches
-  "playwright/no-skipped-test": "off",              //   8 legitimate — incl. trainee-staffing.spec.ts:20, whose 6-line docstring says it is dormant pending the Manning UI
+  "playwright/no-skipped-test": "off",              //   8 findings, 7 legitimate `test.skip(condition, …)` gates — the 8th was the dormant trainee-staffing suite, deleted at #904. The narrower top-level `describe.skip` ban in the e2e block below is what replaced it.
   "playwright/prefer-web-first-assertions": "off",  //   6 findings — a real improvement, but see the note above
   "playwright/expect-expect": "off",                //   2 findings — issue #908 (2/2 legitimate per issue #904 — both assert via page.waitForURL)
   "playwright/no-conditional-expect": "off",        //   2 findings — issue #908
@@ -476,6 +511,21 @@ export default tseslint.config(
         // is deliberate** — those are scripts run at a terminal where an unhandled
         // throw is already on screen, so the invisibility this ban exists to fix does
         // not apply. Recorded rather than left to be rediscovered as debt.
+        {
+          // `redirect()` works by THROWING (Next's `NEXT_REDIRECT`), so a `try` that
+          // wraps it eats the navigation. Since #854 and #902 the catch does not merely
+          // swallow it — it calls `logSwallowed`, so the failure mode is now a user who
+          // does not navigate AND a fabricated error in the log, reported through the
+          // very mechanism added to make real failures visible.
+          //
+          // Scoped to the try BLOCK by field, not by child position: `redirect()` in a
+          // `catch` is the correct idiom and there are 15 of them in `app/` today. A
+          // selector that banned those would ban the right thing.
+          selector: "TryStatement > .block CallExpression[callee.name='redirect']",
+          message:
+            "Move `redirect()` outside the try. It navigates by throwing, so a catch swallows the navigation and then logs the control-flow throw as if it were a fault. `redirect()` in a CATCH block is fine and is not flagged.",
+        },
+        CLOCK_SELECTOR,
       ],
     },
   },
@@ -547,6 +597,7 @@ export default tseslint.config(
           message:
             "Bind the error: `.catch((e) => logSwallowed('<surface>', e, '<consequence>'))` from src/log.js (#902). A zero-parameter `.catch()` is `catch {}` in promise clothing — it discards the only record of why something failed. Swallowing may well be right; being silent about it is not. For a genuine non-fault (failing to read the body of an error you are already reporting), add an eslint-disable-next-line no-restricted-syntax saying which.",
         },
+        CLOCK_SELECTOR,
       ],
     },
   },
@@ -561,12 +612,20 @@ export default tseslint.config(
   {
     // The wrappers legitimately use the raw primitives they encapsulate.
     //
-    // `no-restricted-syntax: "off"` is now BLUNTER than it reads. Since #854 that key
-    // carries two selectors — the raw-submit-button ban these files need exempting from,
-    // and the bare-`catch {}` ban they do not. Switching it off drops both. All five
-    // files below contain zero `catch` today (verified), so the hole is empty; if one
-    // ever grows a swallowed error it will pass lint in silence. Narrow this to per-line
-    // disables if that day comes.
+    // `no-restricted-syntax: "off"` is BLUNTER than it reads, and it gets blunter every
+    // time a selector is added to the block it shadows. That key now carries FOUR:
+    // the raw-submit-button ban these files need exempting from, plus the bare-`catch {}`
+    // ban (#854), the `redirect()`-in-try ban and the clock rule (#904), none of which
+    // they need exempting from. Switching it off drops all four.
+    //
+    // **The count in this comment was two until #904 and nothing updated it** — the same
+    // silent-widening this config's own composition note was written to prevent, missed on
+    // a pre-existing block rather than a new one. If you add a selector to the `app/**` +
+    // `components/**` block, this number changes.
+    //
+    // Verified empty today: the four files below contain no `catch`, no `redirect()` and no
+    // `toLocale*String`. If one ever grows any of them it will pass lint in silence. Narrow
+    // this to per-line disables if that day comes.
     files: [
       "components/ui/app-link.tsx",
       "components/ui/nav-spinner.tsx",
@@ -582,8 +641,9 @@ export default tseslint.config(
     // Outbox cards (Send / Dismiss / In-Out relay) own their OWN optimistic
     // feedback — "Sent ✓" / "Copied ✓" via the RelaySend / CopyButton islands
     // (DEC-089 exclusion). They deliberately don't use <SubmitButton>.
-    // Same bluntness caveat as the block above: this also switches off the #854
-    // bare-catch ban for this file, which has no `catch` today.
+    // Same bluntness caveat as the block above, and the same four selectors: this also
+    // switches off the #854 bare-catch ban, the `redirect()`-in-try ban and the clock rule
+    // for this file. Verified empty of all three today.
     files: ["components/outbox/outbox-card.tsx"],
     rules: { "no-restricted-syntax": "off" },
   },
@@ -710,7 +770,89 @@ export default tseslint.config(
     files: ["e2e/**/*.ts"],
     plugins: { playwright },
     languageOptions: { parser: tseslint.parser },
-    rules: { "playwright/no-focused-test": "error" },
+    rules: {
+      "playwright/no-focused-test": "error",
+      // ── A suite that is dark and green forever (#904 rule 4) ───────────────
+      //
+      // `no-focused-test`'s opposite number. A `.only` makes the suite say less than it
+      // claims by running one test; a `.describe.skip` makes it say less by running none —
+      // and it reports PASS either way, which is the worse of the two because nothing in
+      // the output hints at it.
+      //
+      // **No nesting anchor, and that is a correction.** The first cut scoped this to
+      // `Program > ExpressionStatement`, reasoning that a top-level skip was the shape to
+      // catch. `@code-review` pointed out that a `describe.skip` nested inside a parent
+      // `describe` is exactly as dark, and this suite nests routinely —
+      // `e2e/crew-header.spec.ts:128`, `e2e/admin-nav.spec.ts:318`,
+      // `e2e/calendar.spec.ts:756` among others. The anchor would have let the next
+      // trainee-staffing-shaped suite through by the accident of how it was organized.
+      //
+      // **So this flags EVERY `describe.skip` in `e2e/`, including an `if`-gated one.**
+      // That is deliberate rather than a limitation of the selector. An environment gate
+      // belongs in `test.skip(condition, reason)`, which Playwright evaluates per test and
+      // reports as skipped-with-a-reason; `if (cond) describe.skip(…)` is the same thing
+      // written so the report cannot say why. Both alternatives are unflagged, and there
+      // are zero of either in `e2e/` today, so nothing pays for this.
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.property.name='skip']:matches([callee.object.name='describe'], [callee.object.property.name='describe'])",
+          message:
+            "This suite will report PASS while running nothing. Delete it, fix it, or gate the individual tests with `test.skip(condition, reason)` — which Playwright reports as skipped WITH the reason, where a skipped describe just vanishes. An `if`-gated `describe.skip` is flagged too, deliberately: same silence, harder to see.",
+        },
+      ],
+    },
+  },
+  {
+    // `db/` gets the clock rule and nothing else. It has no `no-restricted-syntax` block
+    // of its own, so this one shadows nothing — the hazard documented on CLOCK_SELECTOR
+    // does not apply here, and saying so is cheaper than the next reader re-deriving it.
+    //
+    // Why `db/` at all: the seeds and ops scripts print times to a terminal, and a seed
+    // that renders a call time in the box's zone teaches you the wrong departure while
+    // you are testing the thing that depends on it.
+    files: ["db/**/*.ts"],
+    rules: { "no-restricted-syntax": ["error", CLOCK_SELECTOR] },
+  },
+  {
+    // ── A server action returns its errors, it does not throw (#904) ──────────
+    //
+    // `app/**/actions.ts` is a SUBSET of the `app/**` block above, so this block would
+    // replace that block's four selectors for every actions file. It spreads them back
+    // in explicitly. That is the shape every narrowing block has to take here — see
+    // CLOCK_SELECTOR's note for the PR where forgetting it switched off #854's ban.
+    //
+    // 0 findings, and the weakest of #904's four: a convention with no bug behind it.
+    // It is here because it costs nothing, and because "prose conventions are not finding
+    // them" is the sentence that opened this issue — #854's prose rule was broken 109 times.
+    files: ["app/**/actions.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXAttribute[name.name='type'][value.value='submit']",
+          message:
+            'Use <SubmitButton> (server-action forms) or <GetFormSubmit> (GET filter forms) instead of a raw <button type="submit"> so it shows an in-flight spinner (DEC-090). For a genuine exception, add an eslint-disable-next-line no-restricted-syntax with a reason.',
+        },
+        {
+          selector: "CatchClause[param=null]",
+          message:
+            "Bind the error and log it — `catch (e) { logSwallowed('<surface>', e); … }` from app/lib/swallowed (#854). A bare `catch {}` is the only place that knows why something failed, and it discards it. For a genuine NON-fault — malformed user input, a clipboard rejection — add an eslint-disable-next-line no-restricted-syntax saying which.",
+        },
+        {
+          selector: "TryStatement > .block CallExpression[callee.name='redirect']",
+          message:
+            "Move `redirect()` outside the try. It navigates by throwing, so a catch swallows the navigation and then logs the control-flow throw as if it were a fault. `redirect()` in a CATCH block is fine and is not flagged.",
+        },
+        CLOCK_SELECTOR,
+        {
+          selector: "ThrowStatement",
+          message:
+            "Return the error, don't throw it — `string | null` for a form action, `{ error }` for a button action (CLAUDE-context § Error Handling). A throw here is a 500 where the surface wanted inline feedback. `redirect()` navigates by throwing but is not a ThrowStatement, so it is unaffected.",
+        },
+      ],
+    },
   },
   {
     // The Rules of Hooks, across the `"use client"` islands (#757). A hook called

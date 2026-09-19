@@ -194,7 +194,13 @@ export default defineConfig({
       // the live-SMS smoke (#242/#252); without this override the notice path
       // would send to the fake seed phones and 400 ("not a valid phone number"),
       // which the best-effort catches swallow → an empty outbox → a false failure
-      // (e.g. trainee-staffing's "you're on" assertion). Empty overrides .env.local.
+      // (any spec asserting a relayed notice landed — `other-shifts-today`,
+      // `crew-messaging`). Empty overrides .env.local.
+      //
+      // The example here used to be `trainee-staffing`, deleted at #904. Since #902 those
+      // catches also log, so the swallow is no longer silent — but the outbox is still
+      // empty and the assertion still fails, so this override is still what makes the
+      // suite deterministic.
       TWILIO_ACCOUNT_SID: "",
       TWILIO_AUTH_TOKEN: "",
       TWILIO_FROM: "",

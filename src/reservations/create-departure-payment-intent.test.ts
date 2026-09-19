@@ -100,6 +100,9 @@ async function seedLosingPending(repo: InMemoryRepository, paymentIntentId: stri
 /** Wrap a synthesized `payment_intent.succeeded` for the fake port. */
 function piEvent(paymentIntentId: string, amountReceivedCents: number, metadata: Record<string, string>): string {
   const ev: PaymentEvent = {
+    // The fake defaults this when a fixture omits it (15.13); these two files type their bodies
+    // as `PaymentEvent`, so they have to say it. Nothing here asserts on the value.
+    stripeEventId: "evt_test_fixture",
     type: "payment_succeeded",
     data: { paymentIntentId, amountReceivedCents, currency: "usd", metadata },
   };
@@ -1137,6 +1140,7 @@ describe("an abandoned checkout leaves the row and nothing else (criterion 7)", 
     const declined = await processBookingWebhook(
       deps,
       JSON.stringify({
+        stripeEventId: "evt_test_fixture",
         type: "payment_failed",
         data: { paymentIntentId: started.paymentIntentId, declineCode: "card_declined" },
       } satisfies PaymentEvent & { data: { declineCode: string } }),

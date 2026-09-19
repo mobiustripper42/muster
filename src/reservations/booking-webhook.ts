@@ -170,6 +170,42 @@ export async function processBookingWebhook(
 ): Promise<WebhookResult> {
   const event = deps.payments.parseEvent(rawBody, signature); // throws on bad sig
   if (!event) return { handled: false };
+  // **Everything past here is wrapped so a failure can name the delivery that caused it (15.13).**
+  //
+  // The route turns any throw after a valid signature into a 500 — deliberately, so Stripe retries
+  // rather than dropping a paid event — and logs `Stripe webhook processing failed: <message>`. It
+  // cannot do better than that on its own: parsing happens HERE, so by the time the route catches,
+  // it holds an error and no event. Stripe's Workbench meanwhile shows a delivery with an id. Two
+  // records of one failure, and nothing naming both.
+  //
+  // **The core does not log; it puts the id where the edge's existing line will carry it.** The
+  // first cut wrote a `console.error` here and lint refused it — `src/log.ts`'s rule (#902) wants
+  // one shape for core logging, and `logSwallowed` is the wrong shape anyway, since its whole
+  // meaning is an error that was NOT rethrown. The rule was right and the better design fell out
+  // of it: one log line at the edge instead of two, and no I/O added to the core.
+  //
+  // **Safe for the route's 400-vs-500 split**, which reads the error's TYPE. `parseEvent` throws
+  // `PaymentSignatureError` ABOVE this try, so a forged request never reaches the wrap and still
+  // gets its 400. Only post-verification failures are re-thrown, and those are all 500s already.
+  //
+  // `cause` rather than interpolation for the original: `${e}` renders "Error: boom" and drops the
+  // stack, which is the half naming the repository method and the table.
+  try {
+    return await routeVerifiedEvent(deps, event);
+  } catch (e) {
+    throw new Error(
+      `[reservations:webhook] ${event.stripeEventId} (${event.type}): ` +
+        `${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
+  }
+}
+
+/** The handler proper, wrapped by `processBookingWebhook` so a throw can name its delivery. */
+async function routeVerifiedEvent(
+  deps: WebhookDeps,
+  event: NonNullable<ReturnType<PaymentPort["parseEvent"]>>,
+): Promise<WebhookResult> {
 
 
   // A REFUND landed (#616) — reconcile it into the ledger.

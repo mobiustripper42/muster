@@ -72,6 +72,9 @@ export class FakePaymentPort implements PaymentPort {
    *  ORDINARY here: an already-cancelled sibling on a redelivery, or an intent that just paid. */
   cancelError?: Error;
 
+  /** Ordinal for a defaulted `stripeEventId` (15.13). */
+  #eventCount = 0;
+
   async createCheckoutSession(input: CreateCheckoutInput): Promise<CheckoutSession> {
     this.created.push(input);
     // Session id = the ordinal; the webhook uses this id as the booking idempotency key
@@ -203,6 +206,12 @@ export class FakePaymentPort implements PaymentPort {
       | (CheckoutCompleted & { type?: undefined })
       | null;
     if (parsed === null) return null;
+    // **Defaulted, not required of the fixture (15.13).** Dozens of existing tests hand-build these
+    // bodies and none of them care about a Stripe delivery id; making it mandatory would be a large
+    // mechanical edit that taught nothing. A test that DOES care sets it and gets it back.
+    this.#eventCount++;
+    const stripeEventId =
+      (parsed as { stripeEventId?: string }).stripeEventId ?? `evt_fake_${this.#eventCount}`;
     if (
       parsed.type === "checkout_completed" ||
       parsed.type === "payment_succeeded" ||
@@ -212,8 +221,8 @@ export class FakePaymentPort implements PaymentPort {
       parsed.type === "payment_canceled" ||
       parsed.type === "payment_processing"
     ) {
-      return parsed;
+      return { ...parsed, stripeEventId };
     }
-    return { type: "checkout_completed", data: parsed as CheckoutCompleted };
+    return { stripeEventId, type: "checkout_completed", data: parsed as CheckoutCompleted };
   }
 }

@@ -67,8 +67,8 @@ Project-specific docs beyond the baseline `## Key Docs` table in the `CLAUDE.md`
 | `docs/FUTURE_IDEAS.md` | The shiny-object parking lot. New ideas land here, not in the locked spec (DEC-014). |
 | `docs/RUNNING.md` | How to run the app locally, see the UI (Tailscale host, magic-link dev flow), check a change. PRs link here for setup. |
 | `docs/DEPLOY.md` | Go-live runbook — Vercel + Crunchy Bridge Postgres (Phase 5.1, DEC-033; moved off Neon by issue #960). Its provisioning walkthrough is still the Neon one and is marked as such. |
-| `docs/design/DESIGN-REFERENCE.md` | How to consume the UI mockups: spec wins on *what*, mockups inform *how*; **read JSX, never import**. Read before building any surface (M4). |
-| `docs/design/mockups/` | Claude Design export (HTML + JSX) per surface §2.1–2.6.3. **Visual-direction reference, not spec.** |
+| `docs/design/DESIGN-REFERENCE.md` | How to consume the UI mockups: spec wins on *what*, mockups inform *how*; **read `JSX`, never import**. Read before building any surface (M4). |
+| `docs/design/mockups/` | Claude Design export (`HTML` + `JSX`) per surface §2.1–2.6.3. **Visual-direction reference, not spec.** |
 
 Notes on the baseline docs: `docs/SPEC.md` is the buildable source of truth. It is **not** locked — it carried a "🔒 LOCKED v1.0" stamp for months while DEC-105, DEC-140 and others rewrote whole sections, and the stamp was removed rather than kept as a fiction. What survives is DEC-014's scope rule: new ideas go to `docs/FUTURE_IDEAS.md`, and a change to a section is a **declared amendment** — `amends_spec: [{section, scope}]` in the amending decision's frontmatter, with the pointer under that section's heading generated (DEC-143). **Decisions live one per file in `docs/decisions/DEC-*.md`** (`ls docs/decisions/DEC-*.md | wc -l` for the count — a number written here is stale the next time one lands, and this line claimed 141 for months while the tree held 157); `docs/DECISIONS.md` is the **generated** topic index over them (DEC-141). Read a decision by reading its file — `grep -rl DEC-042 docs/decisions/` resolves any id. To add or change one, edit its file and run `npm run gen:decisions`; `npm run check:decisions` runs first in `verify` and fails on a stale index, a duplicate id, a dangling reference, or a spec amendment that never landed.
 
@@ -135,7 +135,7 @@ Persistence is **Postgres behind the `Repository` port**: **local Postgres in de
 
 **Prod migrations are applied by hand, out-of-band** — they are *not* part of the Vercel deploy. So code on `production` can outrun the prod schema. Apply the migration to prod *before* promoting the code that needs it.
 
-**Pre-promote check: migration-ledger drift.** `/promote-production` Step 0.5 reads this section and runs what it finds. Before any ff-merge, confirm prod has applied every migration in the repo — the procedure and the two failure branches are the runbook in `docs/DEPLOY.md`. **There is no MCP for Crunchy**, so the operator runs the query and pastes it; a session cannot read the ledger itself.
+**Pre-promote check: migration-ledger drift.** `/promote-production` Step 0.5 reads this section and runs what it finds. Before any ff-merge, confirm prod has applied every migration in the repo — the procedure and the two failure branches are the runbook in `docs/DEPLOY.md`. **There is no `MCP` for Crunchy**, so the operator runs the query and pastes it; a session cannot read the ledger itself.
 
 **A repo migration prod has not applied means STOP**, not "promote and apply after." That ordering is the whole point: promoting first ships code ahead of the schema, and this project applies prod migrations by hand.
 
@@ -193,7 +193,7 @@ enforced, not where it stops.
 Every such PR carries:
 
 1. **A named seed that produces the state under test** — an `npm run db:seed:*` that exists in the
-   repo *after this PR*. For reservations, `db/seed-reservation-dev.ts` is the base world (a LIVE
+   repo *after this PR*. For reservations, `db/seed-reservation-dev.ts` is the base world (a **live**
    Offering, a Location, the owned-day mask, two materialized bookings, dates relative to today so
    it never expires). If no seed reaches the state, **extend one or add one in the same PR** —
    "click through the booking flow first" is not a starting state.
@@ -218,22 +218,22 @@ The `## Blast-Radius Triggers` table above is the trigger, matched against the d
 - **Run it once, on the PR, before merge.** It is branch-scoped, so per-commit runs pay repeatedly for the same answer.
 - **A row hit is not an instruction to spend.** It is billed and launches many agents, so it earns its cost exactly where a missed defect costs more than the review — **money, auth, a destructive migration, and nothing else.** A diff too big to review well is a reason to split it or to read it twice, not a reason to buy an audit.
 
-## MCP fast-fix loop (9.0/#230)
+## `MCP` fast-fix loop (9.0/#230)
 
-Project-scoped MCP servers in `.mcp.json` (checked in): **Neon** (`https://mcp.neon.tech/mcp`) and
+Project-scoped `MCP` servers in `.mcp.json` (checked in): **Neon** (`https://mcp.neon.tech/mcp`) and
 **Vercel** (`https://mcp.vercel.com`), both remote/OAuth. One-time per machine: run `/mcp` in a
 session and authenticate each (browser OAuth). Vercel: build logs, deploy status, env vars, preview URLs.
 
-**Neon MCP no longer reaches production and is not a route to the database.** Production moved to
-Crunchy Bridge (issue #960), which has no MCP at all, and the Neon project this file used to name was
+**Neon `MCP` no longer reaches production and is not a route to the database.** Production moved to
+Crunchy Bridge (issue #960), which has no `MCP` at all, and the Neon project this file used to name was
 deleted. A session that wants prod's state has to ask the operator to run a query and paste it — there
-is no tool here that can read it. Neon MCP is left wired for whatever else is still on Neon; assume it
+is no tool here that can read it. Neon `MCP` is left wired for whatever else is still on Neon; assume it
 is not muster's production data.
 
-**Write discipline (the DEC-S009 posture, MCP edition):** any MCP that can execute arbitrary SQL — treat
-it as **read/diagnose only**. Schema changes STILL go through `db/migrations/*.sql` applied by the
+**Write discipline (the DEC-S009 posture, `MCP` edition):** any `MCP` that can execute arbitrary SQL — treat
+it as **read/diagnose only**. Schema changes **still** go through `db/migrations/*.sql` applied by the
 operator (see Migration Protocol); ad-hoc prod data fixes are the operator's explicit call, never a
-silent Claude action. If a provider URL ever 404s, check that provider's MCP docs — the endpoints are
+silent Claude action. If a provider URL ever 404s, check that provider's `MCP` docs — the endpoints are
 theirs to move.
 
 ## Median gaps
@@ -257,7 +257,6 @@ Where a competent default does the wrong thing in this repo.
 
 - **`git push` exception to the shell's "environment-changing commands":** the `/kill-this` ritual owns commit + push + PR — that's its job, no separate approval needed for the push inside it.
 - **`@ui-reviewer` is live** — `.claude/ui-context.md` exists and carries the brand tokens, surfaces, viewports and review checklist it hard-stops without. That file (brand tokens, surfaces, viewports, checklist) is authored with the first crew/admin surface.
-- **`.claude/output-styles/one-piece.md` is AHEAD of jig as of 2026-09-12** — being rewritten in place here, because a conversational style can only be evaluated by living in it. `node ../jig/scripts/drift.mjs .` reports it as `differs`; **muster is the newer copy.** Do not sync it down from jig until it has been harvested upstream. This has already gone wrong once the other way: jig's `37012b7` harvested a soundings edit that its own next sync would have silently overwritten, because "differs" reads as "the project is stale" — true for every other `logic` file and false for this one. `docs/AGENTS.md:74` still describes the previous mechanisms (turn-taking, one fact per sentence) and is stale for the same window. Both this line and that row go in the PR that pushes the style to jig.
 
 ### Concurrent lanes
 

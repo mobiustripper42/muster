@@ -898,6 +898,60 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     expect(pay.intents).toHaveLength(2);
   });
 
+  // ── 15.11: one key per ATTEMPT, so a double submit cannot mint twice ─────────
+  // `paymentIntents.create` was the only money-moving call in the codebase without an idempotency
+  // key, while `refunds.create` three methods up has always had one. Nothing in a create's payload
+  // tells Stripe that two requests are the same checkout, so the key is the only thing that can.
+  it("keys the intent on the row id and the attempt ordinal, never on the holder token (15.11)", async () => {
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+
+    await createDeparturePaymentIntent(repo, pay, req, now);
+
+    const [row] = await pendingRows(repo);
+    expect(pay.intents[0]!.idempotencyKey).toBe(`booking_${row!.id}_1`);
+    // A key travels to the provider's logs; the holder token is what PROVES a checkout is yours.
+    expect(pay.intents[0]!.idempotencyKey).not.toContain(TOKEN_A);
+  });
+
+  it("a re-mint gets the NEXT ordinal, so it is not deduped into the intent it replaces (15.11)", async () => {
+    // **The case that makes `booking_${row.id}` alone actively wrong.** The row id is constant for
+    // the life of a checkout (`prior?.id ?? mint`), so a row-keyed create would hand back the very
+    // intent we just decided we cannot use — or 400 on a changed amount. Both defeat the re-mint.
+    //
+    // It also pins the plumbing: `buildPendingRow` has to CARRY `checkoutAttempts` through, the way
+    // it carries `paymentIntentIds` for 15.8. Without that the in-hand row reads `undefined`, every
+    // attempt computes ordinal 1, and the key collides on exactly the path it exists to protect.
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    // A state read that threw — after 15.10 this is the one remaining route to a second intent,
+    // and it is a provider outage rather than anything a customer does.
+    pay.intentStateError = new Error("stripe: 503");
+    const again = await createDeparturePaymentIntent(repo, pay, req, now);
+
+    expect(again.ok).toBe(true);
+    const [row] = await pendingRows(repo);
+    expect(pay.intents).toHaveLength(2);
+    expect(pay.intents[1]!.idempotencyKey).toBe(`booking_${row!.id}_2`);
+  });
+
+  it("the same key with a DIFFERENT amount is refused, exactly as Stripe refuses it (15.11)", async () => {
+    // Guards the guard. If the fake quietly returned the cached intent where Stripe answers 400,
+    // the case above would pass against a key that was being reused when it should not be — and
+    // the fake would be strictly more permissive than production.
+    const pay = new FakePaymentPort();
+    const base = { amountCents: 1000, currency: "usd", metadata: {}, idempotencyKey: "k1" };
+
+    await pay.createPaymentIntent(base);
+    await expect(pay.createPaymentIntent({ ...base, amountCents: 2000 })).rejects.toThrow(
+      /same parameters/,
+    );
+  });
+
   it("a second checkout with a DIFFERENT cookie is NOT merged onto the first — possession, not identity (criterion 10)", async () => {
     const repo = await seededRepo();
     await repo.saveOffering(tripOffering());

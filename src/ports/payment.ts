@@ -80,6 +80,24 @@ export interface CreatePaymentIntentInput {
    */
   description?: string;
   /**
+   * **Idempotency key for this create (15.11).** The same key returns the same PaymentIntent
+   * rather than a second one — Stripe's own mechanism, and the only thing that can tell two
+   * requests apart as "the same checkout", because nothing in the payload says so.
+   *
+   * **It must change per ATTEMPT, not per row.** Keyed on the row id alone it would be actively
+   * wrong: the row id is constant for the life of a checkout, so a deliberate re-mint would get
+   * the dead intent back, or a 400 on a changed parameter. The caller keys it on the row id plus
+   * the attempt ordinal, which dedupes two concurrent submits while leaving a later retry free to
+   * mint.
+   *
+   * Required rather than optional, on 15.6's argument about metadata: with one caller, "I sent
+   * nothing" belongs written at the call site rather than inferred from an absent key.
+   *
+   * Never derived from the holder token — that is a possession credential, and a key travels to
+   * the provider's logs.
+   */
+  idempotencyKey: string;
+  /**
    * Opaque key/value carried through Stripe back to the webhook.
    *
    * **Optional, and the booking charge sends none (15.6).** It used to be required and used to

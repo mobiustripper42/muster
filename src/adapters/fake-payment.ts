@@ -92,16 +92,52 @@ export class FakePaymentPort implements PaymentPort {
     return result;
   }
 
+  /**
+   * Intents this fake has handed back under an idempotency key (15.11), with a fingerprint of the
+   * parameters they were created with.
+   *
+   * **It compares parameters and throws on a mismatch, because Stripe does** — *"The idempotency
+   * layer compares incoming parameters to those of the original request and errors unless they're
+   * the same"*. A fake that quietly returned the cached intent where Stripe answers 400 would be
+   * strictly more permissive than production, and would launder exactly the defect this key exists
+   * to prevent: a key that is reused when it should not be.
+   */
+  readonly #intentsByKey = new Map<
+    string,
+    { clientSecret: string; paymentIntentId: string; fingerprint: string }
+  >();
+
   async createPaymentIntent(
     input: CreatePaymentIntentInput,
   ): Promise<{ clientSecret: string; paymentIntentId: string }> {
+    const fingerprint = JSON.stringify({
+      amountCents: input.amountCents,
+      currency: input.currency,
+      description: input.description,
+      receiptEmail: input.receiptEmail,
+      metadata: input.metadata,
+    });
+    const cached = this.#intentsByKey.get(input.idempotencyKey);
+    if (cached) {
+      if (cached.fingerprint !== fingerprint) {
+        throw new Error(
+          `Keys for idempotent requests can only be used with the same parameters they were ` +
+            `first used with (key ${input.idempotencyKey})`,
+        );
+      }
+      // Deliberately NOT pushed to `intents`: that array is "intents that EXIST", which is what
+      // every caller asserts on, and a deduped request created nothing.
+      return { clientSecret: cached.clientSecret, paymentIntentId: cached.paymentIntentId };
+    }
     this.intents.push(input);
     // Intent id = the ordinal; the webhook uses this id as the booking idempotency key
     // (Stripe mints it — it is NOT carried in metadata). Tests read the returned id.
     const id = `pi_fake_${this.intents.length}`;
     this.#minted.add(id);
     this.liveAmountCents.set(id, input.amountCents);
-    return { clientSecret: `${id}_secret_test`, paymentIntentId: id };
+    const result = { clientSecret: `${id}_secret_test`, paymentIntentId: id };
+    this.#intentsByKey.set(input.idempotencyKey, { ...result, fingerprint });
+    return result;
   }
 
   async getSucceededPaymentIntent(paymentIntentId: string): Promise<PaymentSucceeded | null> {

@@ -39,6 +39,21 @@ function signed(type: string, object: Record<string, unknown>): [string, string]
 
 const parse = (type: string, object: Record<string, unknown>) => port.parseEvent(...signed(type, object));
 
+describe("parseEvent — the Stripe event id travels with the event (15.13)", () => {
+  it("carries the Stripe event id, whatever the type", () => {
+    // **Without this there is nothing joining two records of one failure.** Stripe's Workbench
+    // shows a delivery with an id; Vercel shows `Stripe webhook processing failed: …`. Both are
+    // real, neither names the other, and `parseEvent` has been reading `event.id` off the verified
+    // event and discarding it this whole time.
+    expect(parse("payment_intent.succeeded", { id: "pi_x", amount_received: 1, currency: "usd", metadata: {} }))
+      .toMatchObject({ stripeEventId: "evt_test" });
+    // On a second type too — it belongs to the envelope, not to any one member's `data`.
+    expect(parse("payment_intent.processing", { id: "pi_y" })).toMatchObject({
+      stripeEventId: "evt_test",
+    });
+  });
+});
+
 describe("parseEvent — every named member is reachable from a signed payload (15.12)", () => {
   it("names payment_intent.processing rather than dropping it", () => {
     // **The defect this task exists for.** Before 15.12 every `if` in `parseEvent` missed this type
@@ -50,6 +65,7 @@ describe("parseEvent — every named member is reachable from a signed payload (
     // so method selection lives in the Dashboard — a delayed method is one toggle away with no code
     // change, and the day it is flipped, `processing` is what arrives.
     expect(parse("payment_intent.processing", { id: "pi_1" })).toEqual({
+      stripeEventId: "evt_test",
       type: "payment_processing",
       data: { paymentIntentId: "pi_1" },
     });
@@ -65,6 +81,7 @@ describe("parseEvent — every named member is reachable from a signed payload (
         metadata: { purpose: "balance" },
       }),
     ).toEqual({
+      stripeEventId: "evt_test",
       type: "checkout_completed",
       data: {
         sessionId: "cs_1",
@@ -94,6 +111,7 @@ describe("parseEvent — every named member is reachable from a signed payload (
         last_payment_error: { decline_code: "insufficient_funds" },
       }),
     ).toEqual({
+      stripeEventId: "evt_test",
       type: "payment_failed",
       data: { paymentIntentId: "pi_3", declineCode: "insufficient_funds" },
     });
@@ -101,6 +119,7 @@ describe("parseEvent — every named member is reachable from a signed payload (
 
   it("maps payment_intent.canceled and carries the cancellation reason", () => {
     expect(parse("payment_intent.canceled", { id: "pi_4", cancellation_reason: "abandoned" })).toEqual({
+      stripeEventId: "evt_test",
       type: "payment_canceled",
       data: { paymentIntentId: "pi_4", reason: "abandoned" },
     });

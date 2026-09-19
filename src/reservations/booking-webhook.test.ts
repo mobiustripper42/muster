@@ -6,7 +6,7 @@ import { FAKE_SIGNATURE, FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { Event, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
-import type { CheckoutCompleted } from "../ports/payment.js";
+import { PaymentSignatureError, type CheckoutCompleted } from "../ports/payment.js";
 import { eventIdForSlot } from "./availability.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
 import { confirmPendingRow } from "./write-booking.js";
@@ -1383,6 +1383,73 @@ describe("processBookingWebhook — superseded intents are retired once the row 
     await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
 
     expect(payments.cancelled).toEqual([]);
+  });
+});
+
+/**
+ * **A failure names the Stripe event that caused it (15.13).**
+ *
+ * The route turns any throw after a valid signature into a 500, deliberately, so Stripe retries
+ * rather than dropping a paid event. What it logs is `Stripe webhook processing failed: <message>`
+ * — and the route cannot do better, because parsing happens INSIDE this function, so by the time
+ * it catches it holds an error and no event. Stripe's Workbench meanwhile shows a delivery with an
+ * id. Two records of one failure, neither naming the other.
+ */
+describe("processBookingWebhook — a failure names the Stripe event (15.13)", () => {
+  /** A repository that fails the way production fails: the connection, mid-write. */
+  function brokenRepo(): InMemoryRepository {
+    const repo = new InMemoryRepository();
+    repo.getReservationByPaymentIntentId = async () => {
+      throw new Error("connection terminated unexpectedly");
+    };
+    return repo;
+  }
+
+  it("names the event id in the error the route will log", async () => {
+    // The core adds no log line of its own — lint forbids `console.*` there (#902), and the better
+    // design fell out of that: put the id in the message the EDGE already logs, so one line carries
+    // both records instead of two lines needing to be correlated.
+    const repo = brokenRepo();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    const thrown = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE).catch(
+      (e: unknown) => e,
+    );
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain("evt_fake"); // the delivery Stripe's Workbench shows
+    expect(message).toContain("connection terminated unexpectedly"); // and what actually broke
+  });
+
+  it("keeps the original error as `cause`, so the stack survives", async () => {
+    // `${e}` renders "Error: boom" and drops the stack, which is the half naming the repository
+    // method and the table. The wrap must not cost that.
+    const repo = brokenRepo();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    const thrown = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE).catch(
+      (e: unknown) => e,
+    );
+
+    expect((thrown as Error).cause).toBeInstanceOf(Error);
+    expect(((thrown as Error).cause as Error).message).toBe("connection terminated unexpectedly");
+  });
+
+  it("does NOT wrap a signature failure — the route's 400 depends on its type", async () => {
+    // `parseEvent` throws above the wrap, so a forged request still surfaces as
+    // `PaymentSignatureError` and still gets a 400. Wrapping it would make every forgery a 500 and
+    // three days of Stripe retries against a signature we already rejected.
+    const repo = new InMemoryRepository();
+    const { deps } = makeDeps(repo);
+
+    const thrown = await processBookingWebhook(deps, bookingPi(), "not-the-fake-signature").catch(
+      (e: unknown) => e,
+    );
+
+    expect(thrown).toBeInstanceOf(PaymentSignatureError);
   });
 });
 

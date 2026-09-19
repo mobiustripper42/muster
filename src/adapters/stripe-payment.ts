@@ -397,6 +397,7 @@ export class StripePaymentPort implements PaymentPort {
       const paymentIntentId =
         typeof s.payment_intent === "string" ? s.payment_intent : undefined;
       return {
+        stripeEventId: event.id,
         type: "checkout_completed",
         data: {
           sessionId: s.id,
@@ -424,6 +425,7 @@ export class StripePaymentPort implements PaymentPort {
       // fabricated one and send the operator hunting for a row that was never written.
       if (paymentIntentId === undefined) return null;
       return {
+        stripeEventId: event.id,
         type: "refund_recorded",
         data: {
           paymentIntentId,
@@ -453,6 +455,7 @@ export class StripePaymentPort implements PaymentPort {
         typeof d.payment_intent === "string" ? d.payment_intent : undefined;
       if (paymentIntentId === undefined) return null;
       return {
+        stripeEventId: event.id,
         type: "dispute_updated",
         data: {
           paymentIntentId,
@@ -466,6 +469,7 @@ export class StripePaymentPort implements PaymentPort {
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object as Stripe.PaymentIntent;
       return {
+        stripeEventId: event.id,
         type: "payment_succeeded",
         data: {
           paymentIntentId: pi.id,
@@ -482,6 +486,7 @@ export class StripePaymentPort implements PaymentPort {
       const pi = event.data.object as Stripe.PaymentIntent;
       const code = pi.last_payment_error?.decline_code ?? pi.last_payment_error?.code;
       return {
+        stripeEventId: event.id,
         type: "payment_failed",
         data: {
           paymentIntentId: pi.id,
@@ -495,7 +500,7 @@ export class StripePaymentPort implements PaymentPort {
       // for days" was indistinguishable from an event type we have never heard of. The handler
       // acks it and alerts; see `PaymentProcessing` for why it alerts where its neighbours do not.
       const pi = event.data.object as Stripe.PaymentIntent;
-      return { type: "payment_processing", data: { paymentIntentId: pi.id } };
+      return { stripeEventId: event.id, type: "payment_processing", data: { paymentIntentId: pi.id } };
     }
     if (event.type === "payment_intent.canceled") {
       // A retired intent (15.10). Named on exactly the reasoning above: every cancel Muster makes
@@ -505,6 +510,7 @@ export class StripePaymentPort implements PaymentPort {
       const pi = event.data.object as Stripe.PaymentIntent;
       const reason = pi.cancellation_reason;
       return {
+        stripeEventId: event.id,
         type: "payment_canceled",
         data: {
           paymentIntentId: pi.id,

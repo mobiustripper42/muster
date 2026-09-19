@@ -261,14 +261,35 @@ export interface PaymentProcessing {
  * money leaving the account with nobody in Muster having pressed anything; `payment_failed` is
  * acked and deliberately does nothing.
  */
-export type PaymentEvent =
+export type PaymentEvent = {
+  /**
+   * Stripe's own id for this delivery, `evt_…` (15.13).
+   *
+   * **It exists to join two records of one failure.** The route turns any throw after a valid
+   * signature into a 500 so Stripe retries; Stripe's Workbench then shows a delivery with this id,
+   * and Vercel shows a failure line. Before this field the two could not be matched to each other,
+   * and `parseEvent` had been reading `event.id` off the verified event and discarding it.
+   *
+   * **`stripeEventId`, never `eventId`.** `eventId` means the departure `Event` throughout the
+   * reservations code, including inside the functions that handle these. Two things named alike in
+   * one file is how the wrong one gets read.
+   *
+   * On the envelope rather than on each member's `data`, because it describes the delivery and not
+   * the payment. `PaymentSucceeded` deliberately does NOT carry one: `/book/success` reaches the
+   * same handler through `confirmBookingByPaymentIntent`, which synthesizes its charge from a
+   * provider read with no event behind it, so a field there would be real on one path and invented
+   * on the other.
+   */
+  stripeEventId: string;
+} & (
   | { type: "checkout_completed"; data: CheckoutCompleted }
   | { type: "payment_succeeded"; data: PaymentSucceeded }
   | { type: "payment_failed"; data: PaymentFailed }
   | { type: "payment_canceled"; data: PaymentCanceled }
   | { type: "payment_processing"; data: PaymentProcessing }
   | { type: "refund_recorded"; data: RefundRecorded }
-  | { type: "dispute_updated"; data: DisputeUpdated };
+  | { type: "dispute_updated"; data: DisputeUpdated }
+);
 
 export interface RefundInput {
   /** The PaymentIntent to refund (from `CheckoutCompleted.paymentIntentId`). */

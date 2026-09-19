@@ -8,10 +8,10 @@
 //
 // Telling anyone to stop inventing terms has been tried. Only things that fail a build hold.
 //
-// SCOPE is prose in `docs/SPEC.md`, `docs/decisions/*.md` and `CLAUDE.md`. Not code, not commit
-// messages, not session logs, not the worksheets — those are noisy, and noise is what kills
-// gates. Fenced blocks, inline code spans and URLs are stripped before anything is read: a
-// backticked `payment_method_types` is code that happens to live in a markdown file.
+// SCOPE is prose in `docs/SPEC.md`, `docs/decisions/*.md` and `.claude/CLAUDE-context.md`. Not
+// code, not commit messages, not session logs, not the worksheets — those are noisy, and noise is
+// what kills gates. Fenced blocks, inline code spans and URLs are stripped before anything is
+// read: a backticked `payment_method_types` is code that happens to live in a markdown file.
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { load as parseYaml } from 'js-yaml'
@@ -42,6 +42,15 @@ export const prose = (s) =>
  *     eats the first digit of the number. Requirement ids (`REQ-CLAIM-1`) are the same class and
  *     are worse: the pattern cannot even see them whole, splitting them into `REQ` and `CLAIM-1`.
  *  2. DOC FILENAMES — `SPEC`, `CLAUDE`, `BRAND`. A filename is not a term.
+ *
+ *     `SKILL` joined the list on 2026-09-12, and the gap is worth recording because the list read
+ *     as complete. Every skill in this repo is defined in a `SKILL.md`, and no gated file had ever
+ *     written that path — the gated set talks about `.claude/skills/` as a directory rather than
+ *     naming a file inside it. The first decision record to cite one by
+ *     path (DEC-J006) was told `SKILL` is unregistered vocabulary. The dictionary's own rule says
+ *     not to register it — "registration is for a term with a specific local meaning that a reader
+ *     could otherwise guess wrong" — so the exemption is the right place and this is what the
+ *     clause above already intended.
  *  3. ORDINARY WORDS SHOUTED FOR EMPHASIS — `**NOT**`, `**NEVER**`, `GET`, `DEAD`. House style
  *     in this repo, 160 matches, and every one of them is English.
  *
@@ -54,7 +63,7 @@ export const prose = (s) =>
 export function excluded(token, families, shouted) {
   if (/^(?:DEC|REQ)$/.test(token)) return true
   if (families.some((f) => new RegExp(`^${f}(?:-[A-Z0-9])?$`).test(token))) return true
-  if (/^(?:SPEC|CLAUDE|BRAND|DECISIONS|README|AGENTS|DICTIONARY|CHANGELOG)$/.test(token)) return true
+  if (/^(?:SPEC|CLAUDE|BRAND|DECISIONS|README|AGENTS|DICTIONARY|CHANGELOG|SKILL)$/.test(token)) return true
   return shouted.has(token.toUpperCase())
 }
 
@@ -119,6 +128,40 @@ export function loadDictionary(path = DICT) {
  * shape of ANY check applied to a corpus containing frozen records, and muster froze 149 of them.
  */
 /**
+ * GATE WHAT THE PROJECT OWNS AND WHAT STATES ITS LANGUAGE. NEVER GATE A FILE THE PROJECT CANNOT
+ * EDIT. Both halves are load-bearing, and the set got each one wrong in a different direction.
+ *
+ * `CLAUDE.md` was here and is not a project's file: it is replaced wholesale on every sync and is
+ * byte-identical in every repo. A `not:` rule firing there has NO COMPLIANT ACTION — the project
+ * may not change the file, and jig's shell cannot be asked to respect one repo's domain sense of a
+ * word. Measured in sheepdog: registering `check` with `not: [test]` fired six times in
+ * `CLAUDE.md`, on `npm test` and on the shell's own "write it, run it, watch it fail". The
+ * baseline froze the count at six, so the next jig `CLAUDE.md` adding a seventh generic "test"
+ * would have turned sheepdog red over a word jig chose. Same shape as the frozen-record problem
+ * above: a rule whose only fix is an edit the reader is not allowed to make.
+ *
+ * `.claude/CLAUDE-context.md` was missing and is exactly what this gate is for. It is the OTHER
+ * always-loaded file, it is project-owned, and it is where a project states its vocabulary —
+ * sheepdog's uses `check` 21 times, `target` 15, `layer` 8. Swapping the two there turned a pass
+ * into three actionable findings.
+ *
+ * `docs/SPEC.md` stays: in an installed project it comes from `scaffold/docs/SPEC.md` and is the
+ * project's to edit.
+ *
+ * WHAT THIS GIVES UP, stated because it is a real cost and not an oversight: jig authors
+ * `CLAUDE.md` rather than receiving it, so in THIS repo it is editable and the rule above would
+ * admit it. Dropping it is right for the other eleven repos and loses acronym coverage on the
+ * largest always-loaded file here. Nothing else fills the gap — `check-context` and `check-docs`
+ * both read `CLAUDE.md`, but neither runs the unregistered-vocabulary rule. Re-gating it only in
+ * jig means branching a shipped script on whether it is running inside jig, which is a mechanism
+ * nobody has asked for yet; if the gap ever bites, that is the shape of the fix.
+ *
+ * A NAMED LIST RATHER THAN A CLASS LOOKUP, because a project has no registry to consult —
+ * `.claude/file-classes.yaml` is in `drift.mjs`'s `NOT_TEMPLATES` and never ships. So the rule
+ * above is the only thing standing between this list and the next shipped prose file joining it:
+ * `docs/AGENTS.md`, `CHEATSHEET.md` and `VELOCITY_AND_POKER_GUIDE.md` would each fail the same way
+ * `CLAUDE.md` did.
+ *
  * `[DECISIONS]` and not `docs/decisions/archive` — consistent with the sweep below, which has
  * never recursed either. `check-decisions` uses `RECORD_DIRS` for the same concept and DOES read
  * archive, so the two differ on purpose: each looks at what its own gate reads. A gate that starts
@@ -126,7 +169,7 @@ export function loadDictionary(path = DICT) {
  * records straight through.
  */
 export function gatedFiles(frozen = frozenRecords([DECISIONS])) {
-  const files = ['docs/SPEC.md', 'CLAUDE.md'].filter(existsSync)
+  const files = ['docs/SPEC.md', '.claude/CLAUDE-context.md'].filter(existsSync)
   if (existsSync(DECISIONS)) {
     for (const f of readdirSync(DECISIONS).filter((f) => f.endsWith('.md')).sort()) {
       const path = `${DECISIONS}/${f}`

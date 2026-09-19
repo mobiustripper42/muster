@@ -2878,12 +2878,17 @@ function parseIdArray(raw: string): string[] {
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
   } catch (e) {
-    // Reading as empty is the safe answer — a caller that sees no prior ids mints a
-    // fresh one rather than reusing something it cannot name. But "this column is
-    // corrupt" and "this row genuinely has no ids" are the same value to every caller,
-    // and only this line separates them. On `reservations.payment_intent_ids` that is
-    // the difference between a row with no history and a row whose history was lost.
-    logSwallowed("postgres:parseIdArray", e, "a stored id array was unparseable and read as empty");
+    // Reading as empty is the safe answer, and the caller says why: these columns are
+    // written by us and can only be malformed by hand, so the safe failure is a banner
+    // that under-claims. What is lost without this line is the difference between "this
+    // shift genuinely had nobody added" and "the added list was corrupt" — identical to
+    // every caller, and the second one means a crew member's change notice named fewer
+    // people than actually moved.
+    logSwallowed(
+      "postgres:parseIdArray",
+      e,
+      "a shift_changes added/removed list was unparseable and read as empty — the change banner under-claims",
+    );
     return [];
   }
 }

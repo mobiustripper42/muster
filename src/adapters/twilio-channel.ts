@@ -34,6 +34,7 @@ import {
   type OutboundMessage,
   requireCrewId,
   type SendResult,
+  ChannelSendError,
 } from "../ports/channel.js";
 import type { AssignmentNotice, NoticePort } from "../ports/notice.js";
 import type {
@@ -184,12 +185,13 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
     if (!res.ok) {
       // Surface status + Twilio's error body; the message text (which embeds a
       // live magic link) is deliberately NOT echoed into the error.
-      // NOT a swallowed fault: this reads the body of an error we are already throwing
-      // about on the next line. Failing to read the detail costs detail, and a second log
-      // line about it would say nothing the throw does not.
-      // eslint-disable-next-line no-restricted-syntax -- see above
+      //
+      // Read that claim precisely: it is about what WE interpolate, not about what Twilio
+      // returns in `detail`. Since #902 this error is logged rather than discarded, so the
+      // difference matters — and it is handled at the log sites, not here.
+      // eslint-disable-next-line no-restricted-syntax -- reads the body of an error already being thrown
       const detail = await res.text().catch(() => "");
-      throw new Error(`Twilio send failed (${res.status}): ${detail}`);
+      throw new ChannelSendError("Twilio", res.status, detail);
     }
 
     // Twilio returns the message resource; `sid` is the audit ref. A

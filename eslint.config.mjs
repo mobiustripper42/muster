@@ -533,8 +533,17 @@ export default tseslint.config(
           // `.catch((e) => …)` passes, whatever it then does with `e` — including
           // returning a fallback value. `.catch(handleIt)` passes; a named handler is
           // somebody else's business.
+          // Both callable shapes. An arrow is what the codebase writes, but
+          // `.catch(function () {})` is the same discard and would have passed a
+          // selector naming only `ArrowFunctionExpression` — a hole in a rule whose
+          // whole promise is that the count stays at zero.
+          //
+          // Still not exhaustive, and the gap is stated rather than implied:
+          // `.catch(namedHandler)` passes, because what a named function does with its
+          // arguments is not decidable here. `.catch` on a non-Promise object exposing
+          // a method of that name would match spuriously; there is none in `src/`.
           selector:
-            "CallExpression[callee.property.name='catch'] > ArrowFunctionExpression[params.length=0]",
+            "CallExpression[callee.property.name='catch'] > :matches(ArrowFunctionExpression, FunctionExpression)[params.length=0]",
           message:
             "Bind the error: `.catch((e) => logSwallowed('<surface>', e, '<consequence>'))` from src/log.js (#902). A zero-parameter `.catch()` is `catch {}` in promise clothing — it discards the only record of why something failed. Swallowing may well be right; being silent about it is not. For a genuine non-fault (failing to read the body of an error you are already reporting), add an eslint-disable-next-line no-restricted-syntax saying which.",
         },

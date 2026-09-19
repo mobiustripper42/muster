@@ -20,6 +20,7 @@
  */
 import type { ChannelPort } from "../ports/channel.js";
 import { logSwallowed } from "../log.js";
+import { describeSendFailure } from "../ports/channel.js";
 import type { Repository } from "../ports/repository.js";
 import { listActiveAdminRecipients } from "./forward-board-alerts.js";
 import { outbound } from "./message-opener.js";
@@ -77,9 +78,17 @@ export async function forwardMoneyAlert(
       // Best-effort: keep going so one bad number can't mute the rest. Which admin
       // missed it is the half the `sent` count cannot carry, and on this lane it is
       // the difference between "the office knows" and "one person thinks they do".
-      logSwallowed(
+              // **Never the error itself.** A `ChannelSendError`'s message carries the provider's
+        // raw response body, and what we sent it was a crew member's 6-digit sign-in code
+        // or — until issue #1030 retires ask links — a live magic link. Credentials do not
+        // go in logs. That is the rule, not a judgement about whether Resend or Twilio
+        // happen to echo request content back.
+        //
+        // `describeSendFailure` keeps the status, which is the useful half and carries
+        // none of it: 422 is a misconfigured sender, 429 is rate limiting, 503 is wait.
+logSwallowed(
         "alerts:money",
-        e,
+        describeSendFailure(e),
         `admin ${r.crewMemberId} did not receive a money alert`,
       );
     }

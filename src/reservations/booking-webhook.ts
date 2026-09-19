@@ -230,6 +230,19 @@ export async function processBookingWebhook(
   // shares a channel with the paid-but-unbooked alerts and must not read like one — the same call
   // 15.5 made for the residual-race notice, on the reasoning that an alert which cries wolf is how
   // the real ones stop being read.
+  //
+  // **NOT deduped, and that is a known limit rather than an oversight** (`@code-review`, 15.12).
+  // Every other side effect in this file is built for Stripe's at-least-once redelivery; this one
+  // is not, so a redelivered `processing` pages every admin again — which is the same crying-wolf
+  // noise the paragraph above argues against. It ships that way on the operator's call (2026-09-19)
+  // because **this branch cannot execute today**: reading the account showed every delayed payment
+  // method `off`, and only a Dashboard toggle can produce this event. Building a dedupe for an
+  // unreachable path is machinery ahead of need.
+  //
+  // **Whoever enables a delayed method owes this a dedupe first.** The cheap one needs no
+  // migration: `claimRecoverySend` (`ports/repository.ts`) is already a keyed claim with lazy
+  // expiry — `"processing:" + paymentIntentId` gives exactly one alert per intent, at the cost of a
+  // table named for the recovery bound doing double duty. Recorded on issue #712.
   if (event.type === "payment_processing") {
     await deps.alertPaidButUnbooked(
       `Payment ${event.data.paymentIntentId} is PROCESSING - a delayed payment method is ` +

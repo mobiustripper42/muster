@@ -227,6 +227,12 @@ export interface PaymentFailed {
  * **Subscribing the endpoint to this event is optional.** Nothing in 15.10 needs it to arrive; the
  * cancel is an API call read synchronously. It buys visibility of dashboard-side cancels.
  */
+export interface PaymentCanceled {
+  paymentIntentId: string;
+  /** Stripe's `cancellation_reason`, when it sends one. Includes reasons we never send. */
+  reason?: string;
+}
+
 /**
  * A verified `payment_intent.processing` event (15.12), normalized off the provider's shape.
  *
@@ -244,12 +250,6 @@ export interface PaymentFailed {
  */
 export interface PaymentProcessing {
   paymentIntentId: string;
-}
-
-export interface PaymentCanceled {
-  paymentIntentId: string;
-  /** Stripe's `cancellation_reason`, when it sends one. Includes reasons we never send. */
-  reason?: string;
 }
 
 /**

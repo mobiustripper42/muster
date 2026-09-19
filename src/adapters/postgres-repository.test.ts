@@ -86,45 +86,62 @@ const TEST_URL =
   process.env.TEST_DATABASE_URL ??
   "postgres://muster:muster@localhost:5432/muster_test";
 
-const TABLES = [
-  "role_types",
-  "vessels",
-  "crew_members",
-  "credentials",
-  "pto_windows",
-  "time_punches",
-  "time_punch_edits",
-  "events",
-  "reservations",
-  "offerings",
-  "locations",
-  "add_ons",
-  "customers",
-  "blocks",
-  "recovery_throttle",
-  "gratuity",
-  "payments",
-  "shifts",
-  "seats",
-  "asks",
-  "magic_tokens",
-  "admins",
-  "login_codes",
-  "calendar_feeds",
-  "outbox_entries",
-  "ring_outbox",
-  "notice_outbox",
-  "reliability_events",
-  "sms_consent",
-  "app_settings",
-  "import_runs",
-  "import_run_items",
-  "threads",
-  "thread_participants",
-  "messages",
-  "message_reads",
-  "doorbell_notifications",
-];
+/**
+ * Tables the per-test truncate deliberately leaves alone. Everything else in `public`
+ * is wiped — see `truncateAll`.
+ *
+ * A SKIP LIST, not an include list, and that is the fix for issue #1031. This was a
+ * hand-maintained list of table names that had to be extended every time a migration
+ * added one, and it silently was not: it named 37 of the 45 tables in `public`, so
+ * eight leaked between tests.
+ *
+ * Only one of the eight had a visible symptom, which is why it survived. `audit_events`
+ * is read by `checkIntegrity`, so a row left by an earlier suite pointed at a
+ * `crew_members` row that HAD been truncated, and the shared contract's clean-spine
+ * assertion failed. That reads exactly like a code defect and is not one — it cost a
+ * stash-and-rerun to rule out an unrelated branch. The other seven (`booking_codes`,
+ * `guest_contacts`, `muster_owned_vessel_days`, `presence`, `refund_leases`,
+ * `shift_changes`, `shift_change_reads`) leaked with no symptom at all, which is worse:
+ * nothing failed, so nothing said they were leaking.
+ *
+ * An opt-out is one line to read and cannot drift. An opt-in drifts every migration and
+ * nothing reports it.
+ *
+ * **`db/reset-test.ts:35-38` has done it this way the whole time** — same catalog query,
+ * same `_migrations` exclusion, in a sibling file twenty lines long. The correct pattern
+ * was never missing; this file just kept a hand list beside it for eight migrations and
+ * nothing compared the two. Same shape as issue #960, where `pgConnectionConfig` existed
+ * and one of eighteen callers used it.
+ */
+const KEEP = new Set([
+  // The migration ledger. Truncating it makes `migrate()` re-run every migration against
+  // a schema that already has them, which fails on the first `create table`.
+  "_migrations",
+]);
+
+/**
+ * Every table in `public` except `KEEP`, truncated in one statement.
+ *
+ * One `truncate` with `cascade`, not a loop: Postgres resolves foreign keys across the
+ * whole statement, so nothing depends on the order the names come back in — which is
+ * what lets this be a query result rather than a hand-ordered list.
+ *
+ * Re-read per call rather than cached. It is one cheap catalog query against a local
+ * database, and caching it would reintroduce the exact failure mode: a list captured
+ * once, correct when captured, wrong after a migration.
+ */
+async function truncateAll(pool: pg.Pool): Promise<void> {
+  const { rows } = await pool.query<{ tablename: string }>(
+    `select tablename from pg_tables where schemaname = 'public'`,
+  );
+  const names = rows.map((r) => r.tablename).filter((t) => !KEEP.has(t));
+  if (names.length === 0) return;
+  // Quoted: a future table named after a reserved word would otherwise produce a syntax
+  // error that reads as a broken test rather than a naming problem.
+  await pool.query(
+    `truncate ${names.map((t) => `"${t}"`).join(", ")} restart identity cascade`,
+  );
+}
 
 async function canConnect(url: string): Promise<boolean> {
   // Short timeout so a down DB skips fast instead of hanging the suite.
@@ -153,10 +170,54 @@ if (!dbUp) {
   await migrate(TEST_URL);
 
   runRepositoryContract("postgres", async () => {
-    await pool.query(
-      `truncate ${TABLES.join(", ")} restart identity cascade`,
-    );
+    await truncateAll(pool);
     return new PostgresRepository(pool);
+  });
+
+  /**
+   * The drift guard (#1031). `truncateAll` reads the catalog, so this cannot fail the way
+   * the hand-maintained list did — it is here to catch the OTHER direction: somebody adding
+   * a name to `KEEP` without a reason a reader can check.
+   *
+   * A table that survives the truncate leaks between tests, and seven of the eight that did
+   * so had no symptom at all. That is what made the original defect survive eight migrations:
+   * nothing failed, so nothing said anything was wrong. This asserts the skip list is exactly
+   * what its comment claims.
+   */
+  describe("the per-test truncate (#1031)", () => {
+    it("wipes every table in public except the migration ledger", async () => {
+      const { rows } = await pool.query<{ tablename: string }>(
+        `select tablename from pg_tables where schemaname = 'public'`,
+      );
+      const skipped = rows.map((r) => r.tablename).filter((t) => KEEP.has(t));
+      // Exactly one, so a second needs a deliberate edit here AND a reason at `KEEP`.
+      // It was briefly two — `presence`, to stop this suite racing the presence contract
+      // in a shared database. #1041 gave that suite its own database instead, which is
+      // isolation by ownership rather than by a skip list somebody has to keep correct.
+      expect(skipped).toEqual(["_migrations"]);
+      expect(rows.length).toBeGreaterThan(40); // a catalog read that returned nothing would pass vacuously
+    });
+
+    it("leaves nothing behind in a table no test writes to", async () => {
+      // `audit_events` is the one of the eight leaks that HAD a symptom: it is read by
+      // `checkIntegrity`, so a row surviving into a run whose `crew_members` had been
+      // wiped produced a dangling reference and failed the contract's clean-spine
+      // assertion — a failure that reads like a code defect and is not one.
+      // Truncate FIRST. Without it this test depends on the database being clean, which is
+      // the assumption whose failure is the entire subject of #1031 — and it bit while
+      // writing this: a deliberately-broken run left the row behind, and the next run died
+      // on a duplicate key rather than on the assertion, reporting a defect in the test
+      // instead of in the thing under test.
+      await truncateAll(pool);
+      await pool.query(
+        `insert into audit_events (id, crew_member_id, actor_kind, type, timestamp, metadata)
+         values ('aud-drift-guard', 'crew-ghost', 'crew', 'crew_added', $1, '{}')`,
+        ["2026-01-01T00:00:00.000Z"],
+      );
+      await truncateAll(pool);
+      const { rows } = await pool.query<{ n: string }>("select count(*) as n from audit_events");
+      expect(rows[0]?.n).toBe("0");
+    });
   });
 
   /**
@@ -178,7 +239,7 @@ if (!dbUp) {
     });
 
     async function freshRepo(): Promise<PostgresRepository> {
-      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      await truncateAll(pool);
       const repo = new PostgresRepository(pool);
       await repo.saveCrewMember({
         id: CREW,
@@ -324,7 +385,7 @@ if (!dbUp) {
     }
 
     async function freshRepo(): Promise<PostgresRepository> {
-      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      await truncateAll(pool);
       return new PostgresRepository(pool);
     }
 
@@ -447,7 +508,7 @@ if (!dbUp) {
     const NOW2 = () => "2026-07-12T00:00:00.000Z";
 
     it("sells the seat exactly once, and the loser is never booked", async () => {
-      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      await truncateAll(pool);
       const repo = new PostgresRepository(pool);
       // Capacity 6 with two parties of 6: only ONE can fit, so they genuinely contend.
       await repo.saveEvent({
@@ -523,7 +584,7 @@ if (!dbUp) {
     const DATE3 = "2026-07-04";
 
     it("sells the boat exactly once across two overlapping departures", async () => {
-      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      await truncateAll(pool);
       const repo = new PostgresRepository(pool);
 
       const buyer = (time: string, name: string) => ({
@@ -573,7 +634,7 @@ if (!dbUp) {
     const DATE5 = "2026-07-05";
 
     it("writes exactly one pending row across two overlapping departures", async () => {
-      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      await truncateAll(pool);
       const repo = new PostgresRepository(pool);
 
       const pending = (time: string, name: string) => ({
@@ -670,7 +731,7 @@ if (!dbUp) {
       // a missing bind parameter or a missing mapping all look identical there and only break
       // against real Postgres. That is the entire reason this lives here: the field's value is
       // that it survives to be asked about next season.
-      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      await truncateAll(pool);
       const repo = new PostgresRepository(pool);
 
       const booked = await bookViaFlip(repo, buyer("13:30", "sess_by_1", "Cara"), NOW4);
@@ -687,7 +748,7 @@ if (!dbUp) {
     });
 
     it("the same slot can be SOLD AGAIN after a cancellation", async () => {
-      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      await truncateAll(pool);
       const repo = new PostgresRepository(pool);
 
       await bookThenCancel(repo, "13:30", "sess_cancel_1", "Ann");
@@ -728,7 +789,7 @@ if (!dbUp) {
       // No offering row on purpose: with none, both trips are measured at the standing
       // XOLA_TRIP_MINUTES (100), so 13:30 → 15:10 and 14:00 → 15:40 overlap by 70 minutes.
       // Same arithmetic the #691 sibling test above relies on.
-      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      await truncateAll(pool);
       const repo = new PostgresRepository(pool);
 
       const booked = await bookViaFlip(repo, buyer("13:30", "sess_nbr_1", "Ann"), NOW4);
@@ -771,7 +832,7 @@ if (!dbUp) {
     const NOW5 = () => "2026-07-12T00:00:00.000Z";
 
     it("never cancels an event a new buyer has just won", async () => {
-      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      await truncateAll(pool);
       const repo = new PostgresRepository(pool);
 
       const buyer = (key: string, name: string) => ({
@@ -827,7 +888,7 @@ if (!dbUp) {
     });
 
     it("refuses to release a slot that is still claimed", async () => {
-      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      await truncateAll(pool);
       const repo = new PostgresRepository(pool);
       const booked = await bookViaFlip(
         repo,

@@ -453,6 +453,12 @@ export default tseslint.config(
     // names read out of `pg_tables` and quoted. No outside input reaches any of them.
     // It stays live in `src/` and `app/` production code, where a real one would be.
     //
+    // **A 15th site landed at #1031** — `src/adapters/test-database.ts`, interpolating a
+    // database name into `create database`, which is an identifier and so cannot be a
+    // bound parameter. It carries its own `eslint-disable` with the reasoning at the line,
+    // rather than widening this exclusion: the rule firing there is correct, and the
+    // argument for suppressing it is specific to that one statement.
+    //
     // `no-clear-text-protocols` fired 12×, all `http://mill-dev:3000` (the operator's
     // documented Tailscale dev host) or test fixtures. One survives in `app/` and
     // carries an inline disable: `new URL(path, "http://local")` in

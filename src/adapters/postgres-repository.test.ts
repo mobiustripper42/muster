@@ -92,17 +92,23 @@ const TEST_URL =
  *
  * A SKIP LIST, not an include list, and that is the fix for issue #1031. This was a
  * hand-maintained list of table names that had to be extended every time a migration
- * added one, and it silently was not: it named 37 of the 45 tables in `public`, so
- * eight leaked between tests.
+ * added one, and it silently was not: it named **37 of the 45 tables** a clean migration
+ * replay produces, so **seven leaked** between tests.
+ *
+ * Those numbers were 45-and-eight until `@code-review` checked them. The eighth name was
+ * `muster_owned_vessel_days`, which migration `20260806230000` drops — it was present only
+ * in my local `muster_test`, left there by work that predated the drop. **A census taken
+ * against a polluted test database, in the task about a polluted test database.** The count
+ * above is from a scratch database with every migration replayed into it.
  *
  * Only one of the eight had a visible symptom, which is why it survived. `audit_events`
  * is read by `checkIntegrity`, so a row left by an earlier suite pointed at a
  * `crew_members` row that HAD been truncated, and the shared contract's clean-spine
  * assertion failed. That reads exactly like a code defect and is not one — it cost a
  * stash-and-rerun to rule out an unrelated branch. The other seven (`booking_codes`,
- * `guest_contacts`, `muster_owned_vessel_days`, `presence`, `refund_leases`,
- * `shift_changes`, `shift_change_reads`) leaked with no symptom at all, which is worse:
- * nothing failed, so nothing said they were leaking.
+ * `guest_contacts`, `presence`, `refund_leases`, `shift_changes`, `shift_change_reads`)
+ * leaked with no symptom at all, which is worse: nothing failed, so nothing said they were
+ * leaking.
  *
  * An opt-out is one line to read and cannot drift. An opt-in drifts every migration and
  * nothing reports it.
@@ -195,7 +201,11 @@ if (!dbUp) {
       // in a shared database. #1041 gave that suite its own database instead, which is
       // isolation by ownership rather than by a skip list somebody has to keep correct.
       expect(skipped).toEqual(["_migrations"]);
-      expect(rows.length).toBeGreaterThan(40); // a catalog read that returned nothing would pass vacuously
+      // Guards against a catalog read that returned nothing, which would make the
+      // assertion above pass vacuously. Deliberately a floor rather than the exact count:
+      // pinning 45 means every migration that adds or drops a table edits this line for a
+      // reason unrelated to what the test is about.
+      expect(rows.length).toBeGreaterThan(20);
     });
 
     it("leaves nothing behind in a table no test writes to", async () => {

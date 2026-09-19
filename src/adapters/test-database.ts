@@ -18,14 +18,22 @@
  */
 
 import pg from "pg";
+import { pgConnectionConfig } from "../config/db-ssl.js";
 
 /**
  * `<base>_<suffix>`, created if absent, with every migration applied. Returns the URL.
  *
  * `create database` cannot run inside a transaction and cannot target the database being
- * created, so this connects to the server's `postgres` database to issue it. No
- * `if not exists` — Postgres has none for `create database` — so a concurrent creator
- * losing the race is caught by its SQLSTATE and treated as success, which is what it is.
+ * created, so this connects to the server's `postgres` database to issue it. Postgres has
+ * no `if not exists` for `create database`, so losing the race is caught by SQLSTATE and
+ * treated as success — which is what it is.
+ *
+ * **Two codes, not one, and the difference is the whole point.** `42P04` (duplicate_database)
+ * is what you get when the other creator has already COMMITTED and is visible in the catalog.
+ * A genuinely simultaneous race lands on `23505` — a unique violation on
+ * `pg_database_datname_index` — because both statements are in flight. The first cut caught
+ * only `42P04`, which is the case that is not actually a race; `@code-review` reproduced the
+ * real one with two concurrent clients and got `23505`.
  */
 export async function ensureTestDatabase(baseUrl: string, suffix: string): Promise<string> {
   const url = new URL(baseUrl);
@@ -34,7 +42,14 @@ export async function ensureTestDatabase(baseUrl: string, suffix: string): Promi
 
   const admin = new URL(baseUrl);
   admin.pathname = "/postgres";
-  const client = new pg.Client({ connectionString: admin.toString(), connectionTimeoutMillis: 2000 });
+  // `pgConnectionConfig`, not a raw connectionString. It is always localhost here, so the
+  // config is a no-op today — and that is exactly the argument that made `pgConnectionConfig`
+  // reach 1 of 18 callers (issue #960). `@code-review` caught this as the nineteenth, in the
+  // commit that added a median-gap line about this failure shape.
+  const client = new pg.Client({
+    ...pgConnectionConfig(admin.toString()),
+    connectionTimeoutMillis: 2000,
+  });
   await client.connect();
   try {
     // Identifier, not a value, so it cannot be a bound parameter — which is what
@@ -52,10 +67,12 @@ export async function ensureTestDatabase(baseUrl: string, suffix: string): Promi
     // eslint-disable-next-line sonarjs/sql-queries -- identifier, not a value; see above
     await client.query(`create database "${name}"`);
   } catch (e) {
-    // 42P04 = duplicate_database. Anything else is a real failure and must not be eaten:
-    // swallowing a permissions error here would surface as a confusing connect failure
-    // several lines later, which is the shape #902 spent an evening removing.
-    if ((e as { code?: string }).code !== "42P04") throw e;
+    // Both outcomes of "somebody else made it": already-committed, and still in flight.
+    // Anything else is a real failure and must not be eaten — swallowing a permissions error
+    // here would surface as a confusing connect failure several lines later, which is the
+    // shape #902 spent an evening removing.
+    const code = (e as { code?: string }).code;
+    if (code !== "42P04" && code !== "23505") throw e;
   } finally {
     await client.end();
   }

@@ -612,12 +612,20 @@ export default tseslint.config(
   {
     // The wrappers legitimately use the raw primitives they encapsulate.
     //
-    // `no-restricted-syntax: "off"` is now BLUNTER than it reads. Since #854 that key
-    // carries two selectors — the raw-submit-button ban these files need exempting from,
-    // and the bare-`catch {}` ban they do not. Switching it off drops both. All five
-    // files below contain zero `catch` today (verified), so the hole is empty; if one
-    // ever grows a swallowed error it will pass lint in silence. Narrow this to per-line
-    // disables if that day comes.
+    // `no-restricted-syntax: "off"` is BLUNTER than it reads, and it gets blunter every
+    // time a selector is added to the block it shadows. That key now carries FOUR:
+    // the raw-submit-button ban these files need exempting from, plus the bare-`catch {}`
+    // ban (#854), the `redirect()`-in-try ban and the clock rule (#904), none of which
+    // they need exempting from. Switching it off drops all four.
+    //
+    // **The count in this comment was two until #904 and nothing updated it** — the same
+    // silent-widening this config's own composition note was written to prevent, missed on
+    // a pre-existing block rather than a new one. If you add a selector to the `app/**` +
+    // `components/**` block, this number changes.
+    //
+    // Verified empty today: the four files below contain no `catch`, no `redirect()` and no
+    // `toLocale*String`. If one ever grows any of them it will pass lint in silence. Narrow
+    // this to per-line disables if that day comes.
     files: [
       "components/ui/app-link.tsx",
       "components/ui/nav-spinner.tsx",
@@ -633,8 +641,9 @@ export default tseslint.config(
     // Outbox cards (Send / Dismiss / In-Out relay) own their OWN optimistic
     // feedback — "Sent ✓" / "Copied ✓" via the RelaySend / CopyButton islands
     // (DEC-089 exclusion). They deliberately don't use <SubmitButton>.
-    // Same bluntness caveat as the block above: this also switches off the #854
-    // bare-catch ban for this file, which has no `catch` today.
+    // Same bluntness caveat as the block above, and the same four selectors: this also
+    // switches off the #854 bare-catch ban, the `redirect()`-in-try ban and the clock rule
+    // for this file. Verified empty of all three today.
     files: ["components/outbox/outbox-card.tsx"],
     rules: { "no-restricted-syntax": "off" },
   },
@@ -766,23 +775,31 @@ export default tseslint.config(
       // ── A suite that is dark and green forever (#904 rule 4) ───────────────
       //
       // `no-focused-test`'s opposite number. A `.only` makes the suite say less than it
-      // claims by running one test; a top-level `.describe.skip` makes it say less by
-      // running none — and it reports PASS either way, which is the worse of the two
-      // because nothing in the output hints at it.
+      // claims by running one test; a `.describe.skip` makes it say less by running none —
+      // and it reports PASS either way, which is the worse of the two because nothing in
+      // the output hints at it.
       //
-      // **Top level only**, and that is the whole precision of this rule. A skip inside
-      // an `if` is the environment gate the postgres specs legitimately use, and
-      // `test.skip(condition, reason)` is the correct idiom — `playwright/no-skipped-test`
-      // measured 8 findings of which 7 were exactly that, which is why it is not used here.
+      // **No nesting anchor, and that is a correction.** The first cut scoped this to
+      // `Program > ExpressionStatement`, reasoning that a top-level skip was the shape to
+      // catch. `@code-review` pointed out that a `describe.skip` nested inside a parent
+      // `describe` is exactly as dark, and this suite nests routinely —
+      // `e2e/crew-header.spec.ts:128`, `e2e/admin-nav.spec.ts:318`,
+      // `e2e/calendar.spec.ts:756` among others. The anchor would have let the next
+      // trainee-staffing-shaped suite through by the accident of how it was organized.
       //
-      // 0 findings. The one this was written for (`e2e/trainee-staffing.spec.ts`) is gone.
+      // **So this flags EVERY `describe.skip` in `e2e/`, including an `if`-gated one.**
+      // That is deliberate rather than a limitation of the selector. An environment gate
+      // belongs in `test.skip(condition, reason)`, which Playwright evaluates per test and
+      // reports as skipped-with-a-reason; `if (cond) describe.skip(…)` is the same thing
+      // written so the report cannot say why. Both alternatives are unflagged, and there
+      // are zero of either in `e2e/` today, so nothing pays for this.
       "no-restricted-syntax": [
         "error",
         {
           selector:
-            "Program > ExpressionStatement > CallExpression[callee.property.name='skip']:matches([callee.object.name='describe'], [callee.object.property.name='describe'])",
+            "CallExpression[callee.property.name='skip']:matches([callee.object.name='describe'], [callee.object.property.name='describe'])",
           message:
-            "This suite is skipped unconditionally — it will report PASS while running nothing, forever. Delete it, fix it, or gate it on a condition (`if (!dbUp) test.describe.skip(…)`, or `test.skip(condition, reason)`), all of which are unflagged.",
+            "This suite will report PASS while running nothing. Delete it, fix it, or gate the individual tests with `test.skip(condition, reason)` — which Playwright reports as skipped WITH the reason, where a skipped describe just vanishes. An `if`-gated `describe.skip` is flagged too, deliberately: same silence, harder to see.",
         },
       ],
     },

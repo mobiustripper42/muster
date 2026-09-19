@@ -21,9 +21,10 @@ import { ESLint } from "eslint";
  * that cannot tell them apart is worse than no rule: it trains people to add disables.
  *
  *  - `redirect()` in a CATCH block is the right idiom, and there are 15 in `app/` today.
- *  - `test.skip(condition, reason)` and an `if`-gated skip are the environment gates the
- *    postgres specs use; `playwright/no-skipped-test` measured 8 findings of which 7 were
- *    exactly those, which is why it is off and this narrower rule is on.
+ *  - `test.skip(condition, reason)` is the environment gate that still reports a reason;
+ *    `playwright/no-skipped-test` measured 8 findings of which 7 were exactly that, which
+ *    is why it is off and this narrower rule is on. An `if`-gated `describe.skip` is NOT a
+ *    good case and is flagged — same silence, harder to see.
  *  - `(cents / 100).toLocaleString("en-US")` is money formatting, not a clock — 8 findings,
  *    8/8 false positives, which is why the clock rule names `toLocaleDateString` and
  *    `toLocaleTimeString` and not the bare `toLocaleString`.
@@ -88,13 +89,21 @@ const CASES = [
     rule: "an unconditionally skipped e2e suite",
     filePath: "e2e/probe.spec.ts",
     bad: [
-      ['test.describe.skip("dark forever", () => {});', "test.describe.skip"],
+      ['test.describe.skip("dark forever", () => {});', "at the top level"],
       ['describe.skip("also dark", () => {});', "a bare describe.skip"],
+      [
+        'test.describe("outer", () => { test.describe.skip("inner", () => {}); });',
+        "NESTED — the case the first cut's `Program >` anchor let through, and this suite nests routinely",
+      ],
+      [
+        'if (!dbUp) test.describe.skip("gated", () => {});',
+        "if-gated — flagged deliberately; a skipped describe vanishes from the report with no reason",
+      ],
     ],
     good: [
       ['test.describe("live", () => {});', "a live suite"],
-      ['test.skip(!dbUp, "needs a database");', "the conditional idiom"],
-      ['if (!dbUp) test.describe.skip("gated", () => {});', "an environment gate"],
+      ['test.skip(!dbUp, "needs a database");', "the idiom that reports the reason"],
+      ['test.describe("outer", () => { test.skip(!dbUp, "gate"); });', "gating tests inside a live suite"],
     ],
   },
 ];

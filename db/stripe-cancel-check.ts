@@ -28,6 +28,7 @@
  * that needed it and did not have it.
  */
 import { existsSync } from "node:fs";
+import Stripe from "stripe";
 import { StripePaymentPort } from "../src/adapters/stripe-payment.js";
 
 // No `DATABASE_URL` dance here, unlike the other scripts in this directory: this one talks to
@@ -89,7 +90,8 @@ async function main(): Promise<void> {
     idempotencyKey: key,
   };
   const created = await payments.createPaymentIntent(createInput);
-  console.log(`  Minted ${created.paymentIntentId} for $1.00\n`);
+  console.log(`  Minted ${created.paymentIntentId} for $1.00`);
+  console.log(`  Idempotency key sent: ${key}\n`);
 
   // 2. **The idempotency key is actually SENT (15.11).** This check exists because the first cut
   //    of 15.11 computed the key, put it on the port type, threaded it to the adapter — and never
@@ -105,6 +107,39 @@ async function main(): Promise<void> {
       : `got ${repeated.paymentIntentId} and ${created.paymentIntentId} — the key was DROPPED, ` +
         `so two payable intents exist where there should be one`,
   );
+
+  // 2b. **Stripe's own record of the key, so nobody has to take this script's word for it.**
+  //
+  // The check above is conclusive — Stripe has no mechanism other than an idempotency key for
+  // associating two separate POSTs, so one intent from two creates cannot happen without it — but
+  // "cannot happen otherwise" is an argument, and the operator asked to SEE the key. Stripe stores
+  // it per request and exposes it on the event (`stripe/esm/resources/Events.d.ts:76`,
+  // `request.idempotency_key`), which is Stripe reporting what it received rather than us
+  // reporting what we sent.
+  //
+  // **This one query is the only raw SDK call in the script**, deliberately: our port has no
+  // events method, and adding one to production code so a check could read it would be the tail
+  // wagging the dog. Everything under test still goes through `StripePaymentPort`; this is
+  // introspection of what that call left behind.
+  const introspect = new Stripe(secretKey!);
+  const events = await introspect.events.list({ limit: 20 });
+  const ours = events.data.find(
+    (e) =>
+      e.type === "payment_intent.created" &&
+      (e.data.object as Stripe.PaymentIntent).id === created.paymentIntentId,
+  );
+  const recorded = ours?.request?.idempotency_key ?? null;
+  let recordedDetail: string;
+  if (recorded === key) {
+    recordedDetail = `event ${ours?.id} carries request.idempotency_key = ${recorded}`;
+  } else if (recorded === null) {
+    recordedDetail =
+      `no payment_intent.created event found carrying an idempotency key — the create may have ` +
+      `been keyless, or the event has not landed yet`;
+  } else {
+    recordedDetail = `Stripe recorded "${recorded}" but we sent "${key}"`;
+  }
+  check("Stripe recorded the key we sent, in its own words", recorded === key, recordedDetail);
 
   // 3. It must read as something a retry could be handed back.
   const before = await payments.getPaymentIntentState(created.paymentIntentId);

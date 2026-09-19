@@ -80,7 +80,7 @@ Two things the gate cannot check, which is why they are here:
 
 **Task model:** PROJECT_PLAN.md is read at planning and written at retro, untouched mid-phase. Current tasks are GitHub Issues. The phase ends when its issues close.
 
-**Workflow fixes don't get made here.** A skill or shared agent that misbehaves in this project is not fixed in this project — those files are canonical in jig, nothing syncs in either direction, and a local fix becomes invisible drift in a file meant to be identical everywhere. Say what broke; fixing it is a deliberate act in jig.
+**Workflow fixes don't get made here.** A skill or shared agent that misbehaves in this project is not fixed in this project — those files are canonical in jig, no automation syncs them in either direction, and a local fix becomes invisible drift in a file meant to be identical everywhere. Say what broke. Do not edit the file here, and do not copy a fix in from jig yourself: fixing it is a deliberate act in jig, and bringing the fix here is a jig session's copy, asked for by name.
 
 ## Agents
 
@@ -190,17 +190,30 @@ Occasional dry humor and sarcasm welcome. One good line beats three forced ones.
 
 ## Communication
 
-**Register — length, shape, preamble, when to expand — is set by the `Concise` output style, not by this file.** It's a machine preference in user settings, so one edit covers every repo. Override per-repo in `.claude/settings.local.json`. Takes effect at the next session start, never mid-session.
+**Register — length, shape, preamble, when to expand — is set by the active output style, not by this file.** It's a machine preference in user settings, so one edit covers every repo. Override per-repo in `.claude/settings.local.json`. Takes effect at the next session start, never mid-session.
 
-**Do not re-add register prose here.** This section was 976 words of it and it worked sometimes. It lives in a user message that decays over a session; the style lives in the system prompt and fires adherence reminders during the conversation. If `Concise` is missing something, the answer is a custom output style, not another paragraph here.
+**Do not re-add register prose here.** This section was 976 words of it and it worked sometimes. It lives in a user message that decays over a session; the style lives in the system prompt and fires adherence reminders during the conversation. If the active style is missing something, the answer is a custom output style, not another paragraph here.
 
-**Switching style.** Styles ship in `.claude/output-styles/` — every project carries every one. Turning one on is a per-machine choice, so it goes in `.claude/settings.local.json`, which is gitignored and never travels:
+**The output style is two things, and both live on the machine (DEC-J007).** The **setting** says which style is on. The **file** says what that style is. They are separate, and treating them as one is what cost a full session.
 
-```json
-{ "outputStyle": "One piece" }
+```
+~/.claude/settings.json                { "outputStyle": "One piece" }     the setting — hand-edited, once
+~/.claude/output-styles/one-piece.md   → symlink to jig's copy             the file — jig is the versioned home
 ```
 
-Delete the key to fall back to the machine default. Read once at launch, so it applies at the **next** session start. `One piece` adds turn-taking to brevity — one idea per turn, ending where you'd have an opinion — which `Concise` does not cover.
+**No repo carries either.** Jig's `.claude/settings.json` master defines no `outputStyle`, so `settings-policy.mjs` neither checks nor writes one, and `.claude/output-styles/**` is `jig-only`, so drift reports a project copy as NOT YOURS. The fix for a copy is deletion, never a sync. Edit the style in jig; the symlink means the edit is live at the next session start with nothing to copy.
+
+**Both are one-time hand steps per machine, and nothing checks the symlink.** A fresh machine has neither until someone does this, with `<jig>` as that machine's jig checkout:
+
+```
+mkdir -p ~/.claude/output-styles && ln -sfn <jig>/.claude/output-styles/one-piece.md ~/.claude/output-styles/one-piece.md
+```
+
+`settings-policy.mjs` does not verify the link exists or points here. A regular file at that path, or a link to a stale checkout, silently runs something other than jig's copy, and the only symptom is a session that does not behave like the style says.
+
+**Precedence, lowest to highest.** For the setting: `~/.claude/settings.json`, then `<repo>/.claude/settings.json`, then `<repo>/.claude/settings.local.json`. For the file: `~/.claude/output-styles/` loses to `<repo>/.claude/output-styles/` — observed 2026-09-18, a repo holding a stale copy ran it over the machine's newer one. Both run the same way: the more specific location silently beats the machine. That is the trap. Jig shipped the key and the file until 2026-09-18, so setting either "at the machine level" did nothing, in any repo. A repo copy of the style file is therefore not untidy, it is the style that repo runs — delete it. If a style ever fails to take effect, look for the key or the file somewhere more specific than you looked.
+
+Read once at launch, so a change applies at the **next** session start.
 
 **Never lead with a false premise.** If you don't know the cause, ask — "is the server up? which database?" is one line and fair. What's banned is stating a made-up cause as fact and explaining at length on top of it.
 

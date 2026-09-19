@@ -140,10 +140,16 @@ Use the **Glob** tool with `path: .sessions-worktree/sessions` and `pattern: *.m
 ## Step 4 — Capture the transcript path
 
 ```
-echo "$HOME/.claude/projects/$(pwd | tr '/' '-')"
+echo "$HOME/.claude/projects/$(pwd | tr '/' '-')/$CLAUDE_CODE_SESSION_ID.jsonl"
 ```
 
-Capture as `JSONL_DIR`. Use the **Glob** tool with `path: <JSONL_DIR>` and `pattern: *.jsonl`. `TRANSCRIPT = result[0]`. If empty, leave `transcript:` blank.
+Capture as `TRANSCRIPT`. If `$CLAUDE_CODE_SESSION_ID` is empty, leave `transcript:` blank rather than guessing.
+
+**The session's own id, never a directory listing.** This step used to glob `*.jsonl` in that directory and take `result[0]`, which identifies a file by its position in a list and relies on an ordering nothing states. The id is sitting in the environment and the transcript is named after it, so there is no reason to search.
+
+It breaks on **two windows in the same checkout** — the case Step 2's concurrent-session check exists to handle, which means the skill anticipated the collision and then resolved the transcript in a way that could not survive it. (It does *not* break across linked worktrees: `JSONL_DIR` is derived from `pwd`, so each worktree reads its own project directory.) Either way the old `transcript:` values are unverifiable — nothing downstream could tell a right answer from a wrong one.
+
+`/its-dead` uses this same id to name the captured tape, so a wrong value here is a tape filed under the wrong session.
 
 ## Step 5 — Write the open session file (in the worktree)
 
@@ -228,7 +234,7 @@ Read-only. It prints which `logic`-class files differ from the templates, which 
 
 **Why this check lives here rather than in jig.** A repo's drift only matters when you are about to work in it, and that is exactly when this runs. A dormant project can sit twelve template changes behind for months at no cost — the day you open it for a one-line bugfix, the briefing says so and you decide whether to sync first or ignore it. That also means there is no fleet list to maintain, and no report enumerating repos nobody has touched since spring.
 
-**It reports; it does not act.** Do not sync, do not copy, do not offer to. Deciding what should cross is the part that needs a person, and this exists so that person is not guessing at the state.
+**It reports; it does not act.** Do not sync, do not copy, do not offer to. Deciding what should cross is the part that needs a person, and this exists so that person is not guessing at the state. When they decide, the copy is done from a session *in jig*, which commits on a branch in this repo and opens the pull request here. Not from this session: the bytes that cross are what jig already reviewed, so a jig session copying them is moving reviewed code, while this session writing them is authoring a change to workflow files it does not own.
 
 If jig doesn't resolve, skip silently and say so in Context. A session must never be blocked by a checkout not being on this machine.
 
@@ -245,8 +251,10 @@ It compares against `.claude/settings.json` — the master — in the two places
 | checked | where | repairable by `--write` |
 |---|---|---|
 | `permissions` | both levels | yes |
-| `outputStyle`, `theme`, `effortLevel`, `tui`, `agentPushNotifEnabled`, `enabledPlugins` | user settings only — machine preferences | yes |
+| `theme`, `effortLevel`, `tui`, `agentPushNotifEnabled`, `enabledPlugins` | user settings only — machine preferences | yes |
 | retired machinery still wired — a `SessionEnd` tape hook, a leftover queue | user settings only | **no** — remove by hand |
+
+**`outputStyle` is in `MACHINE_KEYS` and is deliberately absent from the master, so it is neither checked nor written.** It was in the master until 2026-09-18, and because a project-level `.claude/settings.json` beats the user-level one, every installed project carried jig's answer and no machine default was ever consulted. Whoever is at the keyboard picks the style; nothing that travels should carry one. Setting it is a hand-edit of `~/.claude/settings.json`, and `--write` will not touch it.
 
 A deliberate per-repo override in `.claude/settings.local.json` — `Explanatory` while designing, say — is **not** reported: those keys are read at the user level only.
 

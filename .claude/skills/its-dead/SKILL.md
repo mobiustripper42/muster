@@ -106,6 +106,39 @@ For each, display:
 
 Report only. Don't open the review yourself and don't backfill a `## Task` block for it — the user decides whether the PR is worth a retrospective pass. If every session PR is in `pr_numbers:`, say nothing.
 
+## Step 4.8 — Declare the tape's name
+
+```
+mkdir -p ~/.claude/tape/.names
+REPO=$(basename "$(git rev-parse --show-toplevel)" | LC_ALL=C tr '[:upper:]' '[:lower:]' \
+  | LC_ALL=C sed 's/[^a-z0-9.-]/-/g; s/-\{2,\}/-/g; s/\.\{2,\}/./g' \
+  | LC_ALL=C cut -c1-32 \
+  | LC_ALL=C sed 's/^[-.]*//; s/[-.]*$//')
+echo "${REPO:+$REPO-}$(basename "$SESSION_FILE" .md)" > ~/.claude/tape/.names/$CLAUDE_CODE_SESSION_ID
+```
+
+No output to report. If `$CLAUDE_CODE_SESSION_ID` is empty, skip it silently — the tape still gets kept, named by uuid.
+
+**The repo prefix is the point.** `~/.claude/tape/` is one flat directory every repo on this machine writes into, and a session file's name carries only the date and the slug. A jig session and a tinkle session both on `main` produce the same `YYYY-MM-DD-HHMM-main`, distinguishable only if they happened to open in different minutes. The session *file* has no such problem — it lives inside its own repo — so the tape is the only place that needs this.
+
+**Prefix rather than infix**, so the directory groups by project and stays chronological within each. **In a linked worktree** `--show-toplevel` returns the worktree path, so two lanes get distinct names; that is correct, not a bug.
+
+**The `sed` is not decoration.** `keep-tape.mjs` REFUSES a declared name that isn't a plain filename (`PLAIN` at `<jig>/scripts/keep-tape.mjs:56`, where `<jig>` is the jig checkout as `/its-alive` resolved it) and falls back to the uuid — so an unsanitised folder name with a space or a `..` in it would make the tape name *worse* than the no-prefix version it replaces. `${REPO:+$REPO-}` drops the prefix entirely when a folder name sanitises to nothing, rather than emitting a leading `-` that `PLAIN` would also refuse.
+
+**`LC_ALL=C` is what makes the character class mean ASCII.** Under a UTF-8 locale — `en_US.UTF-8`, the default on this machine and on GitHub Actions — glibc collation makes `[^a-z0-9.-]` match by collation rather than by byte, and accented letters pass straight through: a folder named `café` sanitises to `café`, raw multi-byte bytes intact, which `PLAIN` then refuses. That is precisely the uuid fallback this step exists to avoid, reintroduced for every non-English folder name. Byte-literal is the only behaviour that is the same everywhere, so all three stages are pinned.
+
+**`cut -c1-32` caps the prefix**, and trimming the edges runs *after* it rather than before. A long folder name plus the session stem can pass the filesystem's 255-byte limit, and the failure lands inside the hook as a caught copy error — a lost tape, logged, with nothing on screen. Thirty-two characters is past every real repo name here. Cutting last would leave a name that had been trimmed and then re-grew a trailing `-` or `.` at the cut point, which `PLAIN` accepts and nobody would have chosen.
+
+This block is executed by `<jig>/scripts/keep-tape.test.mjs`, which extracts it from this file and runs it in a throwaway repo — so editing it here is covered, and a change that breaks the naming fails the suite.
+
+**What this is for.** Claude Code deletes transcripts on a rolling window, so a `SessionEnd` hook (`<jig>/scripts/keep-tape.mjs`) copies this session's `.jsonl` to `~/.claude/tape/`. The hook is handed its own `transcript_path` and knows the uuid; it does **not** know this session file's name. This step is the only place both are known, so it writes the one down for the other to find.
+
+**Why the copy isn't done here.** This skill runs *before* the session ends. The transcript is still being appended to, so a copy taken now loses every turn after it — including the closing summary. The hook fires at the right moment and reads the name left for it.
+
+**Nothing reads the tape automatically.** No skill, no agent, no index, no drain. A human opens one in a chat session occasionally. Do not offer to read it, summarize it, or build anything that does.
+
+If the hook isn't installed on this machine the name file is simply never consumed, and `/its-alive` Step 7.6's policy check is what tells you — `settings-policy.mjs` reports the hook absent.
+
 ## Step 5 — Commit + push the sessions branch (from the worktree)
 
 ```

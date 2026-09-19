@@ -64,14 +64,22 @@ plausible, because they fire at phase boundaries.
 
 ## Output styles — one
 
-Styles ship in `.claude/output-styles/`, `logic` class like the skills: every project carries
-every one. Which is **on** is a per-machine choice in `.claude/settings.local.json`, gitignored and
-never travelling — `{ "outputStyle": "One piece" }`, deleted to fall back to the machine default.
-Read once at launch, so a change applies at the next session start.
+The style is one file, kept here at `.claude/output-styles/one-piece.md`, and no project holds a
+copy (DEC-J007). The class is `jig-only`: drift reports a project copy as NOT YOURS, and the fix
+is deletion. Every session on the machine reads jig's file through a symlink at
+`~/.claude/output-styles/one-piece.md`, so an edit here is live at the next session start with
+nothing to copy. Which style is **on** is `{ "outputStyle": "One piece" }` in
+`~/.claude/settings.json`, hand-edited once; the master defines no such key, so `settings-policy`
+neither checks nor writes one.
+
+Until 2026-09-18 both travelled — the file as `logic`, the key in the master — and a project-level
+`.claude/settings.json` beats the user-level one, so the machine default was never consulted in
+any installed repo. If a style does not take effect, look for the key or a stray file somewhere
+more specific first.
 
 | Style | What it adds |
 |-------|--------------|
-| `One piece` | Turn-taking and density, neither of which brevity alone covers. One idea per turn, ending where the reader would have an opinion, naming the next piece and stopping there — and one fact per sentence, because "make it shorter" removes sentences while keeping facts, which is how a short reply becomes an unreadable one. Written after a session stacked four decisions into one reply and the reader lost the thread |
+| `One piece` | One judgment per turn, ending at the fork. Every reply opens with a one-word tag — `Lookup.` `Action.` `Judgment.` `Summary.` — that commits to a shape before the reply exists, and closes with a numbered parking lot of every displaced thread, so a turn that overruns is countable rather than arguable and nothing raised is dropped. Revised three times in muster, v3 to v6 by its own numbering, before moving here |
 
 The machine default is set outside this repo and is not listed here — it is a preference, not part
 of the roster.

@@ -1387,6 +1387,61 @@ describe("processBookingWebhook — superseded intents are retired once the row 
 });
 
 /**
+ * **`payment_intent.processing` is acked and ALERTS (15.12).**
+ *
+ * The contrast with its two neighbours is the whole point. A decline is ignored in silence because
+ * the customer is still standing at the till. A cancel is ignored in silence because we made it.
+ * A `processing` intent is neither: a payment is in flight that will settle in days, no screen in
+ * Muster shows it, and — since `/book` delegates method selection to the Dashboard via
+ * `automatic_payment_methods` — its arrival means a delayed payment method has been turned on.
+ * That is a fact about the account, not about this booking, and nobody would otherwise learn it.
+ */
+describe("processBookingWebhook — payment_intent.processing is acked and alerts (15.12)", () => {
+  const processing = (pi = PI): string =>
+    JSON.stringify({ type: "payment_processing", data: { paymentIntentId: pi } });
+
+  it("acks the event and reports it ignored", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, processing(), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "ignored" });
+  });
+
+  it("tells the operator, because nothing else will", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps, alert } = makeDeps(repo);
+
+    await processBookingWebhook(deps, processing(), FAKE_SIGNATURE);
+
+    expect(alert).toHaveBeenCalledOnce();
+    const message = String(alert.mock.calls[0]![0]);
+    expect(message).toContain(PI);
+    // **Not an emergency, and the words matter.** No money is at risk and there is nothing to undo,
+    // so this must not read like the paid-but-unbooked alerts that share the channel — 15.5 made
+    // the same call for the residual-race notice. An alert that cries wolf is how the real ones
+    // stop being read.
+    expect(message).not.toMatch(/REFUND MANUALLY/);
+  });
+
+  it("books nothing and leaves the pending row alone — the money has not arrived", async () => {
+    const repo = new InMemoryRepository();
+    const row = await seedPending(repo);
+    const { deps, confirm } = makeDeps(repo);
+    const before = await repo.getReservation(row.id);
+
+    await processBookingWebhook(deps, processing(), FAKE_SIGNATURE);
+
+    expect(await repo.getReservation(row.id)).toEqual(before);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(await repo.listEvents()).toHaveLength(0);
+  });
+});
+
+/**
  * **`payment_intent.canceled` is acked and deliberately does nothing (15.10).**
  *
  * Named for the reason `payment_failed` is: ignored-on-purpose and unrecognised must not be the

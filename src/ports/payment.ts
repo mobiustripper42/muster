@@ -234,6 +234,25 @@ export interface PaymentCanceled {
 }
 
 /**
+ * A verified `payment_intent.processing` event (15.12), normalized off the provider's shape.
+ *
+ * **A delayed payment method is settling.** The customer has authorized; the money arrives days
+ * later, and `payment_intent.succeeded` follows then. Named for the reason its two neighbours are —
+ * ignored-on-purpose and unrecognised must not be the same signal — but unlike them it is **not**
+ * ignored in silence: a decline leaves a customer still at the till, and a cancel is something we
+ * did ourselves, while this is a booking in flight that no screen in Muster shows.
+ *
+ * **Its arrival is a fact about the ACCOUNT, not about the booking.** `/book` sends
+ * `automatic_payment_methods: { enabled: true }`, which delegates method selection to the Stripe
+ * Dashboard, so this event can only appear once somebody enables a delayed method there — a change
+ * with no diff in this repository. Reading the account on 2026-09-19 showed every delayed method
+ * off; the day that changes, this is how anyone finds out.
+ */
+export interface PaymentProcessing {
+  paymentIntentId: string;
+}
+
+/**
  * The verified-webhook event union (12.5, DEC-134; refunds #616; disputes issue #723;
  * declines 14.8). `checkout_completed` drives the hosted flows (balance + post-gratuity);
  * `payment_succeeded` drives the inline-Elements booking; `refund_recorded` reconciles a refund
@@ -247,6 +266,7 @@ export type PaymentEvent =
   | { type: "payment_succeeded"; data: PaymentSucceeded }
   | { type: "payment_failed"; data: PaymentFailed }
   | { type: "payment_canceled"; data: PaymentCanceled }
+  | { type: "payment_processing"; data: PaymentProcessing }
   | { type: "refund_recorded"; data: RefundRecorded }
   | { type: "dispute_updated"; data: DisputeUpdated };
 

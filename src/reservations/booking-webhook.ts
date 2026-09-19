@@ -217,6 +217,43 @@ export async function processBookingWebhook(
   // indistinguishable from an event type we have never heard of.
   if (event.type === "payment_canceled") return { handled: true, outcome: "ignored" };
 
+  // **A delayed payment method is settling (15.12) — acked, and the one ignored event that TELLS
+  // somebody.** The two above are silent for good reasons that do not apply here: a decline leaves
+  // a customer still holding a second card, and a cancel is something Muster did itself. This is a
+  // booking in flight for days, with no screen anywhere showing it.
+  //
+  // It also cannot arrive at all unless somebody enabled a delayed payment method in the Stripe
+  // Dashboard — `/book` sends `automatic_payment_methods: { enabled: true }`, so method selection
+  // lives there, and a change there leaves no diff in this repository. Reading the account on
+  // 2026-09-19 showed every delayed method off. This alert is how anyone finds out that changed.
+  //
+  // Deliberately NOT "REFUND MANUALLY": no money is at risk and there is nothing to undo. It
+  // shares a channel with the paid-but-unbooked alerts and must not read like one — the same call
+  // 15.5 made for the residual-race notice, on the reasoning that an alert which cries wolf is how
+  // the real ones stop being read.
+  //
+  // **NOT deduped, and that is a known limit rather than an oversight** (`@code-review`, 15.12).
+  // Every other side effect in this file is built for Stripe's at-least-once redelivery; this one
+  // is not, so a redelivered `processing` pages every admin again — which is the same crying-wolf
+  // noise the paragraph above argues against. It ships that way on the operator's call (2026-09-19)
+  // because **this branch cannot execute today**: reading the account showed every delayed payment
+  // method `off`, and only a Dashboard toggle can produce this event. Building a dedupe for an
+  // unreachable path is machinery ahead of need.
+  //
+  // **Whoever enables a delayed method owes this a dedupe first.** The cheap one needs no
+  // migration: `claimRecoverySend` (`ports/repository.ts`) is already a keyed claim with lazy
+  // expiry — `"processing:" + paymentIntentId` gives exactly one alert per intent, at the cost of a
+  // table named for the recovery bound doing double duty. Recorded on issue #712.
+  if (event.type === "payment_processing") {
+    await deps.alertPaidButUnbooked(
+      `Payment ${event.data.paymentIntentId} is PROCESSING - a delayed payment method is ` +
+        `settling and will confirm in a few days. Nothing to do and no money at risk. Worth ` +
+        `knowing because /book takes whatever methods the Stripe Dashboard has enabled, and this ` +
+        `event means one of the delayed ones is now on. No screen shows an in-flight payment.`,
+    );
+    return { handled: true, outcome: "ignored" };
+  }
+
   // Everything past here is a hosted `checkout.session.completed`. The union is closed and every
   // other member returned above, so this narrows — but say it, because an event type added to the
   // port and not handled here would otherwise arrive at `completed.metadata` and throw on a shape

@@ -489,6 +489,14 @@ export class StripePaymentPort implements PaymentPort {
         },
       };
     }
+    if (event.type === "payment_intent.processing") {
+      // A delayed payment method settling (15.12). Named rather than left to fall through to
+      // `null`, which is where it went until now — so an event that means "a booking is in flight
+      // for days" was indistinguishable from an event type we have never heard of. The handler
+      // acks it and alerts; see `PaymentProcessing` for why it alerts where its neighbours do not.
+      const pi = event.data.object as Stripe.PaymentIntent;
+      return { type: "payment_processing", data: { paymentIntentId: pi.id } };
+    }
     if (event.type === "payment_intent.canceled") {
       // A retired intent (15.10). Named on exactly the reasoning above: every cancel Muster makes
       // is one it already knows about — `cancelPaymentIntent` returned before this event existed —

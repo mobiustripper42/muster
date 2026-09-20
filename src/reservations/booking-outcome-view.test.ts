@@ -36,7 +36,6 @@ describe("bookingOutcomeView", () => {
       "ignored",
       "unbookable",
       "balance_paid",
-      "gratuity_paid",
       "dispute_recorded",
     ];
     expect(bookingOutcomeView(undefined)).toEqual({ kind: "pending" });

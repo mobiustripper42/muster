@@ -38,8 +38,7 @@ test.describe("public /b/<code>", () => {
     await expect(page.getByText("$549.00")).toBeVisible();
     await expect(page.getByText("$588.80")).toBeVisible();
 
-    // Post-trip tip tiers (default 15/20/25% of the fare) + the manage actions.
-    await expect(page.getByRole("button", { name: /Add a 20% tip/ })).toBeVisible();
+    // The manage actions. Post-trip tip tiers were asserted here until 15.18 removed them.
     await expect(page.getByText("Add to calendar")).toBeVisible();
     await expect(page.getByText("Book again")).toBeVisible();
     await expect(page.getByText("Request cancellation")).toBeVisible();

@@ -377,7 +377,8 @@ export function GratuitySection({
   draft: FormDraft | null;
 }) {
   // Render from the effective per-kind config: an offering with none yet shows the code
-  // defaults (pre required + post optional, 15/20/25) — saving writes them explicitly.
+  // default (pre, required, 15/20/25) — saving writes it explicitly. Post-trip tipping went in
+  // 15.18, so there is one row here now.
   const kinds = gratuityKindsFor(offering ?? {});
   const byKind = (k: "pre" | "post"): GratuityKindConfig | undefined =>
     kinds.find((g) => g.kind === k);
@@ -388,13 +389,6 @@ export function GratuitySection({
         label="Pre"
         when="at checkout"
         config={byKind("pre")}
-        draft={draft}
-      />
-      <GratuityKindRow
-        kind="post"
-        label="Post"
-        when="after the trip, via booking link"
-        config={byKind("post")}
         draft={draft}
       />
       <p className="py-3 text-xs text-muted">

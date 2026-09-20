@@ -12,24 +12,14 @@
  * BOAT is never named; the crew are (once assigned). Pure; the page does the repo reads.
  */
 
-import type { Offering } from "../domain/entities.js";
 import {
   buildReservationDetail,
   type ReservationDetailInput,
   type ReservationDetailView,
 } from "./calendar-detail.js";
 import { formatClock } from "./availability-screen.js";
-import { gratuityCentsFor, gratuityKindsFor } from "./pricing.js";
 
 export type TripPhase = "upcoming" | "completed";
-
-export interface PostTipTier {
-  bps: number;
-  /** Whole-percent label, e.g. 15 for "+15%". */
-  pct: number;
-  /** `bps` of the (tip-free) fare — what this tier adds, in cents. */
-  amountCents: number;
-}
 
 export interface TripTiming {
   /** "1:30 PM" — the departure clock. */
@@ -48,9 +38,6 @@ export interface ManageView {
   detail: ReservationDetailView;
   phase: TripPhase;
   timing: TripTiming;
-  /** The post-trip gratuity tiers to offer (the offering's `post` kind, or the default set).
-   *  Empty when the offering disables post tips. */
-  postTipTiers: PostTipTier[];
   /** True once the fare is settled (no balance) — gates the receipt's "Paid in full". */
   paidInFull: boolean;
 }
@@ -76,8 +63,10 @@ function shiftClock(hhmm: string, delta: number): string | null {
 }
 
 /** Trip phase from the event's vessel-local date+time vs a vessel-local "now". A trip is
- *  `completed` once its START has passed (the mockup flips at trip time, not trip end — the
- *  post-trip tip is offered the moment the trip is underway). */
+ *  `completed` once its START has passed — the mockup flips at trip time, not trip end. The
+ *  original reason was that the post-trip tip became offerable the moment the trip was underway;
+ *  that went in 15.18 and the flip point stayed, because the receipt and the manage actions read
+ *  the same way. */
 export function tripPhaseOf(
   eventDate: string,
   eventTime: string,
@@ -89,20 +78,6 @@ export function tripPhaseOf(
   const cur = minutesOf(now.time);
   if (evt === null || cur === null) return "upcoming"; // unknown ⇒ don't prematurely close it
   return cur >= evt ? "completed" : "upcoming";
-}
-
-/** The post-trip gratuity tiers for an offering (DEC-124 `post` kind), priced off the fare. */
-export function postTipTiersFor(
-  offering: Pick<Offering, "gratuityKinds"> | undefined,
-  fareCents: number,
-): PostTipTier[] {
-  const post = gratuityKindsFor(offering ?? {}).find((k) => k.kind === "post");
-  if (!post) return [];
-  return post.tiersBps.map((bps) => ({
-    bps,
-    pct: Math.round(bps / 100),
-    amountCents: gratuityCentsFor(fareCents, bps),
-  }));
 }
 
 export interface ManageViewInput extends ReservationDetailInput {
@@ -127,7 +102,6 @@ export function buildManageView(input: ManageViewInput): ManageView {
     detail,
     phase,
     timing,
-    postTipTiers: postTipTiersFor(input.offering, detail.money.fareCents),
     // **`paidCents > 0` is not redundant (issue #803).** Zeroing a cancelled booking's balance
     // made `balanceCents <= 0` true for a booking nobody has paid a net penny on — a FULLY
     // refunded one, where the payment row is `refunded` and so counts as zero paid. The guest

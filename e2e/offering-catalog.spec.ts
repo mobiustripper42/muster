@@ -83,10 +83,11 @@ test.describe("admin /admin/offerings", () => {
     // (leading minus, no un-removable leading 0).
     await page.getByLabel("Variation 1 dollars").fill("-50");
 
-    // Gratuity: the rendered defaults (pre required + post optional, 15/20/25) stand.
+    // Gratuity: the rendered default (pre, required, 15/20/25) stands. The Post row and its
+    // `gratPostRequired` box went with post-trip tipping in 15.18 — asserting its ABSENCE here
+    // would be asserting the absence of one input among dozens, which passes for any reason.
     await expect(page.locator('input[name="gratPre"]')).toBeChecked();
     await expect(page.locator('input[name="gratPreRequired"]')).toBeChecked();
-    await expect(page.locator('input[name="gratPostRequired"]')).not.toBeChecked();
 
     // Add-ons: attach the shared "Extra hour" add-on via its checkbox (id is minted, so
     // target it through its label text).

@@ -22,8 +22,8 @@ Recorded because it will be proposed again, and it sounds like defence in depth.
 on the other refusal about this endpoint.
 
 An allowlist is a dashboard rule invisible to this repository — the class of thing
-`booking-webhook.ts` already complains about, where behaviour rests on a console nobody can read
-from the code. Stripe changes its addresses on seven days' notice, so a stale list 403s every
+`src/reservations/booking-webhook.ts` already names, where behaviour "rests on a Stripe dashboard
+nobody can read from the repo". Stripe changes its addresses on seven days' notice, so a stale list 403s every
 delivery for three days. That is the failure the signature check exists to prevent, reintroduced by
 the mitigation, and arriving on a day nobody edited anything.
 

@@ -3138,6 +3138,20 @@ export function runRepositoryContract(
         expect((await repo.listTrailEvents()).map((r) => r.id)).toEqual(["t-new", "t-old"]);
       });
 
+      it("breaks a timestamp tie by insertion order, newest appended first", async () => {
+        // The two adapters reach this by different routes — in-memory by a stable sort
+        // over a reversed array, Postgres by `seq desc` — and until this case existed
+        // that agreement was a claim in two comments rather than a fact. Ties are not
+        // exotic here: several emitters fire from one webhook handler, and `Date`
+        // resolution is milliseconds. Issue #1048's union read orders across four
+        // sources and will lean on this.
+        const at = "2026-09-20T12:00:00.000Z";
+        await repo.appendTrailEvent(trail({ id: asId<"TrailEventId">("tie-1"), timestamp: at }));
+        await repo.appendTrailEvent(trail({ id: asId<"TrailEventId">("tie-2"), timestamp: at }));
+        await repo.appendTrailEvent(trail({ id: asId<"TrailEventId">("tie-3"), timestamp: at }));
+        expect((await repo.listTrailEvents()).map((r) => r.id)).toEqual(["tie-3", "tie-2", "tie-1"]);
+      });
+
       it("the integrity tripwire ignores it — an append-only log may dangle", async () => {
         // `src/admin/integrity.ts` is an opt-in walk over named aggregates and already
         // excludes append-only logs by policy. A new table is invisible to it by

@@ -24,8 +24,12 @@
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": true,
 
-    "declaration": true,
-    "sourceMap": true,
+    // `declaration` and `sourceMap` went with the emit profile — both are pure output
+    // options, both were inert the moment nothing emitted, and neither is reachable:
+    // tsconfig.db.json extends this file and inherits `noEmit: true`, tsconfig.json sets
+    // its own, and there is no `composite`/`references` graph to want declarations for.
+    // Left in place they are the same shape as the `outDir` above: settings that describe
+    // a build nobody runs, waiting to be read as if they meant something.
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,

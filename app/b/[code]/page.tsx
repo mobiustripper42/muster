@@ -25,12 +25,10 @@ import { reservationsEnabled } from "../../lib/flags";
 
 export const dynamic = "force-dynamic";
 
-type Search = { requested?: string; tipped?: string; error?: string };
+type Search = { requested?: string; error?: string };
 
 const ERROR_COPY: Record<string, string> = {
   link: "That didn’t work — please reopen your booking link.",
-  tip: "Couldn’t start the tip just now. Please try again.",
-  pay: "Tips are temporarily unavailable. Please try again later.",
 };
 
 export default async function ManagePage({
@@ -163,11 +161,6 @@ export default async function ManagePage({
           {sp.error && ERROR_COPY[sp.error] && (
             <div className="mb-4">
               <Notice tone="bad">{ERROR_COPY[sp.error]}</Notice>
-            </div>
-          )}
-          {sp.tipped === "1" && (
-            <div className="mb-4">
-              <Notice tone="ok">Thank you — your crew tip is on its way to the crew.</Notice>
             </div>
           )}
           {sp.requested && (

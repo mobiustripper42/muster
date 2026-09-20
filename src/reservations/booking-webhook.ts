@@ -4,8 +4,9 @@
  * Two event types drive it (`parseEvent`):
  *  - **`checkout.session.completed`** (hosted Checkout) — dispatches on `metadata.purpose`
  *    (11.2b): `"balance"` → record a `Payment{kind:'balance'}` against the already-claimed
- *    reservation (no re-booking); `"gratuity"` → the post-trip tip; absent/`"booking"` → the
- *    charge→booking spine. Any OTHER purpose is loudly flagged, never silently booked.
+ *    reservation (no re-booking); absent/`"booking"` → the charge→booking spine. Any OTHER
+ *    purpose is loudly flagged, never silently booked — including `"gratuity"`, whose branch
+ *    went with post-trip tipping in 15.18.
  *  - **`payment_intent.succeeded`** (inline Elements, 12.5) — the SAME booking spine, keyed
  *    on the PaymentIntent id. **The booking charge sends no metadata (15.6)**, so the PENDING ROW
  *    is what tells our payments apart: checkout writes it before calling Stripe, so an intent that
@@ -126,7 +127,6 @@ export type WebhookResult =
         | "lost"
         | "unbookable"
         | "balance_paid"
-        | "gratuity_paid"
         | "refund_recorded"
         | "dispute_recorded"
         | "ignored";

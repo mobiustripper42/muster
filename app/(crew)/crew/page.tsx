@@ -253,7 +253,7 @@ function SignedOut({
 }
 
 const inputClass =
-  "min-h-[52px] rounded-card border border-line bg-card px-4 text-ink placeholder:text-faint";
+  "min-h-[52px] rounded-card border border-line bg-card px-4 text-ink placeholder:text-muted";
 const primaryButtonClass =
   "min-h-[52px] w-full rounded-card bg-accent font-semibold text-white";
 
@@ -500,6 +500,7 @@ function CrewApp({
               >
                 <div className="flex items-center justify-between gap-2">
                   <ShiftWhenWhat s={s} />
+                  {/* eslint-disable-next-line no-restricted-syntax -- aria-hidden caret: decoration, not text (#951). The card is the link and carries its own label. */}
                   <span className="shrink-0 text-faint" aria-hidden>
                     ›
                   </span>

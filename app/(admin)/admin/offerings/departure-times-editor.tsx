@@ -51,13 +51,13 @@ export function DepartureTimesEditor({ initial }: { initial: string[] }) {
               type="button"
               aria-label={`Remove ${t}`}
               onClick={() => setTimes(times.filter((x) => x !== t))}
-              className="text-faint hover:text-ink"
+              className="text-muted hover:text-ink"
             >
               ×
             </button>
           </span>
         ))}
-        {times.length === 0 && <span className="text-xs text-faint">No departures yet.</span>}
+        {times.length === 0 && <span className="text-xs text-muted">No departures yet.</span>}
       </div>
 
       <div className="flex items-center gap-2">
@@ -74,7 +74,7 @@ export function DepartureTimesEditor({ initial }: { initial: string[] }) {
             </option>
           ))}
         </select>
-        <span className="font-mono text-sm text-faint">:</span>
+        <span className="font-mono text-sm text-muted">:</span>
         <select
           value={mm}
           onChange={(e) => setMm(e.target.value)}

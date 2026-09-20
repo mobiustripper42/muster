@@ -222,6 +222,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-148 — Crew navigation moves into a drawer — the hub carries work, not a menu (#644)
 - DEC-152 — Two clock buttons that never move, one disabled — a control that vanishes moves its neighbour under the thumb
 - DEC-160 — An unsaved form asks before you leave, and "dirty" is a comparison against the server's defaults
+- DEC-178 — `faint` is not a text colour
 
 ### Deployment, infra & versioning
 - DEC-013 — Stack & infrastructure deferred to ~M4

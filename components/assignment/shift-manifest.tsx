@@ -58,6 +58,7 @@ export function ShiftManifest({
             <span className="font-mono">{fmt12(ev.departureTime)}</span>
             <span className="flex items-center gap-2 text-sm font-normal text-muted">
               {ev.pax} guests
+              {/* eslint-disable-next-line no-restricted-syntax -- aria-hidden caret: decoration, not text (#951). <summary> announces its own open/closed state. */}
               <span className="text-faint transition-transform group-open:rotate-90" aria-hidden>
                 ›
               </span>

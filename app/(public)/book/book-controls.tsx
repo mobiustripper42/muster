@@ -151,7 +151,7 @@ export function GuestCard() {
       {/* No "you've got the whole boat" note. `Private charter` in the header says it, and the
           included/extra line below says what the money buys — the sentence between them was
           inventory language dressed as reassurance (operator, 2026-08-16). */}
-      <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-faint">How many guests?</div>
+      <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">How many guests?</div>
       <div className="flex items-center gap-3" aria-busy={syncing}>
         <button
           type="button"
@@ -178,7 +178,7 @@ export function GuestCard() {
         >
           +
         </button>
-        <span className="ml-auto text-xs text-faint">up to {cap}</span>
+        <span className="ml-auto text-xs text-muted">up to {cap}</span>
       </div>
       {/* No copy at the ceiling. The `+` disables and the row already says "up to {cap}" — a
           sentence appearing on the last tap says nothing those two don't, and it grows the card
@@ -220,7 +220,7 @@ export function Footer({
             <b data-testid="footer-total" className="text-[18px] font-bold tabular-nums">
               {money(fareCents!)}
             </b>
-            <span className="text-[10.5px] text-faint">{dateTimeLabel}</span>
+            <span className="text-[10.5px] text-muted">{dateTimeLabel}</span>
           </>
         ) : (
           <span className="text-[13px] text-muted">Pick a date &amp; time to continue</span>

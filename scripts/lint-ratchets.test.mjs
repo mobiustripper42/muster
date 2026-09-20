@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ESLint } from "eslint";
 
 /**
- * Proof that the zero-finding lint rules actually fire (#904).
+ * Proof that the zero-finding lint rules actually fire (#904), plus #951's token ban.
  *
  * **These four rules have no findings in the repo, which is exactly why they need a
  * test.** A selector that matches nothing and a selector that is silently broken produce
@@ -106,6 +106,38 @@ const CASES = [
       ['test.describe("outer", () => { test.skip(!dbUp, "gate"); });', "gating tests inside a live suite"],
     ],
   },
+  {
+    /**
+     * The odd one out: this rule shipped with 138 findings, not zero (#951). It is tested
+     * here anyway because the `good` cases are three separate carve-outs that a slightly
+     * wrong regex would eat — and a rule that flags `border-faint` or `disabled:text-faint`
+     * is a rule people turn off rather than obey.
+     */
+    rule: "`text-faint` on anything a person reads (#951)",
+    filePath: "app/(admin)/admin/probe/page.tsx",
+    bad: [
+      ['<p className="text-xs text-faint">Scanned 12 rows</p>;', "a plain className"],
+      [
+        "<p className={`${base} text-faint line-through`}>{d}</p>;",
+        "inside a TEMPLATE LITERAL — 12 of the 138 were this, and a Literal-only selector misses every one",
+      ],
+      [
+        '<input className="placeholder:text-faint" />;',
+        "a placeholder is read by the person deciding what to type — deliberately NOT carved out",
+      ],
+      ['const c = "rounded-full text-faint";', "hoisted out of the JSX into a const"],
+    ],
+    good: [
+      ['<p className="text-xs text-muted">Scanned 12 rows</p>;', "the AA-passing tone"],
+      [
+        '<button disabled className="text-xs disabled:text-faint">Go</button>;',
+        "disabled: — WCAG 1.4.3 exempts an inactive control",
+      ],
+      ['<div className="rounded-card border border-faint" />;', "a border is not text"],
+      ['<span className="bg-faint" />;', "a fill is not text"],
+      ['<p className="text-muted">faint is 2.36:1</p>;', "the word alone, with no class attached"],
+    ],
+  },
 ];
 
 describe.each(CASES)("$rule", ({ filePath, bad, good }) => {
@@ -138,6 +170,60 @@ describe("#904's blocks did not shadow the rules that came before them", () => {
     ["src/probe.ts", "src/** keeps #902's version"],
   ])("%s — %s", async (filePath) => {
     const found = await violations("try { x(); } catch { }", filePath);
+    expect(found).not.toHaveLength(0);
+  });
+});
+
+/**
+ * Same guard, other direction: #951's token ban has to survive the NARROWING blocks.
+ *
+ * `app/**\/actions.ts` is a subset of `app/**`, so its block rebuilds the selector list
+ * from scratch. It spreads the shared constants back in — and the day someone adds a
+ * fifth rule to it and forgets one, this is what says so. The `app/**` row is the
+ * control: if that one ever fails, the rule is off everywhere and the rest is noise.
+ */
+describe("the #951 token ban reaches the narrowing blocks too", () => {
+  it.each([
+    ["app/(admin)/admin/probe/page.tsx", "app/** — the control"],
+    ["app/(admin)/admin/probe/actions.ts", "app/**/actions.ts still composes it"],
+    ["components/probe.tsx", "components/**"],
+  ])("%s — %s", async (filePath) => {
+    const found = await violations('const c = "text-faint";', filePath);
+    expect(found).not.toHaveLength(0);
+  });
+});
+
+/**
+ * The `components/ui` primitives subtract ONE selector, not the whole rule.
+ *
+ * They wrap `<button type="submit">` and need exempting from that ban alone. The block
+ * used to say `"no-restricted-syntax": "off"`, which quietly also dropped #854's catch
+ * ban, the redirect-in-try ban, the clock rule, and then #951's token ban — in the very
+ * commit that added it, to the four files most likely to grow a fresh `text-faint`. It
+ * was caught by review, not by the gate, because an absent rule and a satisfied rule
+ * produce the same silence.
+ *
+ * So the exemption is now a `.filter()` on one named selector, and this is what says the
+ * subtraction is still exactly one wide.
+ */
+describe("components/ui primitives keep every ban except the raw-submit one", () => {
+  const PRIMITIVE = "components/ui/app-link.tsx";
+
+  it.each([
+    ['const c = "text-faint";', "#951's token ban"],
+    ["try { x(); } catch { }", "#854's bare-catch ban"],
+    ["try { redirect('/a'); } catch (e) { log(e); }", "the redirect-in-try ban"],
+    ['d.toLocaleDateString("en-US");', "the clock rule"],
+  ])("still fires on %s (%s)", async (code) => {
+    expect(await violations(code, PRIMITIVE)).not.toHaveLength(0);
+  });
+
+  it("stays quiet on the raw submit button — the one thing these files exist to wrap", async () => {
+    expect(await violations('<button type="submit">Go</button>;', PRIMITIVE)).toHaveLength(0);
+  });
+
+  it("and that exemption is theirs alone — an ordinary component still gets it", async () => {
+    const found = await violations('<button type="submit">Go</button>;', "components/probe.tsx");
     expect(found).not.toHaveLength(0);
   });
 });

@@ -11,6 +11,18 @@ import { SubmitButton } from "../ui/submit-button";
  * Server component; the per-person Lean buttons post a form, no client JS.
  */
 
+/**
+ * Reschedule and Cancel, rendered `disabled` until their cascades land. One const for
+ * both because they were two identical strings, and because the disable below needs a
+ * line of its own — `className` sits inside a JSX opening tag, where a comment cannot.
+ *
+ * `text-faint` is correct here (#951): WCAG 1.4.3 exempts text that is part of an
+ * inactive user interface component, and dimming is the whole signal that these two do
+ * not work yet. Moving them to `text-muted` would make an inert button look live.
+ */
+// eslint-disable-next-line no-restricted-syntax -- inactive control, WCAG 1.4.3; see above
+const INERT_ACTION = "cursor-not-allowed rounded-full border border-line px-2.5 py-1 text-xs text-faint";
+
 export interface RiskRowVM {
   shiftId: string;
   vesselName: string;
@@ -49,7 +61,7 @@ function TrailLine({ trail }: { trail: RiskRowVM["trail"] }) {
   const push = (key: string, node: React.ReactNode) =>
     segs.push(
       <span key={key} className="whitespace-nowrap">
-        {segs.length > 0 && <span className="mx-1.5 text-faint">·</span>}
+        {segs.length > 0 && <span className="mx-1.5 text-muted">·</span>}
         {node}
       </span>,
     );
@@ -167,16 +179,10 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
         <div className="flex flex-col gap-1 border-t border-line pt-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex gap-2">
-              <button
-                disabled
-                className="cursor-not-allowed rounded-full border border-line px-2.5 py-1 text-xs text-faint"
-              >
+              <button disabled className={INERT_ACTION}>
                 ↻ Reschedule
               </button>
-              <button
-                disabled
-                className="cursor-not-allowed rounded-full border border-line px-2.5 py-1 text-xs text-faint"
-              >
+              <button disabled className={INERT_ACTION}>
                 ✕ Cancel…
               </button>
             </div>

@@ -154,7 +154,7 @@ export default async function AdminAbandonment() {
                           repeat attempts this column is here to show. */}
                       {r.attemptCount === 0 ? "—" : `${r.attemptCount}×`}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-faint">
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-muted">
                       {r.session ?? "—"}
                     </td>
                   </tr>
@@ -173,9 +173,9 @@ export default async function AdminAbandonment() {
 function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="rounded-card border border-line bg-card px-4 py-3">
-      <div className="text-xs uppercase text-faint">{label}</div>
+      <div className="text-xs uppercase text-muted">{label}</div>
       <div className="text-lg font-semibold text-ink">{value}</div>
-      {note && <div className="text-xs text-faint">{note}</div>}
+      {note && <div className="text-xs text-muted">{note}</div>}
     </div>
   );
 }

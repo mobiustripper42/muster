@@ -127,7 +127,7 @@ export default async function AdminVessels({
         {/* Header — breadcrumb, boat name, Save (mockup header.top). */}
         <header className="flex items-center gap-3">
           <div className="min-w-0">
-            <p className="text-xs text-faint">Setup / Vessels{selected || creating ? ` / ${title}` : ""}</p>
+            <p className="text-xs text-muted">Setup / Vessels{selected || creating ? ` / ${title}` : ""}</p>
             <h1 className="flex items-center gap-2 text-[22px] font-semibold leading-tight text-ink">
               {selected && (
                 <span
@@ -152,7 +152,7 @@ export default async function AdminVessels({
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
           <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
-            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">
+            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
               Vessels
             </p>
             {vessels.map((v) => (

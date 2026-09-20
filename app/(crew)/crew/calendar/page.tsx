@@ -154,7 +154,7 @@ function AddInstructions() {
           Account → Other → Add Subscribed Calendar → paste the link.
         </li>
       </ul>
-      <p className="mt-2 text-[11px] text-faint">
+      <p className="mt-2 text-[11px] text-muted">
         Your shifts show up right away when you first add the link. After that, a
         new or changed shift appears the next time your calendar app checks in —
         Apple refreshes as often as you set it; Google can take a few hours.

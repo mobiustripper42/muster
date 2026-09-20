@@ -48,6 +48,7 @@ export function AssignedCrew({ seats }: { seats: AllShiftsSeat[] }) {
       {filled.map((s, i) => (
         <span key={i} className="whitespace-nowrap">
           {i > 0 && (
+            // eslint-disable-next-line no-restricted-syntax -- aria-hidden `·` between two names: a separator, not text (#951). The names themselves are `text-muted` on the parent.
             <span aria-hidden="true" className="text-faint">
               ·{" "}
             </span>
@@ -59,6 +60,19 @@ export function AssignedCrew({ seats }: { seats: AllShiftsSeat[] }) {
     </span>
   );
 }
+
+/**
+ * The OPEN trainee pip. Hoisted out of the ternary below only so the disable can sit
+ * on a line of its own — a `//` comment between `?` and `:` inside a template literal
+ * is legal and reformats badly.
+ *
+ * It keeps `text-faint` on purpose (#951): the whole pip row is `aria-hidden` with an
+ * sr-only summary above it carrying the same per-role facts, so this `+` is decoration
+ * with a text equivalent. The doc comment at the top of this file is the design reason —
+ * a rider is not an obligation, and faint-dashed is the treatment that says so.
+ */
+// eslint-disable-next-line no-restricted-syntax -- decoration inside an aria-hidden wrapper; see above
+const OPEN_TRAINEE_PIP = "border-faint bg-card text-faint";
 
 export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
   if (seats.length === 0) return null;
@@ -95,7 +109,7 @@ export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
             className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border border-dashed text-[10px] font-bold ${
               s.filled
                 ? "border-faint bg-faint text-white"
-                : "border-faint bg-card text-faint"
+                : OPEN_TRAINEE_PIP
             }`}
           >
             +

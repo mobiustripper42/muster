@@ -93,7 +93,7 @@ export default async function AdminAddOns({
 
         <header className="flex items-center gap-3">
           <div className="min-w-0">
-            <p className="text-xs text-faint">
+            <p className="text-xs text-muted">
               Setup / Add-ons{selected || creating ? ` / ${title}` : ""}
             </p>
             <h1 className="truncate text-[22px] font-semibold leading-tight text-ink">{title}</h1>
@@ -112,7 +112,7 @@ export default async function AdminAddOns({
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
           <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
-            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">
+            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
               Add-ons
             </p>
             {addOns.map((a) => (
@@ -127,7 +127,7 @@ export default async function AdminAddOns({
                 <span className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate">{a.label}</span>
                   {!a.active && (
-                    <span className="shrink-0 text-[10px] uppercase tracking-wide text-faint">
+                    <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted">
                       Retired
                     </span>
                   )}
@@ -194,7 +194,7 @@ function AddOnCard({
 
         <Field label="Amount" sub="a flat charge, revenue">
           <span className="flex items-center gap-2">
-            <span className="text-xs text-faint">$</span>
+            <span className="text-xs text-muted">$</span>
             <input
               name="amount"
               required

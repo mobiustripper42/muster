@@ -102,7 +102,7 @@ export default async function AdminThread({
             required
             rows={2}
             placeholder="Message…"
-            className="w-full resize-none rounded-card border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-faint"
+            className="w-full resize-none rounded-card border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-muted"
           />
           <label className="flex items-center gap-2 text-sm text-muted">
             <input type="checkbox" name="priority" className="h-4 w-4" />

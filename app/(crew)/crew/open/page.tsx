@@ -385,10 +385,8 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
             </span>
             {tripCount && <span className="text-xs text-muted">{tripCount}</span>}
           </span>
-          <span
-            className="text-faint transition-transform group-open:rotate-90"
-            aria-hidden
-          >
+          {/* eslint-disable-next-line no-restricted-syntax -- aria-hidden caret: decoration, not text (#951). <summary> announces its own open/closed state. */}
+          <span aria-hidden className="text-faint transition-transform group-open:rotate-90">
             ›
           </span>
         </span>

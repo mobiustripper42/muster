@@ -366,7 +366,7 @@ export default async function ReservationDetailPage({
       <BackLink href={backHref}>Back to calendar</BackLink>
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Calendar / Reservation</p>
+        <p className="text-xs text-muted">Calendar / Reservation</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">{view.customerName}</h1>
       </header>
 

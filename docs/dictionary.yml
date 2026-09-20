@@ -192,3 +192,17 @@
 - term: CA
   says: a certificate authority root — the public half that proves a server is who it claims. Crunchy's is self-signed per team and committed at src/config/db-ssl.ts
   not: []
+
+# ── Contrast (DEC-178) ──────────────────────────────────────────────────────────
+#
+# Both were used unregistered in issue #951 before they were used here. Spelling either one out
+# at each use costs more than it explains: what a reader has to act on is the ratio, and the
+# ratio is always written beside the term.
+
+- term: WCAG
+  says: the web accessibility guidelines, the standard this project's colour and contrast rules are measured against
+  not: []
+
+- term: AA
+  says: the WCAG conformance level we hold to — in practice a 4.5:1 contrast ratio for body text and 3:1 for large text and controls
+  not: []

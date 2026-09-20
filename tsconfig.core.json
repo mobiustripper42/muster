@@ -1,18 +1,21 @@
 {
   // Domain-core profile (DEC-013): the stack-agnostic core under src/ stays
   // strict ESM / NodeNext with .js import extensions, framework-free. This is the
-  // config `npm run typecheck` uses and `tsconfig.build.json` extends. The Next
-  // app has its OWN config (root tsconfig.json) — the two never share a profile,
-  // which is how the core stays portable behind the Repository port (DEC-020).
+  // config `npm run typecheck` uses. The Next app has its OWN config (root
+  // tsconfig.json) — the two never share a profile, which is how the core stays
+  // portable behind the Repository port (DEC-020).
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
-    // No `outDir`. It said "dist" until 2026-09-19 and did nothing — `noEmit` wins — but
-    // it had already left 333 stale .js/.d.ts files there, the compiled remains of modules
-    // deleted months earlier. Two sessions spent time asking why there was still an outbox
-    // component; the answer was a build directory nobody emits to any more.
+    // Nothing here emits, and no profile extends this one to change that. `outDir` said
+    // "dist" until 2026-09-19, did nothing under `noEmit`, and had still managed to leave
+    // 333 stale .js/.d.ts files there — the compiled remains of modules deleted months
+    // earlier, which cost two rounds of "why is there still an outbox component".
+    // `tsconfig.build.json` and `build:core` went with it: private package, no `main` or
+    // `exports`, nothing imported dist/, nothing ran the script. An emit profile with no
+    // consumer only produces a directory to get confused by later.
     "noEmit": true,
 
     "strict": true,
@@ -21,8 +24,12 @@
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": true,
 
-    "declaration": true,
-    "sourceMap": true,
+    // `declaration` and `sourceMap` went with the emit profile — both are pure output
+    // options, both were inert the moment nothing emitted, and neither is reachable:
+    // tsconfig.db.json extends this file and inherits `noEmit: true`, tsconfig.json sets
+    // its own, and there is no `composite`/`references` graph to want declarations for.
+    // Left in place they are the same shape as the `outDir` above: settings that describe
+    // a build nobody runs, waiting to be read as if they meant something.
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,

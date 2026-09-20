@@ -1700,10 +1700,9 @@ Tips reach crew through the payroll report. **Crew cannot currently see the tip 
 — it exists only in the operator's report. Showing it to them is wanted and is a crew-app surface
 (§2.6), not part of this section.
 
-**No post-trip tipping — a removal, not a description.** Muster is not to collect a tip after the
-trip. It is used rarely and crew are tipped in cash or Venmo when it happens after the fact. **This is
-built today** (`create-gratuity-checkout.ts`, reached from the booking-management page) and retiring it
-is work this section is asking for, not a statement of what already runs. See 2.8.14.
+**No post-trip tipping.** Muster is not to collect a tip after the trip. It is used rarely and crew
+are tipped in cash or Venmo when it happens after the fact. This was built and was removed in 15.18;
+see 2.8.14 for what went and on what terms.
 
 **Nothing else is created at checkout.** A customer record, a booking code, and any confirmation
 message belong to confirm, not to the pending write. Anyone who can reach the checkout form can create
@@ -2128,8 +2127,16 @@ that offering, and belongs in 2.8.4a as a component rather than in a picker the 
 post-trip tip, it was copied for no reason beyond that, and it is used rarely — a customer who wants to
 tip after the fact hands over cash or sends Venmo. Written here as a decision rather than left as an
 absence, because the Xola shape is what everything in this subsystem drifts back toward when nobody is
-looking. **It ships today and has to be removed**; until it is, the decision and the code disagree and
-the decision is the one that is right.
+looking.
+
+**Removed in 15.18, and it may come back.** It was cut to trim scope rather than because it was
+wrong, and Xola does offer it — so this is a deferral, not a repudiation. What went: the hosted
+gratuity session (`create-gratuity-checkout.ts`), the tip control on `/b/<code>`, the webhook branch
+that recorded a `Gratuity{post}`, and the offering form's Post row. What stayed: `GratuityKind`'s
+`post` member, because it describes what a stored row may hold and an offering saved before 15.18 can
+still carry one — nothing reads or writes it now. Whoever restores this should know it was never
+exercised against a real payment, so it is a rebuild from a recorded starting point rather than a
+revert of something proven. The code is in the history of `task/15.18-remove-post-trip-tipping`.
 
 ### Acceptance criteria
 

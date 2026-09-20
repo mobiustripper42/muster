@@ -19,7 +19,7 @@ import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
 import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { SubmitButton } from "../../../components/ui/submit-button";
-import { addPostTip, requestBookingChange } from "./actions";
+import { requestBookingChange } from "./actions";
 import { loadBookingByCode } from "./load";
 import { reservationsEnabled } from "../../lib/flags";
 
@@ -265,28 +265,6 @@ export default async function ManagePage({
               <p className="text-[12.5px] text-muted">Your receipt will appear here once payment settles.</p>
             )}
           </Section>
-
-          {/* post-trip tip — offered both states (DEC-124 post kind); prominent after the trip */}
-          {!cancelled && view.postTipTiers.length > 0 && (
-            <Section title={phase === "completed" ? "Add a little more for your crew?" : "Add a tip for your crew"}>
-              <p className="mb-3 text-[12.5px] text-muted">100% goes to the crew running your boat.</p>
-              <form action={addPostTip} className="flex flex-wrap gap-2">
-                <input type="hidden" name="code" value={code} />
-                {view.postTipTiers.map((tier) => (
-                  <SubmitButton
-                    key={tier.bps}
-                    name="bps"
-                    value={String(tier.bps)}
-                    className="flex-1 rounded-[11px] border border-line bg-card px-3 py-2.5 text-center hover:border-accent"
-                    aria-label={`Add a ${tier.pct}% tip (${formatCents(tier.amountCents)})`}
-                  >
-                    <div className="text-[15px] font-bold">+{tier.pct}%</div>
-                    <div className="font-mono text-[12px] text-muted">{formatCents(tier.amountCents)}</div>
-                  </SubmitButton>
-                ))}
-              </form>
-            </Section>
-          )}
 
           {/* manage actions */}
           {!cancelled && (

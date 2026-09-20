@@ -16,7 +16,6 @@ import { asId } from "../domain/ids.js";
 import type { CheckoutCompleted, PaymentEvent } from "../ports/payment.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
 import { createDeparturePaymentIntent } from "./create-departure-payment-intent.js";
-import { createGratuityCheckout } from "./create-gratuity-checkout.js";
 import { eventIdForSlot } from "./availability.js";
 import { balanceOwedCents } from "./payment-config.js";
 
@@ -26,7 +25,6 @@ const DATE = "2026-07-04"; // Saturday
 const TIME = "13:30";
 const NOW = "2026-07-04T12:00:00.000Z";
 const now = () => NOW;
-const URLS = { successUrl: "https://x/s", cancelUrl: "https://x/c" };
 
 const vessel = (): Vessel => ({ id: BOAT, name: "Brew", coiMaxPax: 16, manning: [] });
 const offering = (over: Partial<Offering> = {}): Offering => ({
@@ -148,56 +146,33 @@ describe("pre-gratuity is recorded on booking (DEC-124)", () => {
   });
 });
 
-describe("post-trip gratuity (DEC-124)", () => {
-  it("createGratuityCheckout opens a tax-free gratuity session for a booked reservation", async () => {
+describe("post-trip gratuity is gone (15.18)", () => {
+  it("a gratuity session is no longer recorded — it is acked and flagged as an unknown purpose", async () => {
+    // **The feature is deleted, not disabled**, so nothing in Muster can mint one of these any
+    // more. A session arriving with `purpose: "gratuity"` is therefore something we did not
+    // create — a stale link from before the removal, or a hand-made session — and money has
+    // moved with nobody recording it. That is the unknown-purpose branch's whole job, and this
+    // falls into it by deleting the dispatch rather than by adding a case.
+    //
+    // Before 15.18 this wrote a `Gratuity{post}` and returned `gratuity_paid`.
     const repo = await seededRepo();
     const { resId } = await bookViaPi(repo);
-    const pay = new FakePaymentPort();
-    const r = await createGratuityCheckout(repo, pay, resId, 5000, URLS);
-    expect(r.ok).toBe(true);
-    expect(pay.created[0]).toMatchObject({ amountCents: 5000, taxCents: 0, metadata: { purpose: "gratuity" } });
-  });
-
-  it("rejects a non-positive amount and a missing/cancelled reservation", async () => {
-    const repo = await seededRepo();
-    const { resId } = await bookViaPi(repo);
-    expect(await createGratuityCheckout(repo, new FakePaymentPort(), resId, 0, URLS)).toEqual({ ok: false, reason: "invalid_amount" });
-    expect(await createGratuityCheckout(repo, new FakePaymentPort(), asId<"ReservationId">("nope"), 5000, URLS))
-      .toEqual({ ok: false, reason: "reservation_missing" });
-  });
-
-  it("the webhook records Gratuity{post} and NO Payment (would trip the overpay alert)", async () => {
-    const repo = await seededRepo();
-    const { resId } = await bookViaPi(repo);
-    const { deps } = makeDeps(repo);
-    const evId = eventIdForSlot(BOAT, DATE, TIME);
-    const before = (await repo.listPaymentsForReservation(resId)).length;
+    const { deps, alert } = makeDeps(repo);
 
     const completed: CheckoutCompleted = {
       sessionId: "cs_grat", paymentIntentId: "pi_grat", amountTotalCents: 5000, currency: "usd",
       metadata: { purpose: "gratuity", reservationId: String(resId), taxCents: "0" },
     };
     const r = await processBookingWebhook(deps, JSON.stringify(completed), FAKE_SIGNATURE);
-    expect(r).toEqual({ handled: true, outcome: "gratuity_paid" });
 
-    const posts = (await repo.listGratuitiesForEvent(evId)).filter((g) => g.kind === "post");
-    expect(posts).toHaveLength(1);
-    expect(posts[0]!.amountCents).toBe(5000);
-    // NO new Payment row — gratuity-only
-    expect(await repo.listPaymentsForReservation(resId)).toHaveLength(before);
-  });
-
-  it("post gratuity for a missing reservation is flagged for manual reconcile", async () => {
-    const repo = await seededRepo();
-    const { deps, alert } = makeDeps(repo);
-    const completed: CheckoutCompleted = {
-      sessionId: "cs_x", amountTotalCents: 5000, currency: "usd",
-      metadata: { purpose: "gratuity", reservationId: "does-not-exist", taxCents: "0" },
-    };
-    const r = await processBookingWebhook(deps, JSON.stringify(completed), FAKE_SIGNATURE);
-    expect(r).toEqual({ handled: true, outcome: "gratuity_paid" });
+    expect(r).toEqual({ handled: true, outcome: "ignored" });
+    // The BOOKING-time gratuity is untouched and still on the row — the two share a word and are
+    // not the same feature, which is the whole risk in a deletion this shaped.
+    const all = await repo.listAllGratuities();
+    expect(all.map((g) => g.kind)).toEqual(["pre"]);
+    // Loud, because money moved and nothing here accounted for it.
     expect(alert).toHaveBeenCalledOnce();
-    expect(await repo.listAllGratuities()).toHaveLength(0);
+    expect(String(alert.mock.calls[0]![0])).toMatch(/unknown purpose/);
   });
 });
 

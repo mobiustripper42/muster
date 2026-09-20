@@ -8,7 +8,6 @@ import type { Event, Offering, Reservation, Vessel } from "../domain/entities.js
 import { asId } from "../domain/ids.js";
 import {
   buildManageView,
-  postTipTiersFor,
   tripPhaseOf,
   type ManageViewInput,
 } from "./manage-view.js";
@@ -73,24 +72,6 @@ describe("tripPhaseOf", () => {
   });
 });
 
-describe("postTipTiersFor", () => {
-  it("prices the default post tiers (15/20/25%) off the fare", () => {
-    const tiers = postTipTiersFor(undefined, 54900);
-    expect(tiers.map((t) => t.pct)).toEqual([15, 20, 25]);
-    expect(tiers.map((t) => t.amountCents)).toEqual([8235, 10980, 13725]);
-  });
-  it("honors an offering that disables the post kind", () => {
-    const offering = { gratuityKinds: [{ kind: "pre" as const, tiersBps: [2000], defaultBps: 2000, required: true }] };
-    expect(postTipTiersFor(offering, 54900)).toEqual([]);
-  });
-  it("uses the offering's own post tiers when set", () => {
-    const offering = {
-      gratuityKinds: [{ kind: "post" as const, tiersBps: [500, 1000], defaultBps: 500, required: false }],
-    };
-    expect(postTipTiersFor(offering, 54900).map((t) => t.pct)).toEqual([5, 10]);
-  });
-});
-
 describe("buildManageView", () => {
   it("flips phase, computes back-by / arrive-by, and carries the money through", () => {
     const v = buildManageView(input());
@@ -99,7 +80,6 @@ describe("buildManageView", () => {
     expect(v.timing.backByLabel).toBe("3:10 PM"); // 13:30 + 1h40m
     expect(v.timing.arriveByLabel).toBe("1:15 PM"); // 13:30 − 15m
     expect(v.detail.money.fareCents).toBe(54900);
-    expect(v.postTipTiers).toHaveLength(3);
   });
   it("omits back-by / arrive-by when the offering leaves the timings unset", () => {
     const bare = { id: asId<"OfferingId">("off-1"), name: "Bare" } as Offering;

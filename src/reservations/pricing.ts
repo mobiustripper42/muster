@@ -61,11 +61,14 @@ export const GRATUITY_TIERS_DEFAULT = [1500, 2000, 2500];
 /** Default pre-selected tier (20%). */
 export const GRATUITY_DEFAULT_BPS = 2000;
 
-/** The per-kind defaults an offering with no `gratuityKinds` rides (12.8, DEC-124): pre
- *  required at checkout, post optional via the booking link, both on the standard tiers. */
+/** The per-kind defaults an offering with no `gratuityKinds` rides (12.8, DEC-124): pre, required
+ *  at checkout, on the standard tiers.
+ *
+ *  **`post` was here and went with post-trip tipping (15.18).** The kind survives on
+ *  `GratuityKind` because it describes what a stored row may hold, and 12.8-era offerings can
+ *  still carry a post config — nothing reads it now, and nothing writes a new one. */
 export const GRATUITY_KINDS_DEFAULT: readonly GratuityKindConfig[] = [
   { kind: "pre", tiersBps: GRATUITY_TIERS_DEFAULT, defaultBps: GRATUITY_DEFAULT_BPS, required: true },
-  { kind: "post", tiersBps: GRATUITY_TIERS_DEFAULT, defaultBps: GRATUITY_DEFAULT_BPS, required: false },
 ];
 
 /** Gratuity in cents = `bps` of the (tip-free) fare, rounded half-up. Pure. */

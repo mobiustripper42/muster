@@ -72,10 +72,11 @@ describe("gratuity tiers (DEC-124)", () => {
     expect(GRATUITY_DEFAULT_BPS).toBe(2000);
   });
 
-  it("gratuityKindsFor defaults to pre-required + post-optional on the standard tiers", () => {
+  it("gratuityKindsFor defaults to pre only, required, on the standard tiers (15.18)", () => {
+    // `post` was a second default until 15.18 removed post-trip tipping. The KIND still exists on
+    // `GratuityKind` because a stored offering may carry one; nothing defaults or writes it now.
     expect(gratuityKindsFor({})).toEqual([
       { kind: "pre", tiersBps: [1500, 2000, 2500], defaultBps: 2000, required: true },
-      { kind: "post", tiersBps: [1500, 2000, 2500], defaultBps: 2000, required: false },
     ]);
     const custom = [{ kind: "pre" as const, tiersBps: [1000], defaultBps: 1000, required: true }];
     expect(gratuityKindsFor({ gratuityKinds: custom })).toEqual(custom);

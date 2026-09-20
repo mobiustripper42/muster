@@ -110,10 +110,12 @@ export async function saveOffering(formData: FormData): Promise<void> {
   }
 
   // ── Gratuity (per kind) + add-ons ──
-  const gratuityKinds = [
-    gratuityKindFromForm(formData, "pre"),
-    gratuityKindFromForm(formData, "post"),
-  ].filter((k): k is GratuityKindConfig => k !== null);
+  // `post` is not collected since 15.18 removed post-trip tipping. An offering saved from this
+  // form therefore drops any post config it was carrying, which is the intent — there is nothing
+  // left that could charge it.
+  const gratuityKinds = [gratuityKindFromForm(formData, "pre")].filter(
+    (k): k is GratuityKindConfig => k !== null,
+  );
 
   // Add-ons are first-class now (#491) — the offering attaches existing ones by id, exactly
   // like vesselIds. The checkbox group posts each checked add-on's id.

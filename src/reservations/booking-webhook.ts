@@ -302,7 +302,6 @@ async function routeVerifiedEvent(
   // it must NEVER reach the booking path (no eventId → an orphan reservation).
   const purpose = completed.metadata.purpose;
   if (purpose === "balance") return recordBalancePayment(deps, completed);
-  if (purpose === "gratuity") return recordPostGratuity(deps, completed);
   if (purpose !== undefined && purpose !== "booking") {
     await deps.alertPaidButUnbooked(
       `Stripe checkout with unknown purpose="${purpose}" - session ${completed.sessionId}. ` +
@@ -1108,37 +1107,6 @@ async function recordDispute(
             `${dispute.state === "lost" ? ". This is final." : ". RESPOND IN STRIPE."}`,
   );
   return { handled: true, outcome: "dispute_recorded" };
-}
-
-/**
- * Record a POST-trip gratuity (12.3, DEC-124) against an already-booked reservation — its own
- * `purpose:"gratuity"` Stripe session (mirrors the balance flow). **Writes NO `Payment`** — a
- * Payment would inflate the "paid" sum and drive `balanceOwedCents` negative → a false overpay
- * alert. Gratuity-only, keyed to the reservation's event pool. Idempotent on the session.
- */
-async function recordPostGratuity(
-  deps: WebhookDeps,
-  completed: CheckoutCompleted,
-): Promise<WebhookResult> {
-  const reservationId = asId<"ReservationId">(completed.metadata.reservationId ?? "");
-  const reservation = await deps.repo.getReservation(reservationId);
-  if (!reservation || reservation.source !== "muster" || !isBooked(reservation)) {
-    await deps.alertPaidButUnbooked(
-      `Post-trip gratuity paid for reservation ${reservationId}, but it is missing/cancelled - ` +
-        `Stripe session ${completed.sessionId}. RECONCILE MANUALLY (gratuity received, not attached).`,
-    );
-    return { handled: true, outcome: "gratuity_paid" };
-  }
-  await deps.repo.saveGratuity({
-    id: asId<"GratuityId">(`grat_post_${completed.sessionId}`),
-    eventId: eventIdOfBooked(reservation), // guarded `booked` above
-    reservationId,
-    kind: "post",
-    amountCents: completed.amountTotalCents,
-    stripeCheckoutSessionId: completed.sessionId,
-    createdAt: deps.now(),
-  });
-  return { handled: true, outcome: "gratuity_paid" };
 }
 
 /**

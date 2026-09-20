@@ -354,7 +354,7 @@ export async function ShiftCockpit({
             said in one line. `view.seats` is required seats only (incl. added
             required hands), exactly the set that gates. */}
         {seatVMs.length > 0 && (
-          <p className="text-xs text-faint">
+          <p className="text-xs text-muted">
             {seatVMs.filter((s) => s.state === "Confirmed").length}/
             {seatVMs.length} required seats confirmed
             {seatVMs.every((s) => s.state === "Confirmed")

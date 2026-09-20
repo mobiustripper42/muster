@@ -110,6 +110,84 @@ const CLOCK_SELECTOR = {
     'Pass an explicit timeZone (DEC-032): `TENANT_TIMEZONE` for an event-derived instant, `"UTC"` for a date-only label parsed as `<iso>T00:00:00Z`. Without one this renders the server\'s zone on the server and the viewer\'s in a client island, and the two disagree by hours.',
 };
 
+const FAINT_MESSAGE =
+  "`text-faint` is not a text colour (#951). `--color-faint` measures 2.36:1 on the page background and 2.66:1 on a card — it fails AA's 4.5:1 for body text AND the 3:1 floor for large text, so no size or weight rescues it. Use `text-muted` (5.18:1 / 5.83:1). `faint` survives as a NON-text token: borders, rules, and `aria-hidden` decoration. `disabled:text-faint` is not flagged — WCAG 1.4.3 exempts an inactive control. For an `aria-hidden` glyph, add an eslint-disable-next-line no-restricted-syntax saying so.";
+
+/**
+ * The token ratchet (#951). **Two selectors because a className is written two ways.**
+ *
+ * Half this repo's conditional styling is a template literal — `` `${base} text-faint
+ * line-through` `` — and a `Literal`-only selector reads as complete while missing every
+ * one of them. The sweep found 145 uses across 41 files and 12 were inside template
+ * literals, so a one-selector rule would have shipped looking like enforcement and left
+ * a working escape hatch in the idiom people reach for when the styling is conditional.
+ *
+ * **Why a lint rule at all, when the sweep already removed them.** Because the sweep does
+ * not hold. `text-faint` is the obvious class for "quieter than muted", nothing about it
+ * announces that it fails contrast, and I reached for it in NEW code in PR #1032 with this
+ * issue already open and the numbers already measured. That is the median gap this repo
+ * keeps re-learning: a convention nobody can see is a convention that comes back.
+ *
+ * The `disabled:` lookbehind is the one carve-out, and it is WCAG's, not a preference —
+ * 1.4.3 exempts text that is part of an inactive user interface component. `placeholder:`
+ * is deliberately NOT carved out: a placeholder is read by the person deciding what to
+ * type, which is the definition of text.
+ */
+const FAINT_TEXT_SELECTORS = [
+  { selector: "Literal[value=/(?<!disabled:)\\btext-faint\\b/]", message: FAINT_MESSAGE },
+  { selector: "TemplateElement[value.cooked=/(?<!disabled:)\\btext-faint\\b/]", message: FAINT_MESSAGE },
+];
+
+const RAW_SUBMIT_SELECTOR = {
+  selector: "JSXAttribute[name.name='type'][value.value='submit']",
+  message:
+    'Use <SubmitButton> (server-action forms) or <GetFormSubmit> (GET filter forms) instead of a raw <button type="submit"> so it shows an in-flight spinner (DEC-090). For a genuine exception, add an eslint-disable-next-line no-restricted-syntax with a reason.',
+};
+
+const APP_CATCH_SELECTOR = {
+  // CEILING (DEC-159 rule 5): this reaches `app/**` + `components/**`. `src/**` gets the
+  // same ban from its own block below, via `src/log.ts` (#902 closed that gap). **`db/**`
+  // is still uncovered and that is deliberate** — those are scripts run at a terminal where
+  // an unhandled throw is already on screen, so the invisibility this ban exists to fix does
+  // not apply. Recorded rather than left to be rediscovered as debt.
+  selector: "CatchClause[param=null]",
+  message:
+    "Bind the error and log it — `catch (e) { logSwallowed('<surface>', e); … }` from app/lib/swallowed (#854). A bare `catch {}` is the only place that knows why something failed, and it discards it: an unapplied migration rendered a calm 'try again in a moment' with an empty server log, and recovering the cause took a throwaway script. For a genuine NON-fault — malformed user input, a clipboard rejection — add an eslint-disable-next-line no-restricted-syntax saying which.",
+};
+
+const REDIRECT_IN_TRY_SELECTOR = {
+  // `redirect()` works by THROWING (Next's `NEXT_REDIRECT`), so a `try` that wraps it eats
+  // the navigation. Since #854 and #902 the catch does not merely swallow it — it calls
+  // `logSwallowed`, so the failure mode is now a user who does not navigate AND a fabricated
+  // error in the log, reported through the very mechanism added to make real failures visible.
+  //
+  // Scoped to the try BLOCK by field, not by child position: `redirect()` in a `catch` is the
+  // correct idiom and there are 15 of them in `app/` today. A selector that banned those
+  // would ban the right thing.
+  selector: "TryStatement > .block CallExpression[callee.name='redirect']",
+  message:
+    "Move `redirect()` outside the try. It navigates by throwing, so a catch swallows the navigation and then logs the control-flow throw as if it were a fault. `redirect()` in a CATCH block is fine and is not flagged.",
+};
+
+/**
+ * Everything `no-restricted-syntax` bans across `app/**` and `components/**`.
+ *
+ * **One array, so a narrowing block subtracts instead of rebuilding** (#951). Before this,
+ * three blocks each restated the list and a fourth switched the whole rule off; the count of
+ * what was being switched off lived in a hand-maintained comment that went stale at #904 and
+ * again here. `@code-review` caught the second one: adding the token ban to the shared list
+ * did not add it to `components/ui/*`, which opt out of the rule entirely — so the ratchet
+ * written to stop #951 recurring was absent from four of the files most likely to grow a
+ * new one. A `.filter()` naming the single exemption cannot drift that way.
+ */
+const APP_SELECTORS = [
+  RAW_SUBMIT_SELECTOR,
+  APP_CATCH_SELECTOR,
+  REDIRECT_IN_TRY_SELECTOR,
+  CLOCK_SELECTOR,
+  ...FAINT_TEXT_SELECTORS,
+];
+
 const OFF = {
   // --- playwright (e2e/ only) ---
   // 105 findings across 8 spec files, and OFF for the same reason as the playwright block
@@ -453,6 +531,12 @@ export default tseslint.config(
     // names read out of `pg_tables` and quoted. No outside input reaches any of them.
     // It stays live in `src/` and `app/` production code, where a real one would be.
     //
+    // **A 15th site landed at #1031** — `src/adapters/test-database.ts`, interpolating a
+    // database name into `create database`, which is an identifier and so cannot be a
+    // bound parameter. It carries its own `eslint-disable` with the reasoning at the line,
+    // rather than widening this exclusion: the rule firing there is correct, and the
+    // argument for suppressing it is specific to that one statement.
+    //
     // `no-clear-text-protocols` fired 12×, all `http://mill-dev:3000` (the operator's
     // documented Tailscale dev host) or test fixtures. One survives in `app/` and
     // carries an inline disable: `new URL(path, "http://local")` in
@@ -493,40 +577,7 @@ export default tseslint.config(
           ],
         },
       ],
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector: "JSXAttribute[name.name='type'][value.value='submit']",
-          message:
-            'Use <SubmitButton> (server-action forms) or <GetFormSubmit> (GET filter forms) instead of a raw <button type="submit"> so it shows an in-flight spinner (DEC-090). For a genuine exception, add an eslint-disable-next-line no-restricted-syntax with a reason.',
-        },
-        {
-          selector: "CatchClause[param=null]",
-          message:
-            "Bind the error and log it — `catch (e) { logSwallowed('<surface>', e); … }` from app/lib/swallowed (#854). A bare `catch {}` is the only place that knows why something failed, and it discards it: an unapplied migration rendered a calm 'try again in a moment' with an empty server log, and recovering the cause took a throwaway script. For a genuine NON-fault — malformed user input, a clipboard rejection — add an eslint-disable-next-line no-restricted-syntax saying which.",
-        },
-        // CEILING of the catch ban above (DEC-159 rule 5): this block is `app/**` +
-        // `components/**`. `src/**` gets the same ban from its own block below, via
-        // `src/log.ts` (#902 closed that gap). **`db/**` is still uncovered and that
-        // is deliberate** — those are scripts run at a terminal where an unhandled
-        // throw is already on screen, so the invisibility this ban exists to fix does
-        // not apply. Recorded rather than left to be rediscovered as debt.
-        {
-          // `redirect()` works by THROWING (Next's `NEXT_REDIRECT`), so a `try` that
-          // wraps it eats the navigation. Since #854 and #902 the catch does not merely
-          // swallow it — it calls `logSwallowed`, so the failure mode is now a user who
-          // does not navigate AND a fabricated error in the log, reported through the
-          // very mechanism added to make real failures visible.
-          //
-          // Scoped to the try BLOCK by field, not by child position: `redirect()` in a
-          // `catch` is the correct idiom and there are 15 of them in `app/` today. A
-          // selector that banned those would ban the right thing.
-          selector: "TryStatement > .block CallExpression[callee.name='redirect']",
-          message:
-            "Move `redirect()` outside the try. It navigates by throwing, so a catch swallows the navigation and then logs the control-flow throw as if it were a fault. `redirect()` in a CATCH block is fine and is not flagged.",
-        },
-        CLOCK_SELECTOR,
-      ],
+      "no-restricted-syntax": ["error", ...APP_SELECTORS],
     },
   },
   {
@@ -610,22 +661,23 @@ export default tseslint.config(
     rules: { "no-restricted-syntax": "off" },
   },
   {
-    // The wrappers legitimately use the raw primitives they encapsulate.
+    // The wrappers legitimately use the raw primitives they encapsulate — and they need
+    // exempting from THAT ban and nothing else.
     //
-    // `no-restricted-syntax: "off"` is BLUNTER than it reads, and it gets blunter every
-    // time a selector is added to the block it shadows. That key now carries FOUR:
-    // the raw-submit-button ban these files need exempting from, plus the bare-`catch {}`
-    // ban (#854), the `redirect()`-in-try ban and the clock rule (#904), none of which
-    // they need exempting from. Switching it off drops all four.
+    // This block used to say `"no-restricted-syntax": "off"`, which is blunter than it
+    // reads: it dropped the bare-`catch {}` ban (#854), the `redirect()`-in-try ban, the
+    // clock rule (#904) and then #951's token ban too, all of which these files want. The
+    // old comment tracked the count by hand and went stale twice — at #904, and again the
+    // moment #951 spread two more selectors into the shared list. `@code-review` caught the
+    // second one: the ratchet written to stop `text-faint` coming back was absent from four
+    // `components/ui` primitives, which are exactly where a new one would be written.
     //
-    // **The count in this comment was two until #904 and nothing updated it** — the same
-    // silent-widening this config's own composition note was written to prevent, missed on
-    // a pre-existing block rather than a new one. If you add a selector to the `app/**` +
-    // `components/**` block, this number changes.
+    // So: subtract the one selector, keep the rest. Adding a selector to APP_SELECTORS now
+    // reaches these files automatically, and no comment has to be updated to stay true.
     //
-    // Verified empty today: the four files below contain no `catch`, no `redirect()` and no
-    // `toLocale*String`. If one ever grows any of them it will pass lint in silence. Narrow
-    // this to per-line disables if that day comes.
+    // A previous sibling block did the same thing for `components/outbox/outbox-card.tsx`.
+    // That directory no longer exists (PR #943 deleted the outbox) and the block went with
+    // it — flat config matches globs against files, so it had been dead for weeks in silence.
     files: [
       "components/ui/app-link.tsx",
       "components/ui/nav-spinner.tsx",
@@ -634,18 +686,8 @@ export default tseslint.config(
     ],
     rules: {
       "no-restricted-imports": "off",
-      "no-restricted-syntax": "off",
+      "no-restricted-syntax": ["error", ...APP_SELECTORS.filter((s) => s !== RAW_SUBMIT_SELECTOR)],
     },
-  },
-  {
-    // Outbox cards (Send / Dismiss / In-Out relay) own their OWN optimistic
-    // feedback — "Sent ✓" / "Copied ✓" via the RelaySend / CopyButton islands
-    // (DEC-089 exclusion). They deliberately don't use <SubmitButton>.
-    // Same bluntness caveat as the block above, and the same four selectors: this also
-    // switches off the #854 bare-catch ban, the `redirect()`-in-try ban and the clock rule
-    // for this file. Verified empty of all three today.
-    files: ["components/outbox/outbox-card.tsx"],
-    rules: { "no-restricted-syntax": "off" },
   },
   {
     // The framework-free domain core, and the scripts that drive it (#757).
@@ -819,9 +861,9 @@ export default tseslint.config(
     // ── A server action returns its errors, it does not throw (#904) ──────────
     //
     // `app/**/actions.ts` is a SUBSET of the `app/**` block above, so this block would
-    // replace that block's four selectors for every actions file. It spreads them back
-    // in explicitly. That is the shape every narrowing block has to take here — see
-    // CLOCK_SELECTOR's note for the PR where forgetting it switched off #854's ban.
+    // replace that block's selectors for every actions file. It ADDS to them instead of
+    // restating them — the shape every narrowing block here takes since #951; see
+    // APP_SELECTORS for the two times a hand-maintained restatement went stale.
     //
     // 0 findings, and the weakest of #904's four: a convention with no bug behind it.
     // It is here because it costs nothing, and because "prose conventions are not finding
@@ -830,22 +872,7 @@ export default tseslint.config(
     rules: {
       "no-restricted-syntax": [
         "error",
-        {
-          selector: "JSXAttribute[name.name='type'][value.value='submit']",
-          message:
-            'Use <SubmitButton> (server-action forms) or <GetFormSubmit> (GET filter forms) instead of a raw <button type="submit"> so it shows an in-flight spinner (DEC-090). For a genuine exception, add an eslint-disable-next-line no-restricted-syntax with a reason.',
-        },
-        {
-          selector: "CatchClause[param=null]",
-          message:
-            "Bind the error and log it — `catch (e) { logSwallowed('<surface>', e); … }` from app/lib/swallowed (#854). A bare `catch {}` is the only place that knows why something failed, and it discards it. For a genuine NON-fault — malformed user input, a clipboard rejection — add an eslint-disable-next-line no-restricted-syntax saying which.",
-        },
-        {
-          selector: "TryStatement > .block CallExpression[callee.name='redirect']",
-          message:
-            "Move `redirect()` outside the try. It navigates by throwing, so a catch swallows the navigation and then logs the control-flow throw as if it were a fault. `redirect()` in a CATCH block is fine and is not flagged.",
-        },
-        CLOCK_SELECTOR,
+        ...APP_SELECTORS,
         {
           selector: "ThrowStatement",
           message:

@@ -25,6 +25,19 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { settingsInputClass } from "../../../../components/admin/settings-field";
 import { startElementsCheckout } from "./actions";
 
+/**
+ * The gift-card / discount row, rendered inert until that feature exists. Hoisted so the
+ * disable has a line of its own: `className` sits inside a JSX opening tag under
+ * `aria-disabled`, where a comment cannot go.
+ *
+ * `text-faint` is correct here (#951) — WCAG 1.4.3 exempts text that is part of an
+ * inactive user interface component, and the dimming plus the dashed border is what tells
+ * a customer this is not something they can use yet.
+ */
+const INERT_PROMO_ROW =
+  // eslint-disable-next-line no-restricted-syntax -- inactive control, WCAG 1.4.3; see above
+  "flex cursor-not-allowed items-center justify-between rounded-xl border border-dashed border-line px-3.5 py-3 text-[13px] text-faint";
+
 /** Local mirror of `formatCents` — inlined so the client bundle stays tiny (book-controls idiom). */
 function money(cents: number): string {
   const abs = Math.abs(cents);
@@ -220,7 +233,7 @@ function InnerForm(p: InnerProps) {
       <div className="px-[18px]">
         {/* CONTACT */}
         <div className="pt-4">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-faint">
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">
             Who&rsquo;s booking?
           </div>
           {/* Helper text sits under the field it describes, not under the group (#679). Email is
@@ -245,7 +258,7 @@ function InnerForm(p: InnerProps) {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
               />
-              <div className="mt-1 text-xs text-faint">
+              <div className="mt-1 text-xs text-muted">
                 We&rsquo;ll text you your booking link and trip updates.
               </div>
             </div>
@@ -258,7 +271,7 @@ function InnerForm(p: InnerProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
-              <div className="mt-1 text-xs text-faint">
+              <div className="mt-1 text-xs text-muted">
                 Add an email if you want a copy of the receipt.
               </div>
             </div>
@@ -267,7 +280,7 @@ function InnerForm(p: InnerProps) {
 
         {/* TIP — required, no decline (DEC-124) */}
         <div className="pt-5">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-faint">
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">
             Tip your crew <span className="font-normal normal-case text-muted">· required</span>
           </div>
           <div className="grid grid-cols-3 gap-2">
@@ -285,7 +298,7 @@ function InnerForm(p: InnerProps) {
                 }`}
               >
                 <span className="block text-[17px] font-bold">{t.bps / 100}%</span>
-                <span className="block font-mono text-xs text-faint">{money(t.tipCents)}</span>
+                <span className="block font-mono text-xs text-muted">{money(t.tipCents)}</span>
               </button>
             ))}
           </div>
@@ -302,7 +315,7 @@ function InnerForm(p: InnerProps) {
 
         {/* CARD */}
         <div className="pt-5">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Payment</div>
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Payment</div>
           {p.inElements ? (
             /* #679. Mounted bare, the Element collected its own name and phone — and Stripe's
                rule is that "details collected by Elements will override values passed here", so
@@ -336,10 +349,7 @@ function InnerForm(p: InnerProps) {
 
         {/* gift card / discount — future, rendered inert */}
         <div className="pt-4">
-          <div
-            aria-disabled="true"
-            className="flex cursor-not-allowed items-center justify-between rounded-xl border border-dashed border-line px-3.5 py-3 text-[13px] text-faint"
-          >
+          <div aria-disabled="true" className={INERT_PROMO_ROW}>
             <span>Apply gift card or discount code</span>
             <span className="text-[11px] uppercase tracking-wide">Coming soon</span>
           </div>
@@ -368,7 +378,7 @@ function InnerForm(p: InnerProps) {
 
         {/* SUMMARY */}
         <div className="pt-5">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Summary</div>
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Summary</div>
           <div className="border-t border-line pt-2 text-[13.5px]">
             <SummaryRow
               label={`Fare — up to ${p.money.includedGuests} guests`}
@@ -408,7 +418,7 @@ function InnerForm(p: InnerProps) {
                   <span>Due now</span>
                   <span className="font-mono">{money(p.dueNowCents)}</span>
                 </div>
-                <div className="flex justify-between py-1 text-faint">
+                <div className="flex justify-between py-1 text-muted">
                   {/* Not "charged" — nothing collects this automatically (#617; #712 is the
                       unbuilt auto-collect). Promising it at the point of sale is the worst
                       place to promise it. */}
@@ -428,7 +438,7 @@ function InnerForm(p: InnerProps) {
           {/* text-muted, not text-faint: this is the term the customer is agreeing to by
               paying, and it should not be the quietest thing on the screen. */}
           <p className="text-muted" data-testid="cancellation-terms">{p.cancellationTerms}</p>
-          <p className="pt-2 text-faint">
+          <p className="pt-2 text-muted">
             After you book, your confirmation includes a private booking link to view or manage
             your reservation. Questions? Message us from that link any time.
           </p>
@@ -446,12 +456,12 @@ function InnerForm(p: InnerProps) {
       {/* sticky pay bar — pinned inside the card's scroll region (book-controls idiom) */}
       <div className="sticky bottom-0 z-10 flex items-center gap-3.5 border-t border-line bg-card px-4 py-3">
         <div className="flex flex-col">
-          <span className="text-[10.5px] text-faint">{p.money.depositMode ? "Due now" : "Total"}</span>
+          <span className="text-[10.5px] text-muted">{p.money.depositMode ? "Due now" : "Total"}</span>
           <b className="text-[18px] font-bold tabular-nums" data-testid="due-now">
             {money(p.dueNowCents)}
           </b>
           {p.money.depositMode && (
-            <span className="text-[10.5px] text-faint">{money(totalCents)} total</span>
+            <span className="text-[10.5px] text-muted">{money(totalCents)} total</span>
           )}
         </div>
         {/* Genuine DEC-090 exception: this form submits via a client onSubmit

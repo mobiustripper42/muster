@@ -318,10 +318,10 @@ export default async function ManagePage({
                 </summary>
                 <RequestForm code={code} kind="cancel" placeholder="Anything we should know? (optional)" />
               </details>
-              <p className="pt-2 text-[11.5px] text-faint" data-testid="cancellation-terms">
+              <p className="pt-2 text-[11.5px] text-muted" data-testid="cancellation-terms">
                 {CANCELLATION_TERMS}
               </p>
-              <p className="pt-2 text-[11.5px] text-faint">
+              <p className="pt-2 text-[11.5px] text-muted">
                 Cancellations and changes are handled by our team — we’ll confirm by text or email.
               </p>
             </Section>
@@ -336,7 +336,11 @@ export default async function ManagePage({
                     <span>
                       {formatShortDay(p.date)} · {formatClock(p.time)}
                     </span>
-                    <span className={`text-[12px] font-semibold ${p.status === "cancelled" ? "text-faint" : "text-muted"}`}>
+                    {/* The ternary here used to be `text-faint` for cancelled, `text-muted`
+                        otherwise. #951 moved both to `text-muted` and `sonarjs` then pointed
+                        out the branch was doing nothing — which it wasn't, really, even
+                        before: the next line already writes the word "Cancelled". */}
+                    <span className="text-[12px] font-semibold text-muted">
                       {p.status === "cancelled" ? "Cancelled" : "Trip"}
                       {p.href ? " ›" : ""}
                     </span>
@@ -366,7 +370,7 @@ export default async function ManagePage({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mb-5 last:mb-0">
-      <h2 className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-faint">{title}</h2>
+      <h2 className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">{title}</h2>
       {children}
     </section>
   );
@@ -403,7 +407,7 @@ function RequestForm({ code, kind, placeholder }: { code: string; kind: "cancel"
         rows={2}
         maxLength={500}
         placeholder={placeholder}
-        className="w-full rounded-[10px] border border-line bg-bg px-3 py-2 text-[13px] text-ink placeholder:text-faint"
+        className="w-full rounded-[10px] border border-line bg-bg px-3 py-2 text-[13px] text-ink placeholder:text-muted"
       />
       <SubmitButton
         className={`self-start rounded-[10px] px-4 py-2 text-[13px] font-semibold text-white ${kind === "cancel" ? "bg-bad" : "bg-accent"}`}

@@ -90,7 +90,7 @@ export default async function AdminLocations({
 
         <header className="flex items-center gap-3">
           <div className="min-w-0">
-            <p className="text-xs text-faint">
+            <p className="text-xs text-muted">
               Setup / Locations{selected || creating ? ` / ${title}` : ""}
             </p>
             <h1 className="truncate text-[22px] font-semibold leading-tight text-ink">{title}</h1>
@@ -109,7 +109,7 @@ export default async function AdminLocations({
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
           <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
-            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">
+            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
               Locations
             </p>
             {locations.map((l) => {
@@ -125,7 +125,7 @@ export default async function AdminLocations({
                 >
                   <span className="flex flex-col">
                     <span className="truncate">{l.name}</span>
-                    <span className="text-xs text-faint">
+                    <span className="text-xs text-muted">
                       {used} {used === 1 ? "offering" : "offerings"}
                     </span>
                   </span>

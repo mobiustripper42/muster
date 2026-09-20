@@ -34,7 +34,7 @@ export function Field({
     >
       <span className={`text-sm text-muted ${align === "start" ? "sm:pt-2" : ""}`}>
         {label}
-        {sub && <span className="block text-xs text-faint">{sub}</span>}
+        {sub && <span className="block text-xs text-muted">{sub}</span>}
       </span>
       <div>{children}</div>
     </div>

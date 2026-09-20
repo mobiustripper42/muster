@@ -93,7 +93,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
       <input type="hidden" name="priceVariations" value={JSON.stringify(rows.map((r) => r.row))} />
 
       {rows.length > 0 && (
-        <p className="text-xs text-faint">
+        <p className="text-xs text-muted">
           First match wins, top to bottom — variations never stack. The order is the rule. Use a
           minus for a discount (−50 or −20%).
         </p>
@@ -111,7 +111,10 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
             }}
             className="flex flex-wrap items-center gap-2 rounded-card border border-line bg-bg/50 p-2"
           >
-            <span className="cursor-grab select-none font-mono text-xs text-faint" aria-hidden>
+            {/* `text-muted`, not `text-faint` (#951): the ⠿ is decoration but the index
+                beside it is not — it is how a sighted operator reads the ordering they
+                are about to drag, and `aria-hidden` does not make it unread. */}
+            <span className="cursor-grab select-none font-mono text-xs text-muted" aria-hidden>
               ⠿ {i + 1}
             </span>
             <input
@@ -199,7 +202,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                   }
                   className={inputClass}
                 />
-                <span className="text-xs text-faint">to</span>
+                <span className="text-xs text-muted">to</span>
                 <input
                   type="date"
                   aria-label={`Variation ${i + 1} range end`}

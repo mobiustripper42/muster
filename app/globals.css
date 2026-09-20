@@ -17,9 +17,29 @@
   --color-bg: #eef2f6;
   --color-card: #ffffff;
   --color-ink: #101826;
-  --color-muted: #5b6675;
+  --color-muted: #5b6675; /* 5.18:1 on --color-bg, 5.83:1 on --color-card — the quiet TEXT tone */
+  /*
+   * NOT A TEXT COLOUR (#951). 2.36:1 on --color-bg and 2.66:1 on --color-card: it fails
+   * AA's 4.5:1 for body text and also the 3:1 floor for large text, so no size or weight
+   * rescues it. Anything a person is expected to READ uses --color-muted.
+   *
+   * What it IS for: borders and rules (border-faint), and `aria-hidden` decoration that
+   * has a text equivalent elsewhere — a caret, a `·` between two names, a trainee pip.
+   * `disabled:text-faint` is also fine; WCAG 1.4.3 exempts an inactive control, and
+   * dimming is the only thing that says a control does not work yet.
+   *
+   * `text-faint` is banned by `no-restricted-syntax` in eslint.config.mjs across app/ and
+   * components/, because this comment alone does not hold: the sweep that closed #951
+   * moved 126 uses across 36 files, and one of them was written in PR #1032 with this
+   * issue already open and these numbers already measured. The token is the obvious pick
+   * for "quieter than muted" and nothing about it announces the failure.
+   *
+   * The mockups in docs/design/mockups/*.html use --faint for real body text throughout.
+   * That is where the spread came from, and it is why harvesting a value (DEC-021) does
+   * not harvest its usage.
+   */
   --color-faint: #93a0b0;
-  --color-line: #e7ebf1;
+  --color-line: #e7ebf1; /* 1.06:1 — hairlines only, never text */
 
   /* Brand + roles */
   --color-accent: #2f5d86;

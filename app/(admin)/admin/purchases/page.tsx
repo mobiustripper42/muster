@@ -64,7 +64,7 @@ const BADGE: Record<PaymentState, string> = {
   disputed: "border-bad-line bg-bad-bg text-bad",
   // Same tokens as deposit — money is in motion, not missing and not lost.
   pending: "border-warn-line bg-warn-bg text-warn",
-  cancelled: "border-line bg-bg text-faint",
+  cancelled: "border-line bg-bg text-muted",
 };
 
 /**
@@ -156,7 +156,7 @@ export default async function AdminPurchases({
     <Shell width="3xl">
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Bookings / Purchases</p>
+        <p className="text-xs text-muted">Bookings / Purchases</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Purchases</h1>
       </header>
 
@@ -222,7 +222,7 @@ export default async function AdminPurchases({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-line text-left text-[10px] uppercase tracking-wide text-faint">
+                <tr className="border-b border-line text-left text-[10px] uppercase tracking-wide text-muted">
                   <th className="px-3 py-2 font-semibold">Customer</th>
                   <th className="px-3 py-2 font-semibold">Trip</th>
                   <th className="px-3 py-2 text-right font-semibold">Total</th>
@@ -242,14 +242,14 @@ export default async function AdminPurchases({
                       >
                         {r.customerName}
                       </AppLink>
-                      <div className="text-[11px] text-faint">
+                      <div className="text-[11px] text-muted">
                         {displayContact(r.phone, r.email)}
                       </div>
                     </td>
                     <td className="px-3 py-2 text-xs text-muted">
-                      {r.date ? formatDay(r.date) : <span className="text-faint">—</span>}
+                      {r.date ? formatDay(r.date) : <span className="text-muted">—</span>}
                       {r.time && <span className="ml-1.5">{r.time}</span>}
-                      <div className="text-[11px] text-faint">
+                      <div className="text-[11px] text-muted">
                         {r.vesselName ? `${r.vesselName} · ` : ""}
                         {r.guestCount} guest{r.guestCount === 1 ? "" : "s"}
                       </div>
@@ -258,7 +258,7 @@ export default async function AdminPurchases({
                       {r.priceKnown ? (
                         formatCents(r.totalCents)
                       ) : (
-                        <span className="text-faint">—</span>
+                        <span className="text-muted">—</span>
                       )}
                       {/* Only when PART of it is paid — on an unpaid order the balance equals
                           the total and the badge already says so, so this would be noise. */}
@@ -284,7 +284,7 @@ export default async function AdminPurchases({
         </div>
       )}
 
-      <p className="mt-2 text-xs text-faint">
+      <p className="mt-2 text-xs text-muted">
         Total is fare + extra guests + tax. Tips aren’t included — they go to crew, not revenue.
         Refunds and messaging aren’t wired up here yet.
       </p>

@@ -124,7 +124,7 @@ function Result({ view }: { view: IntegrityView }) {
               blowing out the page width on a phone. */}
           <div className="overflow-x-auto rounded-card border border-line bg-card">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-line text-xs uppercase text-faint">
+              <thead className="border-b border-line text-xs uppercase text-muted">
                 <tr>
                   <th className="px-3 py-2 font-medium">Id</th>
                   <th className="px-3 py-2 font-medium">Reference</th>

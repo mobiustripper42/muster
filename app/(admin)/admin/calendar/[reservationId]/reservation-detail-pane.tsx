@@ -338,7 +338,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 function Section({ title, tag }: { title: string; tag?: string }) {
   return (
     <div className="mt-4 mb-1 flex items-center gap-2 border-b border-line pb-1">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-faint">{title}</span>
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">{title}</span>
       {tag && (
         <span className="rounded border border-line px-1.5 py-px text-[10px] text-muted">{tag}</span>
       )}
@@ -435,7 +435,7 @@ export function ReservationDetailPane({
 
         <Section title="Trip" />
         <Row label="Guests">
-          {v.guestCount} <span className="font-normal text-faint">of {v.capacity}</span>
+          {v.guestCount} <span className="font-normal text-muted">of {v.capacity}</span>
         </Row>
         {/* One consent record per reservation, not a per-attendee roster (DEC-012 / DEC-110). */}
         <Row label="Waiver">{waiverText(v.waiver)}</Row>
@@ -450,7 +450,7 @@ export function ReservationDetailPane({
               >
                 <span className="font-mono">{formatCents(g.amountCents)}</span>
                 {g.bps !== undefined && (
-                  <span className="ml-1.5 text-xs text-faint">{g.bps / 100}%</span>
+                  <span className="ml-1.5 text-xs text-muted">{g.bps / 100}%</span>
                 )}
               </Row>
             ))}
@@ -803,7 +803,7 @@ function PaneActions({
                     allowed — and cancelling without refunding is a real choice inside the
                     14-day window. Four characters for a capability that otherwise needs
                     someone to have told you. */}
-                <p className="mt-1 text-[11px] text-faint">0 = no refund</p>
+                <p className="mt-1 text-[11px] text-muted">0 = no refund</p>
                 {/* Fills the box to match the chosen reason, and backs off the moment the
                     operator types. Purely additive — with JS off the box stays blank, and blank
                     already means "use the figure for the reason posted" (DEC-147 rule 2). */}
@@ -862,7 +862,7 @@ function PaneActions({
           {/* Only the no-contact reason survives. A greyed resend under a "Cancelled" chip
             explains itself; a greyed resend on a live booking has no visible cause at all. */}
           {!actions.canResend && (
-            <p className="mb-1 text-[11px] text-faint">No email or phone on this booking.</p>
+            <p className="mb-1 text-[11px] text-muted">No email or phone on this booking.</p>
           )}
           <SubmitButton
             data-commits="resend"
@@ -892,7 +892,7 @@ function PaneActions({
           </summary>
           <form action={reissueBookingLink} className="mt-2">
             {hidden}
-            <p className="mb-1.5 text-[11px] text-faint">
+            <p className="mb-1.5 text-[11px] text-muted">
               Issues a new link and sends it. The link they have now will stop working — use
               “Resend” instead if they just mislaid it.
             </p>
@@ -953,5 +953,5 @@ function PaneActions({
 }
 
 function Faint({ children }: { children: React.ReactNode }) {
-  return <span className="text-faint">{children}</span>;
+  return <span className="text-muted">{children}</span>;
 }

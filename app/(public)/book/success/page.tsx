@@ -95,7 +95,7 @@ export default async function BookingSuccessPage(props: {
               <b className="text-ink">Your card was charged and refunded in full right away.</b> Refunds usually take a
               few days to show up on a statement. You have not lost any money, and there is nothing you need to do.
             </p>
-            <p className="mt-4 text-[12px] text-faint">
+            <p className="mt-4 text-[12px] text-muted">
               We’ve texted you this as well, so you have a record of it.
             </p>
             <div className="mt-5">
@@ -125,7 +125,7 @@ export default async function BookingSuccessPage(props: {
             your <b className="text-ink">booking link</b> — that’s where you’ll see your trip details, add a tip for
             your crew, or make a change. Save it.
           </p>
-          <p className="mt-4 text-[12px] text-faint">
+          <p className="mt-4 text-[12px] text-muted">
             It usually arrives within a minute. Didn’t get it? You’ll be able to recover it from the link we sent — or
             reach out and we’ll resend.
           </p>

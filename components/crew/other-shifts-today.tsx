@@ -20,9 +20,10 @@ export function OtherShiftsToday({ shifts }: { shifts: OtherShiftToday[] }) {
       <summary className="flex min-h-[44px] cursor-pointer items-center justify-between text-sm font-semibold text-muted [&::-webkit-details-marker]:hidden">
         <span>
           Other shifts today
-          <span className="ml-1 font-normal text-faint">({shifts.length})</span>
+          <span className="ml-1 font-normal text-muted">({shifts.length})</span>
         </span>
         {/* Same caret idiom as the Manifest above (rotates right→down on open). */}
+        {/* eslint-disable-next-line no-restricted-syntax -- aria-hidden caret: decoration, not text (#951). <summary> announces its own open/closed state. */}
         <span className="text-faint transition-transform group-open:rotate-90" aria-hidden>
           ›
         </span>
@@ -44,7 +45,7 @@ export function OtherShiftsToday({ shifts }: { shifts: OtherShiftToday[] }) {
                   {s.firstDeparture ? fmt12(s.firstDeparture) : "—"}
                 </span>
                 {s.tripCount > 1 && (
-                  <span className="font-mono text-xs text-faint">
+                  <span className="font-mono text-xs text-muted">
                     {s.tripCount} trips
                   </span>
                 )}

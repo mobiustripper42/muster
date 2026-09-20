@@ -59,7 +59,7 @@ function Section({
     <section id={id} className="scroll-mt-4 rounded-card border border-line bg-card shadow-sm">
       <div className="flex items-baseline gap-3 border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">{title}</h2>
-        <span className="ml-auto text-right text-xs text-faint">{hint}</span>
+        <span className="ml-auto text-right text-xs text-muted">{hint}</span>
       </div>
       <div className="px-4 py-1">{children}</div>
     </section>
@@ -95,7 +95,7 @@ export function DetailsSection({
             </label>
           ))}
         </div>
-        <p className="pt-1.5 text-xs text-faint">
+        <p className="pt-1.5 text-xs text-muted">
           Draft = not sellable, generates no slots · Live = on sale · Hidden = pulled from
           browse + this list, bookings kept
         </p>
@@ -150,7 +150,7 @@ export function DetailsSection({
             defaultValue={draft?.get("tripLengthMinutes") ?? offering?.tripLengthMinutes ?? ""}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
-          <span className="text-xs text-faint">minutes</span>
+          <span className="text-xs text-muted">minutes</span>
         </span>
       </Field>
 
@@ -163,7 +163,7 @@ export function DetailsSection({
             defaultValue={draft?.get("holdMinutes") ?? offering?.holdMinutes ?? ""}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
-          <span className="text-xs text-faint">minutes</span>
+          <span className="text-xs text-muted">minutes</span>
         </span>
       </Field>
 
@@ -176,7 +176,7 @@ export function DetailsSection({
             defaultValue={draft?.get("arriveBeforeMinutes") ?? offering?.arriveBeforeMinutes ?? ""}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
-          <span className="text-xs text-faint">minutes</span>
+          <span className="text-xs text-muted">minutes</span>
         </span>
       </Field>
 
@@ -203,7 +203,7 @@ export function DetailsSection({
             </label>
           ))}
         </div>
-        <p className="pt-1.5 text-xs text-faint">
+        <p className="pt-1.5 text-xs text-muted">
           Capacity is a fact of each vessel, set on the Vessel screen — never here. Boats
           needing a different schedule are a different offering.
         </p>
@@ -232,7 +232,7 @@ export function ScheduleSection({
             defaultValue={draft?.get("seasonStart") ?? schedule?.seasonStart ?? ""}
             className={`${inputClass} font-mono`}
           />
-          <span className="text-xs text-faint">to</span>
+          <span className="text-xs text-muted">to</span>
           <input
             name="seasonEnd"
             type="date"
@@ -272,7 +272,7 @@ export function ScheduleSection({
             initial={draft ? draft.all("departureTime") : schedule?.departureTimes ?? []}
           />
         </div>
-        <p className="pt-1.5 text-xs text-faint">
+        <p className="pt-1.5 text-xs text-muted">
           Availability is computed from this rule — schedule × vessels × dates − blocks −
           bookings. Draft generates no slots; flip to Live and they appear. Blocks/blackout
           live on their own surface, not here.
@@ -316,7 +316,7 @@ export function PricingSection({
     <Section id="pricing" title="Pricing" hint="the boat, by the guest">
       <Field label="Base fare" sub="buys the whole boat">
         <span className="flex items-center gap-2">
-          <span className="text-xs text-faint">$</span>
+          <span className="text-xs text-muted">$</span>
           <input
             name="basePrice"
             required
@@ -338,13 +338,13 @@ export function PricingSection({
             defaultValue={draft?.get("includedGuestCount") ?? offering?.includedGuestCount ?? ""}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
-          <span className="text-xs text-faint">blank = the boat’s full capacity</span>
+          <span className="text-xs text-muted">blank = the boat’s full capacity</span>
         </span>
       </Field>
 
       <Field label="Extra guest" sub="above the included count">
         <span className="flex items-center gap-2">
-          <span className="text-xs text-faint">$</span>
+          <span className="text-xs text-muted">$</span>
           <input
             name="extraGuestPrice"
             required
@@ -355,7 +355,7 @@ export function PricingSection({
             }
             className={`${inputClass} max-w-[130px] font-mono`}
           />
-          <span className="text-xs text-faint">each, up to that boat’s max</span>
+          <span className="text-xs text-muted">each, up to that boat’s max</span>
         </span>
       </Field>
 
@@ -397,7 +397,7 @@ export function GratuitySection({
         config={byKind("post")}
         draft={draft}
       />
-      <p className="py-3 text-xs text-faint">
+      <p className="py-3 text-xs text-muted">
         Gratuity is first-class, keyed by kind — deliberately NOT an add-on. It routes to
         crew and is exempt from tax + the service fee (DEC-124); add-ons below are revenue.
       </p>
@@ -508,7 +508,7 @@ export function AddOnsSection({
                 />
                 <span className="flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">
                   {a.label}
-                  <span className="text-xs text-faint">${(a.amountCents / 100).toFixed(2)}</span>
+                  <span className="text-xs text-muted">${(a.amountCents / 100).toFixed(2)}</span>
                   {a.required && (
                     <span className="rounded-full bg-warn-bg px-1.5 text-[10px] uppercase tracking-wide text-warn">
                       Required
@@ -518,7 +518,7 @@ export function AddOnsSection({
               </label>
             ))}
           </div>
-          <p className="text-xs text-faint">
+          <p className="text-xs text-muted">
             Add-ons are taxed + fee’d as revenue, and shared across offerings —{" "}
             <AppLink href="/admin/add-ons" className="text-accent">
               manage them here

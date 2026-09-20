@@ -30,7 +30,7 @@ function Fld({ label, sub, children }: { label: string; sub?: string; children: 
     <div className="py-2">
       <label className="mb-1 block text-xs font-medium text-ink">
         {label}
-        {sub ? <span className="ml-1 font-normal text-faint">· {sub}</span> : null}
+        {sub ? <span className="ml-1 font-normal text-muted">· {sub}</span> : null}
       </label>
       {children}
     </div>
@@ -111,7 +111,7 @@ export function BlockEditor({
                   }`}
                 >
                   {k === "location" ? "Location" : "Vessel"}
-                  <span className="text-[10px] font-normal text-faint">
+                  <span className="text-[10px] font-normal text-muted">
                     {k === "location" ? "a place closes" : "boat out"}
                   </span>
                 </button>
@@ -162,7 +162,7 @@ export function BlockEditor({
                   className={`${inputClass} font-mono`}
                   aria-label="Block start time"
                 />
-                <span className="text-xs text-faint">to</span>
+                <span className="text-xs text-muted">to</span>
                 <input
                   name="endTime"
                   type="time"
@@ -206,7 +206,7 @@ export function BlockEditor({
                   className={`${inputClass} font-mono`}
                   aria-label="Block start date"
                 />
-                <span className="text-xs text-faint">to</span>
+                <span className="text-xs text-muted">to</span>
                 <input
                   name="endDate"
                   type="date"

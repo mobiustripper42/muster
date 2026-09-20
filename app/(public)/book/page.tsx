@@ -314,7 +314,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
             <div className="px-[18px] pb-2 pt-4 md:grid md:grid-cols-[1fr_320px] md:items-start md:gap-6">
               {/* calendar */}
               <div>
-                <div className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Pick a date</div>
+                <div className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Pick a date</div>
                 <div className="mb-2 flex items-center gap-2">
                   <b className="text-sm font-semibold">{calendar.label}</b>
                   <span className="flex-1" />
@@ -328,6 +328,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       ‹
                     </AppLink>
                   ) : (
+                    // eslint-disable-next-line no-restricted-syntax -- the INACTIVE month arrow (#951). WCAG 1.4.3 exempts an inactive control, and the dimming is the only thing telling it apart from the live `›` beside it, which is `text-muted`.
                     <span className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-line text-faint opacity-40">
                       ‹
                     </span>
@@ -343,7 +344,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                 </div>
                 <div className="grid grid-cols-7">
                   {DOW.map((d, i) => (
-                    <span key={i} className="py-1 text-center text-[10px] font-bold text-faint">
+                    <span key={i} className="py-1 text-center text-[10px] font-bold text-muted">
                       {d}
                     </span>
                   ))}
@@ -372,7 +373,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       );
                     if (c.state === "soldout")
                       return (
-                        <span key={i} className={`${base} text-faint line-through`}>
+                        <span key={i} className={`${base} text-muted line-through`}>
                           {c.day}
                         </span>
                       );
@@ -384,13 +385,18 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       return (
                         <span
                           key={i}
-                          className={`${base} border border-dashed border-line text-faint`}
+                          className={`${base} border border-dashed border-line text-muted`}
                         >
                           {c.day}
                         </span>
                       );
                     return (
-                      <span key={i} className={`${base} text-faint opacity-50`}>
+                      // `opacity-50` dropped with the token swap (#951): half-opacity
+                      // muted lands back at ~2.7:1, which is the defect wearing a
+                      // different class. A closed day is now plain muted — the states
+                      // that mean something still carry a background, a strike or a
+                      // dashed border, so nothing depends on this one being dimmer.
+                      <span key={i} className={`${base} text-muted`}>
                         {c.day}
                       </span>
                     );
@@ -419,7 +425,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
               <div className="mt-5 md:mt-0">
                 {selectedDate ? (
                   <>
-                    <div className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.07em] text-faint">
+                    <div className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">
                       {formatShortDay(selectedDate)} — choose a start time
                     </div>
                     {rows.length === 0 && <Notice>No departures on this day.</Notice>}
@@ -441,14 +447,14 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                           <span
                             className={`text-xs font-semibold ${
                               !r.soldOut && !r.fits
-                                ? "text-faint"
+                                ? "text-muted"
                                 // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
                                 : label.tone === "open"
                                   ? "text-ok"
                                   // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
                                   : label.tone === "tight"
                                     ? "text-warn"
-                                    : "text-faint"
+                                    : "text-muted"
                             }`}
                           >
                             {/* "12 max", not "Takes 12" (operator, 2026-08-16) — this sits in the

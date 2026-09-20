@@ -1,6 +1,6 @@
 ---
 schema: 1
-id: DEC-179
+id: DEC-180
 title: "The webhook endpoint is not IP-allowlisted — the signature is the door"
 topic: "Reservations & payments"
 status: "active"
@@ -16,9 +16,9 @@ claims:
 revisit_if: "The allowlist can live in this repository and be versioned with it, or Stripe commits to addresses that do not rotate"
 ---
 
-## DEC-179: The webhook endpoint is not IP-allowlisted — the signature is the door
+## DEC-180: The webhook endpoint is not IP-allowlisted — the signature is the door
 
-Recorded because it will be proposed again, and it sounds like defence in depth. See also DEC-178
+Recorded because it will be proposed again, and it sounds like defence in depth. See also DEC-179
 on the other refusal about this endpoint.
 
 An allowlist is a dashboard rule invisible to this repository — the class of thing

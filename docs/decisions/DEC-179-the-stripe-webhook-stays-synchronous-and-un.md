@@ -1,6 +1,6 @@
 ---
 schema: 1
-id: DEC-178
+id: DEC-179
 title: "The Stripe webhook stays synchronous — the 500 is the durability"
 topic: "Reservations & payments"
 status: "active"
@@ -16,9 +16,9 @@ claims:
 revisit_if: "§2.8.9's reconciler ships — a lost ack stops being the only safety net once something else finds paid-but-unbooked rows"
 ---
 
-## DEC-178: The Stripe webhook stays synchronous — the 500 is the durability
+## DEC-179: The Stripe webhook stays synchronous — the 500 is the durability
 
-Recorded because it will be proposed again. See also DEC-179, the other refusal about this endpoint.
+Recorded because it will be proposed again. See also DEC-180, the other refusal about this endpoint.
 
 Answering 2xx first and deferring into `after()` reads as the resilient shape and is the opposite.
 Stripe retries a non-2xx for three days and never returns for a 2xx, so acking first turns a

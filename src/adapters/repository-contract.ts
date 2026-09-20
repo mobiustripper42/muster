@@ -3083,7 +3083,7 @@ export function runRepositoryContract(
           paymentIntentId: asId<"PaymentIntentId">("pi_abc"),
           actorKind: "admin",
           actorId: "crew-9",
-          type: "refund_amount_overridden",
+          type: "refund_issued_by_operator",
           timestamp: "2026-09-20T13:00:00.000Z",
           metadata: { quotedCents: 5000, actualCents: 7500, reason: "goodwill" },
         });

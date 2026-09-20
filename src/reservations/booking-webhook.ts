@@ -41,6 +41,8 @@ import type { Repository } from "../ports/repository.js";
 import { balanceOwedCents } from "./payment-config.js";
 import type { SoldOutContact } from "./sold-out-notice.js";
 import { confirmPendingRow, type ConfirmResult } from "./write-booking.js";
+import { recordTrail } from "./trail.js";
+import type { EmittedTrailType } from "../domain/reservation-trail.js";
 
 export interface WebhookDeps {
   /**
@@ -462,6 +464,16 @@ async function compensateResidualRaceLoss(
       paymentIntentId: charge.paymentIntentId,
       idempotencyKey: `refund_${charge.key}`,
     });
+    // The one refund no human authorised (issue #1050). Actor `engine`, deliberately: an
+    // operator refund and this must never read alike in the trail. Emitted after the
+    // provider call returns, so a trail outage cannot stop the money going back.
+    await recordTrail(deps, {
+      id: asId<"TrailEventId">(`auto_refunded:${charge.key}`),
+      paymentIntentId: asId<"PaymentIntentId">(charge.paymentIntentId),
+      actorKind: "engine",
+      type: "auto_refunded",
+      metadata: { reason: "residual-race loss" },
+    });
     // No ledger write here, and that is the #613 change. #522 sweep 1 added a
     // `markPaymentRefunded` call so a refunded loser wasn't left reading `succeeded` — the
     // right goal, reached the wrong way: the row it marked could never exist, because its
@@ -470,6 +482,15 @@ async function compensateResidualRaceLoss(
     // to inflate a `listAllPayments` rollup and nothing to reconcile. Stripe holds the record
     // of money that never became a booking, which is what it is.
   } catch (e) {
+    // The alert reaches a person now; the trail is what answers "how often does this
+    // happen" three months later, which no alert can.
+    await recordTrail(deps, {
+      id: asId<"TrailEventId">(`refund_failed:${charge.key}`),
+      paymentIntentId: asId<"PaymentIntentId">(charge.paymentIntentId),
+      actorKind: "engine",
+      type: "refund_failed",
+      metadata: { reason: e instanceof Error ? e.message : "unknown error" },
+    });
     await deps.alertPaidButUnbooked(
       `Residual-race loss AND the auto-refund FAILED (${e instanceof Error ? e.message : "unknown error"}) - ` +
         `Stripe charge ${charge.key}. REFUND MANUALLY in Stripe. Customer: ${who}`,
@@ -1024,6 +1045,50 @@ async function recordRefund(
   return { handled: true, outcome: "refund_recorded" };
 }
 
+/**
+ * Which trail event each dispute state emits (issue #1050). `null` for `live`, whose fact
+ * is DERIVED from `payments.status` reading `disputed` — DEC-118, one source per fact.
+ *
+ * The other four are store-only for different reasons. `inquiry` carries a response
+ * deadline only a human can meet and touches no money, so nothing in the ledger ever
+ * records that it happened. `won` returns the row to `succeeded`, which erases the
+ * argument afterwards. `unknown` is the sharp one: the SDK cannot tell whether money
+ * moved, so the ledger is deliberately NOT written — leaving an alert and, until now,
+ * no durable record of an amount that may have left the account.
+ */
+const DISPUTE_TRAIL_TYPE: Record<DisputeUpdated["state"], EmittedTrailType | null> = {
+  inquiry: "dispute_inquiry",
+  live: null,
+  lost: "dispute_lost",
+  won: "dispute_won",
+  unknown: "dispute_unknown",
+};
+
+/**
+ * One dispute state → one trail row. `reservationId` is absent when the charge matches no
+ * payment in Muster, which is legal and is why the trail has two keys.
+ *
+ * The id is `<type>:<payment intent>`, deterministic so a redelivered dispute webhook
+ * collides on the primary key and is dropped rather than writing a second row — the
+ * adapter's `on conflict (id) do nothing` is worth nothing against a random id.
+ */
+async function recordDisputeTrail(
+  deps: WebhookDeps,
+  dispute: DisputeUpdated,
+  reservationId: ReservationId | undefined,
+): Promise<void> {
+  const type = DISPUTE_TRAIL_TYPE[dispute.state];
+  if (!type) return;
+  await recordTrail(deps, {
+    id: asId<"TrailEventId">(`${type}:${dispute.paymentIntentId}`),
+    ...(reservationId ? { reservationId } : {}),
+    paymentIntentId: asId<"PaymentIntentId">(dispute.paymentIntentId),
+    actorKind: "stripe",
+    type,
+    metadata: { reason: dispute.reason },
+  });
+}
+
 /** What each dispute state does to the ledger row. `null` = leave the row alone. */
 const DISPUTE_LEDGER_WRITE: Record<
   DisputeUpdated["state"],
@@ -1080,11 +1145,19 @@ async function recordDispute(
         `intent ${dispute.paymentIntentId}, which matches NO payment in Muster. The ledger is ` +
         `unchanged; RESPOND IN STRIPE (this is expected for a Xola-era or hand-taken charge).`,
     );
+    // A dispute on a charge Muster never recorded — Xola-era, or hand-taken. There is no
+    // payment row and no reservation, so the PaymentIntent is the only thing that names
+    // it. Stripe's dashboard and this row are the entire record that it happened.
+    await recordDisputeTrail(deps, dispute, undefined);
     return { handled: true, outcome: "dispute_recorded" };
   }
 
   const write = DISPUTE_LEDGER_WRITE[dispute.state];
   if (write) await deps.repo.markPaymentDisputed(payment.id, write);
+
+  // AFTER the ledger write, never before and never inside it (issue #1050). The trail
+  // records what happened; it does not get to decide whether it happened.
+  await recordDisputeTrail(deps, dispute, payment.reservationId);
 
   await deps.alertPaidButUnbooked(
     dispute.state === "unknown"

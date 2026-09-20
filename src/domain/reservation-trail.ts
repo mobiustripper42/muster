@@ -55,9 +55,20 @@ export const EMITTED_TRAIL_TYPES = [
   "balance_link_created",
 
   // ── Money out (issue #1050) ─────────────────────────────────────────────────
-  /** The operator's refund number differed from what the published terms quoted.
-   *  The only human-decided money amount in the product. Carries both numbers. */
-  "refund_amount_overridden",
+  /**
+   * An operator decided a refund amount. The only human-decided money figure in the
+   * product (`refund-payment.ts`: "the first refund in this codebase that a human decides
+   * the amount of"), and `quotedCents` carries what the published terms suggested so the
+   * delta is readable without recomputing terms that may since have changed.
+   *
+   * **Named for what the operator DID, not for a comparison.** The first draft was
+   * `refund_amount_overridden`, which promises a quote to differ from — and there are two
+   * entry points, only one of which has one. `cancelBooking` computes `quoteCancelRefund`
+   * and passes it; the standalone refund box has no `CancelledBy` and no notice window, so
+   * no quote exists to be derived. `quotedCents` is absent on those rows, and its absence
+   * means "there was no policy figure", not "it matched".
+   */
+  "refund_issued_by_operator",
   /** The residual-race compensation — the one refund no human authorised. */
   "auto_refunded",
   /** The provider failed partway. Whatever DID move is recorded; a `refunded`
@@ -69,6 +80,12 @@ export const EMITTED_TRAIL_TYPES = [
   "dispute_inquiry",
   "dispute_won",
   "dispute_lost",
+  /** **The one worth the whole table.** A dispute state the pinned Stripe SDK does not
+   *  know: `booking-webhook.ts`'s `DISPUTE_LEDGER_WRITE` maps it to `null` because "we
+   *  cannot tell whether the money moved, so we do not pretend either way". Today that
+   *  produces an alert and no record at all — an amount that may or may not have left
+   *  the account, with nothing durable saying so. */
+  "dispute_unknown",
 
   // ── Reaching the customer (issue #1052) ─────────────────────────────────────
   /** The messaging flag was off. The booking is written, the operator sees a sale,
@@ -128,9 +145,10 @@ export type TrailActorKind = (typeof TRAIL_ACTOR_KINDS)[number];
 
 /** Side-channel facts. All optional; different types populate different fields. */
 export interface TrailEventMetadata {
-  /** `refund_amount_overridden`: what the published terms quoted, in CENTS. */
+  /** `refund_issued_by_operator`: what the published terms quoted, in CENTS. Absent
+   *  when no quote exists — the standalone refund box has no notice window to derive one. */
   quotedCents?: number;
-  /** `refund_amount_overridden`: what the operator actually sent, in CENTS. */
+  /** `refund_issued_by_operator` / `refund_failed`: what actually moved, in CENTS. */
   actualCents?: number;
   /** `confirmation_skipped`: which flag or failure suppressed it. */
   reason?: string;

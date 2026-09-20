@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { asId } from "@core/domain/ids.js";
 import { createBalanceCheckout } from "@core/reservations/create-balance-checkout.js";
+import { recordTrail } from "@core/reservations/trail.js";
 import {
   cancelReservation,
   quoteCancelRefund,
@@ -179,22 +180,32 @@ export async function cancelBooking(formData: FormData): Promise<void> {
   // shows what is still owed. The reverse — refunding and then failing to cancel — would leave a
   // refunded customer holding a boat.
   const typed = String(formData.get("amount") ?? "").trim();
-  let refundCents: number | null = null;
-  if (typed === "") {
+
+  // The published-terms figure, now computed on BOTH paths. It is the refund amount when the
+  // operator typed nothing, and the COMPARISON when they did — `refund_issued_by_operator`
+  // carries it so the delta is readable later without recomputing terms that may since have
+  // changed (issue #1050). Two extra reads on the typed path, paid once per operator cancel.
+  //
+  // No event ⇒ no departure instant ⇒ no notice window, so the figure cannot be derived at
+  // all. Cancel stands; the operator refunds by hand from the box, and the trail row simply
+  // has no `quotedCents` — which means "there was no policy figure", not "it matched".
+  let quotedCents: number | null = null;
+  {
     const payments = await getRepo().listPaymentsForReservation(asId<"ReservationId">(reservationId));
-    const event = result.freedEventId
-      ? await getRepo().getEvent(result.freedEventId)
-      : null;
-    // No event ⇒ no departure instant ⇒ no notice window, so the published-terms figure cannot
-    // be derived. Cancel stands; the operator refunds by hand from the box.
+    const event = result.freedEventId ? await getRepo().getEvent(result.freedEventId) : null;
     if (event) {
-      refundCents = quoteCancelRefund({
+      quotedCents = quoteCancelRefund({
         by,
         payments,
         departureAt: zonedWallClockToInstant(event.date, event.time),
         now: new Date(),
       }).refundCents;
     }
+  }
+
+  let refundCents: number | null = null;
+  if (typed === "") {
+    refundCents = quotedCents;
   } else {
     const parsed = parseDollarsToCents(typed);
     // The cancel HAPPENED. A bad amount cannot undo it, so this reports the cancel as done and
@@ -269,6 +280,25 @@ export async function cancelBooking(formData: FormData): Promise<void> {
     await stashFormDraft("/admin/calendar", formData);
     redirect(back({ cancelled: by, refundErr: refund.reason }));
   }
+  // The trail, AFTER the money moved and after the cancel committed — never before either
+  // (issue #1050). `quotedCents` is present here and absent on the standalone refund box,
+  // which is the whole reason this event is named for what the operator did rather than for
+  // a comparison: on this path there IS a published-terms figure to compare against.
+  await recordTrail(
+    { repo: getRepo(), now: () => new Date().toISOString() },
+    {
+      id: asId<"TrailEventId">(`refund_issued_by_operator:${reservationId}:${refund.refundedCents}`),
+      reservationId: asId<"ReservationId">(reservationId),
+      actorKind: "admin",
+      actorId: subject.id,
+      type: "refund_issued_by_operator",
+      metadata: {
+        actualCents: refund.refundedCents,
+        ...(quotedCents !== null ? { quotedCents } : {}),
+        reason: "cancel-and-refund",
+      },
+    },
+  );
   await clearFormDraft("/admin/calendar");
   redirect(back({ cancelled: by, refunded: String(refund.refundedCents) }));
 }
@@ -375,6 +405,21 @@ export async function refundBooking(formData: FormData): Promise<void> {
     }
     redirect(back({ refundErr: result.reason }));
   }
+  // **No `quotedCents` here, and that is the point of the rename** (issue #1050). This box is
+  // reached on a booking that may not be cancelled at all, so there is no `CancelledBy` and no
+  // notice window — `quoteCancelRefund` has nothing to compute from. An absent quote means
+  // "there was no policy figure to compare against", never "the operator matched it".
+  await recordTrail(
+    { repo: getRepo(), now: () => new Date().toISOString() },
+    {
+      id: asId<"TrailEventId">(`refund_issued_by_operator:${reservationId}:${result.refundedCents}`),
+      reservationId: asId<"ReservationId">(reservationId),
+      actorKind: "admin",
+      actorId: subject.id,
+      type: "refund_issued_by_operator",
+      metadata: { actualCents: result.refundedCents, reason: "standalone refund" },
+    },
+  );
   redirect(back({ refunded: String(result.refundedCents) }));
 }
 

@@ -28,8 +28,6 @@ import type { PaymentId, ReservationId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { countsAsPaid } from "./payment-config.js";
-import { recordTrail } from "./trail.js";
-import { asId } from "../domain/ids.js";
 
 export interface RefundDeps {
   repo: Repository;
@@ -240,7 +238,7 @@ export async function refundReservation(
     }
     if (remaining > 0) return { ok: false, reason: "exceeds_refundable" };
 
-    return await executeRefundPlan(deps, plan, reservationId);
+    return await executeRefundPlan(deps, plan);
   } finally {
     // ALWAYS released, including on every refusal above, on `provider_error`, and on a throw. A
     // lease that outlives its refund blocks the booking until it expires, and the operator's
@@ -257,10 +255,6 @@ export async function refundReservation(
 async function executeRefundPlan(
   deps: RefundDeps,
   plan: RefundAllocation[],
-  // Carried in rather than added to `RefundAllocation`: the allocation is a per-CHARGE
-  // fact and the reservation is the operation's, so putting it on every leg would say
-  // the legs could differ. Only the trail row needs it.
-  reservationId: ReservationId,
 ): Promise<RefundOutcome> {
   const done: RefundAllocation[] = [];
   for (const leg of plan) {
@@ -279,20 +273,12 @@ async function executeRefundPlan(
       // unreconcilable is not unrecordable (#613 posture). The legs before this one are
       // recorded below via `done`; this one did not happen.
       //
-      // A PARTIAL failure is the thing a `refunded` projection cannot carry (issue #1050):
-      // `payments.refunded_cents` will show what moved, and nothing anywhere will say the
-      // operator asked for more and did not get it. Keyed on the leg's idempotency key, so
-      // an operator retry of the same failing operation does not stack rows.
-      await recordTrail(deps, {
-        id: asId<"TrailEventId">(`refund_failed:${String(leg.paymentId)}_${leg.refundedTotalCents}`),
-        reservationId,
-        actorKind: "admin",
-        type: "refund_failed",
-        metadata: {
-          actualCents: done.reduce((sum, d) => sum + d.cents, 0),
-          reason: e instanceof Error ? e.message : String(e),
-        },
-      });
+      // **The trail row for this is emitted by the CALLER, not here** (issue #1050). This
+      // `catch` runs inside `refundReservation`'s `try`, whose `finally` releases the refund
+      // lease — so a trail write here extends the lease hold, and a concurrent refund on the
+      // same reservation is refused as `stale` for that extra duration. `trail.ts`'s own
+      // contract says the emit goes after the lock, and `@code-review` caught this site
+      // violating it. Not throwing is not the same as not interfering.
       return {
         ok: false,
         reason: "provider_error",

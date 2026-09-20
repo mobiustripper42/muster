@@ -189,8 +189,14 @@ export async function cancelBooking(formData: FormData): Promise<void> {
   // No event ⇒ no departure instant ⇒ no notice window, so the figure cannot be derived at
   // all. Cancel stands; the operator refunds by hand from the box, and the trail row simply
   // has no `quotedCents` — which means "there was no policy figure", not "it matched".
+  //
+  // Wrapped, because the refactor moved these reads onto the TYPED path where they never ran
+  // before — an operator who types a figure would now get an unhandled exception on a page
+  // whose cancel has already committed. `null` on failure is the same answer as "no event":
+  // there is no policy figure, so the blank-box path falls through to a hand refund and the
+  // trail row simply carries no `quotedCents`.
   let quotedCents: number | null = null;
-  {
+  try {
     const payments = await getRepo().listPaymentsForReservation(asId<"ReservationId">(reservationId));
     const event = result.freedEventId ? await getRepo().getEvent(result.freedEventId) : null;
     if (event) {
@@ -201,6 +207,8 @@ export async function cancelBooking(formData: FormData): Promise<void> {
         now: new Date(),
       }).refundCents;
     }
+  } catch (e) {
+    logSwallowed("admin/reservation:cancelBooking", e, "no published-terms figure; the operator refunds by hand");
   }
 
   let refundCents: number | null = null;
@@ -265,6 +273,20 @@ export async function cancelBooking(formData: FormData): Promise<void> {
         `[reservations] cancel+refund of ${refundCents}c on ${reservationId} failed partway ` +
           `(${refund.refundedCents}c did move): ${refund.message}`,
       );
+      // The partial failure, recorded where the lease is already released (issue #1050).
+      // `payments.refunded_cents` will show what moved and nothing else would ever say the
+      // operator asked for more and did not get it.
+      await recordTrail(
+        { repo: getRepo(), now: () => new Date().toISOString() },
+        {
+          id: asId<"TrailEventId">(`refund_failed:${reservationId}:${expectedRaw}`),
+          reservationId: asId<"ReservationId">(reservationId),
+          actorKind: "admin",
+          actorId: subject.id,
+          type: "refund_failed",
+          metadata: { actualCents: refund.refundedCents, reason: refund.message },
+        },
+      );
       // CLEAR, not stash — the opposite of every other refusal here, and deliberately (#780).
       // Money PARTIALLY moved. Re-offering the figure the operator typed is the one thing this
       // screen's own copy tells them not to do ("retrying the full amount would refund that
@@ -287,7 +309,12 @@ export async function cancelBooking(formData: FormData): Promise<void> {
   await recordTrail(
     { repo: getRepo(), now: () => new Date().toISOString() },
     {
-      id: asId<"TrailEventId">(`refund_issued_by_operator:${reservationId}:${refund.refundedCents}`),
+      // `expectedRaw` is the compare-and-swap token — the refunded total this screen was
+      // rendered against — so it is stable across a retry of THIS operation and different for
+      // every subsequent one. Keying on the amount alone collided: two $50 goodwill refunds on
+      // one booking produced the same id and `on conflict do nothing` silently dropped the
+      // second row, which is the one thing this table exists to prevent (`@code-review`).
+      id: asId<"TrailEventId">(`refund_issued_by_operator:${reservationId}:${expectedRaw}`),
       reservationId: asId<"ReservationId">(reservationId),
       actorKind: "admin",
       actorId: subject.id,
@@ -401,6 +428,20 @@ export async function refundBooking(formData: FormData): Promise<void> {
         `[reservations] refund of ${amountCents}c on ${reservationId} failed partway ` +
           `(${result.refundedCents}c did move): ${result.message}`,
       );
+      // The partial failure, recorded where the lease is already released (issue #1050).
+      // `payments.refunded_cents` will show what moved and nothing else would ever say the
+      // operator asked for more and did not get it.
+      await recordTrail(
+        { repo: getRepo(), now: () => new Date().toISOString() },
+        {
+          id: asId<"TrailEventId">(`refund_failed:${reservationId}:${expectedRaw}`),
+          reservationId: asId<"ReservationId">(reservationId),
+          actorKind: "admin",
+          actorId: subject.id,
+          type: "refund_failed",
+          metadata: { actualCents: result.refundedCents, reason: result.message },
+        },
+      );
       redirect(back({ refundErr: "provider_error", refunded: String(result.refundedCents) }));
     }
     redirect(back({ refundErr: result.reason }));
@@ -412,7 +453,8 @@ export async function refundBooking(formData: FormData): Promise<void> {
   await recordTrail(
     { repo: getRepo(), now: () => new Date().toISOString() },
     {
-      id: asId<"TrailEventId">(`refund_issued_by_operator:${reservationId}:${result.refundedCents}`),
+      // Keyed on the CAS token, not the amount — see the cancel path for the collision.
+      id: asId<"TrailEventId">(`refund_issued_by_operator:${reservationId}:${expectedRaw}`),
       reservationId: asId<"ReservationId">(reservationId),
       actorKind: "admin",
       actorId: subject.id,

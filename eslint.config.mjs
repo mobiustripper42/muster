@@ -110,6 +110,34 @@ const CLOCK_SELECTOR = {
     'Pass an explicit timeZone (DEC-032): `TENANT_TIMEZONE` for an event-derived instant, `"UTC"` for a date-only label parsed as `<iso>T00:00:00Z`. Without one this renders the server\'s zone on the server and the viewer\'s in a client island, and the two disagree by hours.',
 };
 
+const FAINT_MESSAGE =
+  "`text-faint` is not a text colour (#951). `--color-faint` measures 2.36:1 on the page background and 2.66:1 on a card — it fails AA's 4.5:1 for body text AND the 3:1 floor for large text, so no size or weight rescues it. Use `text-muted` (5.18:1 / 5.83:1). `faint` survives as a NON-text token: borders, rules, and `aria-hidden` decoration. `disabled:text-faint` is not flagged — WCAG 1.4.3 exempts an inactive control. For an `aria-hidden` glyph, add an eslint-disable-next-line no-restricted-syntax saying so.";
+
+/**
+ * The token ratchet (#951). **Two selectors because a className is written two ways.**
+ *
+ * Half this repo's conditional styling is a template literal — `` `${base} text-faint
+ * line-through` `` — and a `Literal`-only selector reads as complete while missing every
+ * one of them. The sweep found 145 uses across 41 files and 12 were inside template
+ * literals, so a one-selector rule would have shipped looking like enforcement and left
+ * a working escape hatch in the idiom people reach for when the styling is conditional.
+ *
+ * **Why a lint rule at all, when the sweep already removed them.** Because the sweep does
+ * not hold. `text-faint` is the obvious class for "quieter than muted", nothing about it
+ * announces that it fails contrast, and I reached for it in NEW code in PR #1032 with this
+ * issue already open and the numbers already measured. That is the median gap this repo
+ * keeps re-learning: a convention nobody can see is a convention that comes back.
+ *
+ * The `disabled:` lookbehind is the one carve-out, and it is WCAG's, not a preference —
+ * 1.4.3 exempts text that is part of an inactive user interface component. `placeholder:`
+ * is deliberately NOT carved out: a placeholder is read by the person deciding what to
+ * type, which is the definition of text.
+ */
+const FAINT_TEXT_SELECTORS = [
+  { selector: "Literal[value=/(?<!disabled:)\\btext-faint\\b/]", message: FAINT_MESSAGE },
+  { selector: "TemplateElement[value.cooked=/(?<!disabled:)\\btext-faint\\b/]", message: FAINT_MESSAGE },
+];
+
 const OFF = {
   // --- playwright (e2e/ only) ---
   // 105 findings across 8 spec files, and OFF for the same reason as the playwright block
@@ -526,6 +554,7 @@ export default tseslint.config(
             "Move `redirect()` outside the try. It navigates by throwing, so a catch swallows the navigation and then logs the control-flow throw as if it were a fault. `redirect()` in a CATCH block is fine and is not flagged.",
         },
         CLOCK_SELECTOR,
+        ...FAINT_TEXT_SELECTORS,
       ],
     },
   },
@@ -846,6 +875,7 @@ export default tseslint.config(
             "Move `redirect()` outside the try. It navigates by throwing, so a catch swallows the navigation and then logs the control-flow throw as if it were a fault. `redirect()` in a CATCH block is fine and is not flagged.",
         },
         CLOCK_SELECTOR,
+        ...FAINT_TEXT_SELECTORS,
         {
           selector: "ThrowStatement",
           message:

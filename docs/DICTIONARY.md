@@ -7,11 +7,12 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-27 terms.
+29 terms.
 
 | Term | Says | Not |
 |---|---|---|
 | **3DS** | the bank's extra check at checkout, where the customer confirms the payment in their banking app or by a texted code | — |
+| **AA** | the WCAG conformance level we hold to — in practice a 4.5:1 contrast ratio for body text and 3:1 for large text and controls | — |
 | **blocked** | a slot an operator block covers | — |
 | **booking invoice** | the frozen record of what a customer was quoted — every charged component and the rate behind it, kept on the booking and never recomputed | — |
 | **bps** | hundredths of a percent, so 800 bps is 8 percent — used for rates so nothing has to store a fraction | `basis points` |
@@ -38,3 +39,4 @@ alternates start being caught.
 | **trip** | one boat leaving at one time on one day — what a customer buys and crew sail. The code calls it a slot. | — |
 | **trip time** | how long the customer is actually on the water, always less than the hold minutes for that trip | — |
 | **turnaround** | the boat sitting at the dock between trips, cleaned and made ready; hold minutes minus trip time | — |
+| **WCAG** | the web accessibility guidelines, the standard this project's colour and contrast rules are measured against | — |

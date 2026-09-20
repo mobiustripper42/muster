@@ -271,7 +271,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
 
           {/* your trip — the picked slot, changeable */}
           <div className="px-[18px] pt-4">
-            <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Your trip</div>
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Your trip</div>
             <div className="flex items-center gap-2.5 rounded-xl border border-line px-3.5 py-3">
               <span className="flex-1 text-sm">
                 <b className="font-semibold">{dateTimeLabel}</b>

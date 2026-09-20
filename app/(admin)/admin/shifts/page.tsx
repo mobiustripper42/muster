@@ -481,7 +481,7 @@ export default async function AllShifts({
         <div className="flex flex-col gap-2">
           {/* The summary caption hugs the sections; day-sections (gap-5) carry
               the rhythm between them, not around this line (@ui-reviewer). */}
-          <p className="text-xs text-faint">
+          <p className="text-xs text-muted">
             {rows.length}
             {showSplitOnly ? " split candidate" : " shift"}
             {rows.length === 1 ? "" : "s"} · {scope}
@@ -493,7 +493,7 @@ export default async function AllShifts({
                   <span className="text-sm font-semibold text-ink">
                     {fmtDayHeader(day.date)}
                   </span>
-                  <span className="text-xs text-faint">
+                  <span className="text-xs text-muted">
                     {day.rows.length} shift{day.rows.length === 1 ? "" : "s"}
                   </span>
                 </h2>

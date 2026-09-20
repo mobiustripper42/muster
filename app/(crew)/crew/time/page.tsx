@@ -261,6 +261,7 @@ export default async function CrewTime({
                         <span className="font-mono text-sm font-semibold text-ink">
                           {p.minutes === null ? "—" : compactDuration(p.minutes)}
                         </span>
+                        {/* eslint-disable-next-line no-restricted-syntax -- aria-hidden caret: decoration, not text (#951). The row is the link and carries its own label. */}
                         <span className="text-faint" aria-hidden>
                           ›
                         </span>

@@ -224,7 +224,7 @@ export function SeatCard({
             upstream. The empty default is a no-op (the action guards a blank
             crewMemberId), so "Place" without a pick does nothing. */}
         {roster.length === 0 ? (
-          <p className="py-1 text-xs text-faint">No rated crew available to place.</p>
+          <p className="py-1 text-xs text-muted">No rated crew available to place.</p>
         ) : (
           <form action={overrideTo} className="flex flex-wrap items-center gap-2 py-1">
             <HiddenIds vm={vm} />

@@ -77,7 +77,7 @@ export default async function FindBookingPage({
                     required
                     autoComplete="email"
                     placeholder="you@example.com or (216) 555-0148"
-                    className="min-h-[44px] w-full rounded-[10px] border border-line bg-bg px-3 text-[15px] text-ink placeholder:text-faint"
+                    className="min-h-[44px] w-full rounded-[10px] border border-line bg-bg px-3 text-[15px] text-ink placeholder:text-muted"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -89,7 +89,7 @@ export default async function FindBookingPage({
                     name="lastName"
                     required
                     autoComplete="family-name"
-                    className="min-h-[44px] w-full rounded-[10px] border border-line bg-bg px-3 text-[15px] text-ink placeholder:text-faint"
+                    className="min-h-[44px] w-full rounded-[10px] border border-line bg-bg px-3 text-[15px] text-ink placeholder:text-muted"
                   />
                 </label>
                 <SubmitButton className="min-h-[44px] rounded-[10px] bg-accent px-4 text-[14px] font-semibold text-white">

@@ -65,7 +65,7 @@ export default async function AdminCustomers({
     <Shell width="3xl">
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Bookings / Customers</p>
+        <p className="text-xs text-muted">Bookings / Customers</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Customers</h1>
       </header>
 
@@ -90,7 +90,7 @@ export default async function AdminCustomers({
             Clear
           </AppLink>
         )}
-        <span className="text-xs text-faint">
+        <span className="text-xs text-muted">
           {query ? `${rows.length} of ${allRows.length}` : `${allRows.length} total`}
         </span>
       </form>
@@ -112,7 +112,7 @@ export default async function AdminCustomers({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-line text-left text-[10px] uppercase tracking-wide text-faint">
+                <tr className="border-b border-line text-left text-[10px] uppercase tracking-wide text-muted">
                   <th className="px-3 py-2 font-semibold">Name</th>
                   <th className="px-3 py-2 font-semibold">Contact</th>
                   <th className="px-3 py-2 text-right font-semibold">Bookings</th>
@@ -129,7 +129,7 @@ export default async function AdminCustomers({
                       >
                         {r.name}
                       </AppLink>
-                      <div className="font-mono text-[10.5px] text-faint">{r.displayCode}</div>
+                      <div className="font-mono text-[10.5px] text-muted">{r.displayCode}</div>
                       {!r.active && (
                         <div className="text-[10px] uppercase tracking-wide text-muted">Retired</div>
                       )}
@@ -149,7 +149,7 @@ export default async function AdminCustomers({
       )}
 
       {/* Lifetime excludes tips on purpose — say so, so the number isn't misread as "collected". */}
-      <p className="mt-2 text-xs text-faint">
+      <p className="mt-2 text-xs text-muted">
         Lifetime is fare + extra guests on booked trips. Tips go to crew and are never counted as
         revenue; tax and payment status aren’t included either.
       </p>

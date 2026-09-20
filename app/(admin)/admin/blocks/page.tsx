@@ -187,7 +187,7 @@ export default async function AdminBlocks({
     <Shell width="6xl">
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Bookings / Blocks</p>
+        <p className="text-xs text-muted">Bookings / Blocks</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Blocks</h1>
       </header>
 
@@ -234,7 +234,7 @@ export default async function AdminBlocks({
       <div className="mt-3 grid grid-cols-1 gap-4 min-[1080px]:grid-cols-[1fr_340px]">
         {/* Registry (master) */}
         <div className="overflow-hidden rounded-card border border-line bg-card shadow-sm">
-          <div className="hidden border-b border-line px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-faint min-[720px]:grid min-[720px]:grid-cols-[110px_1.4fr_1.2fr_100px] min-[720px]:gap-3">
+          <div className="hidden border-b border-line px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted min-[720px]:grid min-[720px]:grid-cols-[110px_1.4fr_1.2fr_100px] min-[720px]:gap-3">
             <div>Kind</div>
             <div>What it blocks</div>
             <div>When</div>
@@ -295,7 +295,7 @@ export default async function AdminBlocks({
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-faint">
+                    <div className="text-xs text-muted">
                       {kind === "location"
                         ? "all vessels · all offerings here"
                         // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
@@ -315,11 +315,11 @@ export default async function AdminBlocks({
 
                   <div className="font-mono text-sm font-semibold text-ink">
                     {past ? (
-                      <span className="text-faint">—</span>
+                      <span className="text-muted">—</span>
                     ) : (
                       <>
                         {impact.removedSlots}
-                        <span className="block text-[10px] font-normal text-faint">
+                        <span className="block text-[10px] font-normal text-muted">
                           {impact.removedSlots === 1 ? "slot" : "slots"}
                         </span>
                       </>

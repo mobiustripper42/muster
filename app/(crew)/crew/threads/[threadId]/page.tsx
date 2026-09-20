@@ -99,7 +99,7 @@ export default async function ThreadPage({
           rows={2}
           aria-label="Message"
           placeholder="Message…"
-          className="w-full resize-none rounded-card border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-faint"
+          className="w-full resize-none rounded-card border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-muted"
         />
         <SubmitButton className="min-h-[44px] w-full rounded-card bg-accent px-4 font-semibold text-white">
           Send

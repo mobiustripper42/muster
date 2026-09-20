@@ -648,7 +648,7 @@ export function CalendarGrid({
       <div className="overflow-x-auto">
         {/* Header row: corner + vessel names with hue dots. */}
         <div className="grid border-b border-line" style={{ gridTemplateColumns: gridCols }}>
-          <div className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-faint">
+          <div className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
             Time
           </div>
           {data.vessels.map((v) => (
@@ -671,7 +671,7 @@ export function CalendarGrid({
             {GUTTER_TICKS.map((t) => (
               <span
                 key={t.time}
-                className="absolute right-1 -translate-y-[6px] text-right font-mono text-[10px] text-faint"
+                className="absolute right-1 -translate-y-[6px] text-right font-mono text-[10px] text-muted"
                 style={{ top: `${gridPosition(t.time, 0).topPct}%` }}
               >
                 {t.label}
@@ -877,7 +877,7 @@ export function CalendarGrid({
                         data-status={s.status}
                         className={`absolute flex items-center justify-center overflow-hidden rounded-lg border text-[10px] ${
                           departed
-                            ? "border-line border-dashed text-faint"
+                            ? "border-line border-dashed text-muted"
                             : "border-accent/60 font-medium text-accent"
                         }`}
                         style={{ ...pos, background: "transparent" }}
@@ -909,7 +909,7 @@ export function CalendarGrid({
                       data-lane={laneCount > 1 ? `${lane + 1}/${laneCount}` : undefined}
                       // Which offering a sliver belongs to is the thing 1/n width takes away.
                       // The tint says it against the legend.
-                      className={`absolute flex items-center justify-center overflow-hidden rounded-lg border-2 border-dashed text-[10px] text-faint ${offeringOpenClass(
+                      className={`absolute flex items-center justify-center overflow-hidden rounded-lg border-2 border-dashed text-[10px] text-muted ${offeringOpenClass(
                         String(s.offeringId),
                       )}${ring}`}
                       style={pos}

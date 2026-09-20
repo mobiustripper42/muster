@@ -86,10 +86,10 @@ export default async function CustomerDetailPage({
       <BackLink href="/admin/customers">Customers</BackLink>
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Bookings / Customers / Contact</p>
+        <p className="text-xs text-muted">Bookings / Customers / Contact</p>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-[22px] font-semibold leading-tight text-ink">{v.name}</h1>
-          <span className="font-mono text-xs text-faint">{v.displayCode}</span>
+          <span className="font-mono text-xs text-muted">{v.displayCode}</span>
           {!v.active && (
             <span className="rounded border border-line px-1.5 py-px text-[10px] uppercase tracking-wide text-muted">
               Retired
@@ -105,10 +105,10 @@ export default async function CustomerDetailPage({
             {v.email ? (
               <span className="break-all font-mono text-[13px]">{v.email}</span>
             ) : (
-              <span className="text-faint">No email</span>
+              <span className="text-muted">No email</span>
             )}
           </div>
-          <div className="mt-1 text-xs text-faint">
+          <div className="mt-1 text-xs text-muted">
             {v.bookingCount} booking{v.bookingCount === 1 ? "" : "s"} ·{" "}
             {formatCents(v.lifetimeCents)} lifetime · since {v.createdAt.slice(0, 10)}
           </div>
@@ -116,7 +116,7 @@ export default async function CustomerDetailPage({
         </div>
 
         <div className="px-4 py-3">
-          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-faint">
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
             History
           </div>
           {v.history.length === 0 ? (
@@ -126,9 +126,9 @@ export default async function CustomerDetailPage({
               {v.history.map((h) => (
                 <li key={h.reservationId} className="flex items-baseline justify-between gap-3 py-2">
                   <span className="text-sm text-ink">
-                    {h.date ? formatDay(h.date) : <span className="text-faint">Unknown date</span>}
+                    {h.date ? formatDay(h.date) : <span className="text-muted">Unknown date</span>}
                     {h.time && <span className="ml-1.5 text-xs text-muted">{h.time}</span>}
-                    <span className="ml-2 text-xs text-faint">
+                    <span className="ml-2 text-xs text-muted">
                       {h.guestCount} guest{h.guestCount === 1 ? "" : "s"}
                     </span>
                     {h.status === "cancelled" && (
@@ -139,7 +139,7 @@ export default async function CustomerDetailPage({
                   </span>
                   <span className="flex shrink-0 items-baseline gap-3">
                     <span
-                      className={`font-mono text-sm ${h.status === "cancelled" ? "text-faint" : "text-ink"}`}
+                      className={`font-mono text-sm ${h.status === "cancelled" ? "text-muted" : "text-ink"}`}
                     >
                       {formatCents(h.valueCents)}
                     </span>
@@ -160,7 +160,7 @@ export default async function CustomerDetailPage({
         </div>
       </div>
 
-      <p className="mt-2 text-xs text-faint">
+      <p className="mt-2 text-xs text-muted">
         A contact record, not an account — customers never sign in. Editing and messaging aren’t
         wired up yet; messaging waits on a separate customer sender number so a customer can never
         text the crew line.

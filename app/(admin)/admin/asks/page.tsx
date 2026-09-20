@@ -111,7 +111,7 @@ function AuditRow({ row }: { row: AuditTrailRow }) {
         <KindTag kind={row.kind} />
       </div>
       {secondary && <span className="text-sm text-muted">{secondary}</span>}
-      <span className="text-xs text-faint">{fmtRunWhen(row.timestamp)}</span>
+      <span className="text-xs text-muted">{fmtRunWhen(row.timestamp)}</span>
     </div>
   );
 }

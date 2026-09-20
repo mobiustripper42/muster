@@ -72,6 +72,7 @@ import type {
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { AuditEvent } from "../domain/audit.js";
+import type { TrailEvent } from "../domain/reservation-trail.js";
 import type { SeatState } from "../domain/states.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
@@ -796,6 +797,31 @@ export interface Repository {
    *  unions these with the reliability projection; filtering (crew / kind) is the
    *  read-model's job, like buildAskTrail over listAllAsks. */
   listAuditEvents(): Promise<AuditEvent[]>;
+
+  // ── Reservation trail (append-only — issue #1047, tracked by issue #1053) ──
+  /**
+   * Append one reservation-trail row. **Idempotent on `id`**: a second append of the
+   * same id is a silent no-op and does NOT overwrite the first. That differs from
+   * `appendAuditEvent` above on purpose — these emitters sit on at-least-once
+   * delivery paths (Stripe redelivers), so a duplicate is an expected event rather
+   * than a defect, and a trail that can be rewritten is not a trail.
+   *
+   * **The caller must never let this throw into a booking.** Wrap it, swallow through
+   * `logSwallowed` (src/log.ts, issue #902), and call it AFTER the commit, outside the
+   * hull-day lock — a write that cannot throw can still cost a customer their boat by
+   * holding the lock longer under contention. Operator's ruling, 2026-09-20.
+   *
+   * Both keys on the event are optional and neither is a foreign key; a row naming a
+   * reservation that no longer exists is legal and is the reason there is no FK.
+   */
+  appendTrailEvent(event: TrailEvent): Promise<void>;
+  /**
+   * Every trail row, newest first. Only the EMITTED half — the facts that already
+   * persist (`booked`, `imported`, `confirmation_sent`, …) are projected from their
+   * own sources by the read model (issue #1048), never stored here. DEC-118: one
+   * source per fact, read = union, not dual-write.
+   */
+  listTrailEvents(): Promise<TrailEvent[]>;
 
   // ── SMS consent log (Twilio 10DLC opt-in — append-only audit) ──────────────
   // Written best-effort from the crew-login action when a crew member checks the

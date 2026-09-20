@@ -73,6 +73,26 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   // reasoning expires and it should be paginated or exempted.
   audit_events: { kind: "checked", refs: ["crew_member_id", "actor_id (admin actors only)"] },
 
+  // The reservation trail (issue #1047) is EXEMPT, and its dangling references are the
+  // reason the table exists rather than a defect in it. `reservation_id` has no FK on
+  // purpose: SPEC §2.8.8's future reaper deletes lapsed `pending` rows, and the trail is
+  // what makes deleting one safe — a restrict FK would block that reaper, a cascade would
+  // destroy the record that justified it. So a row outliving its subject is the designed
+  // steady state, and the contract suite pins that both adapters accept one.
+  //
+  // `payment_intent_id` names a Stripe object this schema never stores, so there is no
+  // local referent to check against at all.
+  //
+  // **This is the opposite call from `audit_events` directly above**, which IS walked. The
+  // difference is not volume, it is that a dangling `crew_member_id` there renders a blank
+  // actor on an operator surface, where a dangling `reservation_id` here renders the exact
+  // fact the operator opened the trail to read: this happened, to a booking that is gone.
+  reservation_trail: {
+    kind: "exempt",
+    reason:
+      "append-only; both keys are deliberately FK-less so a row outlives its subject (the §2.8.8 reaper). A dangling reference is the designed state, not an orphan.",
+  },
+
   // ── Foreign-keyed: Postgres will not let these dangle ────────────────────
   payments: { kind: "fk", refs: ["reservation_id"] },
   gratuity: { kind: "fk", refs: ["reservation_id", "event_id"] },

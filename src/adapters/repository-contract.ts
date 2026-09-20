@@ -43,6 +43,7 @@ import type {
 } from "../domain/entities.js";
 import { eventIdForSlot } from "../reservations/availability.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
+import type { TrailEvent } from "../domain/reservation-trail.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
 import type { Subject } from "../domain/entities.js";
@@ -3052,6 +3053,98 @@ export function runRepositoryContract(
         const empty = asId<"ThreadId">("thread-empty");
         expect((await repo.readStateForThread(empty)).size).toBe(0);
         expect((await repo.notifyStateForThread(empty)).size).toBe(0);
+      });
+    });
+
+    // ── The reservation trail (issue #1047) ────────────────────────────────────
+    //
+    // Append-only. The interesting cases are all about what a row is allowed NOT to
+    // have: both keys are optional, neither is a foreign key, and a row that names a
+    // reservation which does not exist must be accepted by both adapters. That is not
+    // laxness — it is the whole reason the table has no FK. An audit row has to
+    // outlive its subject, and §2.8.8's future reaper is the one thing that will
+    // delete a `pending` row out from under it.
+    describe("reservation trail", () => {
+      const RESERVATION = asId<"ReservationId">("resv-1");
+      const trail = (over: Partial<TrailEvent> = {}): TrailEvent => ({
+        id: asId<"TrailEventId">("trail-1"),
+        actorKind: "engine",
+        type: "auto_refunded",
+        timestamp: "2026-09-20T12:00:00.000Z",
+        metadata: {},
+        ...over,
+      });
+
+      it("append + list round-trips every optional, absent and present", async () => {
+        const bare = trail();
+        const full = trail({
+          id: asId<"TrailEventId">("trail-2"),
+          reservationId: RESERVATION,
+          paymentIntentId: asId<"PaymentIntentId">("pi_abc"),
+          actorKind: "admin",
+          actorId: "crew-9",
+          type: "refund_amount_overridden",
+          timestamp: "2026-09-20T13:00:00.000Z",
+          metadata: { quotedCents: 5000, actualCents: 7500, reason: "goodwill" },
+        });
+        await repo.appendTrailEvent(bare);
+        await repo.appendTrailEvent(full);
+
+        const rows = await repo.listTrailEvents();
+        expect(rows).toHaveLength(2);
+        expect(rows.find((r) => r.id === bare.id)).toEqual(bare);
+        expect(rows.find((r) => r.id === full.id)).toEqual(full);
+      });
+
+      it("accepts a row naming a reservation that does not exist — no FK, deliberately", async () => {
+        // The failure this prevents: the §2.8.8 reaper deletes a lapsed `pending` row,
+        // and a restrict FK blocks it while a cascade destroys the record that made
+        // deleting safe. Both adapters must accept the dangling reference.
+        const ghost = trail({
+          reservationId: asId<"ReservationId">("res-never-written"),
+          type: "checkout_details_changed",
+        });
+        await repo.appendTrailEvent(ghost);
+        expect(await repo.listTrailEvents()).toEqual([ghost]);
+      });
+
+      it("accepts a row with NEITHER key — money with no booking, and the slot events", async () => {
+        const unmatched = trail({ type: "charge_unmatched", actorKind: "stripe" });
+        await repo.appendTrailEvent(unmatched);
+        expect(await repo.listTrailEvents()).toEqual([unmatched]);
+      });
+
+      it("is append-only: re-appending the same id does not mutate the first row", async () => {
+        // No upsert. A trail that can be rewritten is not a trail, and the emitters
+        // run on at-least-once delivery paths (Stripe redelivers), so this WILL happen.
+        await repo.appendTrailEvent(trail({ metadata: { reason: "first" } }));
+        await repo.appendTrailEvent(trail({ metadata: { reason: "second" } }));
+        const rows = await repo.listTrailEvents();
+        expect(rows).toHaveLength(1);
+        expect(rows[0]?.metadata.reason).toBe("first");
+      });
+
+      it("lists newest first, across rows with and without a reservation", async () => {
+        await repo.appendTrailEvent(trail({ id: asId<"TrailEventId">("t-old"), timestamp: "2026-09-20T10:00:00.000Z" }));
+        await repo.appendTrailEvent(
+          trail({
+            id: asId<"TrailEventId">("t-new"),
+            timestamp: "2026-09-20T11:00:00.000Z",
+            reservationId: RESERVATION,
+            type: "link_reissued",
+            actorKind: "admin",
+          }),
+        );
+        expect((await repo.listTrailEvents()).map((r) => r.id)).toEqual(["t-new", "t-old"]);
+      });
+
+      it("the integrity tripwire ignores it — an append-only log may dangle", async () => {
+        // `src/admin/integrity.ts` is an opt-in walk over named aggregates and already
+        // excludes append-only logs by policy. A new table is invisible to it by
+        // default; this pins that, so nobody "fixes" the trail into the orphan report.
+        await repo.appendTrailEvent(trail({ reservationId: asId<"ReservationId">("res-gone") }));
+        const report = await checkIntegrity(repo);
+        expect(JSON.stringify(report)).not.toContain("res-gone");
       });
     });
   });

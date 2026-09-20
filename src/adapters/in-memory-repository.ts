@@ -72,6 +72,7 @@ import type {
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { AuditEvent } from "../domain/audit.js";
+import type { TrailEvent } from "../domain/reservation-trail.js";
 import type { SeatState } from "../domain/states.js";
 import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
@@ -165,6 +166,7 @@ export class InMemoryRepository implements Repository {
   readonly #noticeOutbox = new Map<NoticeOutboxEntryId, NoticeOutboxEntry>();
   readonly #reliability: ReliabilityEvent[] = [];
   readonly #auditEvents: AuditEvent[] = [];
+  readonly #trailEvents: TrailEvent[] = [];
   readonly #smsConsent: SmsConsent[] = [];
   // Guest contacts (#345 Part B) — keyed by reservationId, upsert-latest.
   readonly #guestContacts = new Map<string, GuestContact>();
@@ -1211,6 +1213,21 @@ export class InMemoryRepository implements Repository {
   }
 
   // ── Crew audit log (append-only — #400, DEC-118) ──────────────────────────
+  async appendTrailEvent(event: TrailEvent): Promise<void> {
+    // Idempotent on id, matching the pg adapter's `on conflict do nothing`. The FIRST
+    // write is the one that happened — an emitter on an at-least-once path (Stripe
+    // redelivers) must not be able to rewrite history by arriving twice.
+    if (this.#trailEvents.some((e) => e.id === event.id)) return;
+    this.#trailEvents.push(clone(event));
+  }
+  async listTrailEvents(): Promise<TrailEvent[]> {
+    // Same ordering contract as pg: timestamp desc, insertion-desc tiebreak.
+    return this.#trailEvents
+      .map(clone)
+      .reverse()
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }
+
   async appendAuditEvent(event: AuditEvent): Promise<void> {
     this.#auditEvents.push(clone(event));
   }

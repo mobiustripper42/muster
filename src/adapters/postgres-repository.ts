@@ -83,6 +83,7 @@ import type {
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { AuditEvent } from "../domain/audit.js";
+import type { TrailEvent } from "../domain/reservation-trail.js";
 import type { SeatState } from "../domain/states.js";
 import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { ImportRunId } from "../domain/ids.js";
@@ -602,6 +603,19 @@ const toReliability = (r: any): ReliabilityEvent => ({
 const toAudit = (r: any): AuditEvent => ({
   id: asId<"AuditEventId">(r.id),
   crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
+  actorKind: r.actor_kind,
+  ...(r.actor_id != null ? { actorId: r.actor_id } : {}),
+  type: r.type,
+  timestamp: r.timestamp,
+  metadata: r.metadata,
+});
+
+const toTrail = (r: any): TrailEvent => ({
+  id: asId<"TrailEventId">(r.id),
+  ...(r.reservation_id != null ? { reservationId: asId<"ReservationId">(r.reservation_id) } : {}),
+  ...(r.payment_intent_id != null
+    ? { paymentIntentId: asId<"PaymentIntentId">(r.payment_intent_id) }
+    : {}),
   actorKind: r.actor_kind,
   ...(r.actor_id != null ? { actorId: r.actor_id } : {}),
   type: r.type,
@@ -2521,6 +2535,34 @@ export class PostgresRepository implements Repository {
       "select * from audit_events order by timestamp desc, seq desc",
     );
     return rows.map(toAudit);
+  }
+
+  async appendTrailEvent(e: TrailEvent): Promise<void> {
+    // `on conflict do nothing`, unlike appendAuditEvent above. These emitters sit on
+    // at-least-once delivery paths, so a duplicate id is an expected event rather than
+    // a defect — and the first write is the one that happened. An upsert here would let
+    // a redelivery rewrite the record of what occurred, which is not a trail.
+    await this.#pool.query(
+      `insert into reservation_trail(id, reservation_id, payment_intent_id, actor_kind, actor_id, type, timestamp, metadata)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (id) do nothing`,
+      [
+        e.id,
+        e.reservationId ?? null,
+        e.paymentIntentId ?? null,
+        e.actorKind,
+        e.actorId ?? null,
+        e.type,
+        e.timestamp,
+        JSON.stringify(e.metadata),
+      ],
+    );
+  }
+  async listTrailEvents(): Promise<TrailEvent[]> {
+    const { rows } = await this.#pool.query(
+      "select * from reservation_trail order by timestamp desc, seq desc",
+    );
+    return rows.map(toTrail);
   }
 
   async recordSmsConsent(c: SmsConsent): Promise<void> {

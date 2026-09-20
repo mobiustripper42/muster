@@ -30,6 +30,13 @@ export type SmsConsentId = Brand<string, "SmsConsentId">;
 export type AskId = Brand<string, "AskId">;
 export type ReliabilityEventId = Brand<string, "ReliabilityEventId">;
 export type AuditEventId = Brand<string, "AuditEventId">;
+/** A reservation-trail row (issue #1047). Distinct from `AuditEventId`, which is the
+ *  crew trail's — two logs, two subjects, and a shared brand would let a row from one
+ *  be handed to the other with nothing to notice. */
+export type TrailEventId = Brand<string, "TrailEventId">;
+/** Stripe's `pi_…`. The reservation trail's second key: the only thing a fact with no
+ *  booking has to name itself with. */
+export type PaymentIntentId = Brand<string, "PaymentIntentId">;
 export type MagicTokenId = Brand<string, "MagicTokenId">;
 export type OutboxEntryId = Brand<string, "OutboxEntryId">;
 export type RingOutboxEntryId = Brand<string, "RingOutboxEntryId">;

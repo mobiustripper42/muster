@@ -35,7 +35,7 @@ import pg from "pg";
 import { pgConnectionConfig } from "../src/config/db-ssl.js";
 
 /** Reference data the reset preserves — vessels, crew, and their attributes. */
-const KEEP = new Set<string>([
+export const KEEP = new Set<string>([
   "vessels",
   "role_types",
   "crew_members",
@@ -56,7 +56,7 @@ const KEEP = new Set<string>([
  * precisely because cascading from one into the other must be a decision, not a surprise. Any
  * future FK'd table needs the same check before it lands in either list.
  */
-const CLEAR: readonly string[] = [
+export const CLEAR: readonly string[] = [
   "shifts",
   "seats", // assignments live here (assignedCrewMemberId + state)
   "asks",
@@ -68,6 +68,12 @@ const CLEAR: readonly string[] = [
   "customers", // 12.12b — contact records hang off reservations; cleared WITH them so a
                // reset can't strand customers whose entire booking history just died
                // (and so the cascade above has nothing to surprise us with)
+  "reservation_trail", // issue #1047 — CLEAR, and it is a decision rather than a default.
+               // The trail is the history OF the rows directly above; keeping it across a
+               // reset that wipes them would leave every row describing a booking that no
+               // longer exists, which is a worse artifact than an empty trail. It has no
+               // FK, so the `cascade` from `reservations` will NOT reach it — that is
+               // exactly why it has to be listed explicitly rather than inherited.
   "import_runs",
   "import_run_items",
   "reliability_events", // crew history references the deleted shifts → fresh scores

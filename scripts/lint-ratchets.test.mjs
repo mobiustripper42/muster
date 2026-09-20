@@ -192,3 +192,38 @@ describe("the #951 token ban reaches the narrowing blocks too", () => {
     expect(found).not.toHaveLength(0);
   });
 });
+
+/**
+ * The `components/ui` primitives subtract ONE selector, not the whole rule.
+ *
+ * They wrap `<button type="submit">` and need exempting from that ban alone. The block
+ * used to say `"no-restricted-syntax": "off"`, which quietly also dropped #854's catch
+ * ban, the redirect-in-try ban, the clock rule, and then #951's token ban — in the very
+ * commit that added it, to the four files most likely to grow a fresh `text-faint`. It
+ * was caught by review, not by the gate, because an absent rule and a satisfied rule
+ * produce the same silence.
+ *
+ * So the exemption is now a `.filter()` on one named selector, and this is what says the
+ * subtraction is still exactly one wide.
+ */
+describe("components/ui primitives keep every ban except the raw-submit one", () => {
+  const PRIMITIVE = "components/ui/app-link.tsx";
+
+  it.each([
+    ['const c = "text-faint";', "#951's token ban"],
+    ["try { x(); } catch { }", "#854's bare-catch ban"],
+    ["try { redirect('/a'); } catch (e) { log(e); }", "the redirect-in-try ban"],
+    ['d.toLocaleDateString("en-US");', "the clock rule"],
+  ])("still fires on %s (%s)", async (code) => {
+    expect(await violations(code, PRIMITIVE)).not.toHaveLength(0);
+  });
+
+  it("stays quiet on the raw submit button — the one thing these files exist to wrap", async () => {
+    expect(await violations('<button type="submit">Go</button>;', PRIMITIVE)).toHaveLength(0);
+  });
+
+  it("and that exemption is theirs alone — an ordinary component still gets it", async () => {
+    const found = await violations('<button type="submit">Go</button>;', "components/probe.tsx");
+    expect(found).not.toHaveLength(0);
+  });
+});

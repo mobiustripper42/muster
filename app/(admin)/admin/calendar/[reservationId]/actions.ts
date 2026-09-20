@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { asId } from "@core/domain/ids.js";
@@ -279,7 +280,16 @@ export async function cancelBooking(formData: FormData): Promise<void> {
       await recordTrail(
         { repo: getRepo(), now: () => new Date().toISOString() },
         {
-          id: asId<"TrailEventId">(`refund_failed:${reservationId}:${expectedRaw}`),
+          // **A fresh id per attempt, not a derived one** (`/security-review`). The CAS token
+          // is the refunded TOTAL, and a `provider_error` that moved zero cents leaves it
+          // unchanged — so two consecutive zero-movement failures derived the same id and the
+          // second was dropped by `on conflict do nothing`. "It failed twice" is exactly the
+          // fact an operator needs and it was the one being discarded.
+          //
+          // Determinism is a WEBHOOK property: it exists so a Stripe redelivery collides
+          // instead of duplicating. An operator action has no redelivery, and a double-submit
+          // writing two audit rows is the right failure direction for a log.
+          id: asId<"TrailEventId">(`refund_failed:${reservationId}:${randomUUID()}`),
           reservationId: asId<"ReservationId">(reservationId),
           actorKind: "admin",
           actorId: subject.id,
@@ -434,7 +444,16 @@ export async function refundBooking(formData: FormData): Promise<void> {
       await recordTrail(
         { repo: getRepo(), now: () => new Date().toISOString() },
         {
-          id: asId<"TrailEventId">(`refund_failed:${reservationId}:${expectedRaw}`),
+          // **A fresh id per attempt, not a derived one** (`/security-review`). The CAS token
+          // is the refunded TOTAL, and a `provider_error` that moved zero cents leaves it
+          // unchanged — so two consecutive zero-movement failures derived the same id and the
+          // second was dropped by `on conflict do nothing`. "It failed twice" is exactly the
+          // fact an operator needs and it was the one being discarded.
+          //
+          // Determinism is a WEBHOOK property: it exists so a Stripe redelivery collides
+          // instead of duplicating. An operator action has no redelivery, and a double-submit
+          // writing two audit rows is the right failure direction for a log.
+          id: asId<"TrailEventId">(`refund_failed:${reservationId}:${randomUUID()}`),
           reservationId: asId<"ReservationId">(reservationId),
           actorKind: "admin",
           actorId: subject.id,

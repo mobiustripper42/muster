@@ -9,7 +9,10 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
-    "outDir": "dist",
+    // No `outDir`. It said "dist" until 2026-09-19 and did nothing — `noEmit` wins — but
+    // it had already left 333 stale .js/.d.ts files there, the compiled remains of modules
+    // deleted months earlier. Two sessions spent time asking why there was still an outbox
+    // component; the answer was a build directory nobody emits to any more.
     "noEmit": true,
 
     "strict": true,

@@ -372,6 +372,22 @@ describe("processBookingWebhook", () => {
     expect(alert).not.toHaveBeenCalled();
   });
 
+  /**
+   * **Why this is not a duplicate of "loses the boat to a rival" above, which `@code-review`
+   * reasonably argued it was.** The two setups differ only in `reservedAt`, and
+   * `compensateResidualRaceLoss` never reads liveness — so against TODAY's code the objection is
+   * exactly right and this case exercises no branch the other one misses.
+   *
+   * What it catches is the change somebody makes later: *"the window ran out, so they walked away
+   * — skip the compensation."* Added that as a guard at the top of `compensateResidualRaceLoss`
+   * and this case went red alone; the live-row case at the top of this cluster stayed green.
+   * A lapsed row is not an abandoned one when money arrived against it, and the customer charged
+   * for a boat they did not get is the same customer either way.
+   *
+   * The first defence I tried for this case did NOT hold and is recorded so nobody re-tries it:
+   * letting a lapsed row skip the hull check makes nothing fail, because the whole-boat mutex
+   * refuses the claim a step later regardless.
+   */
   it("pays after the window with the boat TAKEN: refunds, tells the customer, tells the office", async () => {
     const repo = new InMemoryRepository();
     await seedPending(repo, { reservedAt: LAPSED });

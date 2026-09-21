@@ -6,10 +6,12 @@ import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { CrewMember, Gratuity, Seat, Shift } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
+import { SEAT_STATES } from "../domain/states.js";
 import {
   buildGratuityPayroll,
   gustoTipsCsv,
   splitGratuity,
+  type GratuityPayroll,
   type GustoTipRow,
 } from "./gratuity-payroll.js";
 
@@ -151,6 +153,79 @@ describe("buildGratuityPayroll — window + booked + seat denominator + Gusto", 
     // the event is on no non-cancelled in-window shift → its gratuity is out of this period.
     expect(out.rows).toEqual([]);
     expect(out.totalCents).toBe(0);
+  });
+});
+
+// ── The denominator: required + Confirmed + assigned, and no others ──────────
+/**
+ * `gratuity-payroll.ts:114` is one predicate with three clauses, and until 15.20 not one of them
+ * had a check. An over-wide denominator does not error — it silently SHRINKS every working crew
+ * member's real share, so each case here asserts the survivors still get **500 each**, not merely
+ * that the disqualified seat is absent. Absence alone would pass with the pool split the wrong way.
+ */
+const CREW_C = asId<"CrewMemberId">("crew-c");
+
+async function repoWithExtraSeat(over: Partial<Seat>): Promise<InMemoryRepository> {
+  const repo = await seededRepo();
+  await repo.saveCrewMember(crew(CREW_C, "Cat"));
+  await repo.saveSeat(seat("s-c", CREW_C, over));
+  return repo;
+}
+/**
+ * The comparable shape, extracted rather than asserted in a shared helper: `vitest/expect-expect`
+ * and `sonarjs/assertions-in-tests` both read a test whose only `expect` is inside a called
+ * function as having no assertions, and they are not wrong to — the `expect` has to stay in the
+ * test body for the failure to point at the case that failed.
+ */
+const paidOut = (out: GratuityPayroll) => ({
+  rows: out.rows.map((r) => [r.crewMemberId, r.tipCents]),
+  totalCents: out.totalCents,
+});
+const ANN_AND_BOB_ONLY = { rows: [["crew-a", 500], ["crew-b", 500]], totalCents: 1000 };
+
+describe("buildGratuityPayroll — the pool reaches required Confirmed assigned seats, and no others", () => {
+  it("excludes a supernumerary seat (a trainee is not paid from the pool)", async () => {
+    const repo = await repoWithExtraSeat({ kind: "supernumerary" });
+    expect(paidOut(await buildGratuityPayroll(repo, WINDOW))).toEqual(ANN_AND_BOB_ONLY);
+  });
+
+  // Every non-Confirmed member of SEAT_STATES (states.ts:53-60), derived rather than listed so a
+  // state added later (the parked "Held") is covered without anyone remembering to add it here.
+  // `Bailed` is the sharp one: the seat reopened and someone else worked it — paying both is a
+  // double payout from a fixed pool.
+  for (const state of SEAT_STATES.filter((s) => s !== "Confirmed")) {
+    it(`excludes a seat in state ${state}`, async () => {
+      const repo = await repoWithExtraSeat({ state });
+      expect(paidOut(await buildGratuityPayroll(repo, WINDOW))).toEqual(ANN_AND_BOB_ONLY);
+    });
+  }
+
+  it("excludes a Confirmed required seat with nobody in it — no phantom (unknown) row", async () => {
+    const repo = await seededRepo();
+    // Built inline, not via `seat()`: `exactOptionalPropertyTypes` forbids passing an explicit
+    // `undefined` for an optional key, and an absent key is what an unfilled seat actually is.
+    await repo.saveSeat({
+      id: asId<"SeatId">("s-empty"), shiftId: SHIFT, role: CAPTAIN, kind: "required", state: "Confirmed",
+    });
+    const out = await buildGratuityPayroll(repo, WINDOW);
+    expect(paidOut(out)).toEqual(ANN_AND_BOB_ONLY);
+    // Without the `&& seat.assignedCrewMemberId` clause, `String(undefined)` joins the pool as the
+    // crew id "undefined", takes a third of the money, misses the crew lookup, and lands as an
+    // "(unknown)" row — which `gustoTipsCsv` then drops for having no Gusto id. The cents leave the
+    // import while the on-screen total still counts them.
+    expect(out.rows.map((r) => r.name)).toEqual(["Ann", "Bob"]);
+  });
+
+  it("a shift whose seats ALL disqualify leaves the pool unsplit and warned", async () => {
+    const repo = await seededRepo();
+    await repo.saveSeat(seat("s-a", CREW_A, { kind: "supernumerary" }));
+    await repo.saveSeat(seat("s-b", CREW_B, { state: "Bailed" }));
+    const out = await buildGratuityPayroll(repo, WINDOW);
+    expect(out.rows).toEqual([]);
+    expect(out.totalCents).toBe(0);
+    // Money surfaced, never silently dropped (gratuity-payroll.ts:66). The pure split pins this
+    // through an empty crew map; this is the same branch reached through the repository.
+    expect(out.warnings.some((w) => w.includes("no confirmed crew") && w.includes("$10.00"))).toBe(true);
   });
 });
 

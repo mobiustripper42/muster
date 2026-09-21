@@ -1,9 +1,11 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { asId } from "@core/domain/ids.js";
 import { createBalanceCheckout } from "@core/reservations/create-balance-checkout.js";
+import { recordTrail } from "@core/reservations/trail.js";
 import {
   cancelReservation,
   quoteCancelRefund,
@@ -179,22 +181,40 @@ export async function cancelBooking(formData: FormData): Promise<void> {
   // shows what is still owed. The reverse — refunding and then failing to cancel — would leave a
   // refunded customer holding a boat.
   const typed = String(formData.get("amount") ?? "").trim();
-  let refundCents: number | null = null;
-  if (typed === "") {
+
+  // The published-terms figure, now computed on BOTH paths. It is the refund amount when the
+  // operator typed nothing, and the COMPARISON when they did — `refund_issued_by_operator`
+  // carries it so the delta is readable later without recomputing terms that may since have
+  // changed (issue #1050). Two extra reads on the typed path, paid once per operator cancel.
+  //
+  // No event ⇒ no departure instant ⇒ no notice window, so the figure cannot be derived at
+  // all. Cancel stands; the operator refunds by hand from the box, and the trail row simply
+  // has no `quotedCents` — which means "there was no policy figure", not "it matched".
+  //
+  // Wrapped, because the refactor moved these reads onto the TYPED path where they never ran
+  // before — an operator who types a figure would now get an unhandled exception on a page
+  // whose cancel has already committed. `null` on failure is the same answer as "no event":
+  // there is no policy figure, so the blank-box path falls through to a hand refund and the
+  // trail row simply carries no `quotedCents`.
+  let quotedCents: number | null = null;
+  try {
     const payments = await getRepo().listPaymentsForReservation(asId<"ReservationId">(reservationId));
-    const event = result.freedEventId
-      ? await getRepo().getEvent(result.freedEventId)
-      : null;
-    // No event ⇒ no departure instant ⇒ no notice window, so the published-terms figure cannot
-    // be derived. Cancel stands; the operator refunds by hand from the box.
+    const event = result.freedEventId ? await getRepo().getEvent(result.freedEventId) : null;
     if (event) {
-      refundCents = quoteCancelRefund({
+      quotedCents = quoteCancelRefund({
         by,
         payments,
         departureAt: zonedWallClockToInstant(event.date, event.time),
         now: new Date(),
       }).refundCents;
     }
+  } catch (e) {
+    logSwallowed("admin/reservation:cancelBooking", e, "no published-terms figure; the operator refunds by hand");
+  }
+
+  let refundCents: number | null = null;
+  if (typed === "") {
+    refundCents = quotedCents;
   } else {
     const parsed = parseDollarsToCents(typed);
     // The cancel HAPPENED. A bad amount cannot undo it, so this reports the cancel as done and
@@ -254,6 +274,29 @@ export async function cancelBooking(formData: FormData): Promise<void> {
         `[reservations] cancel+refund of ${refundCents}c on ${reservationId} failed partway ` +
           `(${refund.refundedCents}c did move): ${refund.message}`,
       );
+      // The partial failure, recorded where the lease is already released (issue #1050).
+      // `payments.refunded_cents` will show what moved and nothing else would ever say the
+      // operator asked for more and did not get it.
+      await recordTrail(
+        { repo: getRepo(), now: () => new Date().toISOString() },
+        {
+          // **A fresh id per attempt, not a derived one** (`/security-review`). The CAS token
+          // is the refunded TOTAL, and a `provider_error` that moved zero cents leaves it
+          // unchanged — so two consecutive zero-movement failures derived the same id and the
+          // second was dropped by `on conflict do nothing`. "It failed twice" is exactly the
+          // fact an operator needs and it was the one being discarded.
+          //
+          // Determinism is a WEBHOOK property: it exists so a Stripe redelivery collides
+          // instead of duplicating. An operator action has no redelivery, and a double-submit
+          // writing two audit rows is the right failure direction for a log.
+          id: asId<"TrailEventId">(`refund_failed:${reservationId}:${randomUUID()}`),
+          reservationId: asId<"ReservationId">(reservationId),
+          actorKind: "admin",
+          actorId: subject.id,
+          type: "refund_failed",
+          metadata: { actualCents: refund.refundedCents, reason: refund.message },
+        },
+      );
       // CLEAR, not stash — the opposite of every other refusal here, and deliberately (#780).
       // Money PARTIALLY moved. Re-offering the figure the operator typed is the one thing this
       // screen's own copy tells them not to do ("retrying the full amount would refund that
@@ -269,6 +312,30 @@ export async function cancelBooking(formData: FormData): Promise<void> {
     await stashFormDraft("/admin/calendar", formData);
     redirect(back({ cancelled: by, refundErr: refund.reason }));
   }
+  // The trail, AFTER the money moved and after the cancel committed — never before either
+  // (issue #1050). `quotedCents` is present here and absent on the standalone refund box,
+  // which is the whole reason this event is named for what the operator did rather than for
+  // a comparison: on this path there IS a published-terms figure to compare against.
+  await recordTrail(
+    { repo: getRepo(), now: () => new Date().toISOString() },
+    {
+      // `expectedRaw` is the compare-and-swap token — the refunded total this screen was
+      // rendered against — so it is stable across a retry of THIS operation and different for
+      // every subsequent one. Keying on the amount alone collided: two $50 goodwill refunds on
+      // one booking produced the same id and `on conflict do nothing` silently dropped the
+      // second row, which is the one thing this table exists to prevent (`@code-review`).
+      id: asId<"TrailEventId">(`refund_issued_by_operator:${reservationId}:${expectedRaw}`),
+      reservationId: asId<"ReservationId">(reservationId),
+      actorKind: "admin",
+      actorId: subject.id,
+      type: "refund_issued_by_operator",
+      metadata: {
+        actualCents: refund.refundedCents,
+        ...(quotedCents !== null ? { quotedCents } : {}),
+        reason: "cancel-and-refund",
+      },
+    },
+  );
   await clearFormDraft("/admin/calendar");
   redirect(back({ cancelled: by, refunded: String(refund.refundedCents) }));
 }
@@ -371,10 +438,49 @@ export async function refundBooking(formData: FormData): Promise<void> {
         `[reservations] refund of ${amountCents}c on ${reservationId} failed partway ` +
           `(${result.refundedCents}c did move): ${result.message}`,
       );
+      // The partial failure, recorded where the lease is already released (issue #1050).
+      // `payments.refunded_cents` will show what moved and nothing else would ever say the
+      // operator asked for more and did not get it.
+      await recordTrail(
+        { repo: getRepo(), now: () => new Date().toISOString() },
+        {
+          // **A fresh id per attempt, not a derived one** (`/security-review`). The CAS token
+          // is the refunded TOTAL, and a `provider_error` that moved zero cents leaves it
+          // unchanged — so two consecutive zero-movement failures derived the same id and the
+          // second was dropped by `on conflict do nothing`. "It failed twice" is exactly the
+          // fact an operator needs and it was the one being discarded.
+          //
+          // Determinism is a WEBHOOK property: it exists so a Stripe redelivery collides
+          // instead of duplicating. An operator action has no redelivery, and a double-submit
+          // writing two audit rows is the right failure direction for a log.
+          id: asId<"TrailEventId">(`refund_failed:${reservationId}:${randomUUID()}`),
+          reservationId: asId<"ReservationId">(reservationId),
+          actorKind: "admin",
+          actorId: subject.id,
+          type: "refund_failed",
+          metadata: { actualCents: result.refundedCents, reason: result.message },
+        },
+      );
       redirect(back({ refundErr: "provider_error", refunded: String(result.refundedCents) }));
     }
     redirect(back({ refundErr: result.reason }));
   }
+  // **No `quotedCents` here, and that is the point of the rename** (issue #1050). This box is
+  // reached on a booking that may not be cancelled at all, so there is no `CancelledBy` and no
+  // notice window — `quoteCancelRefund` has nothing to compute from. An absent quote means
+  // "there was no policy figure to compare against", never "the operator matched it".
+  await recordTrail(
+    { repo: getRepo(), now: () => new Date().toISOString() },
+    {
+      // Keyed on the CAS token, not the amount — see the cancel path for the collision.
+      id: asId<"TrailEventId">(`refund_issued_by_operator:${reservationId}:${expectedRaw}`),
+      reservationId: asId<"ReservationId">(reservationId),
+      actorKind: "admin",
+      actorId: subject.id,
+      type: "refund_issued_by_operator",
+      metadata: { actualCents: result.refundedCents, reason: "standalone refund" },
+    },
+  );
   redirect(back({ refunded: String(result.refundedCents) }));
 }
 

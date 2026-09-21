@@ -272,6 +272,13 @@ async function executeRefundPlan(
       // Money that already moved must be in the ledger even though the operation failed —
       // unreconcilable is not unrecordable (#613 posture). The legs before this one are
       // recorded below via `done`; this one did not happen.
+      //
+      // **The trail row for this is emitted by the CALLER, not here** (issue #1050). This
+      // `catch` runs inside `refundReservation`'s `try`, whose `finally` releases the refund
+      // lease — so a trail write here extends the lease hold, and a concurrent refund on the
+      // same reservation is refused as `stale` for that extra duration. `trail.ts`'s own
+      // contract says the emit goes after the lock, and `@code-review` caught this site
+      // violating it. Not throwing is not the same as not interfering.
       return {
         ok: false,
         reason: "provider_error",

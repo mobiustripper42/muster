@@ -1194,6 +1194,48 @@ describe("processBookingWebhook — charge.dispute.* records the chargeback (iss
     expect(alert.mock.calls[1]![0]).toMatch(/LOST/);
   });
 
+  it("every dispute state leaves a trail row, and `live` deliberately does not", async () => {
+    // `live` is DERIVED from `payments.status` reading `disputed` (DEC-118, one source per
+    // fact), so it is the one state that must NOT emit. The other four are store-only: the
+    // ledger either is not written at all (`inquiry`, `unknown`) or is written back to a
+    // value that erases the argument afterwards (`won`).
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+
+    for (const state of ["inquiry", "live", "won", "lost", "unknown"] as const) {
+      await processBookingWebhook(deps, dispute({ state }), FAKE_SIGNATURE);
+    }
+
+    const types = (await repo.listTrailEvents()).map((r) => r.type).sort();
+    expect(types).toEqual(["dispute_inquiry", "dispute_lost", "dispute_unknown", "dispute_won"]);
+  });
+
+  it("a redelivered dispute does not write a second trail row", async () => {
+    // Stripe redelivers. The id is `<type>:<payment intent>` precisely so the adapter's
+    // `on conflict (id) do nothing` fires — a random id would defeat it silently.
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, dispute({ state: "lost" }), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, dispute({ state: "lost" }), FAKE_SIGNATURE);
+
+    expect(await repo.listTrailEvents()).toHaveLength(1);
+  });
+
+  it("a dispute on a charge Muster never recorded still leaves a row, keyed on the charge", async () => {
+    // No payment row ⇒ no reservation to name it with. This is the class the trail's second
+    // key exists for: Stripe's dashboard and this row are the entire record that it happened.
+    const repo = new InMemoryRepository();
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, dispute({ state: "lost" }), FAKE_SIGNATURE);
+
+    const [row] = await repo.listTrailEvents();
+    expect(row?.type).toBe("dispute_lost");
+    expect(row?.reservationId).toBeUndefined();
+    expect(row?.paymentIntentId).toBeDefined();
+  });
+
   it("a status this deploy does not recognise writes NOTHING and says so", async () => {
     // Reachable only at runtime: Stripe adds a ninth dispute status and this deploy's pinned SDK
     // has not been bumped, so `disputeState`'s exhaustive switch matches nothing. It used to

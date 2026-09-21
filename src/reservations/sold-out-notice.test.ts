@@ -88,7 +88,11 @@ describe("sendSoldOutNotice", () => {
       await sendSoldOutNotice({ sms: boom, trail: trailDeps(repo) }, contact);
       const [row] = await repo.listTrailEvents();
       expect(row?.type).toBe("sold_out_notice_failed");
-      expect(row?.metadata.reason).toContain("twilio down");
+      // The TYPE name, not the message. `describeSendFailure` is the redaction: a
+      // `ChannelSendError`'s message carries the provider's verbatim response body, and Resend
+      // and Twilio echo the recipient address in validation errors. A durable row must not.
+      expect(row?.metadata.reason).toBe("sms: Error");
+      expect(row?.metadata.reason).not.toContain("twilio down");
     });
 
     it("no trail dep ⇒ no rows, and no throw — the pure tests construct deps without a repo", async () => {

@@ -11,6 +11,7 @@
 
 import { asId } from "../domain/ids.js";
 import { recordTrail, type TrailDeps } from "./trail.js";
+import { describeSendFailure } from "../ports/channel.js";
 import type { ChannelPort } from "../ports/channel.js";
 
 export interface SoldOutContact {
@@ -84,7 +85,7 @@ export async function sendSoldOutNotice(
       await note(deps, "sold_out_notice_sent", "email", "email");
     } catch (e) {
       deps.onFailure?.(`sold-out email to ${contact.email} failed: ${errText(e)}`);
-      await note(deps, "sold_out_notice_failed", "email", errText(e));
+      await note(deps, "sold_out_notice_failed", "email", describeSendFailure(e));
     }
   }
 
@@ -94,7 +95,7 @@ export async function sendSoldOutNotice(
       await note(deps, "sold_out_notice_sent", "sms", "sms");
     } catch (e) {
       deps.onFailure?.(`sold-out SMS to ${contact.phone} failed: ${errText(e)}`);
-      await note(deps, "sold_out_notice_failed", "sms", errText(e));
+      await note(deps, "sold_out_notice_failed", "sms", describeSendFailure(e));
     }
   }
 }
@@ -112,6 +113,18 @@ export async function sendSoldOutNotice(
  *
  * No `reservationId`: this runs for the residual-race loser, whose reservation was never
  * written. A row with neither key is legal and this is the case it was made legal for.
+ *
+ * **The failure detail goes through `describeSendFailure`, not `errText`.** A
+ * `ChannelSendError`'s message embeds the provider's verbatim response body, and Resend and
+ * Twilio validation errors routinely echo the recipient address — so `errText` would persist
+ * a customer's email or phone into a durable row. `channel.ts` built that redaction for the
+ * six relays with the line "the one thing they must not log is the error's message", and this
+ * was the seventh site not using it. `/security-review` flagged it below its own reporting
+ * bar; the reason it gave for downgrading was that a sibling emitter already does the same,
+ * which is an argument for fixing both rather than for skipping this one.
+ *
+ * `onFailure` still gets the full text — it reaches a console the operator is reading now,
+ * not a table someone queries in a year.
  */
 async function note(
   deps: SoldOutNoticeDeps,

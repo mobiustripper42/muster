@@ -335,6 +335,73 @@ describe("processBookingWebhook", () => {
     expect((await repo.getReservation(PEND))!.status).toBe("pending");
   });
 
+  /**
+   * **§2.8.7's last two rows — the ones defined by the WINDOW having run out (15.15).**
+   *
+   * Every other case in this file seeds a live row: `pendingRow`'s `reservedAt` is
+   * "2026-07-11T23:55:00.000Z", five minutes before `NOW`, and the comment there says so. So the
+   * residual-race cluster above proves what happens when a RIVAL takes the hull, and nothing
+   * proved what happens when the payment is simply LATE — which is the distinguishing fact in
+   * both of SPEC.md:1883-1884.
+   *
+   * The behaviour is already correct, and correct for a reason that is easy to break: the flip
+   * exempts the caller's own row from the hull-free scan **by id**, never by liveness
+   * (`postgres-repository.ts:1687`, `in-memory-repository.ts:694`). Our own lapsing is therefore
+   * irrelevant to whether we win, which is exactly what the spec asks for. These two cases pin
+   * the END of each path — the refund, the notice, the alert, the confirmation — where
+   * `repository-contract.ts:1421` pins the flip itself.
+   */
+  const LAPSED = "2026-07-11T21:00:00.000Z"; // three hours before NOW; the window is 15 minutes
+
+  it("pays after the window with the boat STILL FREE: books it, and refunds nothing (§2.8.7)", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo, { reservedAt: LAPSED });
+    const payments = new FakePaymentPort();
+    const { deps, alert, confirm, soldOut } = makeDeps(repo, payments);
+
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    expect(r).toEqual({ handled: true, outcome: "booked" });
+    expect((await repo.getReservation(PEND))!.status).toBe("booked");
+    expect(confirm).toHaveBeenCalledOnce();
+    // **The negative half is the point.** "Nobody lost anything and the customer paid" — a refund
+    // here is the money defect, and it would arrive with a message telling the customer their trip
+    // sold out when it did not. If someone ever tightens the hull-free scan to also require the
+    // caller's own row to be live, this is the case that goes red.
+    expect(payments.refunds).toHaveLength(0);
+    expect(soldOut).not.toHaveBeenCalled();
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it("pays after the window with the boat TAKEN: refunds, tells the customer, tells the office", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo, { reservedAt: LAPSED });
+    // The hull went while this customer was paying — SPEC.md:1883's row.
+    await repo.saveEvent(musterEvent({ id: SLOT }));
+    await repo.saveReservation({
+      id: asId<"ReservationId">("r-rival"),
+      eventId: SLOT,
+      source: "muster",
+      customerName: "Rival",
+      partySize: 4,
+      status: "booked",
+    });
+    const payments = new FakePaymentPort();
+    const { deps, alert, confirm, soldOut } = makeDeps(repo, payments);
+
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    expect(r).toEqual({ handled: true, outcome: "lost" });
+    // "The refund and the message are one path: a refund nobody was told about reads as a silent
+    // failed payment." Both, or this row is not satisfied.
+    expect(payments.refunds).toHaveLength(1);
+    expect(payments.refunds[0]!.idempotencyKey).toBe("refund_pi_1");
+    expect(soldOut).toHaveBeenCalledOnce();
+    // "And the office is told every time, with no action asked for."
+    expect(alert).toHaveBeenCalledOnce();
+    expect(String(alert.mock.calls[0]![0])).not.toMatch(/REFUND MANUALLY/);
+    expect(confirm).not.toHaveBeenCalled();
+    expect((await repo.getReservation(PEND))!.status).toBe("pending");
+  });
+
   it("retires the loser's OTHER intents — this row will never book (15.10)", async () => {
     // `@code-review` caught this: the first cut of 15.10 retired siblings only on the booked path.
     // A residual-race loser is the one row class where an un-retired intent stays payable FOREVER

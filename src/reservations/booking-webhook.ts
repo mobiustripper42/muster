@@ -231,7 +231,9 @@ async function routeVerifiedEvent(
   // counting the revenue. It also catches Muster's own refunds a second time, harmlessly —
   // `markPaymentRefunded` takes a cumulative total, so the write is the same one
   // `refundReservation` already made.
-  if (event.type === "refund_recorded") return recordRefund(deps, event.data);
+  // `stripeEventId` is threaded in because a charge can be refunded more than once and the
+  // cumulative field cannot tell the deliveries apart — see `recordChargeUnmatched`.
+  if (event.type === "refund_recorded") return recordRefund(deps, event.data, event.stripeEventId);
 
   // A CHARGEBACK moved (issue #723) — same posture as the refund above, and before the
   // RESERVATIONS gate for the same reason: money that has already left the account must be
@@ -368,7 +370,8 @@ async function routeVerifiedEvent(
   // The alert reaches a person today; the row is what survives the week. Keyed on the session id,
   // because that is the only handle a hosted session is guaranteed to have.
   await recordChargeUnmatched(deps, "retired_hosted_session", {
-    key: completed.sessionId,
+    idKey: completed.sessionId,
+    chargeRef: completed.sessionId,
     paymentIntentId: completed.paymentIntentId,
   });
   return { handled: true, outcome: "unbookable" };
@@ -401,6 +404,15 @@ export const paymentIdFor = (chargeKey: string): PaymentId => asId<"PaymentId">(
  * exact collision `@code-review` and `/security-review` each caught once in issue #1050, in
  * opposite directions.
  *
+ * **`idKey` and `chargeRef` are separate, and the separation is the whole finding.** For three
+ * of the four shapes they are the same string, and the fourth is why this is a parameter rather
+ * than one field used twice: `refund_on_unknown_charge` can fire more than once for one
+ * PaymentIntent, because `amountRefundedCents` is CUMULATIVE and Stripe sends the event again
+ * for each additional partial refund. Two different facts, one charge. So its id keys on the
+ * STRIPE EVENT — the same derivation `payment_failed` uses, for the same reason — while
+ * `chargeRef` keeps naming the charge a human would go looking for. `@code-review` caught this
+ * after the first cut had already written that derivation twice elsewhere in this file.
+ *
  * `paymentIntentId` is absent on a charge that carries none, which is legal and is the reason
  * `TrailEvent` has two optional keys rather than one required one. `chargeRef` then carries the
  * only handle there is — a hosted session id — so the row still names something.
@@ -424,16 +436,25 @@ type UnmatchedShape =
 async function recordChargeUnmatched(
   deps: WebhookDeps,
   shape: UnmatchedShape,
-  charge: { key: string; paymentIntentId?: string | undefined },
+  charge: {
+    /** What makes this row unique. Must change when the FACT changes, and must NOT change on a
+     *  redelivery of the same fact. Usually the charge; the Stripe event id when one charge can
+     *  produce the fact more than once. */
+    idKey: string;
+    /** The handle a human goes looking for. Often the same string as `idKey`, and deliberately
+     *  not for `refund_on_unknown_charge`. */
+    chargeRef: string;
+    paymentIntentId?: string | undefined;
+  },
 ): Promise<void> {
   await recordTrail(deps, {
-    id: asId<"TrailEventId">(`charge_unmatched:${shape}:${charge.key}`),
+    id: asId<"TrailEventId">(`charge_unmatched:${shape}:${charge.idKey}`),
     ...(charge.paymentIntentId
       ? { paymentIntentId: asId<"PaymentIntentId">(charge.paymentIntentId) }
       : {}),
     actorKind: "stripe",
     type: "charge_unmatched",
-    metadata: { reason: shape, chargeRef: charge.key },
+    metadata: { reason: shape, chargeRef: charge.chargeRef },
   });
 }
 
@@ -732,7 +753,13 @@ export async function processBookingCharge(
     // instance of it). The flag being off is a deliberate refusal to book a charge that
     // succeeded — the alert says so now, and this row says so in three months when somebody is
     // reconciling a Stripe statement against a product that has no trace of the charge.
-    await recordChargeUnmatched(deps, "reservations_off", charge);
+    // A PaymentIntent succeeds once, so the charge key is the fact's own name and a redelivery
+    // of that one success is exactly what should collide.
+    await recordChargeUnmatched(deps, "reservations_off", {
+      idKey: charge.key,
+      chargeRef: charge.key,
+      paymentIntentId: charge.paymentIntentId,
+    });
     return { handled: false };
   }
 
@@ -751,7 +778,11 @@ export async function processBookingCharge(
     // key — and recorded anyway, because the branch is still here and still alerts. A guard that
     // fires is a guard whose row is owed; leaving the emit out of the one branch nobody can trip
     // is how it would be missing on the day somebody does.
-    await recordChargeUnmatched(deps, "no_payment_intent", charge);
+    await recordChargeUnmatched(deps, "no_payment_intent", {
+      idKey: charge.key,
+      chargeRef: charge.key,
+      ...(charge.paymentIntentId !== undefined ? { paymentIntentId: charge.paymentIntentId } : {}),
+    });
     return { handled: true, outcome: "unbookable" };
   }
 
@@ -1156,6 +1187,10 @@ async function recordPayment(
 async function recordRefund(
   deps: WebhookDeps,
   refund: { paymentIntentId: string; amountRefundedCents: number },
+  /** This delivery's Stripe event id. The ledger write does not need it — `markPaymentRefunded`
+   *  takes a cumulative total, so redelivery and a second partial refund are the same write — but
+   *  the trail row below does, because for the trail they are two different facts. */
+  stripeEventId: string,
 ): Promise<WebhookResult> {
   const payment = await deps.repo.getPaymentByIntentId(refund.paymentIntentId);
   if (!payment) {
@@ -1183,8 +1218,13 @@ async function recordRefund(
     // payment row — on purpose (#613) — and it is already recorded as `auto_refunded`. Calling it
     // unmatched would be the 15.5 defect again in a new place: two records of one refund saying
     // opposite things about whether Muster knows where the money went.
+    // **Keyed on the DELIVERY, not the charge** (`@code-review`). A Xola-era charge refunded in
+    // two parts sends this event twice with two cumulative totals — two facts about one intent,
+    // and keying on the intent would drop the second silently. `chargeRef` still names the
+    // charge, because that is what somebody reconciling a statement searches for.
     await recordChargeUnmatched(deps, "refund_on_unknown_charge", {
-      key: refund.paymentIntentId,
+      idKey: stripeEventId,
+      chargeRef: refund.paymentIntentId,
       paymentIntentId: refund.paymentIntentId,
     });
     return { handled: true, outcome: "refund_recorded" };

@@ -1883,6 +1883,31 @@ describe("processBookingWebhook — the trail's money-in events (issue #1051)", 
     expect(row?.metadata.reason).toBe("refund_on_unknown_charge");
   });
 
+  it("TWO refunds on one unmatched charge write TWO rows — the id is the Stripe event", async () => {
+    // **`@code-review` caught this one, and it is the same defect twice in one file.**
+    // `amountRefundedCents` is CUMULATIVE, so Stripe sends `charge.refunded` again for each
+    // additional partial refund — two genuinely different facts about one PaymentIntent. Keyed
+    // on the intent, the second would collide and vanish, which is exactly why `payment_failed`
+    // thirty lines up keys on the Stripe event id instead. The lesson had not travelled.
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+    const refundOf = (cents: number, evt: string) =>
+      JSON.stringify({
+        stripeEventId: evt,
+        type: "refund_recorded",
+        data: { paymentIntentId: "pi_nobody", amountRefundedCents: cents, currency: "usd" },
+      });
+
+    await processBookingWebhook(deps, refundOf(1000, "evt_r1"), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, refundOf(2500, "evt_r2"), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, refundOf(2500, "evt_r2"), FAKE_SIGNATURE); // a redelivery
+
+    const rows = await trailOf(repo, "charge_unmatched");
+    expect(rows).toHaveLength(2);
+    // The row still names the CHARGE a human would go looking for, not the event id that keys it.
+    expect(rows.map((x) => x.metadata.chargeRef)).toEqual(["pi_nobody", "pi_nobody"]);
+  });
+
   it("our own residual-race loser's refund is NOT charge_unmatched", async () => {
     // The 15.5 defect wearing a new hat. A loser gets no payment row on purpose (#613), so
     // `recordRefund` finds nothing — and it is still entirely ours, already recorded as
@@ -1951,25 +1976,24 @@ describe("processBookingWebhook — the trail's money-in events (issue #1051)", 
     expect(row?.metadata).toMatchObject({ reason: "no_payment_intent", chargeRef: "cs_no_intent" });
   });
 
-  it("the SHAPE is in the id, so one intent unmatched TWICE writes two rows", async () => {
-    // A charge can arrive while the flag is off and be refunded months later. One key, two
-    // facts — and `on conflict (id) do nothing` would silently eat the second.
+  it("the SHAPE is in the id, so one key unmatched for TWO reasons writes two rows", async () => {
+    // **The pair that can genuinely collide.** `reservations_off` and `no_payment_intent` both
+    // key on `charge.key`, and both are reachable for the same charge: the flag gate refuses a
+    // delivery, somebody turns RESERVATIONS on, and the redelivery gets past the gate and falls
+    // into the next refusal. Two different facts about one charge. Without the shape in the id
+    // the second hits `on conflict (id) do nothing` and the trail keeps only the older reason.
+    //
+    // Driven through `processBookingCharge` directly because the second leg is unreachable from
+    // the live routes — which is the point of pinning it here rather than trusting the branch.
     const repo = new InMemoryRepository();
-    await seedPending(repo, { status: "cancelled" }); // not a loser, so the refund leg alerts
     const { deps } = makeDeps(repo);
+    const charge = { key: "cs_same_key", amountCents: 53625, currency: "usd", metadata: {} };
 
-    await processBookingWebhook({ ...deps, reservationsEnabled: false }, bookingPi(), FAKE_SIGNATURE);
-    await processBookingWebhook(
-      deps,
-      JSON.stringify({
-        type: "refund_recorded",
-        data: { paymentIntentId: PI, amountRefundedCents: 53625, currency: "usd" },
-      }),
-      FAKE_SIGNATURE,
-    );
+    await processBookingCharge({ ...deps, reservationsEnabled: false }, charge);
+    await processBookingCharge(deps, charge);
 
     expect((await trailOf(repo, "charge_unmatched")).map((x) => x.metadata.reason).sort()).toEqual([
-      "refund_on_unknown_charge",
+      "no_payment_intent",
       "reservations_off",
     ]);
   });

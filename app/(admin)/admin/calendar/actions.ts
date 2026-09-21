@@ -10,6 +10,8 @@ import {
   type VesselHoldSaveError,
 } from "@core/admin/block-admin.js";
 import { readSubject } from "../../../lib/auth";
+import { asId } from "@core/domain/ids.js";
+import { recordTrail } from "@core/reservations/trail.js";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -57,6 +59,24 @@ export async function holdSlot(formData: FormData): Promise<void> {
       time: String(formData.get("time") ?? ""),
     });
     code = result.ok ? null : result.code;
+    // The operator took a departure off the market. Neither key applies — there is no
+    // reservation and no charge — so the slot rides in `metadata`, which is the shape the
+    // trail's nullable keys exist to allow (issue #1052).
+    if (result.ok) {
+      await recordTrail(
+        { repo: getRepo(), now: () => new Date().toISOString() },
+        {
+          id: asId<"TrailEventId">(`slot_held:${randomUUID()}`),
+          actorKind: "admin",
+          actorId: subject.id,
+          type: "slot_held",
+          metadata: {
+            wantedVesselId: String(formData.get("vesselId") ?? ""),
+            reason: `${String(formData.get("date") ?? "")} ${String(formData.get("time") ?? "")}`,
+          },
+        },
+      );
+    }
   } catch (e) {
     console.error("holdSlot: saveVesselHoldAdmin threw", e);
     code = "error";
@@ -79,6 +99,24 @@ export async function releaseHold(formData: FormData): Promise<void> {
       String(formData.get("id") ?? "").trim(),
     );
     code = result.ok ? null : result.code;
+    // **The release DELETED the block**, so this row is the only surviving record that the
+    // slot was ever held. `releaseVesselHoldAdmin` hands the row back for exactly this —
+    // an id alone would point at nothing a moment later (issue #1052).
+    if (result.ok) {
+      await recordTrail(
+        { repo: getRepo(), now: () => new Date().toISOString() },
+        {
+          id: asId<"TrailEventId">(`slot_released:${randomUUID()}`),
+          actorKind: "admin",
+          actorId: subject.id,
+          type: "slot_released",
+          metadata: {
+            wantedVesselId: String(result.released.vesselId ?? ""),
+            reason: `${result.released.date ?? ""} ${result.released.time ?? ""}`,
+          },
+        },
+      );
+    }
   } catch (e) {
     console.error("releaseHold: releaseVesselHoldAdmin threw", e);
     code = "error";

@@ -1,4 +1,6 @@
 import { EmailChannel } from "@core/adapters/email-channel.js";
+import { asId } from "@core/domain/ids.js";
+import { recordTrail } from "@core/reservations/trail.js";
 import type { SoldOutCharge } from "@core/reservations/booking-webhook.js";
 import { sendSoldOutNotice } from "@core/reservations/sold-out-notice.js";
 import { readEmailEnv } from "./auth-delivery";
@@ -16,11 +18,25 @@ import { appBaseUrl } from "./base-url";
 export async function sendReservationSoldOutNotice(
   charge: SoldOutCharge,
 ): Promise<void> {
+  const repo = getRepo();
+  const trail = { repo, now: () => new Date().toISOString(), key: charge.chargeRef };
   try {
-    if (process.env.MESSAGING === "false") return;
+    // **The same defect this commit closed in `booking-confirmation.ts`, in its sibling.**
+    // The kill-flag skipped the whole notice and recorded nothing — a customer charged,
+    // auto-refunded, and never told, silent by construction. `@code-review` caught that the
+    // fix went into one file and not the other. Derived id, because this path is re-entered
+    // on Stripe redelivery.
+    if (process.env.MESSAGING === "false") {
+      await recordTrail(trail, {
+        id: asId<"TrailEventId">(`sold_out_notice_failed:${charge.chargeRef}:flag`),
+        actorKind: "engine",
+        type: "sold_out_notice_failed",
+        metadata: { reason: "MESSAGING=false — not attempted on any channel" },
+      });
+      return;
+    }
 
     const linkBase = appBaseUrl();
-    const repo = getRepo();
     const emailEnv = readEmailEnv();
     const email = emailEnv ? new EmailChannel(emailEnv) : undefined;
     // #1007, the issue the old comment here deferred to. The guard it describes is gone: an unset
@@ -47,6 +63,10 @@ export async function sendReservationSoldOutNotice(
         ...(sms ? { sms } : {}),
         onFailure: (detail) =>
           console.error(`[reservations] sold-out notice send failed — ${detail}`),
+        // The durable half of the same fact (issue #1052). `onFailure` reaches a console; this
+        // reaches the trail, and answers "how often is a refunded customer never told" months
+        // later, which no console line can.
+        trail,
       },
       charge.contact,
     );

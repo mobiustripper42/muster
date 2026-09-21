@@ -1,4 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { EmailChannel } from "@core/adapters/email-channel.js";
+import { asId } from "@core/domain/ids.js";
+import { recordTrail } from "@core/reservations/trail.js";
 import type { Reservation } from "@core/domain/entities.js";
 import { sendBookingConfirmation } from "@core/reservations/booking-confirmation.js";
 import { ensureBookingCode } from "@core/reservations/ensure-booking-code.js";
@@ -45,7 +48,28 @@ export async function sendReservationConfirmation(
   try {
     // MESSAGING kill-flag — future-proofs #390 (not yet on this branch). A hard
     // "false" silences every send; anything else (incl. unset) leaves sends on.
-    if (process.env.MESSAGING === "false") return false;
+    //
+    // **This early return is the defect that opened issue #886.** The booking is written, the
+    // operator sees a sale, the customer never hears, and until now there was no log at any
+    // level — not an alert, not a console line, nothing. The trail row is the only artifact
+    // that will ever exist for it, which is exactly the case the table was built for.
+    //
+    // A fresh id per skip: a customer can be skipped on a first send and again on a resend,
+    // and "it happened twice" is the fact. Determinism is a webhook property (issue #1050) and
+    // there is no redelivery here.
+    if (process.env.MESSAGING === "false") {
+      await recordTrail(
+        { repo: getRepo(), now: () => new Date().toISOString() },
+        {
+          id: asId<"TrailEventId">(`confirmation_skipped:${randomUUID()}`),
+          reservationId: reservation.id,
+          actorKind: "engine",
+          type: "confirmation_skipped",
+          metadata: { reason: "MESSAGING=false" },
+        },
+      );
+      return false;
+    }
 
     // #1007: was a skip-and-log when `APP_BASE_URL` was unset, which meant a PREVIEW could never
     // send a booking confirmation — the variable is scoped to Production on purpose (DEC-057), so

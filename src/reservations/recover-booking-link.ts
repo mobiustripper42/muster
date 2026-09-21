@@ -33,6 +33,9 @@ import { contactKey } from "../customers/identity.js";
 import { ensureBookingCode } from "./ensure-booking-code.js";
 import { matchBookingForRecovery, type RecoveryQuery, type RecoveryRow } from "./find-booking.js";
 import { resendBookingLink } from "./resend-booking-link.js";
+import { recordTrail, type TrailDraft } from "./trail.js";
+import { asId, type ReservationId } from "../domain/ids.js";
+import { randomUUID } from "node:crypto";
 
 /**
  * How long one contact must wait between recovery requests.
@@ -67,6 +70,33 @@ export interface RecoverDeps {
  * would force a full-table read every time, for free. Taking rows eagerly made the file's own
  * comment ("bounded ahead of it by the throttle") false; taking a thunk makes it true.
  */
+
+/**
+ * One recovery attempt, and the outcome the CALLER is deliberately not told (issue #1052).
+ *
+ * This module's stated guarantee is that a match and a miss are indistinguishable from
+ * outside — same response, same shape, no throw. **That makes the trail the only place the
+ * truth is ever written down**, which is the strongest case in the whole set for the table
+ * existing at all.
+ *
+ * Emitted on `throttled`, `no_match` and `sent` — the three paths past the claim — so all
+ * three now cost the same extra write and stay comparable to each other. The unusable-contact
+ * return above deliberately writes nothing: it is the cheapest abuse vector, it carries no
+ * fact worth keeping, and it is already distinguishable by being instant.
+ *
+ * `reservationId` only on `sent`. Attaching it to `no_match` would be a contradiction, and
+ * attaching it to `throttled` would record a booking this attempt never got far enough to find.
+ */
+function recoveryRow(outcome: string, reservationId?: ReservationId): TrailDraft {
+  return {
+    id: asId<"TrailEventId">(`link_recovery_requested:${randomUUID()}`),
+    ...(reservationId ? { reservationId } : {}),
+    actorKind: "customer",
+    type: "link_recovery_requested",
+    metadata: { reason: outcome },
+  };
+}
+
 export async function recoverBookingLink(
   deps: RecoverDeps,
   loadRows: () => Promise<readonly RecoveryRow[]>,
@@ -87,11 +117,17 @@ export async function recoverBookingLink(
     );
     // Claimed BEFORE matching, so the no-match path is bounded too — that is the path an abuser
     // uses, and it is free to run otherwise.
-    if (!claim.claimed) return;
+    if (!claim.claimed) {
+      await recordTrail(deps, recoveryRow("throttled"));
+      return;
+    }
 
     // Only now — past the claim — is it worth reading the world.
     const match = matchBookingForRecovery(await loadRows(), query, deps.today);
-    if (!match) return;
+    if (!match) {
+      await recordTrail(deps, recoveryRow("no_match"));
+      return;
+    }
 
     // Mints one if this booking never had a code — an imported or pre-#741 booking is exactly
     // the case where the customer has nothing and is asking for it.
@@ -107,6 +143,7 @@ export async function recoverBookingLink(
       match.reservation,
       code,
     );
+    await recordTrail(deps, recoveryRow("sent", match.reservation.id));
   } catch (e) {
     // Never rethrow: a thrown error renders differently from a silent success, which hands back
     // exactly the signal this module exists to withhold.

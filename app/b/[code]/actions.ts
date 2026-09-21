@@ -8,6 +8,10 @@
  *    best-effort. Self-service cancel/refund is deferred (#472 + Flex wiring).
  */
 
+import { randomUUID } from "node:crypto";
+import { asId } from "@core/domain/ids.js";
+import { recordTrail } from "@core/reservations/trail.js";
+import { getRepo } from "../../lib/repo";
 import { redirect } from "next/navigation";
 import { EmailChannel } from "@core/adapters/email-channel.js";
 import { bookingUrl } from "@core/reservations/booking-code.js";
@@ -71,5 +75,19 @@ export async function requestBookingChange(formData: FormData): Promise<void> {
     console.error(`[reservations] change-request email failed — ${e instanceof Error ? e.message : e}`);
   }
 
+  // The customer asked for a cancel or a change, and the operator handles it by hand from an
+  // inbox (issue #1052). The email is best-effort — the catch above swallows a send failure and
+  // the customer still sees "requested" — so this row is the only thing that survives a lost
+  // email, on the one path where the customer believes they have been heard.
+  await recordTrail(
+    { repo: getRepo(), now: () => new Date().toISOString() },
+    {
+      id: asId<"TrailEventId">(`change_requested:${randomUUID()}`),
+      reservationId: booking.reservation.id,
+      actorKind: "customer",
+      type: "change_requested",
+      metadata: { reason: kind },
+    },
+  );
   redirect(manageHref(code, { requested: kind }));
 }

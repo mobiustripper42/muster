@@ -9,6 +9,9 @@
  *  - Transactional (they just paid + were refunded), NOT marketing — no `SmsConsent` gate.
  */
 
+import { randomUUID } from "node:crypto";
+import { asId } from "../domain/ids.js";
+import { recordTrail, type TrailDeps } from "./trail.js";
 import type { ChannelPort } from "../ports/channel.js";
 
 export interface SoldOutContact {
@@ -23,6 +26,13 @@ export interface SoldOutNoticeDeps {
   /** Low-severity observer for a failed send (log / admin notice), distinct from the urgent
    *  refund alert. Optional. */
   onFailure?: (detail: string) => void;
+  /**
+   * The trail (issue #1052). **Optional, because this module is called from a path that has
+   * already lost its reservation** — the residual-race loser, whose row was never written —
+   * and the pure-function tests construct deps without a repository. Absent means no row, not
+   * a failure.
+   */
+  trail?: TrailDeps;
 }
 
 /**
@@ -66,18 +76,50 @@ export async function sendSoldOutNotice(
   if (contact.email && deps.email) {
     try {
       await deps.email.send({ to: { email: contact.email }, kind: "receipt", body });
+      await note(deps, "sold_out_notice_sent", "email");
     } catch (e) {
       deps.onFailure?.(`sold-out email to ${contact.email} failed: ${errText(e)}`);
+      await note(deps, "sold_out_notice_failed", `email: ${errText(e)}`);
     }
   }
 
   if (contact.phone && deps.sms) {
     try {
       await deps.sms.send({ to: { phone: contact.phone }, kind: "receipt", body });
+      await note(deps, "sold_out_notice_sent", "sms");
     } catch (e) {
       deps.onFailure?.(`sold-out SMS to ${contact.phone} failed: ${errText(e)}`);
+      await note(deps, "sold_out_notice_failed", `sms: ${errText(e)}`);
     }
   }
+}
+
+/**
+ * One row per channel attempt (issue #1052).
+ *
+ * **This whole module is best-effort and never throws**, which is what makes a customer who
+ * was charged, auto-refunded, and never told silent by construction. `onFailure` is an
+ * observer the caller may not even pass. These rows are the durable half.
+ *
+ * Per channel rather than per notice, because an email-only contact, a Twilio outage and a
+ * two-channel success are three different answers to "was the customer told" and a single row
+ * would flatten them.
+ *
+ * No `reservationId`: this runs for the residual-race loser, whose reservation was never
+ * written. A row with neither key is legal and this is the case it was made legal for.
+ */
+async function note(
+  deps: SoldOutNoticeDeps,
+  type: "sold_out_notice_sent" | "sold_out_notice_failed",
+  detail: string,
+): Promise<void> {
+  if (!deps.trail) return;
+  await recordTrail(deps.trail, {
+    id: asId<"TrailEventId">(`${type}:${randomUUID()}`),
+    actorKind: "engine",
+    type,
+    metadata: { reason: detail },
+  });
 }
 
 function errText(e: unknown): string {

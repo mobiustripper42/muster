@@ -64,6 +64,47 @@ describe("recoverBookingLink", () => {
     await repo.saveReservation(reservation);
   });
 
+  /**
+   * The trail is the ONLY place a recovery outcome is written down (issue #1052).
+   *
+   * This module's whole guarantee is that a match and a miss are indistinguishable from
+   * outside — same response, no throw, nothing to time. That makes the row the sole record,
+   * and makes these the load-bearing cases in the file for anyone investigating abuse.
+   */
+  describe("the trail records the outcome the caller is not told", () => {
+    it("a send is recorded WITH the reservation", async () => {
+      await recoverBookingLink(deps(), () => Promise.resolve(rows), { contact: "marcus@example.com", lastName: "Webb" });
+      const [row] = await repo.listTrailEvents();
+      expect(row?.type).toBe("link_recovery_requested");
+      expect(row?.metadata.reason).toBe("sent");
+      expect(row?.reservationId).toBeDefined();
+    });
+
+    it("a miss is recorded WITHOUT one — naming a booking it never found would be a lie", async () => {
+      await recoverBookingLink(deps(), () => Promise.resolve(rows), { contact: "nobody@example.com", lastName: "Webb" });
+      const [row] = await repo.listTrailEvents();
+      expect(row?.metadata.reason).toBe("no_match");
+      expect(row?.reservationId).toBeUndefined();
+    });
+
+    it("a throttled attempt is recorded too — the abuse path is the one worth counting", async () => {
+      await recoverBookingLink(deps(), () => Promise.resolve(rows), { contact: "marcus@example.com", lastName: "Webb" });
+      await recoverBookingLink(deps(), () => Promise.resolve(rows), { contact: "marcus@example.com", lastName: "Webb" });
+      const reasons = (await repo.listTrailEvents()).map((r) => r.metadata.reason).sort();
+      expect(reasons).toEqual(["sent", "throttled"]);
+    });
+
+    it("a hit and a miss are still indistinguishable to the caller", async () => {
+      // The row is written on both, so the extra work is symmetric. If one path ever stops
+      // emitting, the timing difference is the signal this module exists to withhold.
+      const hit = await recoverBookingLink(deps(), () => Promise.resolve(rows), { contact: "marcus@example.com", lastName: "Webb" });
+      const miss = await recoverBookingLink(deps(), () => Promise.resolve(rows), { contact: "nobody@example.com", lastName: "Webb" });
+      expect(hit).toBeUndefined();
+      expect(miss).toBeUndefined();
+      expect(await repo.listTrailEvents()).toHaveLength(2);
+    });
+  });
+
   it("sends the manage link to the contact on file when everything matches", async () => {
     await recoverBookingLink(deps(), () => Promise.resolve(rows), { contact: "marcus@example.com", lastName: "Webb" });
 

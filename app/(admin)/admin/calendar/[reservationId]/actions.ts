@@ -555,6 +555,20 @@ export async function resendConfirmation(formData: FormData): Promise<void> {
   if (email !== "sent" && sms !== "sent") {
     redirect(back({ resendErr: email === "failed" || sms === "failed" ? "all_failed" : "nothing_sent" }));
   }
+  await recordTrail(
+    { repo: getRepo(), now: () => new Date().toISOString() },
+    {
+      id: asId<"TrailEventId">(`link_resent:${randomUUID()}`),
+      reservationId: asId<"ReservationId">(reservationId),
+      actorKind: "admin",
+      actorId: subject.id,
+      type: "link_resent",
+      // The per-channel outcome, which is the whole reason #686 made this report per channel
+      // rather than a flat "Sent": an email-only booking, a Twilio outage and a two-channel
+      // success used to render identically, and would record identically too.
+      metadata: { reason: `email=${email} sms=${sms}` },
+    },
+  );
   redirect(back({ resent: `${email}-${sms}` }));
 }
 
@@ -617,6 +631,25 @@ export async function reissueBookingLink(formData: FormData): Promise<void> {
   if (e2 !== "sent" && s2 !== "sent") redirect(back({ reissueErr: "sent_nothing" }));
   // The new link went out, but an old one survived the revoke — so the operator must NOT be told
   // the previous link is dead, which is the whole reason they pressed this.
+  // **Destructive in a way a resend is not** (issue #1052): this killed the customer's
+  // existing link. Emitted BEFORE the `old_link_alive` branch, because a revoke that did not
+  // take is still a reissue that happened — and that is the case most worth having a record of.
+  await recordTrail(
+    { repo: getRepo(), now: () => new Date().toISOString() },
+    {
+      id: asId<"TrailEventId">(`link_reissued:${randomUUID()}`),
+      reservationId: asId<"ReservationId">(reservationId),
+      actorKind: "admin",
+      actorId: subject.id,
+      type: "link_reissued",
+      metadata: {
+        reason:
+          reissue.staleCodes.length > 0
+            ? `old_link_alive: ${reissue.staleCodes.length} prior code(s) NOT revoked`
+            : `email=${e2} sms=${s2}`,
+      },
+    },
+  );
   if (reissue.staleCodes.length > 0) redirect(back({ reissueErr: "old_link_alive" }));
   redirect(back({ reissued: `${e2}-${s2}` }));
 }

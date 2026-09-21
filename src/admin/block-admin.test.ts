@@ -296,7 +296,19 @@ describe("releaseVesselHoldAdmin — lifting from the calendar", () => {
       date: "2026-08-12",
       time: "13:30",
     });
-    expect(await releaseVesselHoldAdmin(repo, "hold-1")).toEqual({ ok: true });
+    // The released row comes BACK (issue #1052). The release deletes it, so this is the last
+    // moment the hull, date and time exist anywhere — the caller's trail row is written from
+    // this. Asserted on the fields rather than the whole object so a future column does not
+    // fail a test that is about the slot.
+    const released = await releaseVesselHoldAdmin(repo, "hold-1");
+    expect(released.ok).toBe(true);
+    expect(released.ok && released.released).toMatchObject({
+      id: "hold-1",
+      kind: "vesselHold",
+      vesselId: "vessel-1",
+      date: "2026-08-12",
+      time: "13:30",
+    });
     expect(await repo.listBlocks()).toHaveLength(0);
   });
 

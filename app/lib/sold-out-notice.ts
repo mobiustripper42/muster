@@ -47,6 +47,10 @@ export async function sendReservationSoldOutNotice(
         ...(sms ? { sms } : {}),
         onFailure: (detail) =>
           console.error(`[reservations] sold-out notice send failed — ${detail}`),
+        // The durable half of the same fact (issue #1052). `onFailure` reaches a console; this
+        // reaches the trail, and answers "how often is a refunded customer never told" months
+        // later, which no console line can.
+        trail: { repo, now: () => new Date().toISOString() },
       },
       charge.contact,
     );

@@ -219,7 +219,18 @@ export async function saveVesselHoldAdmin(
 }
 
 export type VesselHoldReleaseError = "not_found" | "not_a_hold";
-export type VesselHoldReleaseResult = { ok: true } | { ok: false; code: VesselHoldReleaseError };
+/**
+ * `released` carries the block that was just deleted (issue #1052). The release DESTROYS the
+ * only record that the slot was ever held — this function already reads the row to validate
+ * it, and handing it back is what lets the caller's trail row name the hull, date and time
+ * afterwards. Without it, `slot_released` could record only an id pointing at nothing.
+ */
+export type VesselHoldReleaseResult =
+  // Narrowed to the vesselHold variant, not bare `Block`: the function refuses anything else
+  // two lines before it deletes, so widening here would make every caller re-check what this
+  // has already proved — and `Block`'s other variants carry no single slot to name.
+  | { ok: true; released: Extract<Block, { kind: "vesselHold" }> }
+  | { ok: false; code: VesselHoldReleaseError };
 
 /**
  * Put a held departure back on sale (#703) — the calendar's half of "Lift", scoped to holds.
@@ -238,5 +249,5 @@ export async function releaseVesselHoldAdmin(
   if (!found) return { ok: false, code: "not_found" };
   if (found.kind !== "vesselHold") return { ok: false, code: "not_a_hold" };
   await repo.removeBlock(blockId);
-  return { ok: true };
+  return { ok: true, released: found };
 }

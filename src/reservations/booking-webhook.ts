@@ -163,12 +163,28 @@ export interface SoldOutCharge {
  * identical for both; only the provenance fields differ (session id vs PaymentIntent id).
  */
 interface BookingCharge {
-  /** Booking idempotency key: the session id (hosted) or the PaymentIntent id (Elements) —
-   *  also the seed for the Payment id (`pay_${key}`), gratuity id (`grat_pre_${key}`), and
-   *  refund key (`refund_${key}`). */
+  /** Booking idempotency key — the PaymentIntent id, which is also the seed for the Payment id
+   *  (`pay_${key}`), the gratuity id (`grat_pre_${key}`) and the refund key (`refund_${key}`).
+   *  It was "session id (hosted) OR PaymentIntent id (Elements)" until 15.19; the hosted booking
+   *  path has been retired since 14.5 and is refused at the purpose dispatch, before anything
+   *  builds one of these. */
   key: string;
-  sessionId?: string;
-  paymentIntentId?: string;
+  /**
+   * **Required as of 15.19, and the requirement is the point.** Both were optional because the
+   * hosted `checkout_completed` shape carries an optional `payment_intent`. That shape no longer
+   * reaches here, so two branches existed for a charge that could not arrive — each alerting
+   * "REFUND MANUALLY" for a case with no caller.
+   *
+   * `processBookingCharge` has exactly one non-test caller, `confirmBookingFromIntent`
+   * (`confirm-booking.ts`), which sets this from `PaymentSucceeded.paymentIntentId` — a required
+   * `string`. Typing it required is what keeps those branches from being re-added: a caller that
+   * cannot supply one now fails to compile rather than landing in dead code.
+   *
+   * `sessionId` went with them. Two places DID read it — typecheck named both the moment it was
+   * removed, which is the whole reason to delete a field rather than stop setting it — but each
+   * was a conditional spread onto a row, and the condition had been false since 14.5.
+   */
+  paymentIntentId: string;
   amountCents: number;
   currency: string;
   metadata: Record<string, string>;
@@ -397,12 +413,16 @@ export const paymentIdFor = (chargeKey: string): PaymentId => asId<"PaymentId">(
  * knew about, and one is a call that cannot happen today. An operator reading a trail needs to
  * tell "we chose not to book this" from "this was never ours."
  *
- * **And the shape is in the ID, which is the part that is load-bearing.** One PaymentIntent can
- * be unmatched twice for different reasons — a charge lands while `RESERVATIONS` is off, and is
- * refunded three months later. Keyed on the charge alone, the second row would collide with the
- * first and the adapter's `on conflict (id) do nothing` would drop it silently. That is the
- * exact collision `@code-review` and `/security-review` each caught once in issue #1050, in
- * opposite directions.
+ * **The shape is in the ID, and as of 15.19 that is belt-and-braces rather than load-bearing.**
+ * It was load-bearing when there were four shapes: `reservations_off` and `no_payment_intent`
+ * both keyed on `charge.key` and both were reachable for one charge, so without the shape the
+ * second hit `on conflict (id) do nothing` and vanished. 15.19 then deleted the branch
+ * `no_payment_intent` recorded — correctly, with three independent proofs it was unreachable —
+ * and the three surviving shapes draw their keys from disjoint Stripe namespaces: a PaymentIntent
+ * id, a session id, an event id. **So nothing can collide today, and the collision test that used
+ * to prove this was deleted rather than rewritten into something that cannot fail.** The shape
+ * stays in the id because "these namespaces happen not to overlap" is an invariant Stripe owns
+ * and nothing here checks — and because the next shape added is the one that would collide.
  *
  * **`idKey` and `chargeRef` are separate, and the separation is the whole finding.** For three
  * of the four shapes they are the same string, and the fourth is why this is a parameter rather
@@ -427,11 +447,7 @@ type UnmatchedShape =
    *  a Xola-era charge, or one taken by hand in the dashboard. */
   | "refund_on_unknown_charge"
   /** A hosted Checkout booking session. Nothing has minted one since 14.5. */
-  | "retired_hosted_session"
-  /** A booking charge carrying no PaymentIntent id. Unreachable from the live routes — both
-   *  callers of `processBookingCharge` pass the intent id as the key — and kept because the
-   *  branch it guards is still there and still alerts. */
-  | "no_payment_intent";
+  | "retired_hosted_session";
 
 async function recordChargeUnmatched(
   deps: WebhookDeps,
@@ -586,13 +602,6 @@ async function compensateResidualRaceLoss(
   const who = `${safeForAlert(row.customerName)} party of ${row.partySize ?? "?"}`;
   const amount = `$${(charge.amountCents / 100).toFixed(2)}`;
 
-  if (!charge.paymentIntentId) {
-    await deps.alertPaidButUnbooked(
-      `Residual-race loss with NO payment_intent to auto-refund - Stripe charge ` +
-        `${charge.key}. REFUND MANUALLY in Stripe. Customer: ${who}`,
-    );
-    return { handled: true, outcome: "lost" };
-  }
   if (opts.notifyOnResidualRaceLoss === false) {
     // A public caller (issue #827). The loss is real, but the compensation is the webhook's —
     // see `confirmBookingByPaymentIntent`. Reported, not acted on.
@@ -763,28 +772,10 @@ export async function processBookingCharge(
     return { handled: false };
   }
 
-  // The booking is the `pending` row checkout wrote (§2.8.6), found by the PaymentIntent id.
-  // The surviving caller is the inline-Elements `payment_intent.succeeded` path, whose charge
-  // key IS that id. A charge with none is a hosted booking session, and nothing mints those
-  // since 14.5 — refuse it loudly, money has moved.
-  if (!charge.paymentIntentId) {
-    await deps.alertPaidButUnbooked(
-      `PAID but NOT booked - booking charge ${charge.key} carries no payment intent ` +
-        `(${charge.amountCents} ${charge.currency}). Confirm finds the pending row by that id ` +
-        `(§2.8.6); a charge without one is a retired hosted booking session. REFUND MANUALLY and ` +
-        `find what minted it - nothing in the app should.`,
-    );
-    // Unreachable from the live routes — both callers of this function pass the intent id as the
-    // key — and recorded anyway, because the branch is still here and still alerts. A guard that
-    // fires is a guard whose row is owed; leaving the emit out of the one branch nobody can trip
-    // is how it would be missing on the day somebody does.
-    await recordChargeUnmatched(deps, "no_payment_intent", {
-      idKey: charge.key,
-      chargeRef: charge.key,
-      ...(charge.paymentIntentId !== undefined ? { paymentIntentId: charge.paymentIntentId } : {}),
-    });
-    return { handled: true, outcome: "unbookable" };
-  }
+  // The booking is the `pending` row checkout wrote (§2.8.6), found by the PaymentIntent id. The
+  // only caller is the inline-Elements `payment_intent.succeeded` path, whose charge key IS that
+  // id — so it is always present, which `BookingCharge` now states in the type (15.19). A hosted
+  // booking session never gets this far: it is refused at the purpose dispatch above.
 
   // Money has already moved by the time we get here, so a metadata problem must be LOUD
   // before it is fatal. `requireCents` throws below (correctly — a 500 makes Stripe
@@ -1036,11 +1027,8 @@ export async function processBookingCharge(
         kind: "pre",
         amountCents: gratuityCents,
         ...(invoice?.gratuityBps !== undefined ? { bps: invoice.gratuityBps } : {}),
-        // Reconciliation handle: the hosted path keeps the session id; an Elements
-        // gratuity's handle is the PI id baked into the deterministic row id.
-        ...(charge.sessionId !== undefined
-          ? { stripeCheckoutSessionId: charge.sessionId }
-          : {}),
+        // No `stripeCheckoutSessionId`: this row's reconciliation handle is the PI id baked
+        // into its deterministic id. The hosted spread here was a no-op from 14.5 (15.19).
         createdAt: deps.now(),
       });
     }
@@ -1133,20 +1121,18 @@ async function recordPayment(
   // here must cost the link and nothing else. Not alerted — there is no money problem and
   // nothing for a human to do about it.
   let receiptUrl: string | undefined;
-  if (charge.paymentIntentId) {
-    try {
-      receiptUrl = await deps.payments.getReceiptUrl(charge.paymentIntentId);
-    } catch (e) {
-      // Stays best-effort — the payment row is the ledger and the receipt link is a
-      // convenience, so this must cost the link and nothing else. Logged because the
-      // guest's manage page will show no receipt and nothing else explains why.
-      logSwallowed(
-        "reservations:receiptUrl",
-        e,
-        `no Stripe receipt link on the manage page for charge ${charge.key}`,
-      );
-      receiptUrl = undefined;
-    }
+  try {
+    receiptUrl = await deps.payments.getReceiptUrl(charge.paymentIntentId);
+  } catch (e) {
+    // Stays best-effort — the payment row is the ledger and the receipt link is a
+    // convenience, so this must cost the link and nothing else. Logged because the
+    // guest's manage page will show no receipt and nothing else explains why.
+    logSwallowed(
+      "reservations:receiptUrl",
+      e,
+      `no Stripe receipt link on the manage page for charge ${charge.key}`,
+    );
+    receiptUrl = undefined;
   }
 
   const payment: Payment = {
@@ -1164,8 +1150,9 @@ async function recordPayment(
     // The service fee bundled into amountCents (DEC-134) — same carve-out, same reason.
     ...((invoice?.serviceFeeCents ?? 0) > 0 ? { serviceFeeCents: invoice!.serviceFeeCents } : {}),
     currency: charge.currency,
-    ...(charge.sessionId !== undefined ? { stripeCheckoutSessionId: charge.sessionId } : {}),
-    ...(charge.paymentIntentId ? { stripePaymentIntentId: charge.paymentIntentId } : {}),
+    // `stripeCheckoutSessionId` is not set on this path and its spread was a no-op from 14.5
+    // (15.19). The balance path sets it directly from its own session.
+    stripePaymentIntentId: charge.paymentIntentId,
     ...(receiptUrl !== undefined ? { receiptUrl } : {}),
     status: "succeeded",
     createdAt: deps.now(),

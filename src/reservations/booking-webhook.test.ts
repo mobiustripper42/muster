@@ -8,7 +8,7 @@ import type { Event, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { PaymentSignatureError, type CheckoutCompleted } from "../ports/payment.js";
 import { eventIdForSlot } from "./availability.js";
-import { processBookingCharge, processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
+import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
 import { confirmPendingRow } from "./write-booking.js";
 import { balanceOwedCents } from "./payment-config.js";
 import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
@@ -1952,51 +1952,23 @@ describe("processBookingWebhook — the trail's money-in events (issue #1051)", 
     expect(String(row?.paymentIntentId)).toBe("pi_ancient");
   });
 
-  it("charge_unmatched: a booking charge carrying no payment intent", async () => {
-    // **Called directly, because no live route can produce this.** Both callers of
-    // `processBookingCharge` pass the intent id as the charge key, so the branch is unreachable
-    // today — and it is still there, still alerting, and would be the one guard in the file whose
-    // row was missing on the day something changed upstream. The row has NEITHER key; `chargeRef`
-    // is the only handle, which is exactly the shape the trail's optional keys exist for.
-    const repo = new InMemoryRepository();
-    const { deps, alert } = makeDeps(repo);
-
-    const r = await processBookingCharge(deps, {
-      key: "cs_no_intent",
-      amountCents: 53625,
-      currency: "usd",
-      metadata: {},
-    });
-    expect(r).toMatchObject({ handled: true, outcome: "unbookable" });
-    expect(alert).toHaveBeenCalledOnce();
-
-    const [row] = await trailOf(repo, "charge_unmatched");
-    expect(row?.paymentIntentId).toBeUndefined();
-    expect(row?.reservationId).toBeUndefined();
-    expect(row?.metadata).toMatchObject({ reason: "no_payment_intent", chargeRef: "cs_no_intent" });
-  });
-
-  it("the SHAPE is in the id, so one key unmatched for TWO reasons writes two rows", async () => {
-    // **The pair that can genuinely collide.** `reservations_off` and `no_payment_intent` both
-    // key on `charge.key`, and both are reachable for the same charge: the flag gate refuses a
-    // delivery, somebody turns RESERVATIONS on, and the redelivery gets past the gate and falls
-    // into the next refusal. Two different facts about one charge. Without the shape in the id
-    // the second hits `on conflict (id) do nothing` and the trail keeps only the older reason.
-    //
-    // Driven through `processBookingCharge` directly because the second leg is unreachable from
-    // the live routes — which is the point of pinning it here rather than trusting the branch.
-    const repo = new InMemoryRepository();
-    const { deps } = makeDeps(repo);
-    const charge = { key: "cs_same_key", amountCents: 53625, currency: "usd", metadata: {} };
-
-    await processBookingCharge({ ...deps, reservationsEnabled: false }, charge);
-    await processBookingCharge(deps, charge);
-
-    expect((await trailOf(repo, "charge_unmatched")).map((x) => x.metadata.reason).sort()).toEqual([
-      "no_payment_intent",
-      "reservations_off",
-    ]);
-  });
+  /**
+   * **Two cases went out here when 15.19 landed, and neither was replaced.**
+   *
+   * The `no_payment_intent` shape recorded `processBookingCharge`'s `!charge.paymentIntentId`
+   * branch. 15.19 deleted that branch — with three independent proofs it was unreachable — and
+   * made `BookingCharge.paymentIntentId` required, so the shape has no subject and the test that
+   * drove it no longer compiles.
+   *
+   * Its neighbour was the collision case, and that one is the more interesting loss. It paired
+   * `no_payment_intent` with `reservations_off` because they were the only two shapes that could
+   * share a key. With the fourth shape gone the three survivors draw their keys from disjoint
+   * Stripe namespaces — a PaymentIntent id, a session id, an event id — so **no two shapes can
+   * collide today and no honest test can prove the shape in the id is doing anything.** Deleted
+   * rather than rewritten into something that passes whatever the code does; the reasoning for
+   * keeping the shape moved into `recordChargeUnmatched`'s docstring, where it is a claim about
+   * the next shape somebody adds rather than a green check that means nothing.
+   */
 
   // ── the #1050 rows the stale module header mis-keyed ───────────────────────
 

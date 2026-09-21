@@ -32,8 +32,10 @@ import type {
   Reservation,
   Vessel,
 } from "../domain/entities.js";
-import type { OfferingId, VesselId } from "../domain/ids.js";
+import { randomUUID } from "node:crypto";
+import { asId, type OfferingId, type VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
+import { recordTrail } from "./trail.js";
 import { hasDeparted, isActiveMusterClaim, isOnScheduleGrid, isSlotBlocked, slotIdentity } from "./availability.js";
 import { busyIntervalsFor, candidateHoldMinutes, hullIsBusy, minutesOfDay, pendingIntervalsFor } from "./hull-busy.js";
 import { isLivePending, pendingLiveSince } from "./pending.js";
@@ -111,7 +113,17 @@ export type PendingRowBuilder = (
 ) => Promise<Reservation> | Reservation;
 
 export type DepartureClaimResult =
-  | { claimed: Reservation; reused: boolean }
+  | { claimed: Reservation; reused: false }
+  /**
+   * A retry landing on this checkout's existing row. **`prior` is that row as STORED**, before
+   * the builder re-stated the customer's answers over it (issue #1051).
+   *
+   * Handed back rather than kept here because `recordCheckoutAttempt` — the write that destroys
+   * those old values — runs at the CALLER, and three paths return before it ever does
+   * (`create-departure-payment-intent.ts`: two `already_paid` returns and a throwing mint). An
+   * emit from in here would record a change that never landed on the row.
+   */
+  | { claimed: Reservation; reused: true; prior: Reservation }
   | { soldOut: true }
   | { unbookable: "offering_missing" | "not_live" | "invalid_guest_count" | "off_schedule" | "departed" };
 
@@ -292,7 +304,7 @@ export async function claimDepartureSlot(
       // window forward (§2.8.7), and an operator edit mid-checkout must not change what this
       // booking meant (DEC-161). The caller lands the re-freeze on the row with
       // `recordCheckoutAttempt`, a guarded write that a concurrent confirm survives (#946).
-      return { claimed: await buildRow(mine.vesselId, mine, at), reused: true };
+      return { claimed: await buildRow(mine.vesselId, mine, at), reused: true, prior: mine };
     }
     // A row that no longer qualifies is LEFT ALONE to lapse, never cancelled here. Releasing was
     // the second exploit `/security-review` found in the identity-keyed version: it let anyone
@@ -313,7 +325,76 @@ export async function claimDepartureSlot(
     // the separate hold step could not do: it had already picked the hull by the time the row
     // was written, and a loss there ended the checkout with a free boat alongside.
     const written = await repo.savePendingIfHullFree(row, liveSince);
-    if (written.result === "won") return { claimed: row, reused: false };
+    if (written.result === "won") {
+      // ── The trail: this customer's boat was decided by a race (issue #1051) ──
+      //
+      // **"Wanted" means `candidates[0]`, and the word needs care.** The customer picks
+      // offering + time + party size and never a boat, so nothing here was their preference.
+      // What `candidates[0]` IS: the boat the deterministic ordering above — smallest that
+      // fits, tie-break by id — would have given them had nobody been in the way. Every reason
+      // this loop skipped it is somebody else getting there first: a booked slot, a foreign
+      // trip on the hull, a rival's live pending row, or losing the write CAS to a rival who
+      // committed between the read and the write. So "landed on a boat that is not
+      // `candidates[0]`" and "was contended" are the same statement, and this is the only
+      // record either way — the caller is handed one winning row and the losers are gone.
+      //
+      // AFTER the CAS returns, so the hull-day lock inside `savePendingIfHullFree` is already
+      // released. A write that cannot throw can still cost the next buyer their boat by
+      // holding that lock longer (`trail.ts`, property 3).
+      //
+      // **A random id, deliberately.** This is a customer's own submit, not a redelivery — see
+      // `trail.ts` on why determinism is a webhook property. Two submits that each contend are
+      // two facts, and a derived id would collapse them into one.
+      const wanted = candidates[0];
+      if (wanted !== undefined && String(wanted) !== String(vesselId)) {
+        await recordTrail(
+          { repo, now },
+          {
+            id: asId<"TrailEventId">(`hull_contended:${randomUUID()}`),
+            reservationId: row.id,
+            actorKind: "customer",
+            type: "hull_contended",
+            metadata: {
+              wantedVesselId: String(wanted),
+              gotVesselId: String(vesselId),
+              offeringId: String(req.offeringId),
+              date: req.date,
+              time: req.time,
+              guestCount: req.guestCount,
+            },
+          },
+        );
+      }
+      return { claimed: row, reused: false };
+    }
   }
+  // ── The trail: every fitting hull was refused (issue #1051) ────────────────
+  //
+  // **The only event in the trail that carries NEITHER key**, and legitimately: no row was
+  // written and no charge exists. `TrailEvent`'s two ids are both optional for exactly this.
+  // Which means the departure has to travel in the metadata or the row says a customer was
+  // turned away and not from what — and "how often does a departure sell out under someone"
+  // is the whole reason to keep it.
+  //
+  // Random id, same reasoning as `hull_contended` above: a second attempt against a full
+  // departure is a second customer-facing refusal, not a redelivery of the first.
+  //
+  // **This is the cheapest row in the trail to cause** — a public form submit, no money, no
+  // authentication. It costs four repository reads to reach, which is the real bound; the row
+  // is not the expensive part. Deliberately not throttled (operator, 2026-09-21).
+  await recordTrail(
+    { repo, now },
+    {
+      id: asId<"TrailEventId">(`sold_out:${randomUUID()}`),
+      actorKind: "customer",
+      type: "sold_out",
+      metadata: {
+        offeringId: String(req.offeringId),
+        date: req.date,
+        time: req.time,
+        guestCount: req.guestCount,
+      },
+    },
+  );
   return { soldOut: true };
 }

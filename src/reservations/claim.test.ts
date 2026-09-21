@@ -875,3 +875,94 @@ describe("the calendar and the write refuse the same set (criterion 5)", () => {
     expect(byCalendar).toEqual(await refusedByWrite(seed));
   });
 });
+
+/**
+ * The trail's checkout events (issue #1051): `hull_contended` and `sold_out`.
+ *
+ * Both are emitted from HERE rather than from the caller, and for opposite reasons.
+ * `hull_contended` because the losing candidates only exist inside this loop — the caller is
+ * handed one winning row and cannot tell which boat the ordering would have given it.
+ * `sold_out` because there is nothing else: no row, no charge, and the caller's own
+ * `{ ok: false, reason: "sold_out" }` is a return value nobody stores.
+ */
+describe("claimDepartureSlot — the trail (issue #1051)", () => {
+  const trailOf = async (repo: InMemoryRepository, type: string) =>
+    (await repo.listTrailEvents()).filter((e) => e.type === type);
+
+  it("does NOT emit hull_contended when the first candidate wins", async () => {
+    // The negative half, and the half the issue names by title. `hull_contended` means a
+    // customer's boat was decided by who got there first; an ordinary uncontested sale is not
+    // that, and an event this common would be worth nothing if it fired on every booking.
+    const repo = await seededRepo();
+    expect(claimedVessel(await claim(repo, {}))).toBe("v-small"); // candidates[0]
+    expect(await trailOf(repo, "hull_contended")).toHaveLength(0);
+  });
+
+  it("emits hull_contended naming the hull it wanted and the one it settled for", async () => {
+    const repo = await seededRepo();
+    await claim(repo, { holderToken: "rival-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaa" }); // takes v-small
+    const res = await claim(repo, { holderToken: "mine-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbb" });
+    expect(claimedVessel(res)).toBe("v-big");
+
+    const [row] = await trailOf(repo, "hull_contended");
+    expect(row?.metadata.wantedVesselId).toBe("v-small");
+    expect(row?.metadata.gotVesselId).toBe("v-big");
+    // Keyed to the booking it happened to — this one HAS a reservation, unlike `sold_out`.
+    expect(String(row?.reservationId)).toBe("claimed" in res ? String(res.claimed.id) : "");
+    expect(row?.actorKind).toBe("customer");
+  });
+
+  it("emits hull_contended when the CAS loses the first hull, not just when the read skips it", async () => {
+    // Contention has two shapes and only one of them is visible to the read: a rival who
+    // committed between our read and our write loses us the hull at `savePendingIfHullFree`.
+    // Both are "somebody got there first", so both owe a row.
+    const repo = await seededRepo();
+    const real = repo.savePendingIfHullFree.bind(repo);
+    repo.savePendingIfHullFree = async (row: Reservation, liveSince: string) =>
+      String(row.vesselId) === String(SMALL) ? { result: "lost" as const } : real(row, liveSince);
+
+    expect(claimedVessel(await claim(repo, {}))).toBe("v-big");
+    const [row] = await trailOf(repo, "hull_contended");
+    expect(row?.metadata.wantedVesselId).toBe("v-small");
+  });
+
+  it("emits sold_out carrying the departure, because the row has NEITHER key", async () => {
+    const repo = await seededRepo();
+    await claim(repo, { holderToken: "tok-a-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+    await claim(repo, { holderToken: "tok-b-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" });
+    expect(await claim(repo, { holderToken: "tok-c-cccccccccccccccccccccccccccccccc" })).toEqual({
+      soldOut: true,
+    });
+
+    const [row] = await trailOf(repo, "sold_out");
+    expect(row?.reservationId).toBeUndefined();
+    expect(row?.paymentIntentId).toBeUndefined();
+    // Without these four the row says somebody was turned away and not from what.
+    expect(row?.metadata).toMatchObject({
+      offeringId: "off-1",
+      date: DATE,
+      time: TIME,
+      guestCount: 4,
+    });
+  });
+
+  it("writes a SECOND sold_out row for a second attempt — the id is not derived", async () => {
+    // Two attempts against a full departure are two facts. A derived id would collapse them
+    // and the only analytic these buy — how often we turn people away — would read as one.
+    const repo = await seededRepo();
+    await claim(repo, { holderToken: "tok-a-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+    await claim(repo, { holderToken: "tok-b-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" });
+    await claim(repo, { holderToken: "tok-c-cccccccccccccccccccccccccccccccc" });
+    await claim(repo, { holderToken: "tok-c-cccccccccccccccccccccccccccccccc" });
+    expect(await trailOf(repo, "sold_out")).toHaveLength(2);
+  });
+
+  it("emits nothing at all for an unbookable request", async () => {
+    // An off-grid or seasonless ask never reached a hull, so neither event is true of it —
+    // and this path is the cheapest thing in the product to call in a loop.
+    const repo = await seededRepo();
+    await claim(repo, { time: "13:31" });
+    await claim(repo, { guestCount: 0 });
+    expect(await repo.listTrailEvents()).toHaveLength(0);
+  });
+});

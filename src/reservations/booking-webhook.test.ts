@@ -1740,3 +1740,283 @@ describe("processBookingWebhook — a post-commit failure does not lose the conf
     expect(second.confirm).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The trail's money-in events (issue #1051): `payment_failed`, `payment_superseded`,
+ * `charge_unmatched` — plus the two #1050 rows the stale module header mis-keyed.
+ *
+ * Every one of these runs on a path Stripe REDELIVERS, so every id here is derived. The two
+ * cases that need care are the ones where the obvious derivation is wrong, and both have a
+ * negative control below: one intent can decline more than once, and one intent can be
+ * unmatched for more than one reason.
+ */
+describe("processBookingWebhook — the trail's money-in events (issue #1051)", () => {
+  const trailOf = async (repo: InMemoryRepository, type: string) =>
+    (await repo.listTrailEvents()).filter((e) => e.type === type);
+
+  const failed = (over: Record<string, unknown> = {}): string =>
+    JSON.stringify({
+      type: "payment_failed",
+      data: { paymentIntentId: PI, declineCode: "card_declined" },
+      ...over,
+    });
+
+  // ── payment_failed ─────────────────────────────────────────────────────────
+
+  it("payment_failed records the decline against BOTH the booking and the intent", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, failed(), FAKE_SIGNATURE);
+
+    const [row] = await trailOf(repo, "payment_failed");
+    expect(String(row?.reservationId)).toBe(String(PEND));
+    expect(String(row?.paymentIntentId)).toBe(PI);
+    expect(row?.actorKind).toBe("stripe");
+    expect(row?.metadata.reason).toBe("card_declined");
+  });
+
+  it("TWO declines on ONE intent write TWO rows — the id is the Stripe event, not the intent", async () => {
+    // **The collision this exists to avoid.** 15.8 reuses one intent across retries: decline,
+    // fix the card, retry, decline again is one `paymentIntentId` and two facts. Keyed on the
+    // intent, the second row would hit `on conflict (id) do nothing` and vanish — which is the
+    // sibling collision `/security-review` caught on `refund_failed` in issue #1050.
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, failed({ stripeEventId: "evt_1" }), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, failed({ stripeEventId: "evt_2" }), FAKE_SIGNATURE);
+
+    expect(await trailOf(repo, "payment_failed")).toHaveLength(2);
+  });
+
+  it("a REDELIVERED decline writes one row — same Stripe event, same id", async () => {
+    // And the other direction, which is why the id is derived at all.
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, failed({ stripeEventId: "evt_1" }), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, failed({ stripeEventId: "evt_1" }), FAKE_SIGNATURE);
+
+    expect(await trailOf(repo, "payment_failed")).toHaveLength(1);
+  });
+
+  it("a decline on an intent that is not ours still records, on the intent alone", async () => {
+    // The bare PaymentIntent under a hosted balance session, or somebody else's charge. No row
+    // to name it with — which is what the trail's second key is for.
+    const repo = new InMemoryRepository();
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, failed({ data: { paymentIntentId: "pi_stranger" } }), FAKE_SIGNATURE);
+
+    const [row] = await trailOf(repo, "payment_failed");
+    expect(row?.reservationId).toBeUndefined();
+    expect(String(row?.paymentIntentId)).toBe("pi_stranger");
+  });
+
+  // ── payment_superseded ─────────────────────────────────────────────────────
+
+  it("payment_superseded names each sibling intent retired after the sale commits", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo, { paymentIntentIds: ["pi_earlier", PI] });
+    const { deps, payments } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    expect(r).toMatchObject({ handled: true, outcome: "booked" });
+    expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_earlier", reason: "duplicate" }]);
+
+    const rows = await trailOf(repo, "payment_superseded");
+    expect(rows).toHaveLength(1);
+    expect(String(rows[0]?.paymentIntentId)).toBe("pi_earlier");
+    expect(String(rows[0]?.reservationId)).toBe(String(PEND));
+    // NOT the intent that paid — it is the one this webhook is for, and it is excluded by id.
+    expect(rows.map((x) => String(x.paymentIntentId))).not.toContain(PI);
+  });
+
+  it("emits NOTHING when Stripe refuses the cancel — the sibling is still payable", async () => {
+    // Refusals are the ordinary case here: an already-cancelled sibling is refused on every
+    // single redelivery. A row claiming an intent was retired when it is still chargeable is
+    // the one assertion nobody could afford to trust.
+    const repo = new InMemoryRepository();
+    await seedPending(repo, { paymentIntentIds: ["pi_earlier", PI] });
+    const payments = new FakePaymentPort();
+    payments.cancelError = new Error("stripe: intent cannot be canceled");
+    const { deps } = makeDeps(repo, payments);
+
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    expect(r).toMatchObject({ handled: true, outcome: "booked" }); // the booking is unaffected
+    expect(await trailOf(repo, "payment_superseded")).toHaveLength(0);
+  });
+
+  // ── charge_unmatched ───────────────────────────────────────────────────────
+
+  it("charge_unmatched: a verified charge arriving while RESERVATIONS is off", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook({ ...deps, reservationsEnabled: false }, bookingPi(), FAKE_SIGNATURE);
+
+    const [row] = await trailOf(repo, "charge_unmatched");
+    expect(String(row?.paymentIntentId)).toBe(PI);
+    expect(row?.metadata.reason).toBe("reservations_off");
+  });
+
+  it("charge_unmatched: a refund on a charge Muster never recorded", async () => {
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(
+      deps,
+      JSON.stringify({
+        type: "refund_recorded",
+        data: { paymentIntentId: "pi_nobody", amountRefundedCents: 1000, currency: "usd" },
+      }),
+      FAKE_SIGNATURE,
+    );
+
+    const [row] = await trailOf(repo, "charge_unmatched");
+    expect(String(row?.paymentIntentId)).toBe("pi_nobody");
+    expect(row?.metadata.reason).toBe("refund_on_unknown_charge");
+  });
+
+  it("TWO refunds on one unmatched charge write TWO rows — the id is the Stripe event", async () => {
+    // **`@code-review` caught this one, and it is the same defect twice in one file.**
+    // `amountRefundedCents` is CUMULATIVE, so Stripe sends `charge.refunded` again for each
+    // additional partial refund — two genuinely different facts about one PaymentIntent. Keyed
+    // on the intent, the second would collide and vanish, which is exactly why `payment_failed`
+    // thirty lines up keys on the Stripe event id instead. The lesson had not travelled.
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+    const refundOf = (cents: number, evt: string) =>
+      JSON.stringify({
+        stripeEventId: evt,
+        type: "refund_recorded",
+        data: { paymentIntentId: "pi_nobody", amountRefundedCents: cents, currency: "usd" },
+      });
+
+    await processBookingWebhook(deps, refundOf(1000, "evt_r1"), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, refundOf(2500, "evt_r2"), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, refundOf(2500, "evt_r2"), FAKE_SIGNATURE); // a redelivery
+
+    const rows = await trailOf(repo, "charge_unmatched");
+    expect(rows).toHaveLength(2);
+    // The row still names the CHARGE a human would go looking for, not the event id that keys it.
+    expect(rows.map((x) => x.metadata.chargeRef)).toEqual(["pi_nobody", "pi_nobody"]);
+  });
+
+  it("our own residual-race loser's refund is NOT charge_unmatched", async () => {
+    // The 15.5 defect wearing a new hat. A loser gets no payment row on purpose (#613), so
+    // `recordRefund` finds nothing — and it is still entirely ours, already recorded as
+    // `auto_refunded`. Calling it unmatched would say Muster has no idea where that money went.
+    const repo = new InMemoryRepository();
+    await seedPending(repo); // still `pending`, carrying PI — exactly a loser
+    const { deps, alert } = makeDeps(repo);
+
+    await processBookingWebhook(
+      deps,
+      JSON.stringify({
+        type: "refund_recorded",
+        data: { paymentIntentId: PI, amountRefundedCents: 53625, currency: "usd" },
+      }),
+      FAKE_SIGNATURE,
+    );
+
+    expect(alert).not.toHaveBeenCalled();
+    expect(await trailOf(repo, "charge_unmatched")).toHaveLength(0);
+  });
+
+  it("charge_unmatched: a hosted booking session, which nothing has minted since 14.5", async () => {
+    const repo = new InMemoryRepository();
+    const { deps } = makeDeps(repo);
+
+    const r = await processBookingWebhook(
+      deps,
+      JSON.stringify({
+        sessionId: "cs_ancient",
+        paymentIntentId: "pi_ancient",
+        amountTotalCents: 53625,
+        currency: "usd",
+        metadata: { purpose: "booking" },
+      }),
+      FAKE_SIGNATURE,
+    );
+    expect(r).toMatchObject({ handled: true, outcome: "unbookable" });
+
+    const [row] = await trailOf(repo, "charge_unmatched");
+    expect(row?.metadata.reason).toBe("retired_hosted_session");
+    expect(row?.metadata.chargeRef).toBe("cs_ancient");
+    expect(String(row?.paymentIntentId)).toBe("pi_ancient");
+  });
+
+  /**
+   * **Two cases went out here when 15.19 landed, and neither was replaced.**
+   *
+   * The `no_payment_intent` shape recorded `processBookingCharge`'s `!charge.paymentIntentId`
+   * branch. 15.19 deleted that branch — with three independent proofs it was unreachable — and
+   * made `BookingCharge.paymentIntentId` required, so the shape has no subject and the test that
+   * drove it no longer compiles.
+   *
+   * Its neighbour was the collision case, and that one is the more interesting loss. It paired
+   * `no_payment_intent` with `reservations_off` because they were the only two shapes that could
+   * share a key. With the fourth shape gone the three survivors draw their keys from disjoint
+   * Stripe namespaces — a PaymentIntent id, a session id, an event id — so **no two shapes can
+   * collide today and no honest test can prove the shape in the id is doing anything.** Deleted
+   * rather than rewritten into something that passes whatever the code does; the reasoning for
+   * keeping the shape moved into `recordChargeUnmatched`'s docstring, where it is a claim about
+   * the next shape somebody adds rather than a green check that means nothing.
+   */
+
+  // ── the #1050 rows the stale module header mis-keyed ───────────────────────
+
+  it("auto_refunded names the reservation — a `lost` row EXISTS (the header said otherwise)", async () => {
+    // `booking-webhook.ts`'s module header said `lost` means "no row — the reservation was never
+    // written". `write-booking.ts` says the opposite and explains why: the compensation needs the
+    // customer's name and phone and the charge carries neither. Issue #1050 emitted against the
+    // header, so the auto-refund did not appear on its own booking's trail.
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    await repo.saveEvent(musterEvent({ id: SLOT }));
+    await repo.saveReservation({
+      id: asId<"ReservationId">("r-rival"),
+      eventId: SLOT,
+      source: "muster",
+      customerName: "Rival",
+      partySize: 4,
+      status: "booked",
+    });
+    const { deps } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    expect(r).toEqual({ handled: true, outcome: "lost" });
+
+    const [row] = await trailOf(repo, "auto_refunded");
+    expect(String(row?.reservationId)).toBe(String(PEND));
+    expect(String(row?.paymentIntentId)).toBe(PI);
+  });
+
+  it("refund_failed names the reservation too", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    await repo.saveEvent(musterEvent({ id: SLOT }));
+    await repo.saveReservation({
+      id: asId<"ReservationId">("r-rival"),
+      eventId: SLOT,
+      source: "muster",
+      customerName: "Rival",
+      partySize: 4,
+      status: "booked",
+    });
+    const payments = new FakePaymentPort();
+    payments.refundError = new Error("stripe: refund unavailable");
+    const { deps } = makeDeps(repo, payments);
+
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    const [row] = await trailOf(repo, "refund_failed");
+    expect(String(row?.reservationId)).toBe(String(PEND));
+  });
+});

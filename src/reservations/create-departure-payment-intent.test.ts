@@ -1176,3 +1176,103 @@ describe("an abandoned checkout leaves the row and nothing else (criterion 7)", 
     expect(abandoned[0]!.paymentIntentCount).toBe(1); // reached the provider; the card is another matter
   });
 });
+
+/**
+ * The trail's checkout events (issue #1051): `checkout_details_changed` and `payment_superseded`.
+ *
+ * Both live at THIS layer rather than in `claim.ts`, and for the same reason: the claim decides,
+ * the caller commits, and only the caller knows whether the commit happened.
+ */
+describe("createDeparturePaymentIntent — the trail (issue #1051)", () => {
+  const tripOffering = (over: Partial<Offering> = {}) =>
+    offering({ tripLengthMinutes: 100, holdMinutes: 120, ...over });
+
+  const trailOf = async (repo: InMemoryRepository, type: string) =>
+    (await repo.listTrailEvents()).filter((e) => e.type === type);
+
+  async function started() {
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering({ includedGuestCount: 4 }));
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, { ...req, phone: "+12165550100" }, now);
+    return { repo, pay };
+  }
+
+  it("checkout_details_changed carries the values the retry DESTROYED", async () => {
+    // The row is the only place the old phone ever existed: `recordCheckoutAttempt` overwrites
+    // it in place and there is no history column. A mistyped number is where the booking link
+    // was texted (DEC-132), so "what was it before" is not a curiosity.
+    const { repo, pay } = await started();
+    const again = await createDeparturePaymentIntent(
+      repo,
+      pay,
+      { ...req, phone: "+12165550148", guestCount: 6, customerName: "Mary Brody" },
+      now,
+    );
+    expect(again.ok).toBe(true);
+
+    const [row] = await trailOf(repo, "checkout_details_changed");
+    expect(row?.metadata.previous).toEqual({
+      customerName: "Mary",
+      partySize: 4,
+      phone: "+12165550100",
+    });
+    // Email was identical on both attempts, so it is NOT in `previous` — the row says what
+    // changed, and a field listed with its unchanged value would read as a change.
+    expect(row?.metadata.previous).not.toHaveProperty("email");
+    const [stored] = await (await repo.listAllReservations()).filter((r) => r.status === "pending");
+    expect(String(row?.reservationId)).toBe(String(stored?.id));
+    expect(row?.actorKind).toBe("customer");
+  });
+
+  it("emits nothing when the retry changes none of the four", async () => {
+    const { repo, pay } = await started();
+    await createDeparturePaymentIntent(repo, pay, { ...req, phone: "+12165550100" }, now);
+    expect(await trailOf(repo, "checkout_details_changed")).toHaveLength(0);
+  });
+
+  it("emits nothing when the retry is refused as already_paid — nothing was written", async () => {
+    // **The reason this cannot be emitted from `claim.ts`.** The claim reused the row and the
+    // builder re-stated the new answers over it, but `recordCheckoutAttempt` never runs on this
+    // path: the intent settled in another tab and the checkout is refused at
+    // `create-departure-payment-intent.ts`'s `already_paid` return. A row here would record a
+    // change to a booking that still holds the old values.
+    const { repo, pay } = await started();
+    pay.intentStates.set("pi_fake_1", "settled");
+    const again = await createDeparturePaymentIntent(repo, pay, { ...req, phone: "+12165550148" }, now);
+    expect(again).toEqual({ ok: false, reason: "already_paid" });
+
+    expect(await trailOf(repo, "checkout_details_changed")).toHaveLength(0);
+    const [stored] = await (await repo.listAllReservations()).filter((r) => r.status === "pending");
+    expect(stored?.phone).toBe("+12165550100"); // and the row really did keep the old value
+  });
+
+  it("payment_superseded names the intent that was retired, keyed to the booking", async () => {
+    // A state read that threw is the one remaining route to a second intent (15.10) — a provider
+    // outage, not anything the customer did. The first intent is cancelled because it would
+    // otherwise stay PAYABLE at its old amount.
+    const { repo, pay } = await started();
+    pay.intentStateError = new Error("stripe: 503");
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(pay.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+
+    const [row] = await trailOf(repo, "payment_superseded");
+    expect(String(row?.paymentIntentId)).toBe("pi_fake_1");
+    expect(row?.reservationId).toBeDefined();
+    expect(row?.actorKind).toBe("engine");
+  });
+
+  it("emits NOTHING when Stripe refuses the cancel — the intent is still payable", async () => {
+    // The defect this guards. Stripe refuses a cancel from most terminal states and those
+    // refusals are the ordinary case, not the exception. A row reading "superseded" for an
+    // intent a customer can still pay is worse than no row at all: it is the one case anybody
+    // would open the trail to check.
+    const { repo, pay } = await started();
+    pay.intentStateError = new Error("stripe: 503");
+    pay.cancelError = new Error("stripe: intent cannot be canceled");
+    const again = await createDeparturePaymentIntent(repo, pay, req, now);
+
+    expect(again.ok).toBe(true); // the refusal never reaches the customer
+    expect(await trailOf(repo, "payment_superseded")).toHaveLength(0);
+  });
+});

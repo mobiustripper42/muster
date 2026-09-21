@@ -14,10 +14,19 @@
  *    `purpose` guard this replaced could not survive a charge that sends no keys at all.
  *
  * **A Payment row requires a reservation to hang it on (#613).** `payments.reservation_id` is
- * `not null` with an immediate FK, so the row is written only once a reservation exists:
- *  - `lost` / `unbookable` — **no row.** The reservation was never written, so one is impossible;
- *    Stripe holds the record of money that never became a booking.
- *  - a balance whose reservation is **missing** — no row, same reason.
+ * `not null` with an immediate FK, so no Payment is written unless a reservation exists:
+ *  - `lost` — **no Payment row, and it is a CHOICE rather than an impossibility.** The
+ *    reservation row is right there and still `pending`: `write-booking.ts` returns it, because
+ *    the residual-race compensation needs the customer's name and phone and 15.7 left the charge
+ *    carrying neither. The FK would be perfectly satisfied. Nothing is written because there is
+ *    nothing worth reconciling — see `compensateResidualRaceLoss`, "Stripe holds the record of
+ *    money that never became a booking." **Anything keyed off a `lost` outcome therefore HAS a
+ *    reservation id to use, and must use it** (issue #1051; this paragraph previously claimed the
+ *    row did not exist, and issue #1050's two engine-side trail rows were keyed accordingly).
+ *  - `unbookable` — no Payment row, and whether a reservation exists depends on the shape.
+ *    `not_pending` and `unusable_row` both resolved to a real row; the hosted-session and
+ *    flag-off branches never had one. Only the second pair is money Muster cannot place.
+ *  - a balance whose reservation is **missing** — no row, and here it genuinely is impossible.
  *  - a balance whose reservation is **cancelled or unpriced** — the row EXISTS, so the FK is
  *    satisfied and the payment IS recorded, then flagged. Unreconcilable is not unrecordable.
  *  - an **OVERPAID** balance — recorded, then flagged.
@@ -238,7 +247,9 @@ async function routeVerifiedEvent(
   // counting the revenue. It also catches Muster's own refunds a second time, harmlessly —
   // `markPaymentRefunded` takes a cumulative total, so the write is the same one
   // `refundReservation` already made.
-  if (event.type === "refund_recorded") return recordRefund(deps, event.data);
+  // `stripeEventId` is threaded in because a charge can be refunded more than once and the
+  // cumulative field cannot tell the deliveries apart — see `recordChargeUnmatched`.
+  if (event.type === "refund_recorded") return recordRefund(deps, event.data, event.stripeEventId);
 
   // A CHARGEBACK moved (issue #723) — same posture as the refund above, and before the
   // RESERVATIONS gate for the same reason: money that has already left the account must be
@@ -262,7 +273,40 @@ async function routeVerifiedEvent(
   //
   // Named rather than left to `parseEvent`'s null: acked-on-purpose and never-heard-of must not
   // be the same signal.
-  if (event.type === "payment_failed") return { handled: true, outcome: "ignored" };
+  //
+  // **It records, though (issue #1051).** "Do nothing to the booking" and "keep no record" are
+  // different instructions, and only the first one is criterion 11's. A decline is the fact that
+  // explains everything the abandonment surface shows — a row that sat at one attempt and lapsed
+  // reads identically whether the customer walked away or was refused three times.
+  if (event.type === "payment_failed") {
+    // One lookup, on a path that did none. A decline against one of our bookings belongs on THAT
+    // booking's trail, and the intent id is the only handle either way: an intent that is not
+    // ours (the bare PaymentIntent under a hosted balance session) resolves to nothing and the
+    // row carries the second key alone.
+    const row = await deps.repo.getReservationByPaymentIntentId(event.data.paymentIntentId);
+    // **Keyed on the STRIPE EVENT, unlike every other derived id in this file, and it has to
+    // be.** 15.8 reuses one PaymentIntent across retries — decline, fix the card, retry, decline
+    // again is one intent id and two separate facts. Keyed on the intent, the second row would
+    // collide with the first and `on conflict (id) do nothing` would drop it: the customer whose
+    // card failed three times would look exactly like the one whose card failed once. The Stripe
+    // event id changes per decline and is stable across redeliveries of the same decline, which
+    // is precisely the property the id needs.
+    //
+    // `declineCode` is a provider ENUM (`card_declined`, `insufficient_funds`) read off
+    // `last_payment_error.decline_code` — not a message, and it echoes nothing the customer
+    // typed. That is the line the "no provider strings in metadata" rule draws.
+    await recordTrail(deps, {
+      id: asId<"TrailEventId">(`payment_failed:${event.stripeEventId}`),
+      ...(row ? { reservationId: row.id } : {}),
+      paymentIntentId: asId<"PaymentIntentId">(event.data.paymentIntentId),
+      actorKind: "stripe",
+      type: "payment_failed",
+      ...(event.data.declineCode !== undefined
+        ? { metadata: { reason: event.data.declineCode } }
+        : { metadata: {} }),
+    });
+    return { handled: true, outcome: "ignored" };
+  }
 
   // A retired intent (15.10), and there is nothing to do with it. Every cancel Muster makes is one
   // it already knows about — the port call returned before Stripe wrote this event — so acting on
@@ -339,6 +383,13 @@ async function routeVerifiedEvent(
       `(14.5); the live flow books from a pending row via payment_intent.succeeded. REFUND MANUALLY ` +
       `and find what minted a hosted booking session - nothing in the app should.`,
   );
+  // The alert reaches a person today; the row is what survives the week. Keyed on the session id,
+  // because that is the only handle a hosted session is guaranteed to have.
+  await recordChargeUnmatched(deps, "retired_hosted_session", {
+    idKey: completed.sessionId,
+    chargeRef: completed.sessionId,
+    paymentIntentId: completed.paymentIntentId,
+  });
   return { handled: true, outcome: "unbookable" };
 }
 
@@ -353,6 +404,75 @@ async function routeVerifiedEvent(
 /** Deterministic payment id from the charge key ⇒ an idempotent upsert on Stripe redelivery.
  *  Exported so the Postgres suite can assert NO orphan row survives a lost/unbookable charge (#613). */
 export const paymentIdFor = (chargeKey: string): PaymentId => asId<"PaymentId">(`pay_${chargeKey}`);
+
+/**
+ * Money that arrived with no booking to hang it on (issue #1051).
+ *
+ * **Why the shape is a parameter rather than a sentence in `reason`.** These four are not one
+ * situation seen four times: two are a charge Muster refused to book, one is a charge it never
+ * knew about, and one is a call that cannot happen today. An operator reading a trail needs to
+ * tell "we chose not to book this" from "this was never ours."
+ *
+ * **The shape is in the ID, and as of 15.19 that is belt-and-braces rather than load-bearing.**
+ * It was load-bearing when there were four shapes: `reservations_off` and `no_payment_intent`
+ * both keyed on `charge.key` and both were reachable for one charge, so without the shape the
+ * second hit `on conflict (id) do nothing` and vanished. 15.19 then deleted the branch
+ * `no_payment_intent` recorded — correctly, with three independent proofs it was unreachable —
+ * and the three surviving shapes draw their keys from disjoint Stripe namespaces: a PaymentIntent
+ * id, a session id, an event id. **So nothing can collide today, and the collision test that used
+ * to prove this was deleted rather than rewritten into something that cannot fail.** The shape
+ * stays in the id because "these namespaces happen not to overlap" is an invariant Stripe owns
+ * and nothing here checks — and because the next shape added is the one that would collide.
+ *
+ * **`idKey` and `chargeRef` are separate, and the separation is the whole finding.** For three
+ * of the four shapes they are the same string, and the fourth is why this is a parameter rather
+ * than one field used twice: `refund_on_unknown_charge` can fire more than once for one
+ * PaymentIntent, because `amountRefundedCents` is CUMULATIVE and Stripe sends the event again
+ * for each additional partial refund. Two different facts, one charge. So its id keys on the
+ * STRIPE EVENT — the same derivation `payment_failed` uses, for the same reason — while
+ * `chargeRef` keeps naming the charge a human would go looking for. `@code-review` caught this
+ * after the first cut had already written that derivation twice elsewhere in this file.
+ *
+ * `paymentIntentId` is absent on a charge that carries none, which is legal and is the reason
+ * `TrailEvent` has two optional keys rather than one required one. `chargeRef` then carries the
+ * only handle there is — a hosted session id — so the row still names something.
+ *
+ * Deliberately NOT emitted for `not_pending` or `unusable_row`: both resolved to a real
+ * reservation, so the charge is matched and the problem is the row, not the money's provenance.
+ */
+type UnmatchedShape =
+  /** A verified booking charge succeeded while the RESERVATIONS flag was off (#588). */
+  | "reservations_off"
+  /** `charge.refunded` for a PaymentIntent that matches no Payment AND no pending row of ours —
+   *  a Xola-era charge, or one taken by hand in the dashboard. */
+  | "refund_on_unknown_charge"
+  /** A hosted Checkout booking session. Nothing has minted one since 14.5. */
+  | "retired_hosted_session";
+
+async function recordChargeUnmatched(
+  deps: WebhookDeps,
+  shape: UnmatchedShape,
+  charge: {
+    /** What makes this row unique. Must change when the FACT changes, and must NOT change on a
+     *  redelivery of the same fact. Usually the charge; the Stripe event id when one charge can
+     *  produce the fact more than once. */
+    idKey: string;
+    /** The handle a human goes looking for. Often the same string as `idKey`, and deliberately
+     *  not for `refund_on_unknown_charge`. */
+    chargeRef: string;
+    paymentIntentId?: string | undefined;
+  },
+): Promise<void> {
+  await recordTrail(deps, {
+    id: asId<"TrailEventId">(`charge_unmatched:${shape}:${charge.idKey}`),
+    ...(charge.paymentIntentId
+      ? { paymentIntentId: asId<"PaymentIntentId">(charge.paymentIntentId) }
+      : {}),
+    actorKind: "stripe",
+    type: "charge_unmatched",
+    metadata: { reason: shape, chargeRef: charge.chargeRef },
+  });
+}
 
 
 /** Options for callers that are not the signed webhook (issue #827). */
@@ -433,15 +553,38 @@ async function retireSiblingIntents(
 ): Promise<void> {
   const others = (row.paymentIntentIds ?? []).filter((id) => id !== paid);
   for (const id of others) {
-    await deps.payments.cancelPaymentIntent(id, "duplicate").catch((e: unknown) => {
-      // Logged before swallowing, like every other best-effort catch in this file
-      // (`@code-review`). "Must not throw" and "must leave no trace" are different
-      // requirements, and conflating them makes an ordinary refusal — an already-cancelled
-      // sibling on a redelivery — indistinguishable from a persistent bug such as a
-      // permissions error, forever. Not an operator alert: no money moved and the booking is
-      // fine, so this is a log line for whoever is already looking.
-      console.error(`[reservations] could not retire superseded intent ${id} on ${row.id}`, e);
-    });
+    const retired = await deps.payments
+      .cancelPaymentIntent(id, "duplicate")
+      .then(() => true)
+      .catch((e: unknown) => {
+        // Logged before swallowing, like every other best-effort catch in this file
+        // (`@code-review`). "Must not throw" and "must leave no trace" are different
+        // requirements, and conflating them makes an ordinary refusal — an already-cancelled
+        // sibling on a redelivery — indistinguishable from a persistent bug such as a
+        // permissions error, forever. Not an operator alert: no money moved and the booking is
+        // fine, so this is a log line for whoever is already looking.
+        console.error(`[reservations] could not retire superseded intent ${id} on ${row.id}`, e);
+        return false;
+      });
+    // **Only a cancel that TOOK is a supersession (issue #1051).** The refusals above are the
+    // ordinary case, not the exception — a redelivery re-cancels an already-cancelled sibling
+    // every single time, and Stripe refuses a sibling that already succeeded, which is the
+    // residual race and the single case anybody would open this trail to check. A row asserting
+    // an intent is dead while it is still chargeable is worse than no row.
+    //
+    // Derived id on the retired intent: an intent can be superseded exactly once, so a second
+    // emit for the same id is a redelivery rather than a second fact — which is what makes the
+    // adapter's `on conflict (id) do nothing` do the work here.
+    if (retired) {
+      await recordTrail(deps, {
+        id: asId<"TrailEventId">(`payment_superseded:${id}`),
+        reservationId: row.id,
+        paymentIntentId: asId<"PaymentIntentId">(id),
+        actorKind: "engine",
+        type: "payment_superseded",
+        metadata: { reason: "a sibling intent on a row that is now settled" },
+      });
+    }
   }
 }
 
@@ -475,8 +618,14 @@ async function compensateResidualRaceLoss(
     // The one refund no human authorised (issue #1050). Actor `engine`, deliberately: an
     // operator refund and this must never read alike in the trail. Emitted after the
     // provider call returns, so a trail outage cannot stop the money going back.
+    //
+    // **`reservationId` was missing until issue #1051, and the module header is why.** It said a
+    // `lost` outcome means no row exists; `row` is right here, still `pending`, and its name and
+    // phone are what the alert below interpolates. Without this key the auto-refund never appears
+    // on the trail of the booking it refunded.
     await recordTrail(deps, {
       id: asId<"TrailEventId">(`auto_refunded:${charge.key}`),
+      reservationId: row.id,
       paymentIntentId: asId<"PaymentIntentId">(charge.paymentIntentId),
       actorKind: "engine",
       type: "auto_refunded",
@@ -494,6 +643,9 @@ async function compensateResidualRaceLoss(
     // happen" three months later, which no alert can.
     await recordTrail(deps, {
       id: asId<"TrailEventId">(`refund_failed:${charge.key}`),
+      // Same correction as its sibling above (issue #1051). This is the worse of the two to have
+      // had unkeyed: a customer charged, not refunded, and their booking's trail silent about it.
+      reservationId: row.id,
       paymentIntentId: asId<"PaymentIntentId">(charge.paymentIntentId),
       actorKind: "engine",
       type: "refund_failed",
@@ -606,6 +758,17 @@ export async function processBookingCharge(
       `Verified booking charge received while RESERVATIONS is off - acked and NOT booked ` +
         `(${charge.key}). Money has moved; investigate before flipping the flag on.`,
     );
+    // **A kill-flag early return is an event** (issue #1052's rule, and this is the money-side
+    // instance of it). The flag being off is a deliberate refusal to book a charge that
+    // succeeded — the alert says so now, and this row says so in three months when somebody is
+    // reconciling a Stripe statement against a product that has no trace of the charge.
+    // A PaymentIntent succeeds once, so the charge key is the fact's own name and a redelivery
+    // of that one success is exactly what should collide.
+    await recordChargeUnmatched(deps, "reservations_off", {
+      idKey: charge.key,
+      chargeRef: charge.key,
+      paymentIntentId: charge.paymentIntentId,
+    });
     return { handled: false };
   }
 
@@ -1011,6 +1174,10 @@ async function recordPayment(
 async function recordRefund(
   deps: WebhookDeps,
   refund: { paymentIntentId: string; amountRefundedCents: number },
+  /** This delivery's Stripe event id. The ledger write does not need it — `markPaymentRefunded`
+   *  takes a cumulative total, so redelivery and a second partial refund are the same write — but
+   *  the trail row below does, because for the trail they are two different facts. */
+  stripeEventId: string,
 ): Promise<WebhookResult> {
   const payment = await deps.repo.getPaymentByIntentId(refund.paymentIntentId);
   if (!payment) {
@@ -1034,6 +1201,19 @@ async function recordRefund(
         `${refund.paymentIntentId}, which matches NO payment in Muster. The ledger is unchanged; ` +
         `RECONCILE MANUALLY (this is expected for a Xola-era or hand-taken charge).`,
     );
+    // AFTER the `ownLoser` guard above, deliberately. Our own residual-race refund also finds no
+    // payment row — on purpose (#613) — and it is already recorded as `auto_refunded`. Calling it
+    // unmatched would be the 15.5 defect again in a new place: two records of one refund saying
+    // opposite things about whether Muster knows where the money went.
+    // **Keyed on the DELIVERY, not the charge** (`@code-review`). A Xola-era charge refunded in
+    // two parts sends this event twice with two cumulative totals — two facts about one intent,
+    // and keying on the intent would drop the second silently. `chargeRef` still names the
+    // charge, because that is what somebody reconciling a statement searches for.
+    await recordChargeUnmatched(deps, "refund_on_unknown_charge", {
+      idKey: stripeEventId,
+      chargeRef: refund.paymentIntentId,
+      paymentIntentId: refund.paymentIntentId,
+    });
     return { handled: true, outcome: "refund_recorded" };
   }
   await deps.repo.markPaymentRefunded(payment.id, refund.amountRefundedCents);

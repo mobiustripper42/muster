@@ -34,6 +34,7 @@ import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { resolveBasePrice, slotIdentity } from "./availability.js";
 import { claimDepartureSlot } from "./claim.js";
+import { recordTrail } from "./trail.js";
 import { candidateHoldMinutes, XOLA_TRIP_MINUTES } from "./hull-busy.js";
 import { chargeNowCents, feeCentsFor, taxCentsFor } from "./payment-config.js";
 import {
@@ -258,6 +259,60 @@ export async function createDeparturePaymentIntent(
   if ("soldOut" in claim) return { ok: false, reason: "sold_out" };
 
   const pending = claim.claimed;
+
+  // ── The trail: what this retry is about to overwrite (issue #1051) ──────────
+  //
+  // `recordCheckoutAttempt` re-states the customer's four answers ON the row, in place, with no
+  // history column — see its docstring, whose own examples are six people arriving against a
+  // manifest for four and a corrected phone leaving the booking link texted to whoever owns the
+  // mistyped one. After that write the old values do not exist anywhere. This is the only record.
+  //
+  // **Computed here, emitted after the write.** The row does not change until
+  // `recordCheckoutAttempt` runs, and three paths below return before it does: two `already_paid`
+  // refusals and a mint that throws. Emitting on the claim's say-so would record a change to a
+  // booking that still holds the old values. Same reason `claim.ts` hands `prior` back instead of
+  // emitting itself.
+  //
+  // **Only values that EXISTED and no longer do.** A retry that adds an email where there was
+  // none destroys nothing, and the row already shows the new one; the event is about what is now
+  // unrecoverable. An empty diff is therefore no event rather than an event carrying nothing.
+  //
+  // The old email and phone go into the trail deliberately, and this is not the case the
+  // "never put a provider string in metadata" rule covers: that rule exists because a
+  // `ChannelSendError` echoes a recipient address nobody asked to store. These two are the
+  // subject of the event.
+  const previous: Record<string, string | number> = {};
+  if (claim.reused) {
+    const { prior } = claim;
+    if (prior.customerName !== pending.customerName) previous.customerName = prior.customerName;
+    if (prior.partySize !== undefined && prior.partySize !== pending.partySize) {
+      previous.partySize = prior.partySize;
+    }
+    if (prior.email !== undefined && prior.email !== pending.email) previous.email = prior.email;
+    if (prior.phone !== undefined && prior.phone !== pending.phone) previous.phone = prior.phone;
+  }
+  /**
+   * Emit the overwrite, once the write that caused it has committed.
+   *
+   * A random id: this is the customer's own submit, not a Stripe redelivery, so there is nothing
+   * to collide with (`trail.ts`). Two concurrent submits diffing against the same stored row will
+   * write two rows for one change — the known and accepted failure direction for a log, and the
+   * opposite direction (a derived id silently dropping a real second edit) is the one that hurts.
+   */
+  const noteDetailsChanged = async (): Promise<void> => {
+    if (Object.keys(previous).length === 0) return;
+    await recordTrail(
+      { repo, now },
+      {
+        id: asId<"TrailEventId">(`checkout_details_changed:${randomUUID()}`),
+        reservationId: pending.id,
+        actorKind: "customer",
+        type: "checkout_details_changed",
+        metadata: { previous },
+      },
+    );
+  };
+
   const invoice = pending.invoice!; // the builder above always sets it
   // The charge is READ from the frozen invoice rather than recomputed, so what Stripe is asked
   // for and what the row says cannot drift. Until 15.4 this line recomputed it from live
@@ -344,6 +399,7 @@ export async function createDeparturePaymentIntent(
       // Nothing new to append — this attempt minted no id. The invoice and the customer's answers
       // still re-freeze, which is what `null` means here.
       await repo.recordCheckoutAttempt(pending, null);
+      await noteDetailsChanged();
       return { ok: true, clientSecret: raised.clientSecret, paymentIntentId: priorIntentId };
     }
   }
@@ -374,12 +430,39 @@ export async function createDeparturePaymentIntent(
   // must never reach the customer: by the time this runs they are about to receive a working client
   // secret for a fresh intent.
   if (priorIntentId) {
-    await payments.cancelPaymentIntent(priorIntentId, "abandoned").catch((e: unknown) => {
-      // Logged, then swallowed (`@code-review`). Swallowing silently makes the ordinary refusals
-      // above indistinguishable from a real fault — a wrong id, a permissions error — and the
-      // whole point of this call is that somebody could otherwise still pay this intent.
-      console.error(`[reservations] could not retire superseded intent ${priorIntentId}`, e);
-    });
+    const retired = await payments
+      .cancelPaymentIntent(priorIntentId, "abandoned")
+      .then(() => true)
+      .catch((e: unknown) => {
+        // Logged, then swallowed (`@code-review`). Swallowing silently makes the ordinary refusals
+        // above indistinguishable from a real fault — a wrong id, a permissions error — and the
+        // whole point of this call is that somebody could otherwise still pay this intent.
+        console.error(`[reservations] could not retire superseded intent ${priorIntentId}`, e);
+        return false;
+      });
+    // **Only when the cancel actually took (issue #1051).** The paragraph above says the refusals
+    // are the ordinary case rather than the exception — three of the four things `unknown` covers
+    // will refuse. A trail row reading `payment_superseded` for an intent that is still payable is
+    // worse than no row, because the state it would be asserting is the exact one somebody opens
+    // the trail to check.
+    //
+    // Derived id, unlike its two neighbours above: an intent can be retired once and only once,
+    // so `<type>:<intent>` is the fact's own name, and a second emit for the same id would be a
+    // duplicate rather than a second fact. Actor `engine` — nobody pressed this; it is a
+    // consequence of the mint below.
+    if (retired) {
+      await recordTrail(
+        { repo, now },
+        {
+          id: asId<"TrailEventId">(`payment_superseded:${priorIntentId}`),
+          reservationId: pending.id,
+          paymentIntentId: asId<"PaymentIntentId">(priorIntentId),
+          actorKind: "engine",
+          type: "payment_superseded",
+          metadata: { reason: "replaced by a fresh intent at the current amount" },
+        },
+      );
+    }
   }
 
   const intent = await payments.createPaymentIntent({
@@ -425,6 +508,7 @@ export async function createDeparturePaymentIntent(
   // a concurrent confirm cannot revert the just-booked, paid row to pending (@code-review).
   // `updatedAt` is the claim's clock, the same instant the row was written or re-priced under.
   await repo.recordCheckoutAttempt(pending, intent.paymentIntentId);
+  await noteDetailsChanged();
   return { ok: true, clientSecret: intent.clientSecret, paymentIntentId: intent.paymentIntentId };
 }
 

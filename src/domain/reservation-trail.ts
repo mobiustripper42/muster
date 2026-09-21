@@ -157,6 +157,23 @@ export interface TrailEventMetadata {
   /** `hull_contended`: the hull the claim wanted, and the one it settled for. */
   wantedVesselId?: string;
   gotVesselId?: string;
+  /**
+   * `sold_out` / `hull_contended`: which departure this was about (issue #1051).
+   *
+   * **`sold_out` is the only event in the set that carries NEITHER key** — no reservation
+   * row was written and no charge exists, so without these four the row says a customer was
+   * turned away and not from what. `hull_contended` has a reservation and carries them
+   * anyway, so the two read alike in a list where one of them can never be joined to
+   * anything.
+   */
+  offeringId?: string;
+  date?: string;
+  time?: string;
+  guestCount?: number;
+  /** `charge_unmatched` / `balance_link_created`: the provider handle this is about, when it
+   *  is not a PaymentIntent id. A hosted session id, or a charge key with no intent behind
+   *  it — which is precisely the `charge_unmatched` shape that leaves the row keyless. */
+  chargeRef?: string;
   /** `booked` (projected): which path confirmed it — webhook | success_page |
    *  reconciler. A dimension rather than three types, because §2.8.6 requires all
    *  three to call one idempotent confirm and the reconciler is not built yet. */

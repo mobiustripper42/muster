@@ -111,6 +111,37 @@ export async function createBalanceLink(formData: FormData): Promise<void> {
   }
 
   if (!result.ok) redirect(back({ balanceErr: result.reason }));
+
+  // ── The trail: an operator minted a payable link (issue #1051) ──────────────
+  //
+  // The only ungated live operator money action in the product, and the docstring above is what
+  // makes it worth recording rather than what excuses it: "it charges nobody and changes no
+  // state" is true of the press and false of the result — a URL now exists that will take this
+  // customer's money, at an amount derived at this instant. The customer's half lands in
+  // `payments` when they pay; this half has never been written down anywhere, and while
+  // `depositMode` is `"full"` (DEC-155) the customer's half is dormant, so the trail is the
+  // whole record.
+  //
+  // **Before the redirect, which throws.** `redirect()` unwinds by exception, so an emit placed
+  // after it never runs — the defect `@code-review` found in `reissueBookingLink` on issue #1052,
+  // where the single worst outcome recorded nothing.
+  //
+  // Only on success: the failure returns above mean no link exists, so nothing happened and
+  // nothing is owed. A random id, because an operator press has no redelivery and two links are
+  // two separately payable URLs, not one fact seen twice.
+  await recordTrail(
+    { repo: getRepo(), now: () => new Date().toISOString() },
+    {
+      id: asId<"TrailEventId">(`balance_link_created:${randomUUID()}`),
+      reservationId: asId<"ReservationId">(reservationId),
+      actorKind: "admin",
+      actorId: subject.id,
+      type: "balance_link_created",
+      // The amount the link will collect, and the session that collects it. Not the URL: it is a
+      // bearer capability for a charge, and the trail is read on an operator screen.
+      metadata: { actualCents: result.amountCents, chargeRef: result.sessionId },
+    },
+  );
   redirect(back({ balanceUrl: result.url }));
 }
 

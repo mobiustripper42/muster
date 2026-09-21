@@ -586,6 +586,29 @@ export async function resendConfirmation(formData: FormData): Promise<void> {
  * dead link. That is the correct trade — the operator reached for this because the OLD link had
  * to die — but it means a failed send here is worse than a failed resend, and the copy says so.
  */
+/**
+ * What a reissue actually did, in one line, for the trail (issue #1052).
+ *
+ * A named function rather than a ternary chain — `sonarjs/no-nested-conditional` refused the
+ * chain and was right: four outcomes with materially different consequences read as one
+ * expression, and the worst of them is the easiest to miss.
+ *
+ * `LOCKED OUT` leads the two bad ones deliberately. The old link is revoked before any send is
+ * attempted and there is no rollback, so "sent nothing" here means the customer cannot reach
+ * their own booking — the case the first cut recorded nowhere at all.
+ */
+function reissueOutcome(
+  sent: { email: string; sms: string } | null,
+  staleCodes: number,
+): string {
+  if (!sent) return "LOCKED OUT: old link revoked, new link not sent (no channel configured)";
+  if (sent.email !== "sent" && sent.sms !== "sent") {
+    return `LOCKED OUT: old link revoked, new link not sent (email=${sent.email} sms=${sent.sms})`;
+  }
+  if (staleCodes > 0) return `old_link_alive: ${staleCodes} prior code(s) NOT revoked`;
+  return `email=${sent.email} sms=${sent.sms}`;
+}
+
 export async function reissueBookingLink(formData: FormData): Promise<void> {
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") redirect("/admin");
@@ -626,14 +649,17 @@ export async function reissueBookingLink(formData: FormData): Promise<void> {
     logSwallowed("admin/reservation:reissueBookingLink", e, "the NEW link was not sent, and the old one is already revoked");
     redirect(back({ reissueErr: "sent_nothing" }));
   }
-  if (outcome.kind === "skipped") redirect(back({ reissueErr: "sent_nothing" }));
-  const { email: e2, sms: s2 } = outcome.result;
-  if (e2 !== "sent" && s2 !== "sent") redirect(back({ reissueErr: "sent_nothing" }));
-  // The new link went out, but an old one survived the revoke — so the operator must NOT be told
-  // the previous link is dead, which is the whole reason they pressed this.
-  // **Destructive in a way a resend is not** (issue #1052): this killed the customer's
-  // existing link. Emitted BEFORE the `old_link_alive` branch, because a revoke that did not
-  // take is still a reissue that happened — and that is the case most worth having a record of.
+  const sent = outcome.kind === "skipped" ? null : outcome.result;
+
+  // **Destructive in a way a resend is not** (issue #1052): the old link is already revoked
+  // by the time we get here, with no rollback. So this is emitted ahead of EVERY early return
+  // below, not just the `old_link_alive` one.
+  //
+  // The first cut sat after the `skipped` and `sent_nothing` returns, which meant the single
+  // worst outcome this button can produce — old link dead, new link never delivered, customer
+  // locked out of their own booking, which this function's own docstring calls out by name —
+  // left no row at all. `@code-review` caught it, and caught that the comment here claimed to
+  // cover "the case most worth having a record of" while missing the worse one.
   await recordTrail(
     { repo: getRepo(), now: () => new Date().toISOString() },
     {
@@ -642,14 +668,15 @@ export async function reissueBookingLink(formData: FormData): Promise<void> {
       actorKind: "admin",
       actorId: subject.id,
       type: "link_reissued",
-      metadata: {
-        reason:
-          reissue.staleCodes.length > 0
-            ? `old_link_alive: ${reissue.staleCodes.length} prior code(s) NOT revoked`
-            : `email=${e2} sms=${s2}`,
-      },
+      metadata: { reason: reissueOutcome(sent, reissue.staleCodes.length) },
     },
   );
+
+  if (!sent) redirect(back({ reissueErr: "sent_nothing" }));
+  const { email: e2, sms: s2 } = sent;
+  if (e2 !== "sent" && s2 !== "sent") redirect(back({ reissueErr: "sent_nothing" }));
+  // The new link went out, but an old one survived the revoke — so the operator must NOT be told
+  // the previous link is dead, which is the whole reason they pressed this.
   if (reissue.staleCodes.length > 0) redirect(back({ reissueErr: "old_link_alive" }));
   redirect(back({ reissued: `${e2}-${s2}` }));
 }

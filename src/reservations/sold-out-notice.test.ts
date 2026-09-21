@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChannelPort, OutboundMessage, SendResult } from "../ports/channel.js";
 import { sendSoldOutNotice, soldOutNoticeBody } from "./sold-out-notice.js";
+import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { nonGsm7Chars } from "./sms-alphabet.js";
 
 /** A ChannelPort that records what it was handed (and can be made to throw). */
@@ -45,6 +46,55 @@ describe("soldOutNoticeBody", () => {
 
 describe("sendSoldOutNotice", () => {
   const contact = { customerName: "Mary", email: "mary@example.com", phone: "+15550001111" };
+
+  /**
+   * The trail rows, and the redelivery case that was missing (issue #1052).
+   *
+   * This module runs from `compensateResidualRaceLoss`, which `booking-webhook.ts` documents
+   * as **re-entered when Stripe redelivers the losing charge**. The first cut minted a fresh
+   * `randomUUID()` per row, so a redelivery fabricated a second set — corrupting the only
+   * analytic these rows buy: how often a refunded customer was never told. `@code-review`
+   * caught it; this is the check that would have.
+   */
+  describe("the trail", () => {
+    const trailDeps = (repo: InMemoryRepository) => ({
+      repo,
+      now: () => "2026-09-21T10:00:00.000Z",
+      key: "ch_test_1",
+    });
+
+    it("records one row per CHANNEL — an email-only contact is a different answer from both", async () => {
+      const repo = new InMemoryRepository();
+      await sendSoldOutNotice({ email: capturing(), sms: capturing(), trail: trailDeps(repo) }, contact);
+      const rows = await repo.listTrailEvents();
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.type === "sold_out_notice_sent")).toBe(true);
+      expect(rows.map((r) => r.metadata.reason).sort()).toEqual(["email: email", "sms: sms"]);
+    });
+
+    it("a REDELIVERY writes nothing new — the id is derived from the charge", async () => {
+      const repo = new InMemoryRepository();
+      const deps = () => ({ email: capturing(), sms: capturing(), trail: trailDeps(repo) });
+      await sendSoldOutNotice(deps(), contact);
+      await sendSoldOutNotice(deps(), contact);
+      expect(await repo.listTrailEvents()).toHaveLength(2);
+    });
+
+    it("a failed send is recorded as failed, not merely logged", async () => {
+      const repo = new InMemoryRepository();
+      const boom: ChannelPort = {
+        send: () => Promise.reject(new Error("twilio down")),
+      } as unknown as ChannelPort;
+      await sendSoldOutNotice({ sms: boom, trail: trailDeps(repo) }, contact);
+      const [row] = await repo.listTrailEvents();
+      expect(row?.type).toBe("sold_out_notice_failed");
+      expect(row?.metadata.reason).toContain("twilio down");
+    });
+
+    it("no trail dep ⇒ no rows, and no throw — the pure tests construct deps without a repo", async () => {
+      await expect(sendSoldOutNotice({ email: capturing() }, contact)).resolves.toBeUndefined();
+    });
+  });
 
   it("sends on both channels when both contact + channel are present", async () => {
     const email = capturing();

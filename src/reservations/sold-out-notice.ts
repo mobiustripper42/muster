@@ -9,7 +9,6 @@
  *  - Transactional (they just paid + were refunded), NOT marketing — no `SmsConsent` gate.
  */
 
-import { randomUUID } from "node:crypto";
 import { asId } from "../domain/ids.js";
 import { recordTrail, type TrailDeps } from "./trail.js";
 import type { ChannelPort } from "../ports/channel.js";
@@ -31,8 +30,14 @@ export interface SoldOutNoticeDeps {
    * already lost its reservation** — the residual-race loser, whose row was never written —
    * and the pure-function tests construct deps without a repository. Absent means no row, not
    * a failure.
+   *
+   * `key` must be STABLE for one charge. This runs from `compensateResidualRaceLoss`, which
+   * `booking-webhook.ts` documents as re-entered on Stripe redelivery — its sibling
+   * `auto_refunded` is keyed on `charge.key` for exactly that reason and this was not, so a
+   * redelivery fabricated a second row for one fact. `@code-review` caught it. A random id
+   * corrupts the only analytic these rows buy: how often a refunded customer was never told.
    */
-  trail?: TrailDeps;
+  trail?: TrailDeps & { key: string };
 }
 
 /**
@@ -76,20 +81,20 @@ export async function sendSoldOutNotice(
   if (contact.email && deps.email) {
     try {
       await deps.email.send({ to: { email: contact.email }, kind: "receipt", body });
-      await note(deps, "sold_out_notice_sent", "email");
+      await note(deps, "sold_out_notice_sent", "email", "email");
     } catch (e) {
       deps.onFailure?.(`sold-out email to ${contact.email} failed: ${errText(e)}`);
-      await note(deps, "sold_out_notice_failed", `email: ${errText(e)}`);
+      await note(deps, "sold_out_notice_failed", "email", errText(e));
     }
   }
 
   if (contact.phone && deps.sms) {
     try {
       await deps.sms.send({ to: { phone: contact.phone }, kind: "receipt", body });
-      await note(deps, "sold_out_notice_sent", "sms");
+      await note(deps, "sold_out_notice_sent", "sms", "sms");
     } catch (e) {
       deps.onFailure?.(`sold-out SMS to ${contact.phone} failed: ${errText(e)}`);
-      await note(deps, "sold_out_notice_failed", `sms: ${errText(e)}`);
+      await note(deps, "sold_out_notice_failed", "sms", errText(e));
     }
   }
 }
@@ -111,14 +116,17 @@ export async function sendSoldOutNotice(
 async function note(
   deps: SoldOutNoticeDeps,
   type: "sold_out_notice_sent" | "sold_out_notice_failed",
+  channel: string,
   detail: string,
 ): Promise<void> {
   if (!deps.trail) return;
   await recordTrail(deps.trail, {
-    id: asId<"TrailEventId">(`${type}:${randomUUID()}`),
+    // `<type>:<charge>:<channel>` — derived, so a redelivery collides. The channel is in the
+    // key because a per-notice id would let the email row and the SMS row overwrite each other.
+    id: asId<"TrailEventId">(`${type}:${deps.trail.key}:${channel}`),
     actorKind: "engine",
     type,
-    metadata: { reason: detail },
+    metadata: { reason: `${channel}: ${detail}` },
   });
 }
 

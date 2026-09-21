@@ -937,20 +937,18 @@ async function recordPayment(
   // here must cost the link and nothing else. Not alerted — there is no money problem and
   // nothing for a human to do about it.
   let receiptUrl: string | undefined;
-  if (charge.paymentIntentId) {
-    try {
-      receiptUrl = await deps.payments.getReceiptUrl(charge.paymentIntentId);
-    } catch (e) {
-      // Stays best-effort — the payment row is the ledger and the receipt link is a
-      // convenience, so this must cost the link and nothing else. Logged because the
-      // guest's manage page will show no receipt and nothing else explains why.
-      logSwallowed(
-        "reservations:receiptUrl",
-        e,
-        `no Stripe receipt link on the manage page for charge ${charge.key}`,
-      );
-      receiptUrl = undefined;
-    }
+  try {
+    receiptUrl = await deps.payments.getReceiptUrl(charge.paymentIntentId);
+  } catch (e) {
+    // Stays best-effort — the payment row is the ledger and the receipt link is a
+    // convenience, so this must cost the link and nothing else. Logged because the
+    // guest's manage page will show no receipt and nothing else explains why.
+    logSwallowed(
+      "reservations:receiptUrl",
+      e,
+      `no Stripe receipt link on the manage page for charge ${charge.key}`,
+    );
+    receiptUrl = undefined;
   }
 
   const payment: Payment = {

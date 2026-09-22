@@ -134,7 +134,13 @@ test.describe("admin nav", () => {
     // group's summary with the first panel still floating over the page.
     await clickHydrated(group("Bookings"));
     await expect(nav.locator("details[open]")).toHaveCount(1);
-    for (let i = 0; i < 5; i++) await page.keyboard.press("Tab");
+    // **Counted, not hardcoded.** This was `for (i = 0; i < 5; i++)` — the Bookings group's four
+    // links plus one to step off the end — and issue #1049 added a fifth link, so five tabs no
+    // longer left the group and the assertion read "still open" for a feature that was fine.
+    // A magic number tied to a nav's contents is a test that breaks whenever the nav grows,
+    // which is exactly when you least want to be debugging the test.
+    const links = await nav.locator("details[open] a").count();
+    for (let i = 0; i < links + 1; i++) await page.keyboard.press("Tab");
     await expect(nav.locator("details[open]")).toHaveCount(0);
 
     // …nor on navigation: the nav lives in the layout, so a client-side route change does not

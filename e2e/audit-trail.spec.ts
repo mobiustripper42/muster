@@ -17,7 +17,17 @@ test.describe("admin /admin/asks — crew audit trail", () => {
   test("lists crew events with kinds, reachable from the nav", async ({ page }) => {
     await signInAsAdmin(page, "eric");
     await page.goto("/admin");
-    await page.getByRole("link", { name: /Audit/ }).click();
+    // **Two clicks, not one, as of issue #1049** — and the extra one is the point of the test
+    // rather than an obstacle to it. Reservations gained an audit of its own, so this one moved
+    // out of the flat bar into `Crew › Audit`: two bare peers both reading "Audit" is worse than
+    // a click. `getByRole("link")` skips a closed `<details>`, so the old one-click version
+    // timed out waiting for something correctly hidden.
+    //
+    // Scoped to the nav and to `Crew`, because a bare /Audit/ now matches `Bookings › Audit` too
+    // — and a test that silently opened the wrong audit would still be green.
+    const nav = page.getByRole("navigation", { name: "Admin" });
+    await nav.locator("summary:visible").filter({ hasText: "Crew" }).click();
+    await nav.getByRole("link", { name: "Audit", exact: true }).click();
     await page.waitForURL(/\/admin\/asks/);
 
     // Scope to the rows region — the filter dropdown also holds every crew name.

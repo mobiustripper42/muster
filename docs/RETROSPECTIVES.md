@@ -3,6 +3,120 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 15 — 2026-09-22 — Reservations: the money on our row
+
+**Points:** 73 shipped / 81 originally pokered (90%)
+**Span:** 11.73 days (2026-09-10T21:53Z → 2026-09-22T15:21Z)
+**Throughput:** 43.6 pts/calendar-week ← headline, and **read the calibration line before believing it**
+**Estimate calibration:** 6 tasks re-estimated, net drift **−8 pts** — the largest negative drift of any phase
+**Sessions:** 4 files in the window   **PRs merged:** 16 from session 106; 54 in the window across both lanes
+**Issues:** 20 created, 20 closed, 0 moved, **0 added mid-phase**
+
+### Phase throughput line
+| Phase | Date | Points | Span(d) | Throughput | Re-est'd | Net drift | Sessions | PRs |
+|-------|------|--------|---------|------------|----------|-----------|----------|-----|
+| 15 | 2026-09-22 | 73 | 11.73 | 43.6 pts/wk | 6 | −8 | 4* | 16 (54 in window) |
+
+`*` Window counts. Lanes A and B ran concurrently throughout; session 108 worked other phases.
+
+**The companion metric is degenerate at this span and is deliberately not quoted.** An 11.7-day
+window touches 3 ISO weeks, so `active_throughput` (24.3) comes out *lower* than the calendar rate —
+the opposite of what a strip-the-idle-weeks number is for. It measures the calendar's boundaries,
+not the work.
+
+### The six re-estimates
+| Task | Change | Why |
+|---|---|---|
+| 15.5 | **3 → 8** (+5) | The only upward one. Staging the real residual race found two more surfaces lying beyond the one the issue named. |
+| 15.12 | 5 → 3 (−2) | The `payment_status` gate moved to issue #712 — the account cannot currently receive a delayed payment on `/book`. |
+| 15.15 | 5 → 1 (−4) | Both §2.8.7 rows were already implemented by 15.5/15.6/15.10. The issue text predated them. |
+| 15.16 | 8 → 3 (−5) | "The reconciler" re-scoped to a webhook-endpoint monitor after the operator refused the premise. |
+| 15.17 | 3 → 2 (−1) | The retry storm it described cannot happen; the production alert already cannot throw. |
+| 15.19 | 3 → 2 (−1) | The deletion was small; the determination that both branches were unreachable was the work. |
+
+**Five of six went down, and every one was scope found to be already built or not worth building.**
+
+**One unreconciled number, recorded rather than resolved.** 15.5's original estimate has three
+conflicting sources: the PROJECT_PLAN row's own text says `3 → 8`, session 105's note says
+`3 → 5; phase total 81 → 83`, and the column reads 8. Treated as an original of 3 for the drift
+math. Possibly two successive re-estimates; nobody wrote down which.
+
+**Three points labels were wrong at retro time and were corrected.** 15.15, 15.17 and 15.19 were
+re-pointed in session notes and the GitHub label was never updated — so `phase_points` read 79
+until they were fixed to 73. The re-point is only real when the label moves; prose in a session
+file is not the data source this retro runs on.
+
+### What worked
+- "We can book cruises successfully"
+
+### What didn't
+- "Seemed like we were overly through it that's possible"
+
+### Changes for next phase
+- "Yeah, too much details"
+
+### Scope changes
+- **Nothing added mid-phase** — 20 planned tasks, 20 closed. Against Phase 12's 49 added (65% of
+  delivery) and Phase 14's 1.
+- 15.16 was **re-scoped rather than descoped**: issue #984 retitled from "The reconciler" to "Is the
+  webhook endpoint still doing its job?", with the reconciler's reasoning preserved as a comment on
+  the issue rather than deleted. Unbuilt, not refused.
+- Post-trip tipping **removed** (15.18) — cut for scope rather than merit, recorded in SPEC §2.8.14
+  rather than a decision record, because it is a statement about what the product does.
+- Filed outward from this phase: a correction to issue #623's go-live runbook (it lists two webhook
+  events; nine are handled, and four of the seven omitted are money that would go unrecorded), and
+  two additions to the blast-radius table (`src/admin/payroll.ts`, `src/admin/gratuity-payroll.ts`).
+
+### PM read
+
+**Pace.** 43.6 pts/calendar-week is the highest number this repo has ever posted, and it is also the
+least honest one, for a reason that's the opposite of Phase 12's. Phase 12 inflated its 30.6 with 135
+points of unpokered scope that was never checked against anything. Phase 15's 73 is all pokered, all
+closed against named issues — and still overstates the work, because five of the six re-estimates ran
+the number *down*. Every one of those five was a task that got smaller because the investigation
+proved the premise dead — already built (15.15), already impossible (15.17), or never what the issue
+said it was (15.16). That's real diagnostic work, and it's worth something, but it is not the same
+thing as shipping 73 points of reservations. Read this phase's throughput as "closed twenty rows
+fast," not "built at 2.3× Phase 14's rate" — the second claim isn't supported.
+
+**Scope — zero adds, and it isn't the mystery it looks like.** Against Phase 12's 65%-unplanned
+disaster, 0 issues added mid-phase looks like the discipline finally holding. It's partly that. But
+the mechanism is visible in the record: the 81-point re-plan that opened this phase was itself an
+audit against Stripe's own docs, which means most of what would normally surface as a mid-phase
+surprise had already been anticipated as a pokered, possibly-wrong row. That's front-loading, and it
+is also maturity — the two aren't in tension here, the front-loading *is* the maturity. The tell that
+it's not gamed: nothing got quietly absorbed. Every re-estimate is logged with a reason and a
+re-poke.
+
+**Pattern — the issue text keeps describing a codebase that already moved.** Four separate
+instances. 15.15's issue said both §2.8.7 rows were "still owed in full," and they'd been shipped by
+15.5/15.6/15.10. 15.16's issue asked for "the reconciler," and took roughly a dozen turns of the
+operator refusing that premise before it re-scoped. 15.17's issue described a retry storm that cannot
+happen — the dependency it worried about already can't throw. And 15.16 filed, as a side effect, a
+correction to issue #623's go-live runbook for citing two events where nine are handled. Same failure
+shape every time: a document was accurate when written and nobody updated it as the code under it
+kept moving. It isn't self-correcting — each phase re-discovers it against its own issues.
+
+**On the operator's three answers, directly, not softened.** "We can book cruises successfully" is
+the actual deliverable and it's true. "Overly through it" is fair, and I'd go further than agreeing:
+the −8 drift being read as a good number and the "too much detail" experienced are the *same phase*,
+not two different ones. The thoroughness caught real things — the balance-top-up alert storm, the
+idempotency key computed and then silently discarded before reaching Stripe, the sibling intent that
+stays payable forever. But "worth it every time it fired" and "not too much in aggregate" are
+different claims, and the operator is the one who sat through the aggregate: a dozen turns litigating
+whether "the reconciler" should exist, three rounds of "I defended this claim and it was wrong"
+landing back on him to adjudicate. The third answer names a mechanism problem, not a diligence
+problem: **premises are being settled with the operator turn-by-turn in real time instead of settled
+once and reported as a verdict.**
+
+**Forward into Phase 16.** When a task's first move is "is this issue's premise even still true,"
+resolve it in one pass and state the finding — 15.16's dozen turns is the shape to not repeat. And a
+structural risk worth flagging now: Phase 16 has had no equivalent of issue #966's audit —
+PROJECT_PLAN says §2.10 "has no acceptance criteria and was not audited." Phase 15's 0-adds record
+was substantially a product of that front-loaded discovery. Phase 16 starts without it, on a
+customer-facing cancel/refund path that is exactly the shape that generated this phase's security
+findings. Don't assume 0-adds repeats by default.
+
 ## Phase 14 — 2026-09-10 — Reservations: the pending row
 
 **Points:** 44 shipped / 41 planned-and-delivered / 39 originally pokered

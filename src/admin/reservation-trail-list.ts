@@ -23,6 +23,23 @@
  * **And it is the ONLY place two classes can be seen at all.** A `charge_unmatched` has no
  * reservation to hang off; a `slot_held` has neither key. A booking-scoped view cannot render
  * them, so without this page they are written and never read.
+ *
+ * ## Two unbounded reads, and the clock on them is shorter than its model's
+ *
+ * `listTrailEvents()` returns every row and `listAllReservations()` every booking; the filter
+ * runs in memory. That is `buildAuditTrail`'s shape exactly, and DEC-118 named the trade when it
+ * chose it — *"**Revisit if:** audit volume outgrows the union read (materialize)."*
+ *
+ * **The same note is owed here and expires sooner.** The crew log is scoped to a roster that
+ * stops growing; this one appends on every checkout attempt, every decline, every sold-out
+ * refusal — `sold_out` alone fires on a public form submit with no money behind it. The port
+ * already has the precedent for the fix: `listImportRuns(limit)`, whose docstring calls it *"the
+ * one place the port's no-DSL thinness yields to a cap."*
+ *
+ * **Revisit when** the pilot's trail passes a few thousand rows, or the first time this page is
+ * slow to paint — whichever comes first. The fix is a `limit` on the port method plus a
+ * "showing the last N" line here, not a rewrite. Filed rather than built because a cap with no
+ * paging control is its own defect, and the paging is not worth designing against 40 rows.
  */
 
 import type { Repository } from "../ports/repository.js";

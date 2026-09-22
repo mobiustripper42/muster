@@ -70,10 +70,15 @@ function safeDecode(segment: string): string {
   }
 }
 
-// REFACTOR QUEUE — cognitive complexity 58, against a ceiling of 40 (#909).
+// REFACTOR QUEUE — cognitive complexity 59, against a ceiling of 40 (#909).
 // Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
 // ratchets down as the list shrinks, so this disable is meant to be deleted.
-// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 58
+//
+// **58 → 59 at issue #1049**, from the history panel's best-effort try/catch. Measured by
+// removing this line and reading what eslint said, not estimated — `@code-review` flagged that
+// leaving `58` here would silently undercount the debt for whoever works the queue next, which
+// is how a baseline stops being a baseline and becomes a number nobody trusts.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 59
 export default async function ReservationDetailPage({
   params,
   searchParams,

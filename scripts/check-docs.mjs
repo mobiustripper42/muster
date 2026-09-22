@@ -24,7 +24,9 @@
 //
 // Project-specific knobs — the repo slug, which docs claim to be complete rosters, which are
 // historical ledgers, and which slash commands are deliberately foreign — live in
-// `.claude/doc-check.json`. This file is byte-identical across projects.
+// `.claude/doc-check.json`. This file is project-owned (`presence` class): its contents name this
+// repo and its own rosters, so they are never compared across projects, but it must exist because
+// this gate throws without it. `scaffold/claude/doc-check.json` is the install-time starter.
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { PATHISH, isClaim, resolves, checkSections } from './check-context.mjs'
@@ -34,7 +36,7 @@ import { load } from './gen-decisions-index.mjs'
 const CONFIG = '.claude/doc-check.json'
 
 export function config(path = CONFIG) {
-  if (!existsSync(path)) throw new Error(`${path} is missing — check-docs needs its roster and exemption lists`)
+  if (!existsSync(path)) throw new Error(`${path} is missing — check-docs needs its roster and exemption lists. Copy scaffold/claude/doc-check.json from jig and fill in the repo slug.`)
   return { rosters: {}, historical: {}, foreignDecs: {}, knownForeign: [], knownForeignAgents: [], ...JSON.parse(readFileSync(path, 'utf8')) }
 }
 

@@ -83,11 +83,14 @@ It reads GitHub directly (needs `gh` installed and authed): points off closed is
 
 ### How to poker (solo dev + Claude)
 
-**Setup:** Claude proposes effort for each task in a phase. You review.
+**Setup:** One task per turn. Claude states one task — its number, its title, the proposed effort, and the one reason for that number — then stops. You answer with a number or "fine." The next task follows. The plan file is updated once, after the whole phase has been scored, never per task.
+
+**Why one at a time:** a table of estimates gets a thumbs-up as a whole, and a thumbs-up is not an estimate.
 
 **The conversation:**
 ```
-Claude: "Task 2.4 — Shift editing (split/merge/delete). I say 5."
+Claude: "Task 2.4 — Shift editing (split/merge/delete). I say 5 — it's 
+        mostly UI over shift records that already exist."
 You: "That's an 8. The merge logic has edge cases with gaps."
 Claude: "Fair. What makes it an 8 vs a 5?"
 You: "Merging two shifts means re-linking all the Xola event IDs 
@@ -104,7 +107,7 @@ Claude: "Agreed — 8. I'll note the merge complexity in the task description."
 
 ### When to re-estimate
 
-- **Before starting a new phase** — review all tasks, re-score anything that looks different now that you know more
+- **Before starting a new phase** — walk the tasks one at a time as in Setup above, re-scoring anything that looks different now that you know more
 - **After a task takes 2x+ the expected hours** — either the estimate was wrong or the task changed. Update the plan.
 - **When cutting scope** — removed tasks get zeroed out, deferred tasks get marked, remaining estimates may shift
 

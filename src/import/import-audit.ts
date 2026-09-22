@@ -89,3 +89,22 @@ export interface ImportRunItem {
   /** Customer name for reservations; null for shifts. */
   label: string | null;
 }
+
+/**
+ * One import-audit item, joined to the clock that dates it (issue #1048).
+ *
+ * **`ranAt` belongs to the RUN, and this type exists so that cannot be forgotten.**
+ * `import_run_items` carries no timestamp (`db/migrations/0007_import_audit.sql:23-28`), so
+ * every item in a run shares one instant and none of them knows it. A caller handed a bare
+ * `ImportRunItem` has nothing to date it with and, before this, had to fetch the run separately
+ * or invent a time. Bundling the two makes the borrowed clock part of the value's shape rather
+ * than a step someone remembers.
+ */
+export interface ImportItemAtRun {
+  kind: ImportRunItemKind;
+  runId: ImportRunId;
+  /** `import_runs.ran_at` — when the RUN executed, NOT when this item was written. */
+  ranAt: string;
+  /** Customer name for reservations; null for shifts. */
+  label: string | null;
+}

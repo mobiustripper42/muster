@@ -136,6 +136,28 @@ describe("confirmBookingByPaymentIntent — the success page books without a web
     expect(await repo.listAllReservations()).toHaveLength(1);
   });
 
+  it("the booked trail row says `via: success_page` (issue #1048)", async () => {
+    // **The dimension that could never be filled while `booked` was a projection.** A row
+    // records that it IS booked; nothing on it says which of §2.8.6's three confirms won the
+    // flip. Emitting moves the decision to the one place that knows, and the webhook's own
+    // call sets `webhook` — so this is the half that proves the value is not hardcoded.
+    const repo = await seeded();
+    await seedPending(repo, "pi_via_1");
+    const payments = new FakePaymentPort();
+    payments.succeededIntents.set("pi_via_1", {
+      paymentIntentId: "pi_via_1",
+      amountReceivedCents: 53625,
+      currency: "usd",
+      metadata: SLOT_METADATA,
+    });
+    const { deps } = makeDeps(repo, payments);
+
+    await confirmBookingByPaymentIntent(deps, "pi_via_1");
+
+    const [row] = (await repo.listTrailEvents()).filter((e) => e.type === "booked");
+    expect(row?.metadata.via).toBe("success_page");
+  });
+
   it("is idempotent — the webhook landing afterwards produces no second booking", async () => {
     const repo = await seeded();
     await seedPending(repo, "pi_success_2");

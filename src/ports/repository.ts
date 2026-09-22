@@ -74,7 +74,7 @@ import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { AuditEvent } from "../domain/audit.js";
 import type { TrailEvent } from "../domain/reservation-trail.js";
 import type { SeatState } from "../domain/states.js";
-import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
+import type { ImportItemAtRun, ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
 import type { PaymentConfig } from "../reservations/payment-config.js";
@@ -522,6 +522,21 @@ export interface Repository {
   saveGratuity(gratuity: Gratuity): Promise<void>;
   /** Every gratuity on an event — the per-event pool the payroll split (12.3b) sums. */
   listGratuitiesForEvent(eventId: EventId): Promise<Gratuity[]>;
+  /**
+   * Every gratuity on one BOOKING, oldest first (issue #1048).
+   *
+   * **The right key, not a new capability — and the distinction is worth stating because the
+   * first draft of this comment claimed the stronger thing and the Postgres contract disproved
+   * it.** `gratuity.event_id` is FK'd, `saveGratuity` only runs on the booked path, and a cancel
+   * leaves `reservation.eventId` in place, so there is no gratuity today whose reservation has
+   * no event: `listGratuitiesForEvent` would have answered.
+   *
+   * It keys on the link the question is actually about. `Gratuity.reservationId` has always been
+   * there and nothing queried it; the event is a proxy that is 1:1 only while one whole-boat
+   * event means one booking. The union read also has to work for `pending` rows, where the event
+   * key cannot even be formed — `eventIdOfBooked` refuses a row that is not booked.
+   */
+  listGratuitiesForReservation(reservationId: ReservationId): Promise<Gratuity[]>;
   /** Every gratuity — the payroll report's source set (12.3b). */
   listAllGratuities(): Promise<Gratuity[]>;
 
@@ -822,6 +837,25 @@ export interface Repository {
    * source per fact, read = union, not dual-write.
    */
   listTrailEvents(): Promise<TrailEvent[]>;
+  /**
+   * One booking's emitted rows, oldest first — the union read's input (issue #1048).
+   *
+   * **Both keys, because the table has two on purpose.** A row naming this reservation is
+   * obviously its own; a row naming one of the intents this checkout minted is too, and some
+   * types only ever carry that one. Matching on `reservationId` alone would drop the money
+   * events for a booking that never got written — which is the class the second key exists for.
+   *
+   * `paymentIntentIds` is the row's own `paymentIntentIds` (§2.8.5 keeps every id a checkout
+   * minted). Empty is fine and means "match on the reservation alone".
+   *
+   * Oldest first, unlike `listTrailEvents` above: this feeds a per-booking history, which reads
+   * as a story rather than a feed. `reservation_trail_res_time_idx` and `…_pi_time_idx` both
+   * exist for exactly this query.
+   */
+  listTrailEventsFor(
+    reservationId: ReservationId,
+    paymentIntentIds: readonly string[],
+  ): Promise<TrailEvent[]>;
 
   // ── SMS consent log (Twilio 10DLC opt-in — append-only audit) ──────────────
   // Written best-effort from the crew-login action when a crew member checks the
@@ -883,6 +917,26 @@ export interface Repository {
    * place the port's no-DSL thinness yields to a cap.
    */
   listImportRuns(limit: number): Promise<ImportRun[]>;
+  /**
+   * Every import-audit item naming one reservation (or shift), oldest run first — with the run
+   * clock that dates it (issue #1048).
+   *
+   * **The reverse index this table never had.** `ImportRunItem.refId` *is* the reservation id,
+   * and until now the only way in was `getImportRun(runId)` — so answering "which runs touched
+   * this booking" meant walking every run in history.
+   *
+   * **`ranAt` is the RUN's clock, and the shape says so because the item has none.**
+   * `db/migrations/0007_import_audit.sql:23-28` gives `import_run_items` an id, a run, a kind,
+   * a ref and a label — no timestamp. Every item in a run therefore shares one instant. Returning
+   * it inside the row rather than making the caller join is the point: a caller that had to fetch
+   * the run separately could forget, and date an import from nothing at all.
+   *
+   * Domain-readable, unlike its neighbours above. The import audit was adapter-side by DEC-056
+   * because the domain had no business reading a run; the trail's union read does, because
+   * DEC-118 makes `import_run_items` the ONE source for `imported` and the alternative is
+   * emitting a fourth parallel log over it.
+   */
+  listImportItemsForRef(refId: string): Promise<ImportItemAtRun[]>;
 
   // ── Messaging (threads / participants / messages — #111, DEC-051) ──────────
   // The in-app group-chat substrate. Membership is DERIVED at read for the three

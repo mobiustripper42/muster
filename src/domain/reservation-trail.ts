@@ -35,6 +35,35 @@ import type { PaymentIntentId, ReservationId, TrailEventId } from "./ids.js";
  * and is not.
  */
 export const EMITTED_TRAIL_TYPES = [
+  // ── The spine (issue #1048) ─────────────────────────────────────────────────
+  /**
+   * **The event the product exists to produce.** It was on `DERIVED_TRAIL_TYPES` until issue
+   * #1048, projected from `reservations.status` — which persists the STATE and not the moment.
+   * `updated_at` is last-write-wins, so a later cancel or edit overwrites the only column that
+   * ever held when a booking was made, and the timeline's most important line had no time.
+   *
+   * `metadata.via` says which of §2.8.6's three confirms won: `webhook`, `success_page` or (when
+   * it lands) `reconciler`. A dimension rather than three types — and populatable at last, because
+   * the emit happens where the caller is known instead of being inferred from a row afterwards.
+   *
+   * `actorKind` carries what `admin_booked` used to be a whole type for: `admin` with the
+   * operator's id when they sold it, `customer` otherwise.
+   */
+  "booked",
+  /** Its counterpart, and gone for the same reason: `status` says a booking IS cancelled and
+   *  nothing says when. `metadata.reason` carries `cancelled_by`. */
+  "cancelled",
+  /**
+   * A refund reconciled into the ledger — including one taken in the STRIPE DASHBOARD, which is
+   * the case that has no other record. `payments.refunded_cents` is a running total with no
+   * clock; before this, "refunded at 3:14pm" existed nowhere.
+   *
+   * Distinct from `refund_issued_by_operator` (a human decided an amount in Muster) and
+   * `auto_refunded` (the residual race). Those record a DECISION; this records money confirmed
+   * back by the provider, and a dashboard refund produces only this one.
+   */
+  "refunded",
+
   // ── Checkout (issue #1051) ──────────────────────────────────────────────────
   /** The claim fell through to another boat. The only possible record that a
    *  customer's hull was decided by who got there first, not by what they picked. */
@@ -114,21 +143,50 @@ export type EmittedTrailType = (typeof EMITTED_TRAIL_TYPES)[number];
 
 /**
  * Facts the trail SHOWS but never stores. Each already has exactly one source, named
- * beside it, and issue #1048 projects them. Listed here rather than left implicit so
- * that "why is `booked` not emitted?" has an answer at the place someone asks it.
+ * beside it, and issue #1048 projects them.
+ *
+ * ## `booked`, `cancelled` and `refunded` were on this list and have moved (issue #1048)
+ *
+ * **The test is whether the TRANSITION persists, not whether the FACT does, and the first
+ * cut of this file asked the wrong one.** DEC-118 states it plainly for the crew log: a
+ * dedicated store is justified because *"the add/drop transitions persist NOTHING today, so
+ * there is nothing to derive."*
+ *
+ * `reservations.status` persists a STATE — this booking *is* booked. Nothing persists the
+ * EVENT: `updated_at` is last-write-wins, so a later cancel overwrites the only column that
+ * ever held the moment a booking was made. Same for the cancel itself, and for a refund taken
+ * in the Stripe dashboard. Building issue #1048's read is what surfaced it — the timeline's
+ * most important line had no time to show, and the operator's response was the correct one:
+ * *"it seems like `booked` would be the single most important event to capture ... you know
+ * ... in a booking system."*
+ *
+ * **`admin_booked` is gone entirely, rather than moved.** It was never a type; it was
+ * `source = 'admin'` wearing one. The emitted `booked` row carries `actorKind: "admin"` and
+ * the operator's id, which is the same fact with a name that does not multiply. That is the
+ * argument `via` already made in this file, applied to the case that had escaped it.
+ *
+ * What is left here is sound, and each one has a real timestamp of its own:
+ * `checkout_started`, `confirmation_sent`, `payment_succeeded` and `gratuity_added` all read a
+ * dedicated column; `imported` reads a real row in `import_run_items`; `checkout_lapsed` is
+ * exact arithmetic over a frozen window. `dispute_opened` stays derived and stays undated —
+ * see its note below.
  */
 export const DERIVED_TRAIL_TYPES = [
   "checkout_started", //     reservations.reserved_at, checkout_attempts
   "checkout_lapsed", //      computed — src/reservations/abandonment.ts
-  "booked", //               reservations.status, updated_at
-  "cancelled", //            reservations.status, cancelled_by
-  "admin_booked", //         reservations.source = 'admin'
   "imported", //             import_run_items (DEC-056) — also upstream change/cancel
   "confirmation_sent", //    reservations.confirmation_sent_at
-  "payment_succeeded", //    payments.status
-  "refunded", //             payments.refunded_cents
-  "dispute_opened", //       payments.status
-  "gratuity_added", //       gratuity
+  "payment_succeeded", //    payments.created_at — the charge's own row and clock
+  /**
+   * `payments.status` reading `disputed`. **Still derived, and still the one derived fact with
+   * no clock** — nothing records when a chargeback opened. It stays here because unlike
+   * `booked`, its transition DOES leave a durable artifact somewhere a human can reach: Stripe
+   * owns the dispute workflow (issue #723 is deliberately record-only) and the dashboard has
+   * the date. The emitted `dispute_inquiry` / `_lost` / `_won` / `_unknown` rows cover every
+   * state a human has to act on. Revisit if the operator surface needs the open date.
+   */
+  "dispute_opened",
+  "gratuity_added", //       gratuity.created_at
 ] as const;
 export type DerivedTrailType = (typeof DERIVED_TRAIL_TYPES)[number];
 

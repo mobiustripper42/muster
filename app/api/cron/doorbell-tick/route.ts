@@ -21,8 +21,9 @@ import { getRepo } from "../../../lib/repo";
  * is idempotent (first-only-until-read on recorded notify-state), so a tick with
  * nothing due is a cheap no-op.
  *
- * Crons run only on the production deploy (never preview), so a fake delivery
- * adapter never runs against live traffic (DEC-070).
+ * Crons run only on the production deploy (never preview). Whether a ring goes
+ * out at all is the `MESSAGING` flag's call, checked first below, before any
+ * database work (DEC-070, #949).
  *
  * `runtime = "nodejs"` — `pg` opens a TCP connection the Edge runtime can't.
  */

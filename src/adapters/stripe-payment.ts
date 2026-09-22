@@ -23,7 +23,33 @@ import {
   type PaymentPort,
   type PaymentSucceeded,
   type RefundInput,
+  type WebhookEndpointInfo,
 } from "../ports/payment.js";
+
+/**
+ * Every event type `parseEvent` has a branch for (15.16) — the set a registered endpoint must be
+ * subscribed to, or the handler for the missing one never runs.
+ *
+ * **This list and the branches in `parseEvent` change together.** It lives in this file rather
+ * than in the core module that consumes it for exactly that reason: adding a branch without
+ * adding the string here is a discrepancy visible in one file, by anyone already looking at the
+ * code they just changed. Across two files it is invisible.
+ *
+ * Nine, and the seven beyond the two a booking needs are not decoration — each has a handler in
+ * `booking-webhook.ts`. An endpoint subscribed only to the booking pair would take payments
+ * correctly and silently stop recording refunds and disputes.
+ */
+export const HANDLED_EVENT_TYPES = [
+  "checkout.session.completed",
+  "charge.refunded",
+  "charge.dispute.created",
+  "charge.dispute.updated",
+  "charge.dispute.closed",
+  "payment_intent.succeeded",
+  "payment_intent.payment_failed",
+  "payment_intent.processing",
+  "payment_intent.canceled",
+] as const;
 
 /**
  * Every NAMED member of a Stripe string enum, with the open-ended one removed.
@@ -381,6 +407,19 @@ export class StripePaymentPort implements PaymentPort {
     // nothing rather than a charge id masquerading as a url.
     if (!charge || typeof charge === "string") return undefined;
     return charge.receipt_url ?? undefined;
+  }
+
+  async listWebhookEndpoints(): Promise<readonly WebhookEndpointInfo[]> {
+    // No pagination handling, and that is a decision rather than an oversight: Stripe caps an
+    // account at 16 webhook endpoints (`/webhooks`, "You can register up to 16 webhook
+    // endpoints"), and `list` defaults to 10. `limit: 100` therefore returns all of them in one
+    // request, and a `has_more` loop would be dead code guarding a ceiling the provider enforces.
+    const page = await this.#stripe.webhookEndpoints.list({ limit: 100 });
+    return page.data.map((e) => ({
+      url: e.url,
+      enabled: e.status === "enabled",
+      enabledEvents: e.enabled_events,
+    }));
   }
 
   parseEvent(rawBody: string, signature: string): PaymentEvent | null {

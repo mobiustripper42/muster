@@ -403,4 +403,37 @@ export interface PaymentPort {
    * the fake can synthesize events in tests without a real Stripe signature.
    */
   parseEvent(rawBody: string, signature: string): PaymentEvent | null;
+  /**
+   * Every webhook endpoint registered on the account (15.16, issue #984).
+   *
+   * **This exists because the provider can tell us a delivery FAILED and cannot tell us deliveries
+   * STOPPED.** Stripe emails on repeated failures and retries for three days — so a rotated secret
+   * or a 500ing handler announces itself. An endpoint that was deleted, disabled, or repointed at
+   * a previous deploy URL produces no failed delivery to alert on, because no delivery is
+   * attempted. Nothing on Stripe's side closes that gap below its Advanced support tier.
+   *
+   * **`livemode` is deliberately not on the returned shape.** A list request returns only
+   * endpoints matching the calling key's own mode, so it could never disagree with the key that
+   * fetched it — a field for a case the API cannot produce.
+   *
+   * **Throws** on a provider failure. The caller is a cron leg and treats a throw as "unknown",
+   * not as "broken": alerting on a transient Stripe read would page every admin for Stripe's
+   * outage rather than ours.
+   */
+  listWebhookEndpoints(): Promise<readonly WebhookEndpointInfo[]>;
+}
+
+/**
+ * One registered webhook endpoint, normalized — nothing Stripe-shaped crosses the port (15.16).
+ *
+ * Field sources, from `/api/webhook_endpoints/object` read 2026-09-21: `status` is *"The status of
+ * the webhook. It can be `enabled` or `disabled`"*; `enabled_events` is *"The list of events to
+ * enable for this endpoint. `['*']` indicates that all events are enabled, except those that
+ * require explicit selection."* That `["*"]` form is the common real configuration and a reader of
+ * `enabledEvents` must treat it as covering everything rather than as a literal event name.
+ */
+export interface WebhookEndpointInfo {
+  url: string;
+  enabled: boolean;
+  enabledEvents: readonly string[];
 }

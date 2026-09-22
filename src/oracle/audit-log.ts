@@ -11,7 +11,7 @@
  * (DEC-030 posture): the domain call mutates + returns what happened, and the
  * action logs the audit event with the actor the session knows. The append is
  * post-mutation and not transactional with the seat write — a crash in the gap
- * drops one audit row (accepted at pilot scale; same posture as the ask loop's
+ * drops one audit row (accepted at current scale; same posture as the ask loop's
  * reliability appends).
  */
 

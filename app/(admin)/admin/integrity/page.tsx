@@ -15,7 +15,7 @@ import { logSwallowed } from "../../../lib/swallowed";
  * retrofit. That bet is only sound if something periodically asserts the spine is
  * intact on REAL data — and until this page, `checkIntegrity` ran only in the
  * contract suite against synthetic fixtures. The exposure is the writes that skip
- * the service layer (backfills, `db/reset-pilot.ts`, migrations, manual psql):
+ * the service layer (backfills, migrations, manual psql):
  * exactly the paths that can orphan a row, and exactly the ones no test covers.
  *
  * Admin-gated on purpose. The check used to run on `/api/health` and was pulled

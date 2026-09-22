@@ -21,9 +21,8 @@ import { getRepo } from "../../../lib/repo";
  * is idempotent (first-only-until-read on recorded notify-state), so a tick with
  * nothing due is a cheap no-op.
  *
- * Crons run only on the production deploy (never preview), and Phase 6 isn't
- * promoted until 6.8's real relay lands — so the pilot's fake delivery never runs
- * against live traffic (DEC-070).
+ * Crons run only on the production deploy (never preview), so a fake delivery
+ * adapter never runs against live traffic (DEC-070).
  *
  * `runtime = "nodejs"` — `pg` opens a TCP connection the Edge runtime can't.
  */

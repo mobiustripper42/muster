@@ -117,14 +117,14 @@ export async function claimSeat(
   // seat on this one). No bespoke guard — one definition of double-booked
   // (DEC-DATA-1).
   //
-  // KNOWN GAP (pilot-accepted, not a closed hole): this read-then-CAS guards one
+  // KNOWN GAP (accepted, not a closed hole): this read-then-CAS guards one
   // seat, not the cross-seat invariant. Two *concurrent* claims by the same crew
   // for *different* same-date shifts both read an empty `committedDates`, both
   // pass `notDoubleBooked`, and each per-seat CAS wins → confirmed to two boats
   // the same day. Same window class as `recordResponse`'s `committedOnShift`
   // check; the no-FK store can't enforce a crew+date uniqueness, so the cross-
   // record invariant is the integrity tripwire's job (service-layer-integrity
-  // discipline), not the hot path. Narrow at pilot scale (needs two in-flight
+  // discipline), not the hot path. Narrow at current scale (needs two in-flight
   // taps); revisit if double-confirms actually appear.
   const [credentials, ptoWindows, committedByCrew] = await Promise.all([
     repo.listCredentialsForCrew(crewId),

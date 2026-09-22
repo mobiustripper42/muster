@@ -4,7 +4,7 @@ import { useState } from "react";
 
 /**
  * Copy `value` to the clipboard, with a fallback for INSECURE contexts. The
- * operator runs the pilot over `http://mill-dev:3000` (Tailscale — not HTTPS, not
+ * dev box serves over `http://mill-dev:3000` (Tailscale — not HTTPS, not
  * `localhost`), where `navigator.clipboard` is `undefined`; the legacy
  * `execCommand("copy")` over a temp textarea still works there. Returns false if
  * both paths fail (the value is also rendered `select-all`, so manual copy remains).

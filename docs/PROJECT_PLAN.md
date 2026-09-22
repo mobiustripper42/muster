@@ -930,5 +930,5 @@ the **thickening passes**, not the slice. Reference before any scope-cut convers
 | Task | Why it's cuttable | Defer to |
 |------|------------------|---------|
 | Pass D — progressive commitment / soft-hold (deferred; was the Phase 7 slot, now Crew Self-Serve) | Soft-hold is an anxiety-reducer, not load-bearing; the single-horizon slice works without it. Survives as the DEC-075 `self_claim_requires_confirmation` seam | post-self-serve, only if a real weekend asks for it |
-| Pass C bits (split/merge, bulk lock, warming view) | Single-item versions cover the pilot | when friction appears |
+| Pass C bits (split/merge, bulk lock, warming view) | Single-item versions cover current use | when friction appears |
 | Write-back sheet (DEC-011) | Unnecessary if the CSV export carries guest detail (decide at M1) | skip unless M1 says otherwise |

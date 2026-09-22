@@ -1,7 +1,7 @@
 /**
  * 8.2a (#205) — the Builder View mode on `/admin/shifts`. Two behaviours:
  *  1. the default window is the **next 7 days** (not today-only, DEC-042's old
- *     default) — the operator's "what's coming up" for the pilot;
+ *     default) — the operator's "what's coming up";
  *  2. a shift whose trips span a large mid-day gap carries a calm read-only
  *     "could be two shifts" cue (8.1/#204) — advisory, neutral, no action here.
  *

@@ -122,7 +122,7 @@ dashboard scroll. Tick each one off against its source.
 | `NODE_ENV` | — | `production`. See step 45; getting this wrong is a security hole |
 | `MESSAGING` `RESERVATIONS` `TIME_CLOCK` | `app/lib/flags.ts` | Step 5 |
 
-> Not needed on the box: `E2E`, `E2E_PROD`, `SEED_TODAY`, `TEST_DATABASE_URL`, `RESET_PILOT_*`,
+> Not needed on the box: `E2E`, `E2E_PROD`, `SEED_TODAY`, `TEST_DATABASE_URL`,
 > `BACKFILL_CONFIRM`, `OUTBOX_TEST_PHONE`, `XOLA_REPORT_*` (CLI script args), `PROBE_*`
 > (`ops/site-monitor/`, runs elsewhere), `VERCEL_ENV` (absent by design — step 45 depends on it
 > being absent).

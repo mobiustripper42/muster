@@ -14,7 +14,7 @@ import { appBaseUrl } from "../../../lib/base-url";
  * by Vercel Cron at the first hosted deploy (DEC-033). Vercel GETs this per
  * `vercel.json` `crons`; `tick` advances shift state, fires Tier-1 broadcasts /
  * Tier-2 escalations, and records board landings, and the fired asks are
- * forwarded to the pilot outbox (DEC-030, same edge wiring as `db:tick` and the
+ * forwarded through the crew channel (DEC-030, same edge wiring as `db:tick` and the
  * app actions).
  *
  * **Why a cron at all** (the design call, DEC-033): shift *state* is still derived

@@ -1,7 +1,7 @@
 /**
- * `sms:` deep-link builder — support code for the web-link pilot channel
- * (DEC-030). Muster does not send SMS itself in the pilot (DEC-MSG-1 keeps
- * Twilio at the later adapter swap); the operator outbox surfaces `sms:` URIs as
+ * `sms:` deep-link builder — support code for the web-link outbox channel
+ * (DEC-030), the fallback when Twilio is not configured (DEC-MSG-1). The
+ * operator outbox surfaces `sms:` URIs as
  * per-ask Send buttons that open the operator's native Messages app with the
  * recipient and body pre-filled. RFC 5724 specifies `sms:NUMBER?body=...`; iOS
  * 8+ and Android Chrome both honor this form.

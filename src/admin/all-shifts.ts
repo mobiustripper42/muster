@@ -91,7 +91,7 @@ export interface AllShiftsRow {
  * (#416) to see what got killed; they come back flagged `cancelled: true` for the
  * surface to grey.
  *
- * Per-shift `resolveShiftStateOnRead` re-reads events each call (pilot scale —
+ * Per-shift `resolveShiftStateOnRead` re-reads events each call (current scale —
  * a handful of shifts per day window; revisit with an index if it ever grows).
  */
 export async function deriveAllShifts(

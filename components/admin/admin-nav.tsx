@@ -12,7 +12,7 @@ import { visibleAdminNav } from "../../app/lib/admin-links";
  * surfaces into one app. Wayfinding, not a redesign: existing tokens only (BRAND /
  * DEC-021), one client island.
  *
- * Responsive (the operator runs the pilot from a phone): on desktop the links
+ * Responsive (the operator runs the business from a phone): on desktop the links
  * sit inline; on mobile they collapse to a **hamburger on the right** that opens a
  * **slide-in drawer** from the right edge (backdrop dim, closes on link-tap /
  * backdrop-tap / Escape). The active link is highlighted in both via `usePathname`.

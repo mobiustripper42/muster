@@ -8,7 +8,7 @@
  *
  * Build order (DEC-MSG-3):
  *   1. Fake / log adapter — permanent test infra (src/adapters/fake-channel.ts).
- *   2. Pilot adapter — the first real crew test, operator picks the medium later:
+ *   2. Operator-relayed adapter — the first real crew test, operator picks the medium:
  *      **web-link** (a link delivered manually) OR **Telegram** (inline buttons).
  *      Both are just `ChannelPort` implementations; the seam is this interface, so
  *      neither is hardcoded — the pick is a deploy-time wiring choice, not a code

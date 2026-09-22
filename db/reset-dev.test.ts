@@ -46,10 +46,12 @@ describe("resolveTarget — what it refuses", () => {
     expect(() => resolveTarget("")).toThrow(/not a parseable URL/);
   });
 
-  it("points a refused caller at the right tool instead of dead-ending them", () => {
-    expect(() => resolveTarget("postgres://u:p@prod.example.com/muster_dev")).toThrow(
-      /reset-pilot/,
-    );
+  // There used to be a prod reset to point at. It went with issue #1054: once bookings and
+  // payments live only in Muster, "wipe and re-import from Xola" is data loss, not recovery.
+  it("tells a refused caller there is no reset for a deployed database", () => {
+    const remote = () => resolveTarget("postgres://u:p@prod.example.com/muster_dev");
+    expect(remote).toThrow(/no reset for a deployed database/);
+    expect(remote).not.toThrow(/reset-pilot/);
   });
 });
 

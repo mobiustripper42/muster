@@ -36,7 +36,7 @@ export async function addOverrideSeat(
 
   // `n` = next index for this (shift, role) override family. Non-atomic (two
   // simultaneous adds would compute the same `n`; the second upsert overwrites the
-  // first) — fine under single-operator pilot use; revisit with a monotonic suffix
+  // first) — fine under single-operator use; revisit with a monotonic suffix
   // if adds ever go concurrent.
   const prefix = `seat-${shiftId}-ovr-${role}-`;
   const n =

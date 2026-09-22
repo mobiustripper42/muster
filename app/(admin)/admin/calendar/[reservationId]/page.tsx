@@ -2,6 +2,12 @@ import { notFound } from "next/navigation";
 import type { Event, Gratuity, Payment, Reservation, Seat, Shift } from "@core/domain/entities.js";
 import { asId } from "@core/domain/ids.js";
 import { buildReservationDetail, shiftForEvent } from "@core/reservations/calendar-detail.js";
+import {
+  loadReservationTrail,
+  type TrailEntry,
+} from "@core/reservations/reservation-trail-view.js";
+import { TRAIL_BEGINS_AT } from "@core/admin/reservation-trail-list.js";
+import { TrailEntryRow } from "../../../../../components/admin/trail-row";
 import { quoteCancelRefund, type CancelledBy } from "@core/reservations/cancel-reservation.js";
 import { refundableTotalFor, refundedTotalFor } from "@core/reservations/refund-payment.js";
 import { zonedWallClockToInstant } from "@core/config/tenant.js";
@@ -64,10 +70,15 @@ function safeDecode(segment: string): string {
   }
 }
 
-// REFACTOR QUEUE — cognitive complexity 58, against a ceiling of 40 (#909).
+// REFACTOR QUEUE — cognitive complexity 59, against a ceiling of 40 (#909).
 // Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
 // ratchets down as the list shrinks, so this disable is meant to be deleted.
-// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 58
+//
+// **58 → 59 at issue #1049**, from the history panel's best-effort try/catch. Measured by
+// removing this line and reading what eslint said, not estimated — `@code-review` flagged that
+// leaving `58` here would silently undercount the debt for whoever works the queue next, which
+// is how a baseline stops being a baseline and becomes a number nobody trusts.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 59
 export default async function ReservationDetailPage({
   params,
   searchParams,
@@ -190,6 +201,24 @@ export default async function ReservationDetailPage({
   });
 
   const backHref = calendarHref(data, {});
+
+  // ── This booking's own history (issue #1049) ───────────────────────────────
+  //
+  // The full union — the 26 recorded event types AND the 7 worked out from other records — where
+  // `/admin/booking-audit` can only carry the recorded half. This is the surface that needed the
+  // union read built at all.
+  //
+  // **Best-effort, and the pane must render without it.** Four reads on a page that already does
+  // several, for a panel that is context rather than the reason anyone opened this screen. A
+  // booking whose history fails to load still has to show its money, its roster and its actions,
+  // so a throw here costs the panel and nothing else — same contract as the rest of this page's
+  // optional blocks.
+  let trail: TrailEntry[] | null = null;
+  try {
+    trail = await loadReservationTrail(getRepo(), reservation.id, () => new Date().toISOString());
+  } catch (e) {
+    logSwallowed("admin/reservation:trail", e, `the history panel did not load for ${reservation.id}`);
+  }
 
   // Cancel / refund / resend state (#616). Assembled here rather than inside
   // `buildReservationDetail` because the refund quotes need a CLOCK — how much notice the
@@ -389,10 +418,65 @@ export default async function ReservationDetailPage({
             }}
             {...(actions ? { actions } : {})}
           />
+
+          <BookingHistory trail={trail} />
         </aside>
       </div>
 
       <VersionTag />
     </Shell>
+  );
+}
+
+/**
+ * This booking's history, under the actions pane (issue #1049).
+ *
+ * **The empty state is the point of this component.** An empty list reads as "nothing happened
+ * to this booking", and for anything sold before 2026-09-20 that is false — nothing was being
+ * recorded. Those are opposite facts and a blank panel says the wrong one. There is no backfill
+ * (issue #886; DEC-118 took the same posture for the crew log: capture starts at ship, and the
+ * surface says so).
+ *
+ * The notice also admits that the types did not all start together, because they did not —
+ * money-out landed with the table, money-in and customer-reach the next day, and `booked` /
+ * `cancelled` / `refunded` later still. A per-type begins-on map would be exact and would be a
+ * table nobody keeps true.
+ *
+ * Oldest first, as the deriver returns it: this is one booking's story and a story runs forwards.
+ * The cross-booking feed is newest-first because a feed is a different thing.
+ */
+function BookingHistory({ trail }: { trail: TrailEntry[] | null }) {
+  return (
+    <section aria-label="Booking history" className="mt-3 flex flex-col gap-2">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">History</h2>
+      <BookingHistoryBody trail={trail} />
+    </section>
+  );
+}
+
+/**
+ * Three states, as early returns rather than a ternary chain — `sonarjs/no-nested-conditional`
+ * refused the chain and was right twice over. **"Failed to load" and "nothing recorded" must
+ * never be one branch away from being confused**, and a nested ternary is exactly where that
+ * happens: they look identical in the markup and mean opposite things to the operator.
+ */
+function BookingHistoryBody({ trail }: { trail: TrailEntry[] | null }) {
+  if (trail === null) {
+    return <Notice>Couldn’t load this booking’s history. {ADMIN_LOG_HINT}</Notice>;
+  }
+  if (trail.length === 0) {
+    return (
+      <Notice>
+        Nothing recorded for this booking. Recording began {TRAIL_BEGINS_AT}, and some kinds of
+        event started later — anything before that happened without being written down.
+      </Notice>
+    );
+  }
+  return (
+    <>
+      {trail.map((e) => (
+        <TrailEntryRow key={e.id} entry={e} />
+      ))}
+    </>
   );
 }

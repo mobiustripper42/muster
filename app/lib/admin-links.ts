@@ -14,8 +14,13 @@
  *
  * THE AXIS IS CADENCE, not feature area — it's what predicts where the operator clicks. The flat
  * items are the daily work, stated by the operator directly: he works from the shifts board
- * constantly, expects to use the calendar constantly, uses the audit trail and the importer
- * daily. Everything on a weekly-or-slower rhythm is shelved behind a group.
+ * constantly, expects to use the calendar constantly, and uses the importer daily. Everything on
+ * a weekly-or-slower rhythm is shelved behind a group.
+ *
+ * **Cadence lost one argument, at issue #1049.** The crew audit was flat on the same daily-use
+ * grounds, and moved into `Crew` when reservations gained an audit of its own — because two bare
+ * peers both reading `Audit` is worse than one extra click. The axis still holds everywhere else;
+ * it just is not the only thing the bar has to get right.
  *
  * SHAPE, NOT RENDERING. This returns the structure; each surface decides how to draw it. Desktop
  * collapses groups into dropdowns because horizontal room is scarce. The mobile drawer is a
@@ -54,7 +59,6 @@ export interface AdminFlags {
 export const FLAT_LINKS: readonly AdminLink[] = [
   { href: "/admin/shifts", label: "Shifts" },
   { href: "/admin/calendar", label: "Calendar", feature: "reservations" },
-  { href: "/admin/asks", label: "Audit" },
   { href: "/admin/import", label: "Import" },
   { href: "/admin/at-risk", label: "At-Risk" },
 ];
@@ -87,6 +91,12 @@ export const GROUPS: readonly AdminGroup[] = [
       // about SALES — how much boat time is being held by people who don't buy (§2.8.8) — not one
       // about the system's health. `Integrity check` is the diagnostic; this is a business number.
       { href: "/admin/abandonment", label: "Abandoned checkouts", feature: "reservations" },
+      // `Audit`, matching `Crew › Audit` (operator, 2026-09-21). The group header is what tells
+      // the two apart, which is what a grouped nav is for — the first cut called this one
+      // `Booking audit` to avoid a collision with a FLAT `Audit`, and the answer was to move
+      // that one into its own group rather than to make these two read as different kinds of
+      // thing. The URL stays `/admin/booking-audit`: unlike a label, it has no group around it.
+      { href: "/admin/booking-audit", label: "Audit", feature: "reservations" },
     ],
   },
   {
@@ -101,6 +111,15 @@ export const GROUPS: readonly AdminGroup[] = [
       { href: "/admin/payroll", label: "Payroll" },
       { href: "/admin/messages", label: "Messages", feature: "messaging" },
       { href: "/admin/time-off", label: "Time off" },
+      // **Moved out of the flat bar at issue #1049** (operator, 2026-09-21: *"what if we move
+      // Audit to Crew -> Audit, for consistency"*). Reservations gained an audit of its own, and
+      // two audits need saying apart — the group header does that, so both can be `Audit` and
+      // the pattern reads as a pattern. The earlier attempt named one of them `Booking audit`,
+      // which disambiguated by making the two look unrelated.
+      //
+      // It also costs a click on a daily surface if the operator opens it daily; flagged at the
+      // time and the move was still the call. Move it back if that bites.
+      { href: "/admin/asks", label: "Audit" },
     ],
   },
   {

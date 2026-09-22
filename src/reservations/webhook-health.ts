@@ -67,27 +67,36 @@ export function checkWebhookEndpoint(
       detail: `no webhook endpoint registered for ${expected.url} (${endpoints.length} other endpoint(s) on the account)`,
     };
   }
-  // An enabled duplicate at the same URL wins: it is the one delivering. A leftover disabled twin
-  // beside it delivers nothing and harms nothing, so it is not worth an alert.
-  const live = mine.find((e) => e.enabled);
-  if (!live) {
+  const live = mine.filter((e) => e.enabled);
+  if (live.length === 0) {
     return {
       ok: false,
       problem: "disabled",
       detail: `the webhook endpoint for ${expected.url} is DISABLED - no events are being delivered`,
     };
   }
-  const missing = live.enabledEvents.includes(ALL_EVENTS)
-    ? []
-    : expected.events.filter((want) => !live.enabledEvents.includes(want));
-  if (missing.length > 0) {
+  // **Every enabled endpoint at our URL must be adequately subscribed, not merely one of them
+  // (`@code-review`).** The first cut took `mine.find(e => e.enabled)` and called it "the one
+  // delivering" — a claim this function cannot make. `WebhookEndpointInfo` carries no signing
+  // secret, Stripe delivers to EVERY enabled endpoint at a URL, and only the one whose secret
+  // matches the deployed `STRIPE_WEBHOOK_SECRET` actually verifies here. So with two enabled twins,
+  // picking either one and reporting on it can report healthy off the endpoint that is NOT the one
+  // whose deliveries we accept — the exact failure this check exists to catch, produced by the
+  // check. A leftover DISABLED twin is still ignored: it delivers nothing and harms nothing.
+  for (const e of live) {
+    const missing = e.enabledEvents.includes(ALL_EVENTS)
+      ? []
+      : expected.events.filter((want) => !e.enabledEvents.includes(want));
     // Every missing event, not the first. An operator who re-subscribes only what the alert named
     // gets the same alert four hours later.
-    return {
-      ok: false,
-      problem: "events",
-      detail: `the webhook endpoint for ${expected.url} is not subscribed to ${missing.length} event(s) we handle: ${missing.join(", ")}`,
-    };
+    if (missing.length > 0) {
+      const which = live.length > 1 ? ` (${live.length} enabled endpoints share that URL)` : "";
+      return {
+        ok: false,
+        problem: "events",
+        detail: `the webhook endpoint for ${expected.url}${which} is not subscribed to ${missing.length} event(s) we handle: ${missing.join(", ")}`,
+      };
+    }
   }
   return { ok: true };
 }

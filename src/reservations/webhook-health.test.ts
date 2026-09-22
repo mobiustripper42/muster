@@ -7,7 +7,7 @@ import type { WebhookEndpointInfo } from "../ports/payment.js";
 import { checkWebhookEndpoint, monitorWebhookEndpoint } from "./webhook-health.js";
 
 const OURS = "https://muster.example/api/webhooks/stripe";
-/** The nine `parseEvent` branches on (`stripe-payment.ts:395-505`). */
+/** The nine `parseEvent` branches on (`stripe-payment.ts:434-544`, `HANDLED_EVENT_TYPES`). */
 const EVENTS = [
   "checkout.session.completed",
   "charge.refunded",
@@ -90,6 +90,33 @@ describe("checkWebhookEndpoint — the endpoint is registered, live, and subscri
     if (out.ok) return;
     expect(out.detail).toContain("charge.refunded");
     expect(out.detail).toContain("charge.dispute.created");
+  });
+
+  it("two ENABLED endpoints share our url and one is under-subscribed → events", () => {
+    // **`@code-review`'s finding, and it was right.** The first cut took the first enabled match
+    // and called it "the one delivering". Nothing here knows which one that is: the shape carries
+    // no signing secret, Stripe delivers to every enabled endpoint at a URL, and only the one
+    // matching the deployed `STRIPE_WEBHOOK_SECRET` verifies. Reporting off the wrong twin means
+    // reporting healthy while the endpoint we actually accept is missing an event — this check
+    // producing the exact failure it exists to catch. So every enabled twin must pass.
+    const out = checkWebhookEndpoint(
+      [
+        endpoint(), // fully subscribed — the first one `find` would have picked
+        endpoint({ enabledEvents: EVENTS.filter((e) => e !== "payment_intent.succeeded") }),
+      ],
+      EXPECTED,
+    );
+    expect(out).toMatchObject({ ok: false, problem: "events" });
+    if (out.ok) return;
+    expect(out.detail).toContain("2 enabled endpoints share that URL");
+  });
+
+  it("a DISABLED twin beside a healthy one is still ignored", () => {
+    // The other direction: a leftover disabled registration delivers nothing and harms nothing.
+    // Alerting on it would be crying wolf about a working system.
+    expect(
+      checkWebhookEndpoint([endpoint({ enabled: false }), endpoint()], EXPECTED),
+    ).toEqual({ ok: true });
   });
 
   it("picks OUR endpoint out of several, ignoring healthy strangers", () => {

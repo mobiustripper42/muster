@@ -35,13 +35,16 @@ export function bookingDeps(secretKey: string, webhookSecret?: string): WebhookD
     // Texts every active admin AND logs (issue #723). Never throws: a failed alert must not 500
     // the webhook into a Stripe redelivery loop.
     //
-    // **Wrapped anyway (15.17).** `alertMoneyProblem` already carries that guarantee itself — it
-    // logs first and unconditionally, then puts everything else in a `try/catch`. The wrapper is
-    // not distrust of it; it is where the guarantee stops depending on one function's prose. The
-    // thirteen `await deps.alertPaidButUnbooked(...)` sites in `booking-webhook.ts` are unguarded
-    // because of a promise made over here, and nothing connected the two. Swapping in an email
-    // lane, or assembling a second wiring in a hurry, would have broken all thirteen with no
-    // compile error and no test failing.
+    // **Wrapped anyway (15.17).** `alertMoneyProblem` carries nearly that guarantee itself — it
+    // logs first, then puts everything else in a `try/catch`. Nearly, because that first
+    // `console.error` is the one statement outside the try (`alert.ts:111`, `@code-review`), so
+    // the guarantee is complete only once this wrapper's own try encloses the whole call.
+    //
+    // The wrapper is not distrust of it either way. It is where the guarantee stops depending on
+    // one function's prose: the thirteen `await deps.alertPaidButUnbooked(...)` sites in
+    // `booking-webhook.ts` are unguarded because of a promise made over here, and nothing
+    // connected the two. Swapping in an email lane, or assembling a second wiring in a hurry,
+    // would have broken all thirteen with no compile error and no test failing.
     alertPaidButUnbooked: alertThatNeverThrows(alertMoneyProblem),
     // Best-effort email + SMS of the manage link on a fresh booking (11.4, DEC-122).
     sendConfirmation: sendReservationConfirmation,

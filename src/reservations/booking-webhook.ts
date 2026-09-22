@@ -260,7 +260,9 @@ async function routeVerifiedEvent(
   // the SUCCESS PAGE runs it too (issue #827, SPEC §2.8.6): one idempotent confirm, called from
   // both, because Stripe re-delivers events processed elsewhere and a second path that books its
   // own way books the same sale twice. The DEC-134 metadata guard travels with it.
-  if (event.type === "payment_succeeded") return confirmBookingFromIntent(deps, event.data);
+  if (event.type === "payment_succeeded") {
+    return confirmBookingFromIntent(deps, event.data, { via: "webhook" });
+  }
 
   // A DECLINED CARD — acked, and deliberately nothing else (14.8, criterion 11:
   // *"A `payment_intent.payment_failed` does **not** expire the reservation."*).
@@ -488,6 +490,18 @@ export interface ConfirmOptions {
    * after which the failure alert texts every admin instead.
    */
   notifyOnResidualRaceLoss?: boolean;
+  /**
+   * Which of §2.8.6's three confirms is running, for the `booked` trail row (issue #1048).
+   *
+   * **The field this answers has existed unpopulated since issue #1047.** `TrailEventMetadata.via`
+   * was specified as a dimension rather than three separate types, and nothing could fill it while
+   * `booked` was projected from a row afterwards — the row records that it IS booked and not who
+   * confirmed it. Emitting moves the decision to the one place that knows.
+   *
+   * Defaults to `webhook` because that is the only caller which passes no options; both real
+   * entry points set it explicitly, so the default is never the answer in production.
+   */
+  via?: "webhook" | "success_page" | "reconciler";
 }
 
 
@@ -843,6 +857,39 @@ export async function processBookingCharge(
   // `postgres-repository.test.ts`, which is the only place it can be proven.
   if (result.outcome === "booked" || result.outcome === "already") {
     const reservationId = result.reservation.id;
+
+    // ── The trail: a boat was sold (issue #1048) ──────────────────────────────
+    //
+    // **The event this whole product exists to produce**, and it had no row until now — it was
+    // projected from `reservations.status`, which persists that a booking IS booked and never
+    // when it became so, because `updated_at` is overwritten by the next write.
+    //
+    // **`booked` only, never `already`, and this guard is LOAD-BEARING** — the first version of
+    // this comment called it belt-and-braces behind the derived id, and `@code-review` found the
+    // case that makes it false. `confirmPendingRow` resolves `already` for ANY row that is
+    // already `booked`, including every booking made before this emitter shipped — and those
+    // have no `booked:<id>` row for a derived id to collide with. Drop this check and the first
+    // redelivery against an old booking inserts a `booked` row **backdated to whenever Stripe
+    // happened to retry**, which is the opposite of the no-backfill posture this task ships
+    // under (DEC-118: capture starts at ship).
+    //
+    // First in this block, before `recordPayment` — which is deliberately unwrapped, so a throw
+    // there makes Stripe redeliver, `confirmPendingRow` resolve `already`, and this branch never
+    // run again. The ledger heals on the retry; a missing `booked` row would not.
+    if (result.outcome === "booked") {
+      await recordTrail(deps, {
+        id: asId<"TrailEventId">(`booked:${String(reservationId)}`),
+        reservationId,
+        ...(charge.paymentIntentId
+          ? { paymentIntentId: asId<"PaymentIntentId">(charge.paymentIntentId) }
+          : {}),
+        // `admin` when an operator sold it — which is what `admin_booked` was a whole type for
+        // until issue #1048 folded it into this dimension.
+        actorKind: result.reservation.source === "admin" ? "admin" : "customer",
+        type: "booked",
+        metadata: { via: opts.via ?? "webhook" },
+      });
+    }
 
     // **The sale is made, so nothing else on this row may still be payable (15.10).** §2.8.5 keeps
     // every id the checkout minted so a superseded one that succeeds late still RESOLVES here —
@@ -1217,6 +1264,39 @@ async function recordRefund(
     return { handled: true, outcome: "refund_recorded" };
   }
   await deps.repo.markPaymentRefunded(payment.id, refund.amountRefundedCents);
+
+  // ── The trail: money confirmed back (issue #1048) ───────────────────────────
+  //
+  // **The only record a DASHBOARD refund will ever have.** `refunded` was projected from
+  // `payments.refunded_cents`, which is a cumulative total with no clock — so the entry was dated
+  // from the charge, possibly months earlier, and two partial refunds collapsed into one.
+  //
+  // Distinct from `refund_issued_by_operator` and `auto_refunded`, which record a DECISION taken
+  // inside Muster. This records the provider confirming money moved, so an operator's in-app
+  // refund gets both the decision and its settlement — different facts, different actors, not a
+  // dual-write.
+  //
+  // **It does NOT fire for the residual-race auto-refund, and that is deliberate** — an earlier
+  // version of this comment claimed it fired "for all three" and `@code-review` caught that the
+  // code says otherwise. A loser has no `Payment` row at all (#613, nothing to hang one on), so
+  // the lookup above returns null and the `ownLoser` guard returns before this line. Correct
+  // rather than a gap: for that one path the decision and the settlement ARE the same event —
+  // Muster called `refund()` and Stripe echoed it back — so `auto_refunded` is the whole story
+  // and a second row would say the money came back twice.
+  //
+  // Keyed on the STRIPE EVENT, like `payment_failed` and for the same reason: one charge can be
+  // refunded in parts, `amountRefundedCents` is cumulative, and keying on the intent would drop
+  // every refund after the first.
+  //
+  // AFTER the ledger write. The trail records what happened; it does not decide whether it did.
+  await recordTrail(deps, {
+    id: asId<"TrailEventId">(`refunded:${stripeEventId}`),
+    reservationId: payment.reservationId,
+    paymentIntentId: asId<"PaymentIntentId">(refund.paymentIntentId),
+    actorKind: "stripe",
+    type: "refunded",
+    metadata: { actualCents: refund.amountRefundedCents },
+  });
   return { handled: true, outcome: "refund_recorded" };
 }
 

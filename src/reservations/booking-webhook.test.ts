@@ -2103,3 +2103,170 @@ describe("processBookingWebhook — the trail's money-in events (issue #1051)", 
     expect(String(row?.reservationId)).toBe(String(PEND));
   });
 });
+
+/**
+ * The trail's spine (issue #1048): `booked`, `cancelled`, `refunded`.
+ *
+ * These three were DERIVED until this task — projected from `reservations.status` and
+ * `payments.refunded_cents`, which persist a STATE and never the moment it changed. Operator,
+ * 2026-09-21: *"it seems like `booked` would be the single most important event to capture ...
+ * you know ... in a booking system."*
+ *
+ * `cancelled` is emitted from the admin action layer and has no case here; these two do.
+ */
+describe("processBookingWebhook — the trail's spine (issue #1048)", () => {
+  const trailOf = async (repo: InMemoryRepository, type: string) =>
+    (await repo.listTrailEvents()).filter((e) => e.type === type);
+
+  it("booked records the sale, keyed to the booking and the charge", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    expect(r).toMatchObject({ handled: true, outcome: "booked" });
+
+    const [row] = await trailOf(repo, "booked");
+    expect(String(row?.reservationId)).toBe(String(PEND));
+    expect(String(row?.paymentIntentId)).toBe(PI);
+    expect(row?.actorKind).toBe("customer");
+    // The dimension nothing could fill while this was a projection: a row records that it IS
+    // booked, never which of §2.8.6's three confirms won the flip.
+    expect(row?.metadata.via).toBe("webhook");
+  });
+
+  it("a REDELIVERY does not write a second booked row", async () => {
+    // **Two guards, and this case can only see one of them.** The second delivery resolves
+    // `already` rather than `booked`, AND the derived id (`booked:<reservation>`) would collide
+    // anyway — so removing the outcome check leaves this green. Verified by mutation rather than
+    // assumed: the id is the real protection and the outcome check is belt-and-braces that no
+    // test here can distinguish from its own absence. Said out loud because a guard nothing
+    // exercises is one the next person deletes, correctly, with no way to know it was deliberate.
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    const second = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    expect(second).toMatchObject({ handled: true, outcome: "already" });
+    expect(await trailOf(repo, "booked")).toHaveLength(1);
+  });
+
+  it("an ADMIN-sourced booking records actorKind admin — what admin_booked used to be a type for", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo, { source: "admin" });
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    expect((await trailOf(repo, "booked"))[0]?.actorKind).toBe("admin");
+  });
+
+  it("a residual-race LOSER records no booked row — nothing was sold to them", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    await repo.saveEvent(musterEvent({ id: SLOT }));
+    await repo.saveReservation({
+      id: asId<"ReservationId">("r-rival"),
+      eventId: SLOT,
+      source: "muster",
+      customerName: "Rival",
+      partySize: 4,
+      status: "booked",
+    });
+    const { deps } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    expect(r).toEqual({ handled: true, outcome: "lost" });
+    expect(await trailOf(repo, "booked")).toHaveLength(0);
+  });
+
+  it("refunded records a DASHBOARD refund — the case with no other record at all", async () => {
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(
+      deps,
+      JSON.stringify({
+        stripeEventId: "evt_r1",
+        type: "refund_recorded",
+        data: { paymentIntentId: "pi_1", amountRefundedCents: 53625, currency: "usd" },
+      }),
+      FAKE_SIGNATURE,
+    );
+
+    const [row] = await trailOf(repo, "refunded");
+    expect(row?.metadata.actualCents).toBe(53625);
+    expect(row?.actorKind).toBe("stripe");
+    expect(String(row?.paymentIntentId)).toBe("pi_1");
+    expect(row?.reservationId).toBeDefined();
+  });
+
+  it("TWO partial refunds write TWO rows — which the cumulative column could never show", async () => {
+    // The extra reason this one had to stop being derived. `refunded_cents` is a running total,
+    // so a projection produced ONE entry however it was dated. Keyed on the Stripe event, each
+    // settlement is its own row; a redelivery of either still collides.
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+    const refundOf = (cents: number, evt: string) =>
+      JSON.stringify({
+        stripeEventId: evt,
+        type: "refund_recorded",
+        data: { paymentIntentId: "pi_1", amountRefundedCents: cents, currency: "usd" },
+      });
+
+    await processBookingWebhook(deps, refundOf(20000, "evt_r1"), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, refundOf(53625, "evt_r2"), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, refundOf(53625, "evt_r2"), FAKE_SIGNATURE); // redelivery
+
+    // `listTrailEvents` is newest-first (the feed contract); the per-booking read is the one
+    // that runs oldest-first. Two rows, two amounts — the redelivery added neither.
+    expect((await trailOf(repo, "refunded")).map((r) => r.metadata.actualCents)).toEqual([
+      53625, 20000,
+    ]);
+  });
+
+  it("a residual-race LOSER's auto-refund records auto_refunded and NOT refunded", async () => {
+    // `@code-review` found the comment claiming `refunded` fired "for all three" refund paths.
+    // It does not, and should not: a loser has no `Payment` row (#613), so `recordRefund`
+    // returns at the own-loser guard. For that one path the decision and the settlement are the
+    // same event — Muster called refund() and Stripe echoed it — so a second row would say the
+    // money came back twice.
+    const repo = new InMemoryRepository();
+    await seedPending(repo); // still `pending`, carrying PI — exactly a loser
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(
+      deps,
+      JSON.stringify({
+        stripeEventId: "evt_loser",
+        type: "refund_recorded",
+        data: { paymentIntentId: PI, amountRefundedCents: 53625, currency: "usd" },
+      }),
+      FAKE_SIGNATURE,
+    );
+
+    expect(await trailOf(repo, "refunded")).toHaveLength(0);
+  });
+
+  it("a refund on an UNMATCHED charge records charge_unmatched and not refunded", async () => {
+    // The ledger write is what this row follows. No payment row means nothing was reconciled,
+    // so `refunded` would assert a booking's money came back when Muster has no such booking.
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(
+      deps,
+      JSON.stringify({
+        stripeEventId: "evt_x",
+        type: "refund_recorded",
+        data: { paymentIntentId: "pi_nobody", amountRefundedCents: 1000, currency: "usd" },
+      }),
+      FAKE_SIGNATURE,
+    );
+
+    expect(await trailOf(repo, "refunded")).toHaveLength(0);
+    expect(await trailOf(repo, "charge_unmatched")).toHaveLength(1);
+  });
+});

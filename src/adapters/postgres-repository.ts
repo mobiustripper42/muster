@@ -88,6 +88,7 @@ import type { SeatState } from "../domain/states.js";
 import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type {
+  ImportItemAtRun,
   ImportRun,
   ImportRunItem,
   ImportRunItemKind,
@@ -2043,6 +2044,15 @@ export class PostgresRepository implements Repository {
     );
     return rows.map(toGratuity);
   }
+  async listGratuitiesForReservation(reservationId: ReservationId): Promise<Gratuity[]> {
+    // Keyed on the booking, not its event (issue #1048) — a pending or cancelled row has no
+    // event. `id` breaks created_at ties so the order matches the in-memory adapter's.
+    const { rows } = await this.#pool.query(
+      "select * from gratuity where reservation_id=$1 order by created_at asc, id asc",
+      [reservationId],
+    );
+    return rows.map(toGratuity);
+  }
   async listAllGratuities(): Promise<Gratuity[]> {
     const { rows } = await this.#pool.query("select * from gratuity");
     return rows.map(toGratuity);
@@ -2564,6 +2574,28 @@ export class PostgresRepository implements Repository {
     );
     return rows.map(toTrail);
   }
+  async listTrailEventsFor(
+    reservationId: ReservationId,
+    paymentIntentIds: readonly string[],
+  ): Promise<TrailEvent[]> {
+    // EITHER key (issue #1048). `reservation_trail_res_time_idx` and `…_pi_time_idx` both
+    // exist, and the planner can use one per leg of the OR.
+    //
+    // `= any($2)` rather than an interpolated `in (…)` list: the array is one bound parameter
+    // whatever its length, so nothing here is built by string concatenation. An empty array is
+    // legal and matches nothing, which is the right answer for a row that never minted an intent.
+    //
+    // ASCENDING, unlike `listTrailEvents` above — this feeds a per-booking history and reads
+    // oldest-first. `seq` breaks ties, so two rows written in the same millisecond keep their
+    // insertion order rather than an arbitrary one.
+    const { rows } = await this.#pool.query(
+      `select * from reservation_trail
+        where reservation_id = $1 or payment_intent_id = any($2)
+        order by timestamp asc, seq asc`,
+      [reservationId, paymentIntentIds.map(String)],
+    );
+    return rows.map(toTrail);
+  }
 
   async recordSmsConsent(c: SmsConsent): Promise<void> {
     await this.#pool.query(
@@ -2708,6 +2740,29 @@ export class PostgresRepository implements Repository {
       [limit],
     );
     return rows.map(toImportRun);
+  }
+  async listImportItemsForRef(refId: string): Promise<ImportItemAtRun[]> {
+    // The reverse index the table never had (issue #1048) — `ref_id` is the reservation id and
+    // nothing queried it. The join is what supplies the clock: the ITEM has no timestamp
+    // (0007_import_audit.sql), so every item in a run is dated by the run.
+    //
+    // No index on `ref_id` and deliberately none added here: this runs once per detail-pane
+    // render, never in a loop, and `import_run_items` is a few rows per hourly run. If the
+    // trail ever renders a LIST of bookings, that changes and this is the line to revisit.
+    const { rows } = await this.#pool.query(
+      `select i.kind, i.run_id, i.label, r.ran_at
+         from import_run_items i
+         join import_runs r on r.id = i.run_id
+        where i.ref_id = $1
+        order by r.ran_at asc, i.run_id asc, i.id asc`,
+      [refId],
+    );
+    return rows.map((r: any): ImportItemAtRun => ({
+      kind: r.kind as ImportRunItemKind,
+      runId: asId<"ImportRunId">(r.run_id),
+      ranAt: r.ran_at,
+      label: r.label ?? null,
+    }));
   }
 
   // ── Messaging (threads / participants / messages — #111, DEC-051) ──────────

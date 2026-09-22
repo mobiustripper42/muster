@@ -195,6 +195,36 @@ export async function cancelBooking(formData: FormData): Promise<void> {
     redirect(back({ cancelErr: result.reason }));
   }
 
+  // ── The trail: the boat is back on the market (issue #1048) ─────────────────
+  //
+  // `cancelled` was projected from `reservations.status` until now, dated from `updated_at` —
+  // the same last-write-wins column the booking used, so the two events landed on one instant
+  // and the booking's own time was gone.
+  //
+  // **HERE, not after the refund**, and that is the rule this set learned the hard way on issue
+  // #1052: emit ahead of every early return once the destructive thing has happened. The cancel
+  // has committed by this line — the boat is free, the event is cancelled, the crew have been
+  // told — and eight redirects lie between here and the end of the function, every one of them
+  // about the refund. An emit at the bottom would record nothing for a cancel whose refund was
+  // refused, which is the case most worth having a record of.
+  //
+  // A random id: an operator press has no redelivery, and `cancelReservation` refuses a row that
+  // is not bookable, so a second one cannot re-cancel anyway.
+  await recordTrail(
+    { repo: getRepo(), now: () => new Date().toISOString() },
+    {
+      id: asId<"TrailEventId">(`cancelled:${randomUUID()}`),
+      reservationId: asId<"ReservationId">(reservationId),
+      actorKind: "admin",
+      actorId: subject.id,
+      type: "cancelled",
+      // `by` is the POLICY answer — whose fault the refund terms treat this as — and is what
+      // `quoteCancelRefund` branches on. It is not the actor: an operator pressed this either
+      // way, which `actorKind` and `actorId` already say.
+      metadata: { reason: `cancelled by ${by}` },
+    },
+  );
+
   // ── and refund, in the same press (operator, 2026-08-10) ────────────────────
   //
   // Cancelling and refunding were two separate presses, and the figures on the confirm screen

@@ -10,6 +10,10 @@ import { cookies } from "next/headers";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 import { reservationsEnabled } from "../../../lib/flags";
+// Deliberately NOT defined in this file: every export of a `"use server"` module is a
+// public POST endpoint, and a helper that invokes a caller-supplied function has no
+// business being one (`/security-review`). See that module's header.
+import { neverRejects } from "./never-rejects";
 
 /**
  * Start an inline-Elements checkout (12.5, DEC-134): gates → hold (15 min in production; `CHECKOUT_HOLD_MINUTES` shortens it locally) →
@@ -193,40 +197,6 @@ export async function startElementsCheckout(
   return neverRejects(() =>
     startCheckout(input, secretKey, webhookSecret, customerName, canonicalPhone.phone),
   );
-}
-
-/**
- * Run the checkout's dependency work, turning ANY rejection into a customer-safe refusal.
- *
- * **Exported, and taking the work as a thunk, so the property is provable without module
- * mocking.** `app/lib/booking-deps.test.ts` states this repository's convention and declines
- * `vi.mock` for the directly analogous case: *"the repository has no module mocking anywhere —
- * the single mention of `vi.mock` is a comment in `stripe-payment.test.ts` explaining why that
- * file does without it."* The first cut of this change ignored that and mocked five modules,
- * which `@code-review` caught. It would also have been a worse test: a slice of real code between
- * five fakes proves as much about the fakes as about the code.
- *
- * This is the same split `booking-deps.test.ts` settled on — prove what the wrapper DOES where it
- * is cheapest, and let its APPLICATION be the one-line read above. Deleting this function's
- * `catch` reds the cases; deleting the call above is visible in a three-line function.
- */
-export async function neverRejects(
-  run: () => Promise<StartElementsCheckoutResult>,
-): Promise<StartElementsCheckoutResult> {
-  try {
-    return await run();
-  } catch (e) {
-    // The provider's text never reaches the customer. A `pg:` message carries a host and a
-    // failure mode; a Stripe one can carry a key prefix. Same rule `describeSendFailure` enforces
-    // for channel errors (issue #1052) — the log gets the error, the screen gets a sentence.
-    logSwallowed("book/checkout:startElementsCheckout", e, "the checkout could not be started");
-    return {
-      ok: false,
-      // The one fact a customer looking at a failed payment form needs, in the voice the rest of
-      // this flow already uses (`checkout-form.tsx`'s confirm fallback says the same thing).
-      message: "Something went wrong on our side — you have not been charged. Please try again.",
-    };
-  }
 }
 
 /** The half that talks to Stripe and the database. Split out so its caller's `try` covers all of

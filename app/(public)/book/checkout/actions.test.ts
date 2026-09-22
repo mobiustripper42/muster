@@ -24,7 +24,9 @@
  * So the file splits the way `booking-deps.test.ts` settled on:
  *
  *   - **`neverRejects` is tested directly** with a thunk that throws. Pure, no fakes, and it is
- *     the whole of the guarantee.
+ *     the whole of the guarantee. It lives in `never-rejects.ts` rather than in the action file,
+ *     because every export of a `"use server"` module is a public POST endpoint and this one
+ *     takes a function as an argument (`/security-review`).
  *   - **The gates are tested through the real action**, which needs no fakes either — every one
  *     of them returns before a dependency is touched.
  *
@@ -33,7 +35,10 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { neverRejects, startElementsCheckout } from "./actions.js";
+import { startElementsCheckout } from "./actions.js";
+// From its own module, not from the action file — `"use server"` turns every export into a
+// public POST endpoint, and this helper invokes a caller-supplied function. See its header.
+import { neverRejects } from "./never-rejects.js";
 
 beforeEach(() => {
   // `RESERVATIONS` is off by default (DEC-111), and it is the FIRST gate — without this every

@@ -3160,6 +3160,172 @@ export function runRepositoryContract(
         const report = await checkIntegrity(repo);
         expect(JSON.stringify(report)).not.toContain("res-gone");
       });
+
+      // ── listTrailEventsFor: the union read's input (issue #1048) ────────────
+      describe("listTrailEventsFor", () => {
+        it("matches on EITHER key, because the table has two on purpose", async () => {
+          const byRes = trail({ id: asId<"TrailEventId">("t-res"), reservationId: RESERVATION });
+          const byIntent = trail({
+            id: asId<"TrailEventId">("t-pi"),
+            paymentIntentId: asId<"PaymentIntentId">("pi_mine"),
+            timestamp: "2026-09-20T13:00:00.000Z",
+          });
+          const stranger = trail({
+            id: asId<"TrailEventId">("t-other"),
+            reservationId: asId<"ReservationId">("resv-other"),
+          });
+          for (const e of [byRes, byIntent, stranger]) await repo.appendTrailEvent(e);
+
+          const rows = await repo.listTrailEventsFor(RESERVATION, ["pi_mine"]);
+          expect(rows.map((r) => r.id)).toEqual(["t-res", "t-pi"]);
+        });
+
+        it("returns OLDEST first — the opposite of listTrailEvents, deliberately", async () => {
+          // A per-booking history reads as a story and runs forwards; the unfiltered list is a
+          // feed and runs backwards. Both adapters have to agree on which is which or issue
+          // #1048's union comes out reversed on one of them.
+          await repo.appendTrailEvent(
+            trail({ id: asId<"TrailEventId">("t-late"), reservationId: RESERVATION, timestamp: "2026-09-20T15:00:00.000Z" }),
+          );
+          await repo.appendTrailEvent(
+            trail({ id: asId<"TrailEventId">("t-early"), reservationId: RESERVATION, timestamp: "2026-09-20T09:00:00.000Z" }),
+          );
+          expect((await repo.listTrailEventsFor(RESERVATION, [])).map((r) => r.id)).toEqual([
+            "t-early",
+            "t-late",
+          ]);
+        });
+
+        it("breaks a tie by insertion order, oldest appended first", async () => {
+          // The mirror of the `listTrailEvents` tie case above. Same instant, opposite
+          // direction — in-memory by a stable ascending sort, Postgres by `seq asc`.
+          const at = "2026-09-20T12:00:00.000Z";
+          for (const id of ["tie-a", "tie-b", "tie-c"]) {
+            await repo.appendTrailEvent(
+              trail({ id: asId<"TrailEventId">(id), reservationId: RESERVATION, timestamp: at }),
+            );
+          }
+          expect((await repo.listTrailEventsFor(RESERVATION, [])).map((r) => r.id)).toEqual([
+            "tie-a",
+            "tie-b",
+            "tie-c",
+          ]);
+        });
+
+        it("an empty intent list is legal and matches nothing extra", async () => {
+          // A booking that never minted an intent — an imported row, an admin booking — must
+          // not error, and must not accidentally match every row whose intent key is null.
+          await repo.appendTrailEvent(trail({ id: asId<"TrailEventId">("t-bare") })); // no keys at all
+          await repo.appendTrailEvent(trail({ id: asId<"TrailEventId">("t-ours"), reservationId: RESERVATION }));
+          expect((await repo.listTrailEventsFor(RESERVATION, [])).map((r) => r.id)).toEqual(["t-ours"]);
+        });
+      });
+    });
+
+    // ── The union read's other two inputs (issue #1048) ──────────────────────
+    describe("per-reservation reads the union read needs", () => {
+      const RES_A = asId<"ReservationId">("resv-union-a");
+
+      /**
+       * **This method is the right KEY, not a new capability — and the Postgres adapter is what
+       * made me say so.**
+       *
+       * The first version of this case seeded a gratuity against a reservation that did not
+       * exist, to dramatise "a tip on a row with no event". It passed in-memory and failed here
+       * on `gratuity_reservation_id_fkey` — the DEC-131 asymmetry that #613 was written about:
+       * the double is a `Map.set` with no referential integrity, so a unit test can pass against
+       * a state production cannot hold.
+       *
+       * Forced to seed real parents, the premise fell over too. `gratuity.event_id` is FK'd, so
+       * every gratuity names a real event; `saveGratuity` only runs on the booked path; and a
+       * cancel leaves `reservation.eventId` in place. **So there is no gratuity today whose
+       * reservation has no event, and `listGratuitiesForEvent` would in fact have answered.**
+       *
+       * The method stays because it keys on the thing the question is about. `Gratuity.
+       * reservationId` is the direct link; the event is a proxy that happens to be 1:1 right now
+       * (one whole-boat event, one booking) and stops being one the day that changes. The union
+       * read also has to work for `pending` rows, where a caller cannot even form the event key —
+       * `eventIdOfBooked` refuses a row that is not booked.
+       */
+      it("listGratuitiesForReservation keys on the BOOKING, and isolates it from its neighbours", async () => {
+        await repo.saveEvent(event());
+        await repo.saveReservation(reservation({ id: RES_A }));
+        await repo.saveReservation(reservation({ id: asId<"ReservationId">("resv-union-b") }));
+        await repo.saveGratuity({
+          id: asId<"GratuityId">("grat-union-1"),
+          eventId: EVENT,
+          reservationId: RES_A,
+          kind: "pre",
+          amountCents: 5000,
+          createdAt: "2026-09-20T10:00:00.000Z",
+        });
+        await repo.saveGratuity({
+          id: asId<"GratuityId">("grat-union-2"),
+          eventId: EVENT,
+          reservationId: asId<"ReservationId">("resv-union-b"),
+          kind: "post",
+          amountCents: 100,
+          createdAt: "2026-09-20T11:00:00.000Z",
+        });
+
+        // Both tips sit on ONE event, so the event key cannot tell them apart and the booking
+        // key can. That is the whole difference, stated as a case.
+        expect((await repo.listGratuitiesForEvent(EVENT)).map((g) => String(g.id)).sort()).toEqual([
+          "grat-union-1",
+          "grat-union-2",
+        ]);
+        expect((await repo.listGratuitiesForReservation(RES_A)).map((g) => String(g.id))).toEqual([
+          "grat-union-1",
+        ]);
+      });
+
+      it("listImportItemsForRef carries the RUN's clock, because the item has none", async () => {
+        // `import_run_items` has no timestamp column (0007_import_audit.sql). Returning the
+        // item without `ranAt` would leave the caller with a fact and no way to date it — so
+        // the join is part of the method rather than a step someone remembers.
+        await repo.saveImportRun(
+          { ...importRun(), id: asId<"ImportRunId">("run-early"), ranAt: "2026-09-01T00:00:00.000Z" },
+          [
+            {
+              id: asId<"ImportRunItemId">("run-early-item-0001"),
+              runId: asId<"ImportRunId">("run-early"),
+              kind: "reservation_added",
+              refId: String(RES_A),
+              label: "Mary",
+            },
+          ],
+        );
+        await repo.saveImportRun(
+          { ...importRun(), id: asId<"ImportRunId">("run-late"), ranAt: "2026-09-05T00:00:00.000Z" },
+          [
+            {
+              id: asId<"ImportRunItemId">("run-late-item-0001"),
+              runId: asId<"ImportRunId">("run-late"),
+              kind: "reservation_cancelled",
+              refId: String(RES_A),
+              label: "Mary",
+            },
+            {
+              id: asId<"ImportRunItemId">("run-late-item-0002"),
+              runId: asId<"ImportRunId">("run-late"),
+              kind: "reservation_added",
+              refId: "resv-somebody-else",
+              label: "Other",
+            },
+          ],
+        );
+
+        const rows = await repo.listImportItemsForRef(String(RES_A));
+        // Oldest run first, only this reservation's items, each carrying its run's clock.
+        expect(rows).toEqual([
+          { kind: "reservation_added", runId: "run-early", ranAt: "2026-09-01T00:00:00.000Z", label: "Mary" },
+          { kind: "reservation_cancelled", runId: "run-late", ranAt: "2026-09-05T00:00:00.000Z", label: "Mary" },
+        ]);
+      });
+
+      it("listImportItemsForRef is empty for a booking no import ever touched", async () => {
+        expect(await repo.listImportItemsForRef("resv-never-imported")).toEqual([]);
+      });
     });
   });
 }

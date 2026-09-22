@@ -83,5 +83,7 @@ export async function confirmBookingByPaymentIntent(
   if (!pi) return { handled: true, outcome: "ignored" };
   // `notifyOnResidualRaceLoss: false` — see the doc comment above. The refund and the sold-out
   // notice belong to the signed webhook only.
-  return confirmBookingFromIntent(deps, pi, { notifyOnResidualRaceLoss: false });
+  // `via: "success_page"` so the `booked` trail row says which of §2.8.6's three confirms won
+  // the flip (issue #1048). The webhook's own call sets `webhook`.
+  return confirmBookingFromIntent(deps, pi, { notifyOnResidualRaceLoss: false, via: "success_page" });
 }

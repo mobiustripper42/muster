@@ -75,7 +75,7 @@ import type { AuditEvent } from "../domain/audit.js";
 import type { TrailEvent } from "../domain/reservation-trail.js";
 import type { SeatState } from "../domain/states.js";
 import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
-import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
+import type { ImportItemAtRun, ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
 import type { MessageId, ParticipantId, ThreadId } from "../domain/ids.js";
@@ -922,6 +922,14 @@ export class InMemoryRepository implements Repository {
   async listGratuitiesForEvent(eventId: EventId): Promise<Gratuity[]> {
     return [...this.#gratuities.values()].filter((g) => g.eventId === eventId).map(clone);
   }
+  async listGratuitiesForReservation(reservationId: ReservationId): Promise<Gratuity[]> {
+    // Keyed on the BOOKING, not its event (issue #1048) — a pending or cancelled row has no
+    // event to key on. Oldest first: this feeds a chronological history.
+    return [...this.#gratuities.values()]
+      .filter((g) => String(g.reservationId) === String(reservationId))
+      .map(clone)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
   async listAllGratuities(): Promise<Gratuity[]> {
     return [...this.#gratuities.values()].map(clone);
   }
@@ -1212,7 +1220,10 @@ export class InMemoryRepository implements Repository {
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   }
 
-  // ── Crew audit log (append-only — #400, DEC-118) ──────────────────────────
+  // ── Reservation trail (append-only — issue #1047, DEC-118) ────────────────
+  // The header here said "Crew audit log (#400)" until issue #1048. That log is
+  // `appendAuditEvent` / `listAuditEvents`, directly below — two logs, two subjects,
+  // and the section divider named the wrong one.
   async appendTrailEvent(event: TrailEvent): Promise<void> {
     // Idempotent on id, matching the pg adapter's `on conflict do nothing`. The FIRST
     // write is the one that happened — an emitter on an at-least-once path (Stripe
@@ -1226,6 +1237,24 @@ export class InMemoryRepository implements Repository {
       .map(clone)
       .reverse()
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }
+  async listTrailEventsFor(
+    reservationId: ReservationId,
+    paymentIntentIds: readonly string[],
+  ): Promise<TrailEvent[]> {
+    // EITHER key matches (issue #1048) — the table has two on purpose and some types only
+    // ever carry the second. Ascending here, unlike the list above: this feeds a per-booking
+    // history, which reads oldest-first. Insertion order is the tiebreak, standing in for pg's
+    // `seq` — two rows at one instant must not swap between adapters.
+    const intents = new Set(paymentIntentIds.map(String));
+    return this.#trailEvents
+      .filter(
+        (e) =>
+          (e.reservationId !== undefined && String(e.reservationId) === String(reservationId)) ||
+          (e.paymentIntentId !== undefined && intents.has(String(e.paymentIntentId))),
+      )
+      .map(clone)
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   }
 
   async appendAuditEvent(event: AuditEvent): Promise<void> {
@@ -1288,6 +1317,17 @@ export class InMemoryRepository implements Repository {
   ): Promise<{ run: ImportRun; items: ImportRunItem[] } | null> {
     const r = this.#importRuns.get(id);
     return r ? clone(r) : null;
+  }
+  async listImportItemsForRef(refId: string): Promise<ImportItemAtRun[]> {
+    // The reverse index the table never had (issue #1048). Oldest run first, `runId` breaking
+    // ranAt ties so two runs stamped the same instant cannot swap between adapters.
+    return [...this.#importRuns.values()]
+      .flatMap(({ run, items }) =>
+        items
+          .filter((i) => i.refId === refId)
+          .map((i) => ({ kind: i.kind, runId: run.id, ranAt: run.ranAt, label: i.label })),
+      )
+      .sort((a, b) => a.ranAt.localeCompare(b.ranAt) || String(a.runId).localeCompare(String(b.runId)));
   }
   async listImportRuns(limit: number): Promise<ImportRun[]> {
     return [...this.#importRuns.values()]

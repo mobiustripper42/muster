@@ -13,14 +13,32 @@ const NONE = { messaging: false, reservations: false, timeClock: false };
 
 describe("visibleAdminNav", () => {
   it("puts the daily work flat, in the operator's order", () => {
-    // Stated directly by the operator: he works the shifts board constantly, expects the same of
-    // the calendar, and uses audit + import daily. At-Risk is last — he almost never opens it.
+    // Stated directly by the operator: he works the shifts board constantly and expects the same
+    // of the calendar. At-Risk is last — he almost never opens it.
+    //
+    // **Audit left this list at issue #1049** (operator, 2026-09-21). Reservations gained an
+    // audit of its own, and two peers both called `Audit` need a group header to tell them
+    // apart — so the crew one moved to `Crew › Audit` and the new one is `Bookings › Audit`.
+    // It cost a click on a surface the operator had called daily; that was the trade.
     expect(visibleAdminNav(ALL).flat.map((l) => l.label)).toEqual([
       "Shifts",
       "Calendar",
-      "Audit",
       "Import",
       "At-Risk",
+    ]);
+  });
+
+  it("has exactly two Audits, one per group, and neither is flat", () => {
+    // The whole point of the move: a nav where the same word appears twice is fine when a group
+    // header carries the difference, and broken when one of them is a bare peer.
+    const nav = visibleAdminNav(ALL);
+    expect(nav.flat.map((l) => l.label)).not.toContain("Audit");
+    const audits = nav.groups
+      .flatMap((g) => g.links.map((l) => ({ group: g.label, href: l.href, label: l.label })))
+      .filter((l) => l.label === "Audit");
+    expect(audits).toEqual([
+      { group: "Bookings", href: "/admin/booking-audit", label: "Audit" },
+      { group: "Crew", href: "/admin/asks", label: "Audit" },
     ]);
   });
 
@@ -54,7 +72,7 @@ describe("visibleAdminNav", () => {
   it("halves the bar on a default deployment", () => {
     // RESERVATIONS off (DEC-111) and MESSAGING off (#389) is the default.
     const off = visibleAdminNav(NONE);
-    expect(off.flat.map((l) => l.label)).toEqual(["Shifts", "Audit", "Import", "At-Risk"]);
+    expect(off.flat.map((l) => l.label)).toEqual(["Shifts", "Import", "At-Risk"]);
     expect(visibleAdminLinks(NONE).length).toBeLessThan(visibleAdminLinks(ALL).length);
   });
 

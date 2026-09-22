@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { reformWindow } from "@core/builder/form-shifts.js";
 import { logFormAudit } from "@core/oracle/audit-log.js";
 import { tick, type TickResult } from "@core/builder/tick.js";
+import { HANDLED_EVENT_TYPES, StripePaymentPort } from "@core/adapters/stripe-payment.js";
+import { monitorWebhookEndpoint } from "@core/reservations/webhook-health.js";
 import { getRepo } from "../../../lib/repo";
 import { forwardFormNotices, relayAsks } from "../../../lib/channel";
-import { forwardBoardAlerts, forwardFormationFailures } from "../../../lib/alert";
+import { alertMoneyProblem, forwardBoardAlerts, forwardFormationFailures } from "../../../lib/alert";
+import { appBaseUrl } from "../../../lib/base-url";
 
 /**
  * The engine tick, on a schedule — the DEC-023 "explicit clock op" trigger, fired
@@ -117,8 +120,59 @@ export async function GET(req: Request) {
     console.error("tick: formShifts failed before forming anything — existing shifts still advance", e);
   }
 
+  // **Is the webhook endpoint still doing its job? (15.16, issue #984)**
+  //
+  // ABOVE the pause gate, for the reason formation is: DEC-054's pause means "stop asking people
+  // to work", never "stop watching the money". A paused engine that silently stopped confirming
+  // paid bookings is the worst version of both.
+  //
+  // **Six runs a day, not ninety-six.** Stripe's per-second rate limit is irrelevant here (100
+  // req/s live), but read requests carry a MONTHLY allocation — "an average of 500 per
+  // transaction", with a floor of 10,000 for every account (`/rate-limits`). At `*/15` this check
+  // alone would spend 2,880 of that floor before a customer did anything. Four-hourly is 180, and
+  // an endpoint somebody deleted does not need 15-minute detection: four hours is well inside
+  // Stripe's three-day retry window, so the queued events are still redeliverable once it is
+  // fixed. The gate is stateless — no column, no cron entry, nothing to keep true.
+  let webhookChecked = false;
+  let webhookHealthy = false;
+  if (now.getUTCHours() % 4 === 0 && now.getUTCMinutes() < 15) {
+    const secretKey = process.env.STRIPE_SECRET_KEY;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    // Dark without keys, silently: a dev or preview deploy has no endpoint to check and no
+    // operator who wants to hear about it.
+    if (secretKey && webhookSecret) {
+      try {
+        const r = await monitorWebhookEndpoint(
+          {
+            payments: new StripePaymentPort(secretKey, webhookSecret),
+            alert: alertMoneyProblem,
+          },
+          {
+            url: `${appBaseUrl()}/api/webhooks/stripe`,
+            events: HANDLED_EVENT_TYPES,
+          },
+        );
+        webhookChecked = r.checked;
+        webhookHealthy = r.healthy;
+      } catch (e) {
+        // Best-effort like every other leg here. `monitorWebhookEndpoint` swallows a provider
+        // failure itself; what reaches this catch is `appBaseUrl()` throwing on a prod deploy with
+        // APP_BASE_URL unset (`app/lib/base-url.ts:46`) — a real misconfiguration, but one that
+        // must not cost this tick its asks and escalations.
+        console.error("tick: webhook-endpoint check could not run", e);
+      }
+    }
+  }
+
   if (await repo.isEnginePaused()) {
-    return NextResponse.json({ ok: true, paused: true, shiftsFormed, at: now.toISOString() });
+    return NextResponse.json({
+      ok: true,
+      paused: true,
+      shiftsFormed,
+      webhookChecked,
+      webhookHealthy,
+      at: now.toISOString(),
+    });
   }
 
   // NOT best-effort, unlike the two legs below (#892). A throw from `tick` means the run failed and
@@ -189,6 +243,11 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     at: now.toISOString(),
+    // `false`/`false` on the five runs an hour that skip the four-hourly gate, and on any deploy
+    // without Stripe keys. A run where `webhookChecked` is true and `webhookHealthy` is false has
+    // already texted the admins.
+    webhookChecked,
+    webhookHealthy,
     shiftsFormed,
     formFailures,
     formFailuresAlerted,

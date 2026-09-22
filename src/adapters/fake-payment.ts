@@ -15,6 +15,7 @@ import {
   type PaymentPort,
   type PaymentSucceeded,
   type RefundInput,
+  type WebhookEndpointInfo,
 } from "../ports/payment.js";
 
 /** The signature the fake accepts — tests pass this as the "Stripe-Signature" header. */
@@ -190,6 +191,20 @@ export class FakePaymentPort implements PaymentPort {
   async getReceiptUrl(paymentIntentId: string): Promise<string | undefined> {
     if (this.receiptUrlError) throw this.receiptUrlError;
     return `https://pay.stripe.test/receipts/${paymentIntentId}`;
+  }
+
+  /**
+   * What `listWebhookEndpoints` reports (15.16). **Empty by default, which reads as "no endpoint
+   * registered" — the unhealthy answer.** Deliberate: a fake that defaults to healthy lets a
+   * caller forget to wire the check and still go green. A test that cares sets this.
+   */
+  webhookEndpoints: WebhookEndpointInfo[] = [];
+  /** Set to make `listWebhookEndpoints` throw, to exercise the "unknown, do not alert" path. */
+  listWebhookEndpointsError: Error | null = null;
+
+  async listWebhookEndpoints(): Promise<readonly WebhookEndpointInfo[]> {
+    if (this.listWebhookEndpointsError) throw this.listWebhookEndpointsError;
+    return this.webhookEndpoints;
   }
 
   parseEvent(rawBody: string, signature: string): PaymentEvent | null {

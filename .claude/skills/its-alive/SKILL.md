@@ -270,21 +270,21 @@ If jig doesn't resolve, skip silently — same rule as Step 7.5.
 
 ## Step 8 — Present briefing
 
-```
-Session <N> — <DATE_PART>
-Started: <local time> (<UTC time>)
-Branch (session anchor): <BRANCH>
-Session file: <SESSION_FILE>   (lives on `sessions` branch via .sessions-worktree/)
+Emit the briefing as plain prose lines, never inside a code fence — a fence does not wrap on a phone. Drop the leading `>`; it marks the example boundary here. The shape:
 
-Last session: [one-line summary]
-
-Next Steps from last session: [verbatim or paraphrased]
-Context to remember: [gotchas worth mentioning]
-
-Recommended task: [task ID + name + why — OMIT this line entirely if the user opened with their own task]
-
-Branch already cut: <BRANCH> — good to go. Each task today gets its own /kill-this; the session file lives on the orphan `sessions` branch independent of any task branch.
-```
+> Session <N> — <DATE_PART>
+> Started: <local time> (<UTC time>)
+> Branch (session anchor): <BRANCH>
+> Session file: <SESSION_FILE>   (lives on `sessions` branch via .sessions-worktree/)
+>
+> Last session: [one-line summary]
+>
+> Next Steps from last session: [verbatim or paraphrased]
+> Context to remember: [gotchas worth mentioning]
+>
+> Recommended task: [task ID + name + why — OMIT this line entirely if the user opened with their own task]
+>
+> Branch already cut: <BRANCH> — good to go. Each task today gets its own /kill-this; the session file lives on the orphan `sessions` branch independent of any task branch.
 
 Then ask: **"Ready to go? Confirm the task or redirect me."** — or, if the user already named the task, just confirm you've got the context and restate their task in one line: **"Context loaded. Picking up <their task> — go?"**
 

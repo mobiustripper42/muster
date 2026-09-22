@@ -2144,6 +2144,29 @@ describe("processBookingWebhook — the trail's spine (issue #1048)", () => {
     ]);
   });
 
+  it("a residual-race LOSER's auto-refund records auto_refunded and NOT refunded", async () => {
+    // `@code-review` found the comment claiming `refunded` fired "for all three" refund paths.
+    // It does not, and should not: a loser has no `Payment` row (#613), so `recordRefund`
+    // returns at the own-loser guard. For that one path the decision and the settlement are the
+    // same event — Muster called refund() and Stripe echoed it — so a second row would say the
+    // money came back twice.
+    const repo = new InMemoryRepository();
+    await seedPending(repo); // still `pending`, carrying PI — exactly a loser
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(
+      deps,
+      JSON.stringify({
+        stripeEventId: "evt_loser",
+        type: "refund_recorded",
+        data: { paymentIntentId: PI, amountRefundedCents: 53625, currency: "usd" },
+      }),
+      FAKE_SIGNATURE,
+    );
+
+    expect(await trailOf(repo, "refunded")).toHaveLength(0);
+  });
+
   it("a refund on an UNMATCHED charge records charge_unmatched and not refunded", async () => {
     // The ledger write is what this row follows. No payment row means nothing was reconciled,
     // so `refunded` would assert a booking's money came back when Muster has no such booking.

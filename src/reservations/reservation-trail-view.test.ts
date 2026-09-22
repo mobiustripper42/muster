@@ -306,11 +306,11 @@ describe("reservationTrail — telling the truth about WHEN", () => {
 describe("reservationTrail — checkout_lapsed, the entry with no row anywhere", () => {
   it("fires for a pending row past its window, marked computed", () => {
     const [row] = reservationTrail(inputs()).filter((r) => r.type === "checkout_lapsed");
-    // reservedAt 12:00 + 15m
+    // reservedAt 12:00 + the 15m payment window
     expect(row?.when).toEqual({
       kind: "computed",
       at: "2026-07-04T12:15:00.000Z",
-      from: expect.stringContaining("reservedAt + 15m"),
+      from: expect.stringContaining("payment window"),
     });
   });
 
@@ -329,13 +329,29 @@ describe("reservationTrail — checkout_lapsed, the entry with no row anywhere",
     expect(types(rows)).not.toContain("checkout_lapsed");
   });
 
-  it("uses the row's OWN frozen holdMinutes, not the current default", () => {
-    // §2.8.3 freezes the window on the row. An operator lengthening it afterwards must not
-    // retroactively move when an old checkout lapsed.
+  it("uses the PAYMENT WINDOW, not the row's frozen hull hold — they are different numbers", () => {
+    // **This case asserted the opposite until `@code-review` caught it.** `Reservation.
+    // holdMinutes` is how long the row occupies the HULL (§2.8.3, frozen from the offering);
+    // the payment window is a setting (§2.8.1: "not a column"). `entities.ts` labels the trap in
+    // the field's own docstring — "confusingly the same word" — and I used it anyway, then wrote
+    // a test citing §2.8.3 to lock it in. A real checkout freezes 120m of hull for a 15m window,
+    // so the trail dated the lapse nearly two hours late.
     const [row] = reservationTrail(
-      inputs({ reservation: reservation({ holdMinutes: 120 }) }),
+      inputs({ reservation: reservation({ holdMinutes: 120 }), paymentWindowMinutes: 15 }),
     ).filter((r) => r.type === "checkout_lapsed");
-    expect(row?.when.at).toBe("2026-07-04T14:00:00.000Z");
+    expect(row?.when.at).toBe("2026-07-04T12:15:00.000Z"); // reservedAt 12:00 + the WINDOW
+  });
+
+  it("does NOT fire for an ADMIN-source row, which has no window and never lapses", () => {
+    // DEC-163, which `isLivePending` already knew and the open-coded arithmetic did not. An
+    // admin booking held indefinitely was being shown an expiry that cannot happen.
+    const rows = reservationTrail(
+      inputs({
+        reservation: reservation({ source: "admin" }),
+        asOf: "2026-08-01T00:00:00.000Z", // weeks later
+      }),
+    );
+    expect(types(rows)).not.toContain("checkout_lapsed");
   });
 });
 

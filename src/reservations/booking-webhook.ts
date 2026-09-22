@@ -864,10 +864,14 @@ export async function processBookingCharge(
     // projected from `reservations.status`, which persists that a booking IS booked and never
     // when it became so, because `updated_at` is overwritten by the next write.
     //
-    // **`booked` only, never `already`.** `already` is a redelivery or the other confirm path
-    // arriving second; the sale happened once, and the row belongs to the caller that won the
-    // atomic flip. The derived id makes that belt-and-braces: a booking is booked once, so a
-    // second write for the same id is a duplicate by definition rather than a second fact.
+    // **`booked` only, never `already`, and this guard is LOAD-BEARING** — the first version of
+    // this comment called it belt-and-braces behind the derived id, and `@code-review` found the
+    // case that makes it false. `confirmPendingRow` resolves `already` for ANY row that is
+    // already `booked`, including every booking made before this emitter shipped — and those
+    // have no `booked:<id>` row for a derived id to collide with. Drop this check and the first
+    // redelivery against an old booking inserts a `booked` row **backdated to whenever Stripe
+    // happened to retry**, which is the opposite of the no-backfill posture this task ships
+    // under (DEC-118: capture starts at ship).
     //
     // First in this block, before `recordPayment` — which is deliberately unwrapped, so a throw
     // there makes Stripe redeliver, `confirmPendingRow` resolve `already`, and this branch never
@@ -1268,10 +1272,17 @@ async function recordRefund(
   // from the charge, possibly months earlier, and two partial refunds collapsed into one.
   //
   // Distinct from `refund_issued_by_operator` and `auto_refunded`, which record a DECISION taken
-  // inside Muster. This records the provider confirming money moved, and it fires for all three:
-  // an operator's in-app refund also produces a `charge.refunded`, so a booking refunded through
-  // Muster gets both the decision and its settlement. That is not a dual-write — they are
-  // different facts with different actors, and the money path is where that distinction pays.
+  // inside Muster. This records the provider confirming money moved, so an operator's in-app
+  // refund gets both the decision and its settlement — different facts, different actors, not a
+  // dual-write.
+  //
+  // **It does NOT fire for the residual-race auto-refund, and that is deliberate** — an earlier
+  // version of this comment claimed it fired "for all three" and `@code-review` caught that the
+  // code says otherwise. A loser has no `Payment` row at all (#613, nothing to hang one on), so
+  // the lookup above returns null and the `ownLoser` guard returns before this line. Correct
+  // rather than a gap: for that one path the decision and the settlement ARE the same event —
+  // Muster called `refund()` and Stripe echoed it back — so `auto_refunded` is the whole story
+  // and a second row would say the money came back twice.
   //
   // Keyed on the STRIPE EVENT, like `payment_failed` and for the same reason: one charge can be
   // refunded in parts, `amountRefundedCents` is cumulative, and keying on the intent would drop

@@ -59,7 +59,7 @@ import type {
   TrailEventMetadata,
   TrailEventType,
 } from "../domain/reservation-trail.js";
-import { resolveHoldMinutes } from "./pending.js";
+import { isLivePending, pendingLiveSince, PAYMENT_WINDOW_MINUTES } from "./pending.js";
 
 /**
  * How well this entry's time is known. Three cases because there are three, and collapsing them
@@ -103,19 +103,32 @@ export interface TrailInputs {
   emitted: readonly TrailEvent[];
   /** The reading clock. Decides whether a still-`pending` row has lapsed. */
   asOf: string;
-  /** Payment-window minutes. Injected so a test need not depend on the env-resolved default;
-   *  absent falls back to the same value the claim and the deriver use. */
-  holdMinutes?: number;
+  /**
+   * The payment window in minutes, for the `checkout_lapsed` arithmetic. Injected so a test need
+   * not depend on the env-resolved default; absent falls back to `PAYMENT_WINDOW_MINUTES`.
+   *
+   * **Named for the window and NOT `holdMinutes`, deliberately.** `Reservation.holdMinutes` is a
+   * different number — how long the row occupies the hull — and the field's own docstring calls
+   * the collision out: *"confusingly the same word."* The first cut of this module named this one
+   * `holdMinutes` and then read the row's, which is how the wrong number got used.
+   */
+  paymentWindowMinutes?: number;
 }
 
 /**
- * Order for entries landing on the SAME instant, which is not a hypothetical: `booked` and
- * `cancelled` share `updatedAt`, and a charge's `payment_succeeded`, `refunded` and
- * `dispute_opened` all share `createdAt`. Those are the collisions this exists for.
+ * Order for entries landing on the SAME instant.
  *
- * Everything else — every emitted type — takes `DEFAULT_RANK` and then sorts by id. Emitted rows
- * carry real per-row timestamps, so a tie with anything is rare and arbitrary-but-deterministic
- * is an honest answer for it. Enumerating all 34 types here would be a table nobody could keep
+ * **The collisions it was written for are gone, and it still earns its place** (`@code-review`
+ * caught the stale rationale). It used to cover `booked`/`cancelled` sharing `updatedAt` and the
+ * three money facts sharing `payments.createdAt` — all of which this same task moved to emitted
+ * rows with independent timestamps. What is left is subtler: `payment_succeeded` reads
+ * `payments.createdAt` and the emitted `booked` row is stamped by a `deps.now()` call a few
+ * statements later in the same handler, so the two land in the same millisecond routinely. A
+ * booking must not sort ahead of the charge that paid for it.
+ *
+ * Everything else — every other emitted type — takes `DEFAULT_RANK` and then sorts by id.
+ * Emitted rows carry real per-row timestamps, so a tie is rare and arbitrary-but-deterministic
+ * is an honest answer for it. Enumerating all 33 types here would be a table nobody could keep
  * true, to settle ties that do not happen.
  */
 const DEFAULT_RANK = 55;
@@ -207,30 +220,40 @@ export function reservationTrail(input: TrailInputs): TrailEntry[] {
 
   // ── checkout_lapsed: the one entry with no row anywhere ─────────────────────
   //
-  // Only for a row still `pending` at `asOf` whose window has passed. A booked or cancelled row
-  // did not lapse whatever its dates say, and a pending row inside its window has not lapsed YET
-  // — showing it would be predicting rather than recording.
+  // **Asked through `isLivePending`, not re-derived** (`@code-review`). The first cut computed
+  // the lapse from `r.holdMinutes`, which is the wrong number and the wrong shape both:
   //
-  // `computed` rather than `inherited`: the arithmetic is exact (§2.8.3 freezes `holdMinutes` on
-  // the row). What is notional is the EVENT — nothing fires at the lapse, `abandonment.ts` says
-  // so directly (*"Nothing deletes a lapsed row"*), and the instant only exists because someone
-  // subtracted. A reader should know that no system observed this moment.
-  if (r.status === "pending" && r.reservedAt !== undefined) {
-    const minutes = r.holdMinutes ?? input.holdMinutes ?? resolveHoldMinutes();
-    const lapsedAt = new Date(new Date(r.reservedAt).getTime() + minutes * 60_000).toISOString();
-    if (lapsedAt <= asOf) {
-      out.push({
-        id: `checkout_lapsed:${String(r.id)}`,
-        type: "checkout_lapsed",
-        when: {
-          kind: "computed",
-          at: lapsedAt,
-          from: `reservedAt + ${minutes}m — nothing fires at the lapse and no row records it`,
-        },
-        actorKind: "engine",
-        metadata: {},
-      });
-    }
+  //   - `Reservation.holdMinutes` is how long the row occupies the HULL (§2.8.3, frozen from the
+  //     offering, commonly 120m). `entities.ts` labels the trap in the field's own docstring —
+  //     *"Not the payment window — that is `PAYMENT_WINDOW_MINUTES`, a setting, and confusingly
+  //     the same word."* §2.8.1 is equally blunt: *"the payment window is a setting, not a
+  //     column."* The trail was dating the lapse hours after it happened.
+  //   - An **admin-source** pending row has no payment window and never lapses at all (DEC-163),
+  //     which `isLivePending` knows and open-coded arithmetic does not. That row was getting a
+  //     `checkout_lapsed` entry for an event that cannot occur.
+  //
+  // Both disappear by asking the predicate the rest of the engine asks. This is the fifth time
+  // this session that a helper existed and a new call site hand-rolled past it — after
+  // `pgConnectionConfig`, `logSwallowed`, the truncate list and `describeSendFailure`.
+  //
+  // `computed` rather than `inherited`: the arithmetic is exact. What is notional is the EVENT —
+  // nothing fires at the lapse, `abandonment.ts` says so directly (*"Nothing deletes a lapsed
+  // row"*), and the instant exists only because something subtracted. A reader should know that
+  // no system observed this moment.
+  if (r.status === "pending" && r.reservedAt !== undefined && !isLivePending(r, pendingLiveSince(asOf))) {
+    const minutes = input.paymentWindowMinutes ?? PAYMENT_WINDOW_MINUTES;
+    const lapsedAt = new Date(Date.parse(r.reservedAt) + minutes * 60_000).toISOString();
+    out.push({
+      id: `checkout_lapsed:${String(r.id)}`,
+      type: "checkout_lapsed",
+      when: {
+        kind: "computed",
+        at: lapsedAt,
+        from: `reservedAt + the ${minutes}m payment window — nothing fires at the lapse and no row records it`,
+      },
+      actorKind: "engine",
+      metadata: {},
+    });
   }
 
   // ── booked, cancelled and refunded are NOT here any more (issue #1048) ─────

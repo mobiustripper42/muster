@@ -190,8 +190,31 @@ export async function startElementsCheckout(
   // blip was diagnosed as a refused update and could tell a customer their booking was already
   // paid when nothing had been."* The gates above stay outside it, so a blanket catch can never
   // swallow their specific, actionable copy into one generic line.
+  return neverRejects(() =>
+    startCheckout(input, secretKey, webhookSecret, customerName, canonicalPhone.phone),
+  );
+}
+
+/**
+ * Run the checkout's dependency work, turning ANY rejection into a customer-safe refusal.
+ *
+ * **Exported, and taking the work as a thunk, so the property is provable without module
+ * mocking.** `app/lib/booking-deps.test.ts` states this repository's convention and declines
+ * `vi.mock` for the directly analogous case: *"the repository has no module mocking anywhere —
+ * the single mention of `vi.mock` is a comment in `stripe-payment.test.ts` explaining why that
+ * file does without it."* The first cut of this change ignored that and mocked five modules,
+ * which `@code-review` caught. It would also have been a worse test: a slice of real code between
+ * five fakes proves as much about the fakes as about the code.
+ *
+ * This is the same split `booking-deps.test.ts` settled on — prove what the wrapper DOES where it
+ * is cheapest, and let its APPLICATION be the one-line read above. Deleting this function's
+ * `catch` reds the cases; deleting the call above is visible in a three-line function.
+ */
+export async function neverRejects(
+  run: () => Promise<StartElementsCheckoutResult>,
+): Promise<StartElementsCheckoutResult> {
   try {
-    return await startCheckout(input, secretKey, webhookSecret, customerName, canonicalPhone.phone);
+    return await run();
   } catch (e) {
     // The provider's text never reaches the customer. A `pg:` message carries a host and a
     // failure mode; a Stripe one can carry a key prefix. Same rule `describeSendFailure` enforces

@@ -140,7 +140,15 @@ function StripeBridge({
   const elements = useElements();
   useEffect(() => {
     // Tip changed → the confirm amount changes → keep the deferred Elements in sync.
-    elements?.update({ amount: amountCents });
+    //
+    // `void … .catch()` rather than floating (issue #773). Stripe types this `Promise<void>` and
+    // documents it as resolving *"when the update has been applied to all rendered Elements"*, so
+    // an unhandled rejection was reaching the console with nothing to read it. There is no
+    // recovery to attempt — the authoritative amount is the server's `clientSecret`, not the
+    // Element's — so this logs and moves on rather than pretending to handle it.
+    void elements?.update({ amount: amountCents }).catch((e: unknown) => {
+      console.error("[checkout] elements.update failed", e);
+    });
   }, [elements, amountCents]);
   return <>{children({ stripe, elements, inElements: true })}</>;
 }
@@ -221,6 +229,18 @@ function InnerForm(p: InnerProps) {
       if (conf.error) {
         setError(conf.error.message ?? "Payment didn't go through. You have not been charged.");
       }
+    } catch (e) {
+      // **`try … finally` with no `catch` was the defect** (issue #773). On a throw the `finally`
+      // re-enabled the button, `setError` never ran, and the rejection went unhandled — so the
+      // customer's only signal was the button coming back, and the rational response to that is
+      // to tap it again. On the last screen before money moves.
+      //
+      // Belt and braces with the server action's own wrap: `startElementsCheckout` cannot reject
+      // any more, but the NETWORK between this browser and that server can fail on its own, and
+      // `stripe.confirmPayment` is a second dependency that can reject rather than resolve
+      // `{ error }`. Neither is something the action can catch for us.
+      console.error("[checkout] submit failed", e);
+      setError("Something went wrong — you have not been charged. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -229,7 +249,32 @@ function InnerForm(p: InnerProps) {
   const inputClass = `${settingsInputClass} w-full text-[15px]`;
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col">
+    <form onSubmit={onSubmit} className="relative flex flex-col">
+      {/*
+        **The whole form body goes inert while a payment is in flight** (issue #997).
+
+        Before this, the Pay button was the only thing that changed — the name, phone and email
+        stayed editable, and so did the tip buttons, which have no `disabled` of their own and
+        whose `onClick` reaches `elements.update({ amount })`. So a customer could change the tip
+        AFTER the PaymentIntent had been minted at the old amount, leaving the card element
+        believing one number and the intent holding another. What Stripe does with that
+        disagreement was an open question nobody had answered.
+
+        **This removes the question rather than answering it.** With the tip buttons unreachable
+        for the in-flight window the mismatch cannot be produced, which is a better outcome than
+        a sandbox result Stripe could change under us.
+
+        `inert` rather than a `disabled` on each control, for two reasons. It covers Stripe's
+        Payment Element, which is an iframe we do not own and cannot disable. And a
+        `pointer-events` overlay alone would stop the mouse and nothing else — you could still
+        tab into the name field behind it and type, which is worse than today because the screen
+        would then be lying about being locked. `inert` takes the whole subtree out of the tab
+        order and out of hit-testing. React 19 passes it through as a real attribute.
+
+        The pay bar and the error card sit OUTSIDE this wrapper on purpose: the button keeps its
+        own "Booking…" state, and a failure has to be readable the instant it arrives.
+      */}
+      <div inert={submitting}>
       <div className="px-[18px]">
         {/* CONTACT */}
         <div className="pt-4">
@@ -445,9 +490,36 @@ function InnerForm(p: InnerProps) {
         </div>
       </div>
 
+      </div>
+
+      {submitting && (
+        /* The visible half. `inert` above is what actually locks the form; this is what says so —
+           an overlay with no explanation reads as a frozen page. `pointer-events-none` because it
+           must not become the thing intercepting clicks: if this ever renders while `inert` is
+           false, a customer must still be able to use the form underneath. */
+        <div
+          className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center bg-card/70 pt-24"
+          data-testid="checkout-busy"
+        >
+          <div className="flex items-center gap-2.5 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
+            {/* Same shape as `submit-button.tsx` and `nav-spinner.tsx` — one idiom for "working",
+                not a third. Decorative; the sentence beside it carries the meaning. */}
+            <span
+              aria-hidden="true"
+              className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-[3px] border-accent border-r-transparent"
+            />
+            <span className="text-sm font-medium text-ink">Taking payment — don&rsquo;t close this page.</span>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="px-[18px] pb-2">
-          <div className="rounded-card border border-bad-line bg-bad-bg px-4 py-3 text-sm text-bad" data-testid="checkout-error">
+          {/* `role="alert"` (issue #773): the card was already in the right place — directly above
+              the sticky pay bar, so it is in view at any scroll position — but nothing announced
+              it. On the last screen before money moves, a customer using a screen reader got the
+              same silence this issue is about. */}
+          <div role="alert" className="rounded-card border border-bad-line bg-bad-bg px-4 py-3 text-sm text-bad" data-testid="checkout-error">
             {error}
           </div>
         </div>

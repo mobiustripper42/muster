@@ -176,6 +176,45 @@ export async function startElementsCheckout(
   //
   // A client that refuses cookies simply gets the old behaviour — a fresh hold per submit — so
   // this degrades to the bug rather than to a broken checkout.
+  // ── Everything past here can THROW, and must not (issue #773) ──────────────
+  //
+  // **The convention this restores:** `.claude/CLAUDE-context.md` § Conventions → Error Handling,
+  // *"Never `throw` in server actions — return errors for inline feedback."* Every anticipated
+  // failure above already returns a message. The unanticipated ones — a Stripe outage, a dropped
+  // connection, a cold database — rejected, and the island's `onSubmit` had no `catch`: the
+  // button re-enabled, nothing was said, and the rational response to that is to tap it again.
+  // On a payment form.
+  //
+  // **The try wraps the dependency work and nothing else**, which is `create-departure-payment-
+  // intent.ts`'s own rule two layers down: *"With `recordCheckoutAttempt` inside it, a database
+  // blip was diagnosed as a refused update and could tell a customer their booking was already
+  // paid when nothing had been."* The gates above stay outside it, so a blanket catch can never
+  // swallow their specific, actionable copy into one generic line.
+  try {
+    return await startCheckout(input, secretKey, webhookSecret, customerName, canonicalPhone.phone);
+  } catch (e) {
+    // The provider's text never reaches the customer. A `pg:` message carries a host and a
+    // failure mode; a Stripe one can carry a key prefix. Same rule `describeSendFailure` enforces
+    // for channel errors (issue #1052) — the log gets the error, the screen gets a sentence.
+    logSwallowed("book/checkout:startElementsCheckout", e, "the checkout could not be started");
+    return {
+      ok: false,
+      // The one fact a customer looking at a failed payment form needs, in the voice the rest of
+      // this flow already uses (`checkout-form.tsx`'s confirm fallback says the same thing).
+      message: "Something went wrong on our side — you have not been charged. Please try again.",
+    };
+  }
+}
+
+/** The half that talks to Stripe and the database. Split out so its caller's `try` covers all of
+ *  it and none of the gates — see the note above. */
+async function startCheckout(
+  input: StartElementsCheckoutInput,
+  secretKey: string,
+  webhookSecret: string,
+  customerName: string,
+  phone: string,
+): Promise<StartElementsCheckoutResult> {
   const holderToken = await readOrMintHolderToken();
 
   const email = input.email.trim();
@@ -192,7 +231,7 @@ export async function startElementsCheckout(
       ...(email ? { email } : {}),
       // Store the CANONICAL form so the reservation's phone and the customer's identity key
       // are the same string — no second normalization downstream to drift from this one.
-      phone: canonicalPhone.phone,
+      phone,
       waiverConsentAt: new Date().toISOString(),
       waiverVersion: WAIVER_TERMS_VERSION,
       ...(holderToken ? { holderToken } : {}),

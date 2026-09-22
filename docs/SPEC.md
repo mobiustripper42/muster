@@ -66,9 +66,9 @@ Muster be built perfect for one niche (BrewBoat) and still be sellable later wit
 - ~~The **customer portal** — sketch only, Tier 4, off-season 26/27. Builds last; not on the
   critical path because 2026 reservations arrive via CSV.~~ — **REOPENED by DEC-105 (2026-07-11).**
   Muster takes real paid reservations **in 2026**, alongside Xola: **Phase 11** service layer, **Phase 12**
-  the real customer UI. Two phases (**DEC-126, 2026-07-17**): a **pilot coexistence** (Muster sells a subset
-  alongside Xola), then a **cutover** — a one-time full import of Xola's reservations into Muster, after
-  which Muster is the reservation source of truth (the cutover is reversible). 2026 reservations do **not**
+  the real customer UI. One **cutover** (**DEC-126, 2026-07-17**): Xola sells until it, Muster after it,
+  never both at once (DEC-149) — a one-time full import of Xola's reservations into Muster, after which
+  Muster is the reservation source of truth (reversible: if a bug can't be fixed, cut back to Xola). 2026 reservations do **not**
   arrive via CSV — that's the live Xola **API pull** (DEC-036/037/043), which stops at the cutover.
 - ~~**Payments topology internals** — deposit-vs-full, refund-schedule numbers, Stripe integration
   detail. Only the admin-facing *surfaces* of payments are in scope.~~ — **EXPIRED (DEC-105/107/124).**
@@ -98,24 +98,25 @@ A "full spec" session tempts re-speccing the deferred work. The discipline is th
 
 > **⚠️ Reconciled 2026-07-15 (S54), revised 2026-07-17 (S56, DEC-126).** The 2026/2027 arc below is
 > **superseded by DEC-105 + DEC-126**: Muster takes real paid reservations **in 2026**. The shape is
-> **coexistence → cutover**, not the old "2027 switch": first a **pilot coexistence** (Muster sells a
-> subset alongside Xola, `source`-discriminated — DEC-106); then a **cutover** (DEC-126) — a **one-time
+> **a single cutover**, not the old "2027 switch": Xola sells until the **cutover** (DEC-126), Muster
+> sells after it, and **the two never sell at the same time** (DEC-149, which retired the DEC-106
+> owned-day partition that a simultaneous-selling stretch would have needed). The cutover is a **one-time
 > full import** of Xola's reservations into Muster, after which **Muster is the reservation source of
 > truth**, the ongoing Xola pull stops, and money stays in Xola only for imported bookings. The cutover is
 > **reversible** (rollback to Xola if it fails). *(This revises the S54 "permanent coexistence, no cutover,
-> drains naturally" wording — that was the pilot half; DEC-126 adds the flip, which does include a one-time
-> migration.)* The ingest is the API pull, not a CSV (DEC-036/037/043).
+> drains naturally" wording; DEC-126 adds the flip, which does include a one-time migration.)* The ingest
+> is the API pull, not a CSV (DEC-036/037/043).
 
 - **2026 — coexistence.** Xola owns bookings/money/waivers ~~. A CSV export from Xola is imported~~
   — **corrected:** a **live Xola API pull** (DEC-036/037; CSV retired, DEC-043) imports into Event
   Admin and **auto-forms shifts**. Muster crews those shifts for real. Crew are also assigned as
   **guides in Xola** (manual write-back from a Muster-emitted sheet) because the guest manifest still
-  lives in Xola. **Added (DEC-105):** from Phase 11, Muster *also* sells its own reservations on
-  Muster-owned vessel-days, alongside the imports, discriminated by `source` (DEC-106).
+  lives in Xola. Muster does **not** sell alongside Xola before the cutover (DEC-149); what survives of
+  DEC-106 is the `source` discriminator on Event and Reservation.
 - ~~**2027 — Muster takes bookings.** Shifts auto-form from Muster's own live feed; the CSV step
   evaporates. Same shift-builder surface, different input source.~~ — **corrected (DEC-105/126): this is
-  2026, via coexistence → cutover, not a dated switch.** During the pilot, Muster-native and Xola-sourced
-  events coexist. At the **cutover** (DEC-126) Xola's reservations are imported once, the pull stops, and
+  2026, via a cutover, not a dated switch.** Until the cutover, Xola sells and Muster imports for
+  crewing. At the **cutover** (DEC-126) Xola's reservations are imported once, the pull stops, and
   Muster owns reservations; the import path dies at the cutover, not on a calendar date. The shift builder
   was always source-agnostic,
   which is what makes the drain a non-event for it.
@@ -592,11 +593,10 @@ between syncs.
 spreadsheet path at all** — DEC-036/037 kept the `.xlsx` reader as a Xola-downtime fallback, but
 **DEC-043 retired it outright** (it can't resolve a boat, and a fallback that collapses four boats into
 one event is worse than no fallback). And the customer portal that writes reservations here directly is
-**not a 2027 event** — it is **Phase 11/12, now** (DEC-105). The two source-of-write paths coexist
-**through the pilot** — Xola-sourced imports alongside Muster-native reservations, discriminated by
-`source` (DEC-106) — and then **stop coexisting at the cutover** (DEC-126): one final full import of
-Xola's reservations, after which Muster is the reservation source of truth and **the ongoing Xola pull
-stops**. This layer stays either way — that part held; only its *upstream* goes away.
+**not a 2027 event** — it is **Phase 11/12, now** (DEC-105). The two source-of-write paths are
+**sequential, never concurrent** (DEC-149): the Xola import runs **until the cutover** (DEC-126),
+which is one final full import of Xola's reservations, after which Muster is the reservation source of
+truth, Muster's own writes carry `source` (DEC-106), and **the ongoing Xola pull stops**. This layer stays either way — that part held; only its *upstream* goes away.
 
 *(Revised 2026-07-26, S71 — audit shard C2.2. The S54 wording said the paths "coexist permanently"
 and that Xola "drains naturally", which DEC-126 reversed on 2026-07-17. The S56 pass corrected §0.2,
@@ -2675,8 +2675,8 @@ The system mediates every interaction, so notifications are the nervous system �
 keeps info from going stale across channels.
 
 - **The ask** → to crew, **port-mediated**, answerable without opening the app (§2.6.1). Transport is
-  a swappable adapter (DEC-MSG-3): fake + pilot (web-link or Telegram) at M4, **SMS the eventual
-  production adapter** — see DEC-MSG-1.
+  a swappable adapter (DEC-MSG-3): **SMS in production** (DEC-MSG-1), an operator-relayed web-link
+  outbox when Twilio is unset (DEC-030), and a fake for tests.
 - **Live card updates** → to assigned crew, when a shift's details change (§2.6, principle 1).
 - **Credential nudges** → to crew, before expiry (§2.6, principle 3 / §2.1).
 - **At-Risk ping** → to Eric, **push not pull**: a shift reaching the board summons him; he does not
@@ -2917,8 +2917,8 @@ now. Building any of these is out of scope until its trigger condition is met.
   > See DEC-036.
   > **Further corrected (S54 2026-07-15, revised S56 2026-07-17):** the CSV import this entry calls the
   > replacement is itself **retired** (DEC-043 — it can't resolve a boat), so the API pull is not an
-  > alternative to the CSV path, it *is* the path. And the adapter does **not** die "in 2027": the pull runs
-  > through the pilot coexistence and **stops at the DEC-126 cutover** (a one-time full import of Xola's
+  > alternative to the CSV path, it *is* the path. And the adapter does **not** die "in 2027": the pull
+  > **stops at the DEC-126 cutover** (a one-time full import of Xola's
   > reservations into Muster), after which Muster owns reservations and there is no recurring pull. *(This
   > revises the S54 "coexistence is permanent, not a dated cutover" note — DEC-126 adds the cutover; it's
   > event-driven, not calendar-dated.)*

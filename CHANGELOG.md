@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0] - 2026-09-22 — Phase 15: Reservations — the money on our row
+- 73 pts shipped across 4 sessions (throughput 43.6 pts/calendar-week; 6 tasks re-estimated, net drift −8)
+- The booking charge is a raw PaymentIntent, pinned to one API version, reusing one intent per row
+- Confirm reads the row's frozen invoice — no booking assembled from data Stripe hands back
+- Post-trip tipping and the dead hosted-checkout path removed
+- A four-hourly check that the webhook endpoint is registered, enabled and subscribed
+- See `docs/RETROSPECTIVES.md` for the full retro
+
 ## [1.2.2] - 2026-09-17
 
 Six days, 26 pull requests. The second half of the move off Neon, the Phase 15

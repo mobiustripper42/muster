@@ -80,6 +80,11 @@ export interface WebhookDeps {
    * grounds that nothing needed doing — true, and beside the point: a customer was charged for a
    * trip they did not get, and how often that happens is the evidence deciding issue #1012.
    * Read the body, not the call site, to know whether an alert wants a human.
+   *
+   * **An implementation must not reject (15.17).** Thirteen call sites await this on paths where
+   * money has already moved, and a throw becomes a 500, which Stripe reads as a failed delivery
+   * and retries for three days. Wrap yours in `alertThatNeverThrows` below — the type cannot state
+   * the requirement, so the wrapper is how it is kept.
    */
   alertPaidButUnbooked: (message: string) => Promise<void>;
   /**
@@ -126,6 +131,46 @@ export interface WebhookDeps {
    * production, and an unrelayed `cancelledCrew` is a crew member who is never told.
    */
   relayFormNotices?: (form: FormResult) => Promise<void>;
+}
+
+/**
+ * Wrap a money alert so it cannot 500 a webhook (15.17, issue #985).
+ *
+ * **Apply this at every `WebhookDeps` construction.** Thirteen call sites in this file `await
+ * deps.alertPaidButUnbooked(...)` on paths where money has already moved, and all but one are
+ * unguarded — a rejecting implementation would throw out of the handler, Stripe would read the 500
+ * as a delivery failure and redeliver the same event for three days, and every redelivery would
+ * re-reach the same alert and throw again. A notification failure would have become a delivery
+ * failure on the one class of event where the money is already gone.
+ *
+ * **That cannot happen today, and this exists so it stays that way.** The production wiring is
+ * `alertMoneyProblem` (`app/lib/alert.ts:110-124`), which logs first and unconditionally and puts
+ * everything else inside a `try/catch` — the guarantee is real, and it lives in one function's
+ * prose where the type says nothing. An email lane, a second product, or a wiring assembled in a
+ * hurry supplies a throwing implementation and the thirteen sites behave exactly as above, with no
+ * compile error and no test failing. The contract belongs beside the type that states it.
+ *
+ * **Not a per-call-site guard, deliberately.** Thirteen `try/catch` blocks around a path whose
+ * implementation cannot throw is machinery for a case the code does not currently produce. One
+ * wrapper at the wiring covers all thirteen and survives a future implementation that can.
+ *
+ * The existing guard in `compensateResidualRaceLoss` **stays** — it is there for a different
+ * reason (that call runs after irreversible customer-facing work), and that reason outlives this.
+ */
+export function alertThatNeverThrows(
+  alert: (message: string) => Promise<void>,
+): (message: string) => Promise<void> {
+  return async (message: string): Promise<void> => {
+    try {
+      await alert(message);
+    } catch (e) {
+      // **The whole message, not just the failure.** Swallowing quietly would turn "the office was
+      // never told money moved" into an event with no artifact anywhere. An operator reading
+      // runtime logs after a Twilio outage needs the alert's CONTENT — the charge id and the
+      // amount — because this line is then the only record that it happened.
+      logSwallowed("reservations:alertPaidButUnbooked", e, `the office was NOT told: ${message}`);
+    }
+  };
 }
 
 export type WebhookResult =

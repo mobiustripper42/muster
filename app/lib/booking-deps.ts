@@ -11,7 +11,7 @@
  * caller can quietly have an older set.
  */
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
-import type { WebhookDeps } from "@core/reservations/booking-webhook.js";
+import { alertThatNeverThrows, type WebhookDeps } from "@core/reservations/booking-webhook.js";
 import { alertMoneyProblem } from "./alert";
 import { sendReservationConfirmation } from "./booking-confirmation";
 import { forwardFormNotices } from "./channel";
@@ -34,7 +34,15 @@ export function bookingDeps(secretKey: string, webhookSecret?: string): WebhookD
     now: () => new Date().toISOString(),
     // Texts every active admin AND logs (issue #723). Never throws: a failed alert must not 500
     // the webhook into a Stripe redelivery loop.
-    alertPaidButUnbooked: alertMoneyProblem,
+    //
+    // **Wrapped anyway (15.17).** `alertMoneyProblem` already carries that guarantee itself — it
+    // logs first and unconditionally, then puts everything else in a `try/catch`. The wrapper is
+    // not distrust of it; it is where the guarantee stops depending on one function's prose. The
+    // thirteen `await deps.alertPaidButUnbooked(...)` sites in `booking-webhook.ts` are unguarded
+    // because of a promise made over here, and nothing connected the two. Swapping in an email
+    // lane, or assembling a second wiring in a hurry, would have broken all thirteen with no
+    // compile error and no test failing.
+    alertPaidButUnbooked: alertThatNeverThrows(alertMoneyProblem),
     // Best-effort email + SMS of the manage link on a fresh booking (11.4, DEC-122).
     sendConfirmation: sendReservationConfirmation,
     // Best-effort "sold out while you paid — fully refunded" on a residual-race loss (12.1b).

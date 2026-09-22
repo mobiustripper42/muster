@@ -8,7 +8,7 @@ import type { Event, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { PaymentSignatureError, type CheckoutCompleted } from "../ports/payment.js";
 import { eventIdForSlot } from "./availability.js";
-import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
+import { alertThatNeverThrows, processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
 import { confirmPendingRow } from "./write-booking.js";
 import { balanceOwedCents } from "./payment-config.js";
 import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
@@ -2268,5 +2268,72 @@ describe("processBookingWebhook — the trail's spine (issue #1048)", () => {
 
     expect(await trailOf(repo, "refunded")).toHaveLength(0);
     expect(await trailOf(repo, "charge_unmatched")).toHaveLength(1);
+  });
+});
+
+/**
+ * `alertThatNeverThrows` (15.17, issue #985) — the wrapper that keeps a notification failure from
+ * becoming a delivery failure.
+ *
+ * **The issue's premise is already false in production, and that is why this is a wrapper rather
+ * than thirteen try/catches.** `alertPaidButUnbooked` is wired to `alertMoneyProblem`
+ * (`app/lib/booking-deps.ts`), which logs first and unconditionally and puts everything else in a
+ * `try/catch` — so no unguarded call site in this file can currently throw. What the type permits
+ * is another matter: `(message: string) => Promise<void>` says nothing about rejecting, and a
+ * future email lane or a second product supplies one with no compile error and no test failing.
+ */
+describe("alertThatNeverThrows — a failed alert must not 500 the webhook", () => {
+  it("an alert that REJECTS resolves instead", async () => {
+    // The whole point. Unwrapped, this rejection leaves the handler, Stripe reads the 500 as a
+    // failed delivery, and redelivers the same event for three days — every redelivery reaching
+    // the same alert and throwing again, on a path where the money has already moved.
+    const guarded = alertThatNeverThrows(async () => {
+      throw new Error("twilio is down");
+    });
+    await expect(guarded("PAID but NOT booked - charge pi_1")).resolves.toBeUndefined();
+  });
+
+  it("passes the message through untouched when the alert succeeds", async () => {
+    const seen: string[] = [];
+    const guarded = alertThatNeverThrows(async (m) => {
+      seen.push(m);
+    });
+    await guarded("SOLD OUT WHILE PAYING - charge pi_1 for $536.25 was auto-refunded in full.");
+    expect(seen).toEqual(["SOLD OUT WHILE PAYING - charge pi_1 for $536.25 was auto-refunded in full."]);
+  });
+
+  it("LOGS the failure — swallowing an alert silently is the worse bug", async () => {
+    // A wrapper that returns quietly turns "the office was never told money moved" into something
+    // with no artifact at all. The log line is the floor, exactly as `alertMoneyProblem` treats
+    // its own, and it names the consequence rather than just the error.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const boom = new Error("twilio is down");
+      await alertThatNeverThrows(async () => {
+        throw boom;
+      })("PAID but NOT booked - charge pi_1");
+      expect(spy).toHaveBeenCalledOnce();
+      expect(String(spy.mock.calls[0]![0])).toContain("reservations:alertPaidButUnbooked");
+      // The error object as a SECOND argument, never interpolated — the stack is the half that
+      // names what actually failed (`log.ts:48-51`).
+      expect(spy.mock.calls[0]![1]).toBe(boom);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("does not swallow the message itself — the body reaches the log", async () => {
+    // An operator reading runtime logs after a Twilio outage needs the alert's CONTENT, not just
+    // the fact that sending it failed. Losing the body here would mean the money event exists
+    // nowhere a person can read.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await alertThatNeverThrows(async () => {
+        throw new Error("down");
+      })("PAID but NOT booked - charge pi_9 for 53625 usd");
+      expect(String(spy.mock.calls[0]![0])).toContain("pi_9");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

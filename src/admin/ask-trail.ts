@@ -100,7 +100,7 @@ export async function buildAskTrail(
   const roleName = new Map(roles.map((r) => [String(r.id), r.name]));
   const shiftById = new Map(shifts.map((s) => [String(s.id), s]));
 
-  // seatId → { shiftId, roleTypeId } — one listSeatsForShift per shift (pilot
+  // seatId → { shiftId, roleTypeId } — one listSeatsForShift per shift (current
   // scale; revisit with a listAllSeats read if the trail ever sorts at DB scale).
   const seatIndex = new Map<string, { shiftId: ShiftId; role: string }>();
   await Promise.all(

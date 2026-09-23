@@ -6,7 +6,7 @@ import type { Recipient, SendResult } from "./channel.js";
  * Crew assignment-change notice (DEC-084) — the THIRD operator-relay sibling, next
  * to the ask outbox (`ChannelPort`, DEC-030/050) and the doorbell ring
  * (`NotificationPort`, DEC-073). A no-claim, no-thread "you're on / you're off a
- * shift" message: SMS in production, an operator-relayed entry in the pilot.
+ * shift" message: SMS in production, an operator-relayed outbox entry when Twilio is unset.
  *
  * Kept off the other two lanes on purpose (DEC-084): overloading the ask channel
  * breaks its NOT-NULL `askId`/`seatId` correlation; riding the ring's

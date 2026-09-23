@@ -94,7 +94,7 @@ export function isActive(crew: CrewMember): RuleResult {
 
 /**
  * The pure role-competency check (DEC-ROLE-1): does the crew hold the seat's role
- * rating? A captain seat needs `captain`; a mate seat needs `mate`. On the pilot
+ * rating? A captain seat needs `captain`; a mate seat needs `mate`. On the BrewBoat
  * roster captains are rated `[captain, mate]`, so a captain passes a mate seat too
  * (the legitimate downward sub) while a mate never passes a captain seat. The one
  * eligibility floor even the manual override honors (DEC-064).

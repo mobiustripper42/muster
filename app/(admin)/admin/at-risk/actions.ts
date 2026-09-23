@@ -43,7 +43,7 @@ export async function leanOn(formData: FormData): Promise<void> {
       : // The leaned shift leaves the board (its ask is in flight), so the
         // notice needs the shift id to offer the cockpit as the watch path.
         `leaned=${encodeURIComponent(crewMemberId)}&leaned_shift=${encodeURIComponent(shiftId)}`;
-    // Edge channel wiring (DEC-030): the fired ask → the pilot outbox.
+    // Edge channel wiring (DEC-030): the fired ask → the crew channel.
     await relayAsks(out.ask ? [out.ask] : undefined);
   } catch (e) {
     logSwallowed("admin/at-risk:leanOn", e, "the lean-on ask was not placed, or was placed and not forwarded");

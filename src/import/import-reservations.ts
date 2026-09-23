@@ -148,7 +148,7 @@ interface PendingEvent {
  * An event's `status` is **derived**: ≥1 booked reservation → `scheduled`; every
  * reservation cancelled → `cancelled`, so the import→`formShifts` chain cancels its
  * shift instead of stranding a ghost. Cancels arrive as explicit status-700 rows
- * (not absence), so no vanish-detection is needed — out of pilot scope (DEC-037).
+ * (not absence), so no vanish-detection is needed — out of scope (DEC-037).
  */
 // REFACTOR QUEUE — cognitive complexity 47, against a ceiling of 40 (#909).
 // Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling

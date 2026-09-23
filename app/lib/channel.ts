@@ -14,7 +14,7 @@ import { appBaseUrl } from "./base-url";
 /**
  * App-side channel wiring (DEC-030, DEC-MSG-3). This module is the ONE place
  * the app picks the ask/notice adapters. **With Twilio configured (9.4,
- * DEC-MSG-1) crew relays go out as real SMS**; unset, the pilot web-link relay
+ * DEC-MSG-1) crew relays go out as real SMS**; unset, the web-link outbox relay
  * stays: `send` enqueues an OutboxEntry the operator works from /admin/outbox —
  * dark until the env is set (#70). The swap is exactly the constructors below,
  * zero domain change.
@@ -41,7 +41,7 @@ import { appBaseUrl } from "./base-url";
  */
 
 /**
- * Forward fired asks to the pilot outbox — the edge wiring's one line
+ * Forward fired asks through the crew channel — the edge wiring's one line
  * (DEC-030 ruling: the channel is injected at the edge, never threaded through
  * the core ask loop). Best-effort by design: the domain action already
  * committed; a channel hiccup must not turn it into a 500 (`forwardAsks`
@@ -58,11 +58,10 @@ export async function relayAsks(
 }
 
 /**
- * Forward assignment-change notices (DEC-084) to the pilot outbox — the notice
- * sibling of `relayAsks`, same edge-injection + best-effort posture. The pilot
- * adapter is `OutboxNoticeChannel` (enqueues a `NoticeOutboxEntry`); the Twilio swap
- * later is a different constructor here, zero domain change (DEC-MSG-1). The caller
- * has already excluded the operator (DEC-072/084).
+ * Forward assignment-change notices (DEC-084) through the crew channel — the notice
+ * sibling of `relayAsks`, same edge-injection + best-effort posture, same
+ * `makeSmsChannel` (DEC-MSG-1). The caller has already excluded the operator
+ * (DEC-072/084).
  */
 export async function relayNotices(
   changes: readonly AssignmentChange[] | undefined,

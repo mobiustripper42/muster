@@ -242,7 +242,7 @@ export const ASK_DRIP_INTERVAL_MINUTES = envNonNegativeInt(
  * DEC-008) and, if it was the seat's last live ask, the seat reopens so the drip
  * widens past the ghoster and Tier-2 can escalate. Env-overridable
  * (`ASK_SILENT_TIMEOUT_MINUTES`, positive int minutes), default **120** (2h) —
- * the operator's to tune per pilot, same posture as the drip/horizon knobs. NOT
+ * the operator's to tune per deploy, same posture as the drip/horizon knobs. NOT
  * zero-valued (a 0 timeout would expire every ask the instant it's sent), so it
  * uses `envPositiveInt`, not the drip's non-negative helper.
  */

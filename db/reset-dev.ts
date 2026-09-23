@@ -21,9 +21,10 @@
  * ordering, a column another migration assumed). Worth running before shipping a migration.
  *
  * **Guarded against every database that isn't dev.** Refuses unless the target resolves to a
- * local host AND its database name is on the allowlist. The pilot/prod reset (`reset-pilot.ts`)
- * is the one with confirm tokens and an expected-DB check; this one simply cannot be pointed at
- * anything remote, which is a stronger guarantee than a token you can typo past.
+ * local host AND its database name is on the allowlist. It cannot be pointed at anything remote,
+ * which is a stronger guarantee than a token you can typo past. There is deliberately no deployed
+ * counterpart: the pilot reset was deleted by issue #1054, because once bookings and payments
+ * live only in Muster a wipe-and-re-import is data loss rather than recovery.
  */
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -103,8 +104,8 @@ export function resolveTarget(rawUrl: string): Target {
   if (!ALLOWED_HOSTS.has(host)) {
     throw new Error(
       `Refusing to reset a database on host "${host}". This script only ever touches a local ` +
-        `database (${[...ALLOWED_HOSTS].join(", ")}). For a real deployment use db/reset-pilot.ts, ` +
-        `which has confirm tokens and an expected-database check.`,
+        `database (${[...ALLOWED_HOSTS].join(", ")}). There is no reset for a deployed database, ` +
+        `by design — bookings and payments there exist nowhere else.`,
     );
   }
   if (!ALLOWED_DB_NAMES.has(database)) {

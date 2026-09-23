@@ -46,7 +46,7 @@
  *    in the +1 zone. What blunts it is the **count-based** window: the pair burns
  *    two of the 40 slots for +1, where a plain `ask_declined` earns +1 in one — so
  *    churning claims is worse per slot than just answering "out". Known and
- *    accepted at pilot scale (#570); a hard fix means pairing a `self_claim` to its
+ *    accepted at current scale (#570); a hard fix means pairing a `self_claim` to its
  *    own seat's later bail in the scorer.
  *  - **Bail lateness is the signal.** `shift_bailed` carries a fixed floor (−3, =
  *    a ghosted ask so "confirm-then-cancel-early" never beats vanishing) plus a

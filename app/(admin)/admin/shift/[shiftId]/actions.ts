@@ -144,7 +144,7 @@ export async function assignTo(formData: FormData): Promise<void> {
     param = out.error
       ? `act_error=${out.code ?? "unavailable"}`
       : `assigned=${encodeURIComponent(crewMemberId)}`;
-    // Edge channel wiring (DEC-030): the fired ask → the pilot outbox.
+    // Edge channel wiring (DEC-030): the fired ask → the crew channel.
     await relayAsks(out.ask ? [out.ask] : undefined);
   } catch (e) {
     // A throw AFTER `askOne` returned leaves the ask fired and unforwarded — the
@@ -170,7 +170,7 @@ export async function nudgeOn(formData: FormData): Promise<void> {
     param = out.error
       ? `act_error=${out.code ?? "unavailable"}`
       : `nudged=${encodeURIComponent(crewMemberId)}`;
-    // Edge channel wiring (DEC-030): the fired ask → the pilot outbox.
+    // Edge channel wiring (DEC-030): the fired ask → the crew channel.
     await relayAsks(out.ask ? [out.ask] : undefined);
   } catch (e) {
     logSwallowed("admin/shift:nudgeOn", e, "the nudge was not placed, or was placed and not forwarded");

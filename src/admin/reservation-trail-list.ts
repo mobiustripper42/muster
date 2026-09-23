@@ -36,7 +36,7 @@
  * already has the precedent for the fix: `listImportRuns(limit)`, whose docstring calls it *"the
  * one place the port's no-DSL thinness yields to a cap."*
  *
- * **Revisit when** the pilot's trail passes a few thousand rows, or the first time this page is
+ * **Revisit when** the trail passes a few thousand rows, or the first time this page is
  * slow to paint — whichever comes first. The fix is a `limit` on the port method plus a
  * "showing the last N" line here, not a rewrite. Filed rather than built because a cap with no
  * paging control is its own defect, and the paging is not worth designing against 40 rows.

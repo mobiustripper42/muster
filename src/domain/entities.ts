@@ -1235,7 +1235,7 @@ export interface CalendarFeed {
 export type OutboxStatus = "pending" | "sent";
 
 /**
- * One queued relay for the web-link pilot channel (DEC-030, DEC-MSG-3): the
+ * One queued relay for the web-link outbox channel (DEC-030, DEC-MSG-3): the
  * adapter's `send` enqueues this instead of transmitting, and the operator works
  * the outbox page — tap the `sms:` link, text it, mark it sent.
  *

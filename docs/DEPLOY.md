@@ -18,9 +18,6 @@ the *deploy* path.
 > that function. A bare `new pg.Client({ connectionString })` connects unencrypted and Crunchy refuses
 > with `no pg_hba.conf entry … no encryption`, which reads like an IP-allowlist problem and is not one.
 
-> **This is a hosted _pilot_, not production.** What keeps it pilot-grade is the channel (#70: manual
-> SMS relay, single hardcoded operator), **not** the database. Say so in any external comms.
-
 ---
 
 ## What's already wired (this PR — task 5.1)
@@ -44,7 +41,7 @@ What's **yours** to do: provision the DB, set secrets, run migrations, deploy. T
 | `CRON_SECRET` | **you set it** (`openssl rand -base64 32`) | cron auth — Vercel sends it as `Authorization: Bearer …` |
 | `APP_BASE_URL` | **you set it** — the real production origin (e.g. `https://muster.vercel.app`) | minting **delivered** magic links; MUST be set or (a) links are host-spoofable (`app/lib/base-url.ts`) and (b) **the cron silently enqueues outbox links pointing at `localhost`** — it runs with no request Host header, so the fallback is wrong there |
 | `TENANT_TZ` | optional — defaults `America/New_York` (DEC-032) | vessel timezone; set explicitly if BrewBoat ever isn't Eastern |
-| `STAFFING_HORIZON_LEAD_DAYS` | optional — defaults `7` (DEC-022/062). Positive integer days; a bad value falls back | how far ahead the engine starts working a shift (Pending→Filling). Tune per pilot, no redeploy |
+| `STAFFING_HORIZON_LEAD_DAYS` | optional — defaults `7` (DEC-022/062). Positive integer days; a bad value falls back | how far ahead the engine starts working a shift (Pending→Filling). Tune per deploy, no redeploy |
 | `XOLA_PULL_LEAD_DAYS` | optional — **defaults to `STAFFING_HORIZON_LEAD_DAYS`** (DEC-080). Positive integer days; a bad value falls back | how far ahead the importer fetches Xola orders. **Decoupled** from the staffing horizon: set wider (e.g. `30`) to pull a month of bookings for review without the engine asking crew that far out |
 | `ASK_DRIP_INTERVAL_MINUTES` | optional — defaults `15` (DEC-063). Non-negative integer minutes; `0` = blast the whole pool at once | spacing between staged Tier-1 asks (the ripple). Inside the 48h fills-by deadline the engine blasts regardless |
 | `ASK_SILENT_TIMEOUT_MINUTES` | optional — defaults `120` (2h, DEC-067). Positive integer minutes | how long an unanswered ask waits before it counts as silent — past it the seat reopens and the engine moves to the next person |
@@ -443,7 +440,7 @@ DATABASE_URL="<prod connection string>" npm run db:crew -- list
 
 ## Break-glass — fixing things in a pinch
 
-The levers you have when something's wedged mid-pilot. Almost none of this needs a redeploy. Most CLI
+The levers you have when something's wedged in production. Almost none of this needs a redeploy. Most CLI
 levers take the direct/unpooled prod `DATABASE_URL` (same as `db:migrate`, step 3).
 
 | The fire | Lever | How |
@@ -459,7 +456,7 @@ levers take the direct/unpooled prod `DATABASE_URL` (same as `db:migrate`, step 
 | **Bad seat / assignment on a shift** | cockpit | `/admin/shift/<id>` → override / remove seat (remove = no reliability penalty) · split / merge |
 | **An admin needs removing (or is locked out)** | `db:admin` | `db:admin -- revoke <handle>` / `reactivate <handle>` — immediate + scoped (§7b) |
 | **Session compromise — log EVERYONE out** | `SESSION_SECRET` | Rotate the env var in Vercel + redeploy — kills all admin **and** crew sessions at once (the global hammer) |
-| **Operational slate corrupted — clean re-import** | `reset-pilot.ts` | `DATABASE_URL="<direct>" npx tsx db/reset-pilot.ts` (dry-run), then re-run with `RESET_PILOT_CONFIRM=yes RESET_PILOT_EXPECT_DB=<name>`. Truncates shifts/asks/outbox/etc. but **keeps** crew/vessels/credentials/admins — then re-import from Xola. Heavy; guarded four ways |
+| **Operational slate corrupted — clean re-import** | *(no lever)* | **Deliberately gone** (issue #1054). `reset-pilot.ts` wiped shifts and everything derived from them and re-imported from Xola — a pilot tool, and data loss once bookings and payments exist only in Muster. Fix the specific rows instead; `/admin/integrity` finds orphans |
 | **Prod build broken** | Vercel | Redeploy a previous build from the dashboard — instant, DB untouched (see Operating notes) |
 
 Guardrails to remember: `db:crew add` onboards a hire (with the placeholder MMC) and `set`/`enable`/`disable`
@@ -468,7 +465,7 @@ seats/history, so take people out of rotation with `disable`, not deletion. Ther
 revoke** (crew sessions are stateless by design — #300); the only crew-session lever is the global
 `SESSION_SECRET` rotation. Every CLI prints the DB host it hit — read it before you trust a "done."
 
-## Follow-ups (not blocking the pilot)
+## Follow-ups (not blocking)
 - `attachDatabasePool` from `@vercel/functions` closes idle connections before a function suspends —
   a connection-churn optimization worth adding if the database shows connection pressure. One small dep; left
   out of the initial deploy to keep it dependency-clean.

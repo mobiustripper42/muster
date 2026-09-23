@@ -901,7 +901,7 @@ export interface OverrideResult {
  * ARCHIVED crew member (#323, DEC-096 — they're off every list). Still bypasses
  * pool, rank, and current state — that's `manualOverride`, which this composes
  * after the rating + archived checks. Captains stay placeable into mate seats: on
- * the pilot roster they're rated `[captain, mate]`, so `isRatedFor` passes them.
+ * the BrewBoat roster they're rated `[captain, mate]`, so `isRatedFor` passes them.
  * `inactive` is still placeable — a bench, not a removal.
  */
 export async function overrideSeat(

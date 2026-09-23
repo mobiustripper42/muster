@@ -80,7 +80,7 @@ export function normalizeEmail(email: string): string {
 }
 
 /**
- * Resolve an entered email to a single roster crew member, or null. Pilot-scale
+ * Resolve an entered email to a single roster crew member, or null. Roster-scale
  * in-memory match (no by-email index — DEC-081); deterministic on id when an
  * email is somehow shared, so the same email always binds to the same subject.
  */

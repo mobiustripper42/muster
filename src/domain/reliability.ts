@@ -48,7 +48,7 @@ export const RELIABILITY_EVENT_TYPES = [
   // Board landing (DEC-026) — shift-level, system-actor-keyed like pool_widened.
   // The detection half of "landing on the board pings Eric" (§2.5): one event
   // per (shift, reason) is the dedup memory; delivery rides the DEC-MSG-3
-  // pilot adapter later.
+  // channel.
   "board_landed",
   /* ⏳ "hold_released"  ← Pass D (DEC-008) — do not emit in v1 */
 ] as const;

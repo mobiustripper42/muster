@@ -12,7 +12,7 @@ claims:
     note: "switchToAdmin — a crew session becomes an admin one"
   - kind: "file"
     target: "e2e/fixtures.ts"
-    note: "the suite mints in Node, then taps /crew/auth"
+    note: "the suite signs in through the code door, once per saved identity"
   - kind: "file"
     target: "app/(crew)/crew/dev-code/route.ts"
     note: "stays — echoes a code, mints nothing"
@@ -35,5 +35,4 @@ Two consequences, stated rather than discovered later. **Email is now load-beari
 access**: unwire `RESEND_API_KEY` and nobody reaches `/admin`. And the login-code cap has no
 bypass — `db:mint --crew=<id>` was it.
 
-The e2e suite used dev-link in 52 of 56 specs. It now mints against the test database and taps
-`/crew/auth`, which dev-link's shortcut skipped.
+The e2e suite used dev-link in 52 of 56 specs. It now signs in through the code door.

@@ -3,16 +3,29 @@
  * email→code sign-in flow. The security-sensitive surface (an unauthenticated
  * endpoint + the no-enumeration property) gets the e2e attention.
  *
- * NOT covered here: the full code→session happy path. Only the code's HASH is
- * stored, so a black-box test can't read the minted code back. That round-trip
- * is covered at the unit level (src/auth/login-code.test.ts) and by a manual
- * eyeball (read the code from the dev-server log). Everything reachable without
- * the code is exercised below.
+ * The full code→session round-trip reads the code back from the dev-only
+ * `/crew/dev-code` echo (only its hash is stored) — the same path every sign-in
+ * in the suite now takes (`fixtures.ts` § Sign-in).
  */
-import { test, expect, resetAndSeed, signInAsCrew } from "./fixtures.js";
+import {
+  test,
+  expect,
+  resetAndSeed,
+  signInAsCrew,
+  seedCrewMember,
+  removeCrewRow,
+} from "./fixtures.js";
+import type { Page } from "@playwright/test";
 
 const QUINT_EMAIL = "quint@bb.test";
 const CODE_SENT = /a 6-digit code is on its way/i;
+
+/** Sign a throwaway crew member in through the door, then delete their row (#936). */
+async function holdStaleSession(page: Page): Promise<void> {
+  await seedCrewMember({ id: "crew-stale", name: "Stale", email: "stale@bb.test" });
+  await signInAsCrew(page, "crew-stale");
+  await removeCrewRow("crew-stale");
+}
 
 test.describe("crew self-serve sign-in (DEC-081)", () => {
   test.beforeEach(async () => {
@@ -94,12 +107,12 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
    * hardcoded and no `stage` at all — so the code screen could never render and
    * there was no way back in short of clearing cookies.
    *
-   * `signInAsCrew` takes the id straight through: `issueMagicLink` writes whatever
-   * subject id it is handed and never checks that a crew row exists, which is what
-   * makes this one line of setup rather than a seed.
+   * The setup is the scenario itself: a crew member signs in through the door, then their
+   * row is removed. (It used to mint a magic link for an id that never existed; the door
+   * rightly refuses to, so the suite now reaches the state the way production does.)
    */
   test("a STALE crew session still lets you sign in again (#936)", async ({ page }) => {
-    await signInAsCrew(page, "crew-does-not-exist");
+    await holdStaleSession(page);
 
     await page.goto("/crew");
     await page.getByLabel(/sign in with your crew email/i).fill(QUINT_EMAIL);
@@ -124,7 +137,7 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
   test("a stale crew session SAYS it is stale, rather than silently showing step one (#936)", async ({
     page,
   }) => {
-    await signInAsCrew(page, "crew-does-not-exist");
+    await holdStaleSession(page);
     await page.goto("/crew");
     // Before #936 this was the bare email form with nothing to explain it, which is
     // what made the loop read as a broken app rather than a signed-out one.

@@ -261,9 +261,9 @@ test.describe("crew header (#644)", () => {
     const ctx = await browser.newContext({ javaScriptEnabled: false });
     const page = await ctx.newPage();
     // Signs in through the real `/crew/auth` interstitial, whose button is a plain form POST —
-    // so it needs no JS either, which is the whole point of this spec's context. Inlined rather
-    // than calling `signInAsCrew` because that helper waits on a URL predicate that also excludes
-    // `?auth=`, and here the assertion is deliberately narrower.
+    // so it needs no JS either, which is the whole point of this spec's context. Inlined because
+    // `signInAsCrew` would load a session saved by a JS-enabled browser, which proves nothing
+    // about getting in without JS. Goes with `/crew/auth` in issue #1030.
     await page.goto(await crewAuthPath("crew-quint"));
     await page.getByRole("button", { name: /tap to sign in/i }).click();
     await page.waitForURL((u) => u.pathname === "/crew");

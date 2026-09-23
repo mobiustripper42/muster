@@ -19,6 +19,8 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /playwright/.cache/
+# Saved sessions from e2e/auth.setup.ts — signed cookies, rewritten every run
+/e2e/.auth/
 
 # Env / secrets — everything matching .env* is a secret, no exceptions (DEC-S043).
 # The template is `env.example`, outside this namespace, so there is no negation

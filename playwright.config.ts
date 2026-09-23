@@ -215,6 +215,14 @@ export default defineConfig({
       TWILIO_AUTH_TOKEN: "",
       TWILIO_FROM: "",
       TWILIO_MESSAGING_SERVICE_SID: "",
+      // Blank Resend for the same reason. `.env.local` holds a real key, and `sendLoginCodeEmail`
+      // sends whenever both vars are set, in any environment — so every code sign-in in the suite
+      // was a real Resend send to an undeliverable `@bb.test` address, counted against the daily
+      // quota and bounced. Nothing here needs the email: the suite reads codes from the dev-only
+      // `/crew/dev-code` echo. The count jumped when every sign-in moved to the code door, which
+      // is how it nearly exhausted the quota.
+      RESEND_API_KEY: "",
+      EMAIL_FROM: "",
     },
   },
 });

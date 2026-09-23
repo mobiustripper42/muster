@@ -74,7 +74,15 @@ export default defineConfig({
   },
   projects: [
     {
+      // Signs in ONCE per saved identity through the code door (`e2e/auth.setup.ts`). Every
+      // project below depends on it, so a filtered run (`--project=mobile`) still gets it.
+      name: "setup",
+      testMatch: /auth\.setup\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
       name: "desktop",
+      dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } },
     },
     {
@@ -91,6 +99,7 @@ export default defineConfig({
       // sides (#626/#627 — the crew card is phone-primary, and the admin punch card
       // packs two <input type="time"> plus Save on one row, the tightest row in §2.9).
       name: "mobile",
+      dependencies: ["setup"],
       testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|ask-trail|time-off|payroll|payroll-reconcile|shifts-view|calendar-feed|other-shifts-today|vessel-location-admin|offering-catalog|add-ons|blocks|calendar|customers|purchases|book-availability|book-checkout|book-manage|crew-time|admin-time-clock)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
@@ -116,6 +125,7 @@ export default defineConfig({
       // renders signed-out with no cookies at all. CI is unaffected — E2E_PROD defaults to !CI,
       // so CI already runs `next dev` and the cookie is not Secure there.
       name: "iphone",
+      dependencies: ["setup"],
       testMatch: /admin-nav\.spec\.ts/,
       use: { ...devices["iPhone 13"] },
     },

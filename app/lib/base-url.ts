@@ -58,12 +58,12 @@ export function appBaseUrl(): string {
 
 /**
  * The externally-reachable base URL for building links that get DELIVERED to
- * users (magic links). Prefers the trusted `APP_BASE_URL` env; falls back to the
+ * users (booking links, crew links). Prefers the trusted `APP_BASE_URL` env; falls back to the
  * request `Host` header for zero-config local dev.
  *
  * SECURITY: the `Host` header is client-controlled. For any link that gets
  * delivered (emailed/texted), an attacker who can set `Host: evil.com` would have
- * us mint `evil.com/crew/auth?t=<token>` → tap → token theft (the classic
+ * us send `evil.com/b/<code>` → tap → booking-code theft (the classic
  * host-header / password-reset poisoning). So **production must set
  * `APP_BASE_URL`** to the real origin; the Host-header fallback is dev-only
  * convenience. Today the only caller is the dev-only link issuer (404 in prod),

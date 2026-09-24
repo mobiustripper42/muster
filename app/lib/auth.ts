@@ -3,17 +3,17 @@ import {
   shouldRenew,
   signSession,
   verifySession,
+  type AuthSubject,
   type Session,
 } from "@core/auth/session.js";
-import type { AuthSubject } from "@core/auth/magic-link.js";
 import { getRepo } from "./repo";
 
 /**
  * Session-cookie glue (DEC-010, DEC-020). The crypto lives in the framework-free
  * core (`@core/auth/session`); this is the thin Next layer that reads/writes the
- * httpOnly cookie. A magic-link verify mints the cookie; every request that finds
- * a still-valid one inside the renewal window silently re-issues it (sliding
- * expiry), so active crew never get bounced back to a new link.
+ * httpOnly cookie. The 6-digit code door mints the cookie (DEC-081); every request
+ * that finds a still-valid one inside the renewal window silently re-issues it
+ * (sliding expiry), so active crew never get bounced back to the door.
  */
 const COOKIE = "muster_session";
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
@@ -52,7 +52,7 @@ const cookieOptions = (expiresAt: string) => ({
 
 /**
  * The session cookie as name/value/options — so a caller that owns its own
- * response (a redirect from the magic-link landing) can set it directly, dodging
+ * response (a redirect) can set it directly, dodging
  * the next/headers-cookies-plus-redirect footgun.
  */
 export function buildSessionCookie(subject: AuthSubject, now = new Date()) {
@@ -88,7 +88,7 @@ export async function readSubject(): Promise<AuthSubject | null> {
   // Per-person revoke (DEC-092): an admin's session is only good while their row
   // exists and `active`. This is the ONE stateful check — deprovisioning flips the
   // flag and the next request dies here. Scoped to admin subjects (~3, cold
-  // cockpit); crew subjects skip the lookup, so the magic-link hot path stays
+  // cockpit); crew subjects skip the lookup, so the crew hot path stays
   // fully stateless. A revoked admin is treated exactly like no session.
   if (result.subject.kind === "admin") {
     const admin = await getRepo().getAdmin(result.subject.id);

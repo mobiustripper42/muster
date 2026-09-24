@@ -37,9 +37,9 @@ What's **yours** to do: provision the DB, set secrets, run migrations, deploy. T
 |-----|---------------------|----------|
 | `DATABASE_URL` | **you set it** in Vercel — the Crunchy Bridge connection string | every database connection: app queries (`app/lib/repo.ts`), the health probe, and every `db/` script |
 | ~~`DATABASE_URL_UNPOOLED`~~ | **gone with Neon** — not set, nothing reads it | *(was: the direct endpoint for migrations/seeds, because PgBouncer broke DDL)* |
-| `SESSION_SECRET` | **you set it** (`openssl rand -base64 32`) | magic-link session signing |
+| `SESSION_SECRET` | **you set it** (`openssl rand -base64 32`) | session-cookie signing |
 | `CRON_SECRET` | **you set it** (`openssl rand -base64 32`) | cron auth — Vercel sends it as `Authorization: Bearer …` |
-| `APP_BASE_URL` | **you set it** — the real production origin (e.g. `https://muster.vercel.app`) | minting **delivered** magic links; MUST be set or (a) links are host-spoofable (`app/lib/base-url.ts`) and (b) **the cron silently enqueues outbox links pointing at `localhost`** — it runs with no request Host header, so the fallback is wrong there |
+| `APP_BASE_URL` | **you set it** — the real production origin (e.g. `https://muster.vercel.app`) | building **delivered** links (crew texts, booking links); MUST be set or (a) links are host-spoofable (`app/lib/base-url.ts`) and (b) **the cron silently enqueues outbox links pointing at `localhost`** — it runs with no request Host header, so the fallback is wrong there |
 | `TENANT_TZ` | optional — defaults `America/New_York` (DEC-032) | vessel timezone; set explicitly if BrewBoat ever isn't Eastern |
 | `STAFFING_HORIZON_LEAD_DAYS` | optional — defaults `7` (DEC-022/062). Positive integer days; a bad value falls back | how far ahead the engine starts working a shift (Pending→Filling). Tune per deploy, no redeploy |
 | `XOLA_PULL_LEAD_DAYS` | optional — **defaults to `STAFFING_HORIZON_LEAD_DAYS`** (DEC-080). Positive integer days; a bad value falls back | how far ahead the importer fetches Xola orders. **Decoupled** from the staffing horizon: set wider (e.g. `30`) to pull a month of bookings for review without the engine asking crew that far out |

@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
-import { hashSecret, randomSecret } from "@core/auth/magic-link.js";
+import { hashSecret, randomSecret } from "@core/auth/secret.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { FLASH_COOKIE } from "./flash";

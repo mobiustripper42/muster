@@ -1,9 +1,9 @@
 /**
- * Self-rolled session tokens (DEC-010, DEC-020) — the layer above the magic link.
+ * Self-rolled session tokens (DEC-010, DEC-020) — the layer above the login code.
  *
- * A magic link is single-use and minutes-short (magic-link.ts). What it BUYS is a
- * session: a longer-lived, renewable credential the client stores so crew don't
- * re-auth every visit. This module mints and verifies that credential.
+ * A 6-digit code (DEC-081, `login-code.ts`) is single-use and minutes-short. What it
+ * BUYS is a session: a longer-lived, renewable credential the client stores so crew
+ * don't re-auth every visit. This module mints and verifies that credential.
  *
  * Stateless by design: the token is `base64url(payload).base64url(HMAC-SHA256)`,
  * so verification needs only the secret — no session table, no DB round-trip on
@@ -17,8 +17,10 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { logSwallowed } from "../log.js";
-import type { AuthSubjectKind } from "../domain/entities.js";
-import type { AuthSubject } from "./magic-link.js";
+import type { AuthSubjectKind, Subject } from "../domain/entities.js";
+
+/** Who a session authenticates — the canonical `Subject` (DEC-058). */
+export type AuthSubject = Subject;
 
 export interface Session {
   subjectKind: AuthSubjectKind;

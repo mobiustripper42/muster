@@ -158,7 +158,6 @@ cross-reference left, and it points at the spec, never at another decision.
 
 ### Crew self-serve, auth & admin identity
 - DEC-010 — Crew auth is magic-link passwordless; crew don't self-register
-- DEC-034 — Production auth path — operator link mint, dev-link stays 404, NO email provider
 - DEC-074 — Crew self-serve is a fourth crew surface — a knowing, recorded exception to "insultingly small"
 - DEC-075 — Self-claim is auto-lock (`Open → Confirmed`), bypassing `Asked`; operator-confirm-required is a built-in seam, not built
 - DEC-076 — Two eligibility doors — self-claim is native-role-only; operator-assign is ratings-inclusive (the dual-rating escape hatch)
@@ -169,10 +168,10 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-094 — Operator break-glass is CLI + runbook, not an admin UI (10.5; extends DEC-092)
 - DEC-098 — Crew calendar feed — the first persistent bearer capability URL; hash-only, guest-PII-free, UTC-instant ICS
 - DEC-142 — Login brute force is bounded per subject, not per code — and every verify failure is one generic response
-- DEC-150 — An already-authenticated crew member skips the tap-to-sign-in interstitial
 - DEC-174 — The session minters are deleted — one door in
 - DEC-175 — CREW_SELF_SERVE is deleted — a flag with no off-state
 - DEC-176 — Crew see the whole fleet — boats and names, never a ranking
+- DEC-181 — No text carries a sign-in secret — the code is the only door
 
 ### Reservations & payments
 - DEC-105 — Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover

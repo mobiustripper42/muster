@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { makeSmsChannel } from "./sms";
 
 /**
@@ -46,14 +45,13 @@ afterEach(() => {
   saved.clear();
 });
 
-const repo = () => new InMemoryRepository();
 const BASE = "https://muster.test";
 
 describe("makeSmsChannel", () => {
   it("returns a usable channel when Twilio is unset — never null", async () => {
     // The whole defect in one assertion. `makeTwilioChannel` returned null here, and every
     // caller had to decide what that meant. There is no null to decide about now.
-    const { channel, live } = makeSmsChannel(repo(), BASE);
+    const { channel, live } = makeSmsChannel(BASE);
     expect(channel).toBeTruthy();
     expect(typeof channel.send).toBe("function");
     expect(live).toBe(false);
@@ -64,19 +62,16 @@ describe("makeSmsChannel", () => {
     process.env.TWILIO_AUTH_TOKEN = "tok_test";
     process.env.TWILIO_MESSAGING_SERVICE_SID = "MG_test";
 
-    const { channel, live } = makeSmsChannel(repo(), BASE);
+    const { channel, live } = makeSmsChannel(BASE);
     expect(channel).toBeTruthy();
     expect(live).toBe(true);
   });
 
-  it("does not mint a link on a production deploy, and redacts a booking code", async () => {
-    // `logChannel` moved from `channel.ts` to `sms.ts` in #955, and its `mintLink: !isProdDeploy()`
-    // came with it — untested at either address. This pins it at the new one, because the flag is
-    // what keeps a live crew credential out of a production log stream.
-    //
-    // The booking-code half is the finding `/security-review` raised on this branch: `mintLink`
-    // only ever governed the link this class MINTS, and a customer receipt arrives with its link
-    // already composed into the body, so the guard never saw it. It does now.
+  it("redacts a booking code on a production deploy", async () => {
+    // `/security-review` on #955: a customer receipt arrives with its link already composed into
+    // the body, and a booking code is a credential. The flag is now `revealBookingCodes:
+    // !isProdDeploy()`; it was `mintLink` until issue #1030 retired the crew magic link it was
+    // first written for.
     process.env.VERCEL_ENV = "production";
     const errors: string[] = [];
     const spy = vi.spyOn(console, "error").mockImplementation((l: unknown) => {
@@ -84,7 +79,7 @@ describe("makeSmsChannel", () => {
     });
 
     try {
-      const { channel, live } = makeSmsChannel(repo(), BASE);
+      const { channel, live } = makeSmsChannel(BASE);
       expect(live).toBe(false);
       await channel.send({
         to: { email: "mary@x.io", phone: "+15555550199" },
@@ -109,7 +104,7 @@ describe("makeSmsChannel", () => {
     process.env.TWILIO_ACCOUNT_SID = "AC_test";
     // no auth token, no sender
 
-    const { channel, live } = makeSmsChannel(repo(), BASE);
+    const { channel, live } = makeSmsChannel(BASE);
     expect(channel).toBeTruthy();
     expect(live).toBe(false);
   });

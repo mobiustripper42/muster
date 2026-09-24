@@ -1,12 +1,11 @@
 /**
  * TwilioChannel (9.4/#225, DEC-MSG-1 swap) — one class, three relay ports.
  * Asserts the Twilio request shape (endpoint, basic auth, form-encoded
- * To/From/Body) without a live send, the mint-at-send magic-link per port
- * (ask Yes/No, notice sign-in, ring thread deep-link), and the port contract's
+ * To/From/Body) without a live send, the plain link per port — no secret in any
+ * text since issue #1030 (ask and notice → /crew, ring → its thread), and the port contract's
  * throw-on-reject (missing phone, non-2xx).
  */
 import { describe, expect, it } from "vitest";
-import { InMemoryRepository } from "./in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { OutboundMessage } from "../ports/channel.js";
 import type { AssignmentNotice } from "../ports/notice.js";
@@ -37,15 +36,14 @@ function fakeFetch(
 const CREW = asId<"CrewMemberId">("crew-quint");
 const NOW = new Date("2026-07-03T21:00:00.000Z");
 
-function channel(fetch: FetchLike, repo = new InMemoryRepository()) {
-  return new TwilioChannel(repo, {
+function channel(fetch: FetchLike) {
+  return new TwilioChannel({
     accountSid: "ACtest",
     authToken: "token-test",
     from: "+15005550006",
     linkBase: "https://muster.test",
     fetch,
     now: () => NOW,
-    mintSecret: () => "s3cret",
   });
 }
 
@@ -84,8 +82,7 @@ describe("TwilioChannel", () => {
 
   it("sends via MessagingServiceSid when configured — the A2P campaign route (no From, no 30034)", async () => {
     const { fetch, calls } = fakeFetch();
-    const repo = new InMemoryRepository();
-    const ch = new TwilioChannel(repo, {
+    const ch = new TwilioChannel({
       accountSid: "ACtest",
       authToken: "token-test",
       messagingServiceSid: "MGcampaign",
@@ -93,7 +90,6 @@ describe("TwilioChannel", () => {
       linkBase: "https://muster.test",
       fetch,
       now: () => NOW,
-      mintSecret: () => "s3cret",
     });
     await ch.send(ask());
 
@@ -106,7 +102,7 @@ describe("TwilioChannel", () => {
   it("refuses construction with neither messagingServiceSid nor from", () => {
     expect(
       () =>
-        new TwilioChannel(new InMemoryRepository(), {
+        new TwilioChannel({
           accountSid: "ACtest",
           authToken: "token-test",
           linkBase: "https://muster.test",
@@ -114,19 +110,18 @@ describe("TwilioChannel", () => {
     ).toThrow(/messagingServiceSid or from/);
   });
 
-  it("an ask SMS carries the body + a freshly minted Yes/No magic link", async () => {
+  it("an ask SMS carries the body + a plain link to /crew, where Yes/No is answered", async () => {
     const { fetch, calls } = fakeFetch();
-    const repo = new InMemoryRepository();
-    await channel(fetch, repo).send(ask());
+    await channel(fetch).send(ask());
 
     const body = new URLSearchParams(calls[0]!.init.body).get("Body")!;
     expect(body).toBe(
       "Muster: Sat, Jul 4 · Hops · captain — yes or no?\n" +
-        "https://muster.test/crew/auth?t=s3cret",
+        "https://muster.test/crew",
     );
   });
 
-  it("an assignment notice appends the my-shifts sign-in link (DEC-084)", async () => {
+  it("an assignment notice appends a plain link to /crew (DEC-084)", async () => {
     const { fetch, calls } = fakeFetch();
     const notice: AssignmentNotice = {
       to: { crewMemberId: CREW, phone: "+15035550111" },
@@ -139,7 +134,7 @@ describe("TwilioChannel", () => {
     const body = new URLSearchParams(calls[0]!.init.body).get("Body")!;
     expect(body).toBe(
       "Muster: you're off the Sat, Jul 4 · Hops shift.\n" +
-        "https://muster.test/crew/auth?t=s3cret",
+        "https://muster.test/crew",
     );
   });
 
@@ -157,8 +152,24 @@ describe("TwilioChannel", () => {
     const body = new URLSearchParams(calls[0]!.init.body).get("Body")!;
     expect(body).toBe(
       "Muster: 3 new messages — tap to read.\n" +
-        "https://muster.test/crew/auth?t=s3cret&thread=thread-all-staff",
+        "https://muster.test/crew/threads/thread-all-staff",
     );
+  });
+
+  it("no text carries a sign-in secret — nothing is written to redeem one (#1030)", async () => {
+    const { fetch, calls } = fakeFetch();
+    const ch = channel(fetch);
+    await ch.send(ask());
+    await ch.send({
+      to: { crewMemberId: CREW, phone: "+15035550111" },
+      action: "added",
+      shiftId: asId<"ShiftId">("shift-hops"),
+      body: "Muster: you're on the Sat, Jul 4 · Hops shift.",
+    });
+    for (const c of calls) {
+      const body = new URLSearchParams(c.init.body).get("Body")!;
+      expect(body).not.toMatch(/crew\/auth|[?&]t=/);
+    }
   });
 
   it("throws on a missing recipient phone (port contract)", async () => {
@@ -169,7 +180,7 @@ describe("TwilioChannel", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("throws on a non-2xx with the status, never echoing the link-bearing body", async () => {
+  it("throws on a non-2xx with the status, never echoing the body", async () => {
     const { fetch } = fakeFetch({
       ok: false,
       status: 401,
@@ -178,7 +189,7 @@ describe("TwilioChannel", () => {
     await expect(channel(fetch).send(ask())).rejects.toThrow(
       /Twilio send failed \(401\)/,
     );
-    // The thrown message must not leak the minted magic link.
-    await expect(channel(fetch).send(ask())).rejects.not.toThrow(/t=s3cret/);
+    // The thrown message must not echo the text it tried to send.
+    await expect(channel(fetch).send(ask())).rejects.not.toThrow(/yes or no/);
   });
 });

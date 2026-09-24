@@ -3,7 +3,7 @@
  *
  * The crew front door (DEC-079): a crew member opens the app on their own
  * initiative, enters their email, gets a 6-digit code in that email, and pastes
- * it back. Two operations, mirroring the magic-link core but for a SHORT secret:
+ * it back. Two operations, for a SHORT secret:
  *   request → match an email to a roster crew member, mint a 6-digit code, store
  *             only its hash (one live code per subject — re-request upserts).
  *   verify  → re-hash a presented code, find the subject's live code, check it's
@@ -14,9 +14,8 @@
  * browser, not the installed PWA, so the session lands in the wrong context — the
  * #1 magic-link failure on mobile. A code never leaves the app you started in.
  *
- * Why its own primitive and not `magic_tokens`: a 6-digit code is NOT globally
- * unique (collisions across crew are likely) and `magic_tokens.token_hash` is
- * `unique` + hash-keyed — so codes are keyed by SUBJECT instead, which is also
+ * Why keyed by subject and not by hash: a 6-digit code is NOT globally unique
+ * (collisions across crew are likely) — so codes are keyed by SUBJECT, which is also
  * what makes `attempts` capping possible (you must find the row by who, not by a
  * wrong guess that hashes to nothing).
  *

@@ -27,7 +27,7 @@ Roles:
 - **Web framework / host:** **Next.js (App Router) on Vercel**. Next imports the core via the `@core/*` alias.
 - **Build:** `npm run build` = `next build --webpack`. **Webpack, not Turbopack** — the core's NodeNext `.js` import specifiers need `extensionAlias` (`.js`→`.ts`), which Turbopack lacks (DEC-020). Two TS profiles: `tsconfig.core.json` (strict NodeNext, the core — `npm run typecheck`) and root `tsconfig.json` (Next/bundler, the app — `typecheck:app`).
 - **Persistence:** **Postgres behind the `Repository` port**, **local Postgres in dev**; schema is plain Postgres DDL (DEC-DATA-1). **Hosted Postgres = Crunchy Bridge** (issue #960 moved it off Neon — see `docs/DEPLOY.md`); the port keeps it vendor-swappable, and it has now been swapped once. Crunchy requires TLS against a team-specific self-signed root, committed at `src/config/db-ssl.ts`; **every pool and client goes through `pgConnectionConfig`** and a bare `new pg.Client({ connectionString })` is refused by the server. The in-memory adapter stays as the test substrate.
-- **Auth:** **self-rolled magic-link in the service layer** (no auth platform) — same for admin + crew.
+- **Auth:** **self-rolled in the service layer** (no auth platform): a 6-digit code emailed to the crew member, then a signed session cookie; an admin is a crew member who switches up (DEC-081, DEC-174, DEC-181).
 - **Channel (crew ask):** one port (DEC-MSG-3), many adapters — `ls src/adapters/*-channel.ts`. SMS is live in production (DEC-MSG-1); the fakes are permanent test infra.
 
 ## Core Data Model
@@ -65,7 +65,7 @@ Project-specific docs beyond the baseline `## Key Docs` table in the `CLAUDE.md`
 | `docs/USER_STORIES.md` | What each role does. Left the shell's Key Docs in seeds PR #206 for the same reason as BRAND.md. |
 | `docs/DEV_REFERENCE.md` | Deploy + review reference — `<VersionTag />` wiring, the `NEXT_PUBLIC_` gotcha that silently renders `v0.0.0`, CHANGELOG format, phone PR-review notes. Also left the shell in seeds PR #206. |
 | `docs/FUTURE_IDEAS.md` | The shiny-object parking lot. New ideas land here, not in the locked spec (DEC-014). |
-| `docs/RUNNING.md` | How to run the app locally, see the UI (Tailscale host, magic-link dev flow), check a change. PRs link here for setup. |
+| `docs/RUNNING.md` | How to run the app locally, see the UI (Tailscale host, code sign-in dev flow), check a change. PRs link here for setup. |
 | `docs/DEPLOY.md` | Go-live runbook — Vercel + Crunchy Bridge Postgres (Phase 5.1, DEC-033; moved off Neon by issue #960). Its provisioning walkthrough is still the Neon one and is marked as such. |
 | `docs/design/DESIGN-REFERENCE.md` | How to consume the UI mockups: spec wins on *what*, mockups inform *how*; **read `JSX`, never import**. Read before building any surface (M4). |
 | `docs/design/mockups/` | Claude Design export (`HTML` + `JSX`) per surface §2.1–2.6.3. **Visual-direction reference, not spec.** |
@@ -114,7 +114,7 @@ Read by `/kill-this` Step 3.5 and matched against the branch diff. On a hit the 
 |---|---|
 | **Money moving** | `app/api/webhooks/stripe/`, `src/adapters/stripe-payment.ts`, `src/ports/payment.ts`, `src/reservations/booking-webhook.ts`, `src/reservations/create-departure-payment-intent.ts`, `src/reservations/create-balance-checkout.ts`, `src/reservations/payment-config.ts`, `src/reservations/refund-payment.ts`, `src/reservations/refund-terms.ts`, `src/reservations/cancel-reservation.ts`, `src/reservations/confirm-booking.ts`, `src/reservations/write-booking.ts`, `app/(admin)/admin/calendar/[reservationId]/actions.ts`, `app/(admin)/admin/calendar/[reservationId]/page.tsx`, `app/(public)/book/checkout/actions.ts` |
 | **Money computed** | `src/admin/payroll.ts`, `src/admin/gratuity-payroll.ts`, `app/(admin)/admin/payroll/**` (incl. the `gusto.csv` and `tips.csv` exports), `app/(admin)/admin/time-clock/**`, `app/(admin)/admin/shift/[shiftId]/**`, `app/(admin)/admin/shifts/**`, `app/(crew)/crew/shift/[shiftId]/**` |
-| **Auth / capability URL** | `app/lib/auth.ts`, `app/lib/auth-delivery.ts`, `app/(crew)/crew/auth/`, `app/api/calendar/[token]/**`, `app/b/**`, `src/auth/**`, `src/reservations/booking-code.ts`, `src/reservations/ensure-booking-code.ts` |
+| **Auth / capability URL** | `app/lib/auth.ts`, `app/lib/auth-delivery.ts`, `app/lib/switch-actions.ts`, `app/(crew)/crew/actions.ts`, `app/(crew)/crew/dev-code/**`, `app/api/calendar/[token]/**`, `app/b/**`, `src/auth/**`, `src/reservations/booking-code.ts`, `src/reservations/ensure-booking-code.ts` |
 | **Data-changing migration** | a file under `db/migrations/` containing `drop`, `alter … type`, `update`, or `delete`. An additive `add column` does **not** trigger |
 
 **`refund-payment.ts` was missing until #726** — the one module in the repo that hands real money *back*, absent from a list defined as "money moving". It was caught by asking the skill's own fallback question (does a number this produces reach someone's statement?) rather than by the table, which is the failure mode a path list has: it can only name what someone thought of. When a money change doesn't match a row, add the row in the same PR.

@@ -11,13 +11,12 @@
  *
  * It can't be retired by adding foreign keys later, either: three spine references
  * live inside jsonb arrays (`vessel.manning[].roleTypeId`, `crew.ratings[]`,
- * `shift.eventIds[]`) and `magic_tokens.subject_id` is polymorphic. This is
+ * `shift.eventIds[]`) and `audit_events.actor_id` is polymorphic. This is
  * permanent infrastructure.
  *
  * Scope: the structural spine, NOT the append-only reliability log (DEC-008) — a
  * dangling crew ref in an immutable log is benign and the log is high-volume, so
- * scanning it on a healthcheck would violate "cheap". Admin magic-link subjects
- * have no entity to point at, so only crew-subject tokens are checked.
+ * scanning it on a healthcheck would violate "cheap".
  *
  * O(rows): fine at BrewBoat scale and as a scheduled integrity job; not a
  * per-request liveness probe at large volume.
@@ -52,7 +51,6 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     asks,
     credentials,
     ptoWindows,
-    magicTokens,
     outboxEntries,
     locations,
     noticeOutbox,
@@ -70,7 +68,6 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     repo.listAllAsks(),
     repo.listAllCredentials(),
     repo.listAllPtoWindows(),
-    repo.listAllMagicTokens(),
     repo.listOutboxEntries(),
     repo.listLocations(),
     repo.listNoticeOutboxEntries(),
@@ -158,11 +155,6 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
       miss(shiftIds, "timePunch", p.id, "shiftId", p.shiftId);
     }
   }
-  for (const t of magicTokens) {
-    if (t.subjectKind === "crew") {
-      miss(crewIds, "magicToken", t.id, "subjectId", t.subjectId);
-    }
-  }
   // Outbox entries (DEC-030): channel-adapter state, but it points into the
   // spine (ask/seat/crew) — a dangling ref means the relay card can't render.
   const askIds = new Set(asks.map((a) => a.id as string));
@@ -190,7 +182,7 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
   // admins are crew (DEC-092; `admins.id` IS a crew id), an importer's is a source tag, and the
   // other two carry nothing. The first version of this gated on `crew`, which is precisely the
   // kind that never has an id: the branch was dead and its test asserted the inversion as
-  // intended. Same shape as `magic_tokens.subject_id`, and the same trap.
+  // intended.
   for (const a of auditEvents) {
     miss(crewIds, "auditEvent", a.id, "crewMemberId", a.crewMemberId);
     if (a.actorKind === "admin" && a.actorId !== undefined) {
@@ -212,7 +204,6 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
       asks: asks.length,
       credentials: credentials.length,
       ptoWindows: ptoWindows.length,
-      magicTokens: magicTokens.length,
       outboxEntries: outboxEntries.length,
       locations: locations.length,
       noticeOutboxEntries: noticeOutbox.length,

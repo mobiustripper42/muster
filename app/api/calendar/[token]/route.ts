@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { hashSecret } from "@core/auth/magic-link.js";
+import { hashSecret } from "@core/auth/secret.js";
 import { buildCalendarFeed, renderCalendar } from "@core/crewapp/calendar-feed.js";
 import { getRepo } from "../../../lib/repo";
 import { baseUrl } from "../../../lib/base-url";

@@ -47,7 +47,7 @@ export async function requestBookingLink(formData: FormData): Promise<void> {
         // #955: always a channel. This used to be `?? undefined` and then spread away below, so a
         // Twilio-dark deploy sent a customer nothing and recorded nothing — on the one screen
         // whose entire job is recovering a booking they have already lost the link to.
-        const { channel: sms } = makeSmsChannel(repo, linkBase);
+        const { channel: sms } = makeSmsChannel(linkBase);
 
         await recoverBookingLink(
           {

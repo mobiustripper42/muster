@@ -484,7 +484,7 @@ there is no public-side cert change.
 
 **61.** Verify on the real hostname:
    - `https://crew.brewcle.com/api/health` → `ok`
-   - **A crew magic-link SMS arrives and its link opens** — this is what `APP_BASE_URL` protects;
+   - **A crew SMS arrives and its link opens** — this is what `APP_BASE_URL` protects;
      a wrong value dead-links to localhost
    - `/crew/dev-code` → **404**
    - Sign in as admin, load `/admin/at-risk`

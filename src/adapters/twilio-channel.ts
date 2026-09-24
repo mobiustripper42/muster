@@ -11,10 +11,10 @@
  * could we do it with what we have? yes). `fetch` is injected so unit tests
  * assert the request shape without a live send.
  *
- * Link handling mirrors the outbox adapters it replaces (DEC-030 "mint at
- * send"): each SMS that needs a tap-in appends a fresh one-time magic link —
- * the ask's Yes/No URL, the notice's my-shifts sign-in, the ring's thread
- * deep-link. Minted here, once, straight into the delivered text.
+ * Each crew SMS appends a PLAIN link — `/crew` for the ask (where Yes/No is
+ * answered) and the notice, the thread for a ring. No secret rides in any text
+ * (issue #1030): a signed-in crew member lands where the link points, a
+ * signed-out one at the 6-digit code door (DEC-081), one login and no second one.
  *
  * Unlike the outbox worklist adapters there is no dedupe slot: a real SMS has
  * no "pending entry" to upsert. The forward-* glue only calls per committed
@@ -26,10 +26,7 @@
  */
 
 import { logSwallowed } from "../log.js";
-import { issueMagicLink, randomSecret } from "../auth/magic-link.js";
-import type { CrewMemberId } from "../domain/ids.js";
 import {
-  RELAY_LINK_TTL_MS,
   type ChannelPort,
   type OutboundMessage,
   requireCrewId,
@@ -41,7 +38,6 @@ import type {
   NotificationMessage,
   NotificationPort,
 } from "../ports/notification.js";
-import type { Repository } from "../ports/repository.js";
 import type { FetchLike } from "./email-channel.js";
 import { stripTrailingSlashes } from "../config/base-url.js";
 
@@ -75,12 +71,9 @@ export interface TwilioChannelOptions {
   fetch?: FetchLike;
   /** Injected clock — defaults to the wall clock (adapter parity). */
   now?: () => Date;
-  /** Injected secret generator — defaults to crypto-random. */
-  mintSecret?: () => string;
 }
 
 export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort {
-  readonly #repo: Repository;
   readonly #opts: Pick<
     TwilioChannelOptions,
     "accountSid" | "authToken" | "from" | "messagingServiceSid"
@@ -88,10 +81,8 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
   readonly #linkBase: string;
   readonly #fetch: FetchLike;
   readonly #now: () => Date;
-  readonly #mintSecret: () => string;
 
-  constructor(repo: Repository, options: TwilioChannelOptions) {
-    this.#repo = repo;
+  constructor(options: TwilioChannelOptions) {
     if (!options.messagingServiceSid && !options.from) {
       throw new Error("twilio channel needs messagingServiceSid or from");
     }
@@ -106,7 +97,6 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
     this.#linkBase = stripTrailingSlashes(options.linkBase);
     this.#fetch = options.fetch ?? (globalThis.fetch as unknown as FetchLike);
     this.#now = options.now ?? (() => new Date());
-    this.#mintSecret = options.mintSecret ?? randomSecret;
   }
 
   /**
@@ -123,22 +113,19 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
     if ("threadId" in message) {
       // Doorbell ring (DEC-073): body is composed (summary/content) by
       // forwardNotifications; the link deep-links into the thread.
-      const link = await this.#mintLink(
-        requireCrewId(message.to),
-        `&thread=${encodeURIComponent(String(message.threadId))}`,
-      );
+      requireCrewId(message.to);
+      const link = `${this.#linkBase}/crew/threads/${encodeURIComponent(String(message.threadId))}`;
       text = `${message.body}\n${link}`;
     } else if ("action" in message) {
       // Assignment notice (DEC-084): body composed + frozen by forwardNotices;
-      // the link signs the crew member into their my-shifts view.
-      const link = await this.#mintLink(requireCrewId(message.to));
-      text = `${message.body}\n${link}`;
+      // the link opens their my-shifts view.
+      requireCrewId(message.to);
+      text = `${message.body}\n${this.#linkBase}/crew`;
     } else if (message.kind === "ask") {
-      // The ask (DEC-030): same 24h answer-window link the web-link relay
-      // mints — the crew member taps, lands authenticated on Yes/No, and
-      // answers through `recordResponseAndConfirm`. No inbound SMS parsing.
-      const link =
-        message.link ?? (await this.#mintLink(requireCrewId(message.to)));
+      // The ask (DEC-030): the crew member taps, lands on /crew where Yes/No
+      // is answered through `recordResponseAndConfirm`. No inbound SMS parsing.
+      requireCrewId(message.to);
+      const link = message.link ?? `${this.#linkBase}/crew`;
       text = `${message.body}\n${link}`;
     } else {
       // magic_link / receipt: the body (and optional link) arrive composed.
@@ -146,19 +133,6 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
     }
 
     return this.#deliver(phone, text);
-  }
-
-  /** Fresh one-time crew magic link (mint-at-send, DEC-030) — 24h TTL. */
-  async #mintLink(
-    crewMemberId: CrewMemberId,
-    extraQuery = "",
-  ): Promise<string> {
-    const { secret } = await issueMagicLink(
-      this.#repo,
-      { subjectKind: "crew", subjectId: crewMemberId, ttlMs: RELAY_LINK_TTL_MS },
-      { now: this.#now(), mintSecret: this.#mintSecret },
-    );
-    return `${this.#linkBase}/crew/auth?t=${secret}${extraQuery}`;
   }
 
   async #deliver(to: string, body: string): Promise<SendResult> {
@@ -183,8 +157,8 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
     });
 
     if (!res.ok) {
-      // Surface status + Twilio's error body; the message text (which embeds a
-      // live magic link) is deliberately NOT echoed into the error.
+      // Surface status + Twilio's error body; the message text (which can embed a
+      // booking link — a credential) is deliberately NOT echoed into the error.
       //
       // Read that claim precisely: it is about what WE interpolate, not about what Twilio
       // returns in `detail`. Since #902 this error is logged rather than discarded, so the
@@ -206,7 +180,7 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
       //
       // **The error's MESSAGE is deliberately not logged.** This is a `JSON.parse` failure,
       // whose message embeds the input it choked on — and the input is the provider's
-      // message resource, which carries the sent body, which carries a live magic link. The
+      // message resource, which carries the sent body, which can carry a booking link. The
       // error's TYPE is the part that is safe and is most of the signal anyway.
       logSwallowed(
         "sms:send",

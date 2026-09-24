@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import type { AuthSubject } from "@core/auth/magic-link.js";
+import type { AuthSubject } from "@core/auth/session.js";
 import { getRepo } from "../../app/lib/repo";
 import { switchToAdmin } from "../../app/lib/switch-actions";
 import { AppLink } from "../ui/app-link";

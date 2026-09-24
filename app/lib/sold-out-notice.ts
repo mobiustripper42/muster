@@ -53,7 +53,7 @@ export async function sendReservationSoldOutNotice(
     // channel-less notice is gone. With #955 already guaranteeing `makeSmsChannel` never returns
     // null, `sms` is always present — so the `!email && !sms` early return below could never fire
     // and has been deleted rather than left as reassuring dead code.
-    const sms = makeSmsChannel(repo, linkBase).channel;
+    const sms = makeSmsChannel(linkBase).channel;
 
     // The contact is already resolved off the reservation row by the webhook (15.5) — this edge
     // does not reach for it, and there is no longer any metadata here to reach into.

@@ -1,11 +1,10 @@
 import { TwilioChannel } from "@core/adapters/twilio-channel.js";
 import { LogChannel } from "@core/adapters/log-channel.js";
-import type { Repository } from "@core/ports/repository.js";
 import { isProdDeploy } from "./flags";
 
 /**
  * The channel when Twilio is not configured (#934). It logs the message it would have
- * sent, magic link and all, and that is the whole of what replaced the outbox: three
+ * sent, link and all, and that is the whole of what replaced the outbox: three
  * queues, three tables and a screen whose only surviving job was letting a human read
  * a message nothing could deliver.
  *
@@ -17,17 +16,16 @@ import { isProdDeploy } from "./flags";
  * construct it, and `channel.ts` already imports this module. Leaving it there made the cycle.
  * It is private now — every caller goes through `makeSmsChannel`, which is the point.
  */
-function logChannel(repo: Repository, linkBase: string, now?: () => Date): LogChannel {
+function logChannel(linkBase: string, now?: () => Date): LogChannel {
   const prod = isProdDeploy();
-  return new LogChannel(repo, {
+  return new LogChannel({
     linkBase,
     ...(now ? { now } : {}),
     sink: prod ? (l) => console.error(l) : (l) => console.log(l),
-    // The link is a CREDENTIAL, and for `OPERATOR_CREW_MEMBER_ID` an admin one —
-    // `switchToAdmin` upgrades a crew session to admin with no re-auth. Minted in dev,
-    // where the log is a terminal you are watching; never in prod, where it is a stream
-    // that log-read access alone can reach. Same rule as `auth-delivery.ts:58`.
-    mintLink: !prod,
+    // A booking code in a customer body is a CREDENTIAL (`booking-code.ts`). Left intact in
+    // dev, where the log is a terminal you are watching; redacted in prod, where it is a
+    // stream that log-read access alone can reach. Same rule as `auth-delivery.ts:58`.
+    revealBookingCodes: !prod,
   });
 }
 
@@ -86,12 +84,9 @@ export function readTwilioEnv(): TwilioEnv | null {
  * {@link makeSmsChannel} — the compiler now stops a tenth site inventing a tenth answer, which no
  * test could have done.
  */
-function makeTwilioChannel(
-  repo: Repository,
-  linkBase: string,
-): TwilioChannel | null {
+function makeTwilioChannel(linkBase: string): TwilioChannel | null {
   const env = readTwilioEnv();
-  return env ? new TwilioChannel(repo, { ...env, linkBase }) : null;
+  return env ? new TwilioChannel({ ...env, linkBase }) : null;
 }
 
 /**
@@ -104,16 +99,15 @@ function makeTwilioChannel(
  * read this flag; `resendReservationLink` still returns `skipped` rather than `attempted`, so the
  * operator is never shown "Sent" for a message that only reached a terminal.
  *
- * The log channel's production posture comes from {@link logChannel} and is unchanged: the minted
- * link is a credential, so it is minted in dev where the log is a terminal you are watching, and
- * never in prod where the log is a stream that log-read access alone can reach.
+ * The log channel's production posture comes from {@link logChannel}: a booking code is a
+ * credential, so it is left intact in dev where the log is a terminal you are watching, and
+ * redacted in prod where the log is a stream that log-read access alone can reach.
  */
 export function makeSmsChannel(
-  repo: Repository,
   linkBase: string,
   now?: () => Date,
 ): { channel: TwilioChannel | LogChannel; live: boolean } {
-  const twilio = makeTwilioChannel(repo, linkBase);
+  const twilio = makeTwilioChannel(linkBase);
   if (twilio) return { channel: twilio, live: true };
-  return { channel: logChannel(repo, linkBase, now), live: false };
+  return { channel: logChannel(linkBase, now), live: false };
 }

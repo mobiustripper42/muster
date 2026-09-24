@@ -40,11 +40,11 @@ export type MessageKind = "ask" | "magic_link" | "receipt" | "admin_alert" | "bo
  * A discriminated union, NOT one shape with an optional `crewMemberId` (DEC-122):
  *  - `CrewRecipient` — the engine ALWAYS knows the crew member (records are
  *    operator-created, DEC-010), so a crew relay carries a required `crewMemberId`.
- *    The crew-link adapters feed it straight into `issueMagicLink`; keeping it
- *    required is what stops a builder silently emitting a link with no subject.
+ *    Keeping it required is what stops a builder silently addressing a crew
+ *    relay to no one.
  *  - `GuestRecipient` — a booking customer (DEC-122) is not a crew member: email
  *    and/or phone, no `crewMemberId`. Only the guest-safe `receipt` send path
- *    (composed body, no minted crew link) ever addresses one.
+ *    (composed body, no crew link) ever addresses one.
  */
 export interface CrewRecipient {
   crewMemberId: CrewMemberId;
@@ -101,16 +101,6 @@ export interface SendResult {
    */
   loggedOnly?: true;
 }
-
-/**
- * How long a relayed magic link lives: the ask's answer window (DEC-030). The 15-minute
- * short magic-link TTL stays dev-only.
- *
- * Lived in `web-link-channel.ts` until #934 deleted that adapter, and `TwilioChannel`
- * imported it from there — an adapter depending on a sibling adapter for a contract
- * constant. It belongs with the port both of them implement.
- */
-export const RELAY_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface ChannelPort {
   /** Hand one message to the delivery medium. Throws if the medium rejects it. */

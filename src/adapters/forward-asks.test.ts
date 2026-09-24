@@ -60,18 +60,15 @@ async function seedSpine(repo: InMemoryRepository): Promise<Ask> {
 describe("forwardAsks — the edge wiring's shared seam (DEC-030)", () => {
   it("an ask fired → a relayable line, through the real unconfigured-channel adapter", async () => {
     // Was asserted against `WebLinkChannel` and an `OutboxEntry` row until #934 removed
-    // the outbox. Same claim, same seam: the edge composes the relay text and a working
-    // magic link, and the adapter is the thing that decides what to do with them.
+    // the outbox. Same claim, same seam: the edge composes the relay text, and the adapter
+    // adds the plain `/crew` link (issue #1030 — no secret in any text) and decides the rest.
     const repo = new InMemoryRepository();
     const ask = await seedSpine(repo);
     const lines: string[] = [];
-    const channel = new LogChannel(repo, {
+    const channel = new LogChannel({
       linkBase: "http://mill-dev:3000",
       now: () => T0,
-      mintSecret: () => "secret-0",
       sink: (l) => lines.push(l),
-      // The link is the thing under test here; in production it is not minted at all (#934).
-      mintLink: true,
     });
 
     expect(await forwardAsks(repo, channel, [ask])).toBe(1);
@@ -79,7 +76,7 @@ describe("forwardAsks — the edge wiring's shared seam (DEC-030)", () => {
     expect(lines).toHaveLength(1);
     // Human relay text from the spine — GSM-7 only (1-segment SMS).
     expect(lines[0]).toContain("Muster: Sat, Jul 4 - Hops - captain. Yes or no?");
-    expect(lines[0]).toContain("http://mill-dev:3000/crew/auth?t=secret-0");
+    expect(lines[0]).toContain("http://mill-dev:3000/crew");
     expect(lines[0]).toContain(CREW);
   });
 

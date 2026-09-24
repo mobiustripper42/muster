@@ -1,31 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { hashSecret } from "../auth/magic-link.js";
 import { asId } from "../domain/ids.js";
 import type { OutboundMessage } from "../ports/channel.js";
 import type { AssignmentNotice } from "../ports/notice.js";
 import type { NotificationMessage } from "../ports/notification.js";
-import { InMemoryRepository } from "./in-memory-repository.js";
-import { RELAY_LINK_TTL_MS } from "../ports/channel.js";
 import { LogChannel } from "./log-channel.js";
 
 /**
  * The replacement for the three outbox adapters (#934).
  *
  * What these pin is that all three ports still work through ONE class, and that the
- * logged line is usable rather than merely descriptive — the magic link is the whole
- * difference between this and a `console.log`.
+ * logged line is usable rather than merely descriptive. Since issue #1030 the crew link in it
+ * carries no secret, so it is the same line in dev and in a production log.
  */
 
 const T0 = new Date("2026-07-01T12:00:00.000Z");
 const CREW = asId<"CrewMemberId">("crew-a");
 
 const chan = (lines: string[]) =>
-  new LogChannel(new InMemoryRepository(), {
+  new LogChannel({
     linkBase: "https://x.test/",
     now: () => T0,
-    mintSecret: () => "s3cret",
     sink: (l) => lines.push(l),
-    mintLink: true,
+    revealBookingCodes: true,
   });
 
 const ask = (): OutboundMessage => ({
@@ -62,8 +58,8 @@ const CODE = "0123456789ABCD"; // 14 chars from BOOKING_CODE_ALPHABET
 
 describe("LogChannel — a booking code is a credential (#955)", () => {
   /**
-   * `mintLink: false` is the production posture and it only ever governed the CREW magic link
-   * this class mints. A customer receipt arrives with its link already composed into `body`, so
+   * `revealBookingCodes: false` is the production posture. (It was `mintLink`, and it only ever
+   * governed the CREW magic link this class minted, until issue #1030 retired it.) A customer receipt arrives with its link already composed into `body`, so
    * the guard never saw it — and #955 made that matter. Before that change a receipt reached this
    * sink only when BOTH email and SMS were unconfigured, which the now-deleted `app/lib/unsent.ts`
    * called rare and accepted. Every send site falls back here now, so on a Twilio-dark deploy with
@@ -73,14 +69,13 @@ describe("LogChannel — a booking code is a credential (#955)", () => {
    * A booking code is a bearer credential by `booking-code.ts`'s own words, it resolves with no
    * session, and it never expires.
    */
-  it("redacts a /b/<code> in the body when links are not minted (production)", async () => {
+  it("redacts a /b/<code> in the body by default (production)", async () => {
     const lines: string[] = [];
-    const c = new LogChannel(new InMemoryRepository(), {
+    const c = new LogChannel({
       linkBase: "https://x.test/",
       now: () => T0,
-      mintSecret: () => "s3cret",
       sink: (l) => lines.push(l),
-      // mintLink absent = the production posture
+      // revealBookingCodes absent = the production posture
     });
 
     await c.send(receipt(CODE));
@@ -118,25 +113,11 @@ describe("LogChannel", () => {
     expect(lines[0]).toContain("+15555550100");
   });
 
-  it("mints a REAL magic link, not a placeholder", async () => {
-    // The point of the class. A logged ask you cannot answer would describe the outbox
-    // rather than replace it — so the secret in the line must be a live token.
-    const repo = new InMemoryRepository();
+  it("an ask carries a plain link to /crew — where Yes/No is answered — and no secret", async () => {
     const lines: string[] = [];
-    const c = new LogChannel(repo, {
-      linkBase: "https://x.test",
-      now: () => T0,
-      mintSecret: () => "s3cret",
-      sink: (l) => lines.push(l),
-      mintLink: true,
-    });
-    await c.send(ask());
-
-    expect(lines[0]).toContain("https://x.test/crew/auth?t=s3cret");
-    const token = await repo.getMagicTokenByHash(hashSecret("s3cret"));
-    expect(token).toMatchObject({ subjectKind: "crew", subjectId: CREW });
-    // The relay TTL (24h — the ask's answer window), not the 15-minute hand-minted one.
-    expect(token!.expiresAt).toBe(new Date(T0.getTime() + RELAY_LINK_TTL_MS).toISOString());
+    await chan(lines).send(ask());
+    expect(lines[0]).toContain("https://x.test/crew");
+    expect(lines[0]).not.toMatch(/crew\/auth|[?&]t=/);
   });
 
   it("serves all THREE ports from one send, discriminated by payload shape", async () => {
@@ -159,8 +140,8 @@ describe("LogChannel", () => {
     await c.send(ring());
     await c.send(ask());
     // A ring that lands on the shift list instead of the message is a different message.
-    expect(lines[0]).toContain("&thread=thread-1");
-    expect(lines[1]).not.toContain("&thread=");
+    expect(lines[0]).toContain("https://x.test/crew/threads/thread-1");
+    expect(lines[1]).not.toContain("/crew/threads/");
   });
 
   it("reports a ref that cannot be mistaken for a transmission", async () => {
@@ -183,39 +164,33 @@ describe("LogChannel", () => {
     });
     expect(lines[0]).toContain("[channel:receipt]");
     expect(lines[0]).toContain("guest@x.test");
-    // The composed link is passed through, NOT replaced by a freshly minted crew link.
+    // The composed link is passed through, NOT replaced by a crew link.
     expect(lines[0]).toContain("https://x.test/b/ABC123");
-    expect(lines[0]).not.toContain("/crew/auth?t=");
+    expect(lines[0]).not.toContain("https://x.test/crew");
   });
 
-  it("honours a pre-composed link on an ask instead of minting over it", async () => {
+  it("honours a pre-composed link on an ask instead of writing over it", async () => {
     const lines: string[] = [];
-    await chan(lines).send({ ...ask(), link: "https://x.test/already-minted" });
-    expect(lines[0]).toContain("https://x.test/already-minted");
-    expect(lines[0]).not.toContain("t=s3cret");
+    await chan(lines).send({ ...ask(), link: "https://x.test/already-composed" });
+    expect(lines[0]).toContain("https://x.test/already-composed");
+    expect(lines[0]).not.toContain("https://x.test/crew");
   });
 
-  it("mints NOTHING by default — the safe value is the one you get by forgetting", async () => {
-    // `/security-review` on #934, High/8: the logged link is a credential, and for
-    // `OPERATOR_CREW_MEMBER_ID` an admin one — that crew id is an active admin (DEC-092)
-    // and `switchToAdmin` upgrades a crew session with no re-auth. In production the sink
-    // is `console.error`, a stream log-read access alone can reach.
-    const repo = new InMemoryRepository();
+  it("carries the same plain crew link in production — there is no secret left to withhold", async () => {
+    // Until issue #1030 this class minted a live 24h credential into the line, so production
+    // (`/security-review` on #934) had to mint nothing. The link now signs no one in: a
+    // signed-out crew member lands on the code door. So the production line keeps it.
     const lines: string[] = [];
-    const c = new LogChannel(repo, {
+    const c = new LogChannel({
       linkBase: "https://x.test",
       now: () => T0,
-      mintSecret: () => "s3cret",
       sink: (l) => lines.push(l),
-      // mintLink deliberately absent
+      // revealBookingCodes absent = the production posture
     });
     await c.send(ask());
-
     expect(lines[0]).toContain("Muster: Sat, Jul 4 · Hops · captain — yes or no?");
-    expect(lines[0]).not.toContain("/crew/auth?t=");
-    expect(lines[0]).toContain("no sign-in link minted");
-    // And no unredeemed 24h token left behind — skipped, not merely hidden.
-    expect(await repo.getMagicTokenByHash(hashSecret("s3cret"))).toBeNull();
+    expect(lines[0]).toContain("https://x.test/crew");
+    expect(lines[0]).not.toMatch(/crew\/auth|[?&]t=/);
   });
 
   it("says so when the crew member has no phone on file", async () => {

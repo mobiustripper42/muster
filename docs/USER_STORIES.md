@@ -66,7 +66,7 @@ features (SPEC §2.6).
 
 - CR-1: I get the ask as a push/SMS and answer **yes or no in ~3 seconds without opening or logging
   into anything**.
-- CR-2: I land on the right shift via a **magic link** — no password to forget.
+- CR-2: I land on the right shift via the **link in the text** — no password to forget; if I'm signed out, a 6-digit code gets me in.
 - CR-3: I see my **confirmed upcoming shifts**, one card each, past stuff hidden.
 - CR-4: On the shift card I see **call time distinct from departure time**, a tappable dock pin, who
   else is crewing with one-tap contact, and the **per-event guest manifest** (1/3/5pm lists) — no

@@ -29,7 +29,6 @@ import type {
   Customer,
   Event,
   LoginCode,
-  MagicToken,
   OutboxEntry,
   RingOutboxEntry,
   NoticeOutboxEntry,
@@ -56,7 +55,6 @@ import type {
   CredentialId,
   CrewMemberId,
   EventId,
-  MagicTokenId,
   OutboxEntryId,
   RingOutboxEntryId,
   NoticeOutboxEntryId,
@@ -650,30 +648,6 @@ export interface Repository {
    */
   removeAsk(id: AskId): Promise<void>;
 
-  // ── Magic-link tokens (self-rolled auth — DEC-010, DEC-020) ────────────────
-  /** Persist a token (upsert by id). Only the secret's hash is stored. */
-  saveMagicToken(token: MagicToken): Promise<void>;
-  /** Look one up by `hashSecret(secret)` — verify's first read. */
-  getMagicTokenByHash(tokenHash: string): Promise<MagicToken | null>;
-  /**
-   * Single-use consume as a compare-and-swap (REQ-CLAIM-1 sibling): set
-   * `consumedAt` **only if** still unconsumed; returns `true` if this call
-   * consumed it, `false` if it was already spent (or absent). Two concurrent
-   * link taps → exactly one `true`. Never a trigger; the guarantee lives here.
-   */
-  consumeMagicTokenIfUnused(
-    tokenHash: string,
-    consumedAt: string,
-  ): Promise<boolean>;
-  /** Every token — the integrity diagnostic's orphan scan (crew subjects). */
-  listAllMagicTokens(): Promise<MagicToken[]>;
-  /**
-   * Delete one token by id — the reaper's remove (#44/3.1b). A single-use,
-   * short-lived link past `expiresAt` is dead weight with no children, so it's a
-   * hard delete, not a soft mark. No-op if the id is already gone.
-   */
-  removeMagicToken(id: MagicTokenId): Promise<void>;
-
   // ── Admins (auth identity + per-person revoke — DEC-092, revises DEC-020) ──
   /** Persist an admin (upsert by id). */
   saveAdmin(admin: Admin): Promise<void>;
@@ -696,7 +670,7 @@ export interface Repository {
     subjectId: string,
   ): Promise<LoginCode | null>;
   /**
-   * Single-use consume as a compare-and-swap (the MagicToken precedent): set
+   * Single-use consume as a compare-and-swap: set
    * `consumedAt` **only if** still unconsumed; `true` iff this call consumed it.
    * Two concurrent submits of the same code → exactly one `true`.
    */
@@ -738,7 +712,7 @@ export interface Repository {
 
   // ── Calendar feeds (crew iCal subscription — #355, DEC-098) ────────────────
   // The first PERSISTENT bearer credential. Stores only sha256(token); looked up by
-  // hash of the presented token (the MagicToken shape), but persistent + one per
+  // hash of the presented token, but persistent + one per
   // crew (`crewMemberId` PK). No re-display — recovery is regenerate (replace).
   /** Mint/replace the crew member's feed (upsert by `crewMemberId`) — rotate = replace. */
   saveCalendarFeed(feed: CalendarFeed): Promise<void>;
@@ -754,7 +728,7 @@ export interface Repository {
   touchCalendarFeedPoll(tokenHash: string, polledAt: string): Promise<void>;
 
   // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────
-  // Adapter-side, like MagicToken: persisted through the port so the operator's
+  // Adapter-side: persisted through the port so the operator's
   // outbox survives a restart, but NEVER read by the domain (`src/asks`,
   // `src/builder`, `src/oracle` are forbidden readers — DEC-030 guardrail).
   /** Persist an entry (upsert by id) — enqueue, mark-sent, toggle back. */

@@ -6,7 +6,6 @@ import type {
   Credential,
   CrewMember,
   Event,
-  MagicToken,
   PtoWindow,
   Reservation,
   RoleType,
@@ -93,14 +92,6 @@ async function seedSpine(): Promise<InMemoryRepository> {
     start: "2026-08-01",
     end: "2026-08-05",
   };
-  const token: MagicToken = {
-    id: asId<"MagicTokenId">("mtk-1"),
-    tokenHash: "abc",
-    subjectKind: "crew",
-    subjectId: CREW,
-    createdAt: "2026-07-01T12:00:00.000Z",
-    expiresAt: "2026-07-01T12:15:00.000Z",
-  };
   await repo.saveRoleType(role);
   await repo.saveVessel(vessel);
   await repo.saveCrewMember(crew);
@@ -111,7 +102,6 @@ async function seedSpine(): Promise<InMemoryRepository> {
   await repo.saveAsk(ask);
   await repo.saveCredential(credential);
   await repo.savePtoWindow(pto);
-  await repo.saveMagicToken(token);
   return repo;
 }
 
@@ -122,7 +112,6 @@ describe("checkIntegrity", () => {
     expect(report.ok).toBe(true);
     expect(report.violations).toEqual([]);
     expect(report.scanned.seats).toBe(1);
-    expect(report.scanned.magicTokens).toBe(1);
   });
 
   it("a pending row with no event is intact — that null is the contract, not a dangling ref (14.3, §2.8.2)", async () => {
@@ -184,7 +173,7 @@ describe("checkIntegrity", () => {
     });
   });
 
-  it("catches a dangling crew assignment, ask, credential, and token subject", async () => {
+  it("catches a dangling crew assignment and credential", async () => {
     const repo = await seedSpine();
     const ghostCrew = asId<"CrewMemberId">("crew-ghost");
     await repo.saveSeat({
@@ -201,19 +190,10 @@ describe("checkIntegrity", () => {
       type: "MMC",
       expiry: "2026-12-31",
     });
-    await repo.saveMagicToken({
-      id: asId<"MagicTokenId">("mtk-ghost"),
-      tokenHash: "zzz",
-      subjectKind: "crew",
-      subjectId: ghostCrew,
-      createdAt: "2026-07-01T12:00:00.000Z",
-      expiresAt: "2026-07-01T12:15:00.000Z",
-    });
     const report = await checkIntegrity(repo);
     const refs = report.violations.map((v) => `${v.entity}.${v.ref}`);
     expect(refs).toContain("seat.assignedCrewMemberId");
     expect(refs).toContain("credential.crewMemberId");
-    expect(refs).toContain("magicToken.subjectId");
   });
 
   it("catches the refs that arrived after this diagnostic was written (#584)", async () => {
@@ -369,19 +349,5 @@ describe("checkIntegrity", () => {
       metadata: {},
     });
     expect((await checkIntegrity(repo)).ok).toBe(true);
-  });
-
-  it("ignores admin-subject tokens (no entity to point at)", async () => {
-    const repo = await seedSpine();
-    await repo.saveMagicToken({
-      id: asId<"MagicTokenId">("mtk-admin"),
-      tokenHash: "adm",
-      subjectKind: "admin",
-      subjectId: "eric@brewboat.co",
-      createdAt: "2026-07-01T12:00:00.000Z",
-      expiresAt: "2026-07-01T12:15:00.000Z",
-    });
-    const report = await checkIntegrity(repo);
-    expect(report.ok).toBe(true);
   });
 });

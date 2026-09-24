@@ -11,7 +11,7 @@ import { TENANT_ID } from "../../../../lib/tenant";
 import { fmtRunWhen } from "../../../../lib/format";
 import { postMessage } from "../actions";
 import { messagingEnabled } from "../../../../lib/flags";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 /**
  * Crew messaging — one thread: messages + a compose box, nothing else (artifact
@@ -28,13 +28,7 @@ export default async function ThreadPage({
   if (!messagingEnabled()) notFound(); // messaging disabled (#389) — route is dark
   const { threadId } = await params;
   const subject = await readSubject();
-  if (!subject || subject.kind !== "crew") {
-    return (
-      <Shell>
-        <Notice>You’re signed out. Tap the link your operator sent.</Notice>
-      </Shell>
-    );
-  }
+  if (!subject || subject.kind !== "crew") redirect("/crew"); // /crew owns the login UI
 
   let view: ThreadView | null;
   try {

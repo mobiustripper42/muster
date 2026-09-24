@@ -39,7 +39,7 @@ export async function forwardBoardAlerts(landings: BoardLanding[] | undefined): 
   // Twilio was dark, on the reasoning that the At-Risk board is the standing fallback. A board is
   // a fallback for a person who is looking at it, and the whole reason this alert exists is that
   // nobody is. Twilio-dark now writes the alert to the console like every other send site.
-  const { channel } = makeSmsChannel(repo, linkBase);
+  const { channel } = makeSmsChannel(linkBase);
   return forwardCore(repo, channel, landings, `${linkBase}/admin/at-risk`);
 }
 
@@ -73,7 +73,7 @@ export async function forwardFormationFailures(
   try {
     const repo = getRepo();
     const linkBase = appBaseUrl();
-    const { channel } = makeSmsChannel(repo, linkBase);
+    const { channel } = makeSmsChannel(linkBase);
     return await forwardFormationAlert(repo, channel, failures, `${linkBase}/admin/shifts`);
   } catch (e) {
     // The tick's own response must survive this. The core sender already swallows per-recipient
@@ -115,7 +115,7 @@ export async function alertMoneyProblem(message: string): Promise<void> {
     // #955: Twilio-dark used to make the `console.error` above the whole alert. It still is the
     // floor, written first and unconditionally — but the message itself now also reaches the
     // console with its recipients and body, rather than only the summary line.
-    const { channel } = makeSmsChannel(repo, linkBase);
+    const { channel } = makeSmsChannel(linkBase);
     const sent = await forwardMoneyAlert(repo, channel, message, `${linkBase}/admin/purchases`);
     if (sent === 0) console.error("[reservations] money alert reached NO admin (none reachable)");
   } catch (e) {

@@ -6,8 +6,8 @@ when sign-in confuses you (it will — see [Two things that trip people up](#two
 > **Stability:** the *shape* below — one signed cookie, two kinds, branch on `kind` —
 > is steady. What moved in Phase 10 is the **admin identity**: DEC-092 made admins
 > real, individually-revocable rows, and DEC-093 let a crew session switch up to
-> admin without re-authenticating. The **admin sign-in door** is still a hand-minted
-> link; that's the part still moving. The doc flags which is which.
+> admin without re-authenticating. Since DEC-181 there is exactly one sign-in door —
+> the 6-digit code — and no text carries a secret. The doc flags what is still moving.
 
 ## The whole model in one sentence
 
@@ -30,22 +30,26 @@ no database read at all (`app/lib/auth.ts:88-96`).
 Cookie: `httpOnly`, 14-day TTL, sliding-renewed in its last 3 days. `SESSION_SECRET`
 is required in prod. Defined in `app/lib/auth.ts` (`readSubject`, `startSession`,
 `endSession`, `buildSessionCookie`); the `AuthSubject` type comes from
-`src/auth/magic-link.ts`, and `AuthSubjectKind` is in `src/domain/entities.ts`.
+`src/auth/session.ts`, and `AuthSubjectKind` is in `src/domain/entities.ts`.
 
-## The four doors (all just set that cookie)
+## The two doors (both just set that cookie)
 
-Three mint a session from nothing. The fourth converts one you already have.
+One mints a session from nothing. The other converts one you already have.
 
 | Door | Kinds it can mint | How | Notes |
 |------|-------------------|-----|-------|
 | **Code-login** | **crew only** | `/crew` → enter email → 6-digit code | The front door, and since DEC-174 the only one. Validated against the roster, no-enumeration. (DEC-081) |
-| **Magic link** | **crew or admin** | Minted by the DEC-030 relay, or by the e2e fixtures against the test DB; consumed at `/crew/auth` | Single-use, hashed token. No longer mintable by hand: `db:mint` and `/crew/dev-link` are both deleted. |
 | **Switcher** | **crew → admin, admin → crew** | A form on `/crew` (`switchToAdmin`) and the admin surfaces (`switchToCrew`) — re-mints the other-kind session for the **same id**, no re-auth | **The escalation seam** (DEC-093). `switchToAdmin` is gated on the same `getAdmin(active)` check `readSubject` enforces, so a non-admin or revoked admin is bounced to `/crew` with no session change. `app/lib/switch-actions.ts` |
 
-After any of the three minting doors, the landing redirect is `kind`-based: **admin →
-`/admin/at-risk`**, **crew → `/crew`** (`app/(crew)/crew/auth/route.ts:134`). The
-switcher lands on **`/admin`** instead. Sign-out (`endSession()`) just clears the
-cookie.
+The code door lands on **`/crew`**; the switcher lands on **`/admin`**. Sign-out
+(`endSession()`) just clears the cookie.
+
+**The link in a crew text is not a door.** An ask, notice or doorbell ring carries a
+plain link — `/crew`, or `/crew/threads/<id>` — with no secret in it (DEC-181). A
+signed-in crew member lands there; a signed-out one is sent to the code door and lands on
+`/crew` once signed in. The
+magic link that used to ride in those texts, its `magic_tokens` table and the
+`/crew/auth` interstitial are gone.
 
 ### "How do I sign in as…" (local / `mill-dev`)
 
@@ -120,8 +124,6 @@ if (!subject || subject.kind !== "crew") redirect("/crew"); // or notFound(), or
   `admins` rows keyed by crew id, CLI-managed via `db:admin add`, individually
   revocable by flipping `active` (DEC-092). Roles are deliberately deferred: all
   admins are equal, and `0018` leaves the `role` column as the clean seam.
-- **Future (the part still moving):** a real operator **sign-in form**, so an admin
-  who is *not* already a crew session has a front door that isn't a hand-minted
-  link. When that lands, the *model* above doesn't change (still a `{kind, id}`
-  cookie, still the `admins` gate); only the **Magic link** row is replaced. Update
-  that row and this section, leave the rest.
+- **Future (the part still moving):** roles, if a second admin ever needs less than
+  full access. The *model* above doesn't change for that (still a `{kind, id}`
+  cookie, still the `admins` gate).

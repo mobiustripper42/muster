@@ -27,7 +27,6 @@ import type {
   CalendarFeed,
   Offering,
   Payment,
-  MagicToken,
   OutboxEntry,
   RingOutboxEntry,
   NoticeOutboxEntry,
@@ -55,7 +54,6 @@ import type {
   CrewMemberId,
   EventId,
   LocationId,
-  MagicTokenId,
   OfferingId,
   OutboxEntryId,
   RingOutboxEntryId,
@@ -157,7 +155,6 @@ export class InMemoryRepository implements Repository {
   readonly #shifts = new Map<ShiftId, Shift>();
   readonly #seats = new Map<SeatId, Seat>();
   readonly #asks = new Map<AskId, Ask>();
-  readonly #magicTokens = new Map<MagicTokenId, MagicToken>();
   readonly #admins = new Map<string, Admin>();
   readonly #loginCodes = new Map<string, LoginCode>();
   readonly #calendarFeeds = new Map<string, CalendarFeed>();
@@ -996,36 +993,6 @@ export class InMemoryRepository implements Repository {
   }
   async removeAsk(id: AskId): Promise<void> {
     this.#asks.delete(id);
-  }
-
-  // ── Magic-link tokens (self-rolled auth — DEC-010, DEC-020) ────────────────
-  async saveMagicToken(token: MagicToken): Promise<void> {
-    this.#magicTokens.set(token.id, clone(token));
-  }
-  async getMagicTokenByHash(tokenHash: string): Promise<MagicToken | null> {
-    const t = [...this.#magicTokens.values()].find(
-      (x) => x.tokenHash === tokenHash,
-    );
-    return t ? clone(t) : null;
-  }
-  async consumeMagicTokenIfUnused(
-    tokenHash: string,
-    consumedAt: string,
-  ): Promise<boolean> {
-    // Single-threaded JS makes this atomic here; the contract it upholds is what
-    // matters — Postgres enforces the same single-use CAS under real concurrency.
-    const current = [...this.#magicTokens.values()].find(
-      (x) => x.tokenHash === tokenHash,
-    );
-    if (!current || current.consumedAt !== undefined) return false;
-    this.#magicTokens.set(current.id, clone({ ...current, consumedAt }));
-    return true;
-  }
-  async listAllMagicTokens(): Promise<MagicToken[]> {
-    return [...this.#magicTokens.values()].map(clone);
-  }
-  async removeMagicToken(id: MagicTokenId): Promise<void> {
-    this.#magicTokens.delete(id);
   }
 
   // ── Admins (auth identity + per-person revoke — DEC-092) ───────────────────

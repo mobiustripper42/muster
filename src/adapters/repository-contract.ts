@@ -24,7 +24,6 @@ import type {
   Gratuity,
   Location,
   LoginCode,
-  MagicToken,
   Offering,
   OutboxEntry,
   RingOutboxEntry,
@@ -139,15 +138,6 @@ const ask = (over: Partial<Ask> = {}): Ask => ({
   crewMemberId: CREW,
   channel: "push",
   sentAt: "2026-07-01T12:00:00.000Z",
-  ...over,
-});
-const magicToken = (over: Partial<MagicToken> = {}): MagicToken => ({
-  id: asId<"MagicTokenId">("mtk-1"),
-  tokenHash: "hash-1",
-  subjectKind: "crew",
-  subjectId: CREW,
-  createdAt: "2026-07-01T12:00:00.000Z",
-  expiresAt: "2026-07-01T12:15:00.000Z",
   ...over,
 });
 const admin = (over: Partial<Admin> = {}): Admin => ({
@@ -2450,56 +2440,6 @@ export function runRepositoryContract(
       expect(r1.contactedAt).toBe("2026-07-10T15:00:00.000Z");
     });
 
-    it("magic tokens: round-trip incl. consumedAt optional; lookup by hash", async () => {
-      await repo.saveMagicToken(magicToken()); // not yet consumed
-      const got = await repo.getMagicTokenByHash("hash-1");
-      expect(got).toEqual(magicToken());
-      expect("consumedAt" in got!).toBe(false); // omitted, not undefined
-      expect(await repo.getMagicTokenByHash("no-such-hash")).toBeNull();
-    });
-
-    it("consumeMagicTokenIfUnused: consumes once, no-op when already spent", async () => {
-      await repo.saveMagicToken(magicToken());
-      const first = await repo.consumeMagicTokenIfUnused("hash-1", "2026-07-01T12:05:00.000Z");
-      expect(first).toBe(true);
-      expect((await repo.getMagicTokenByHash("hash-1"))!.consumedAt).toBe(
-        "2026-07-01T12:05:00.000Z",
-      );
-      // Already consumed → the guard fails and the stamp is untouched.
-      const second = await repo.consumeMagicTokenIfUnused("hash-1", "2026-07-01T12:09:00.000Z");
-      expect(second).toBe(false);
-      expect((await repo.getMagicTokenByHash("hash-1"))!.consumedAt).toBe(
-        "2026-07-01T12:05:00.000Z",
-      );
-    });
-
-    it("consumeMagicTokenIfUnused: false for an absent token", async () => {
-      expect(
-        await repo.consumeMagicTokenIfUnused("ghost", "2026-07-01T12:05:00.000Z"),
-      ).toBe(false);
-    });
-
-    it("consumeMagicTokenIfUnused: exactly one of two concurrent taps wins", async () => {
-      await repo.saveMagicToken(magicToken());
-      const [a, b] = await Promise.all([
-        repo.consumeMagicTokenIfUnused("hash-1", "2026-07-01T12:05:00.000Z"),
-        repo.consumeMagicTokenIfUnused("hash-1", "2026-07-01T12:05:00.000Z"),
-      ]);
-      expect([a, b].filter(Boolean)).toHaveLength(1);
-    });
-
-    it("removeMagicToken: deletes the row; absent id is a no-op (the reaper's remove)", async () => {
-      await repo.saveMagicToken(magicToken());
-      await repo.saveMagicToken(magicToken({ id: asId<"MagicTokenId">("mtk-2"), tokenHash: "hash-2" }));
-      await repo.removeMagicToken(asId<"MagicTokenId">("mtk-1"));
-      expect(await repo.getMagicTokenByHash("hash-1")).toBeNull();
-      expect((await repo.listAllMagicTokens()).map((t) => t.id)).toEqual([
-        asId<"MagicTokenId">("mtk-2"),
-      ]);
-      // Removing something already gone must not throw.
-      await expect(repo.removeMagicToken(asId<"MagicTokenId">("ghost"))).resolves.toBeUndefined();
-    });
-
     it("admins: round-trip; lookup by id and by handle; upsert (DEC-092)", async () => {
       await repo.saveAdmin(admin());
       expect(await repo.getAdmin(CREW)).toEqual(admin());
@@ -2786,13 +2726,11 @@ export function runRepositoryContract(
       await repo.saveShift(shift());
       await repo.saveSeat(seat({ state: "Confirmed", assignedCrewMemberId: CREW }));
       await repo.saveAsk(ask());
-      await repo.saveMagicToken(magicToken());
       await repo.saveOutboxEntry(outboxEntry());
 
       const clean = await checkIntegrity(repo);
       expect(clean.ok).toBe(true);
       expect(clean.scanned.seats).toBe(1);
-      expect(clean.scanned.magicTokens).toBe(1);
       expect(clean.scanned.outboxEntries).toBe(1);
 
       // Now break a reference the DB's missing FK would never have caught.

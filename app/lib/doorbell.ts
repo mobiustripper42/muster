@@ -54,7 +54,7 @@ export async function runDoorbellTick(now: Date): Promise<{
   const linkBase = appBaseUrl();
   // Twilio configured (9.4, DEC-MSG-1) ⇒ rings go out as real SMS; unset ⇒ the console
   // (#934/#955). The clock is passed through so a logged ring carries the tick's `now`.
-  const { channel } = makeSmsChannel(repo, linkBase, () => now);
+  const { channel } = makeSmsChannel(linkBase, () => now);
   const relayed = await forwardNotifications(repo, channel, r.rings);
   return { threadsSwept: r.threadsSwept, rings: r.rings.length, relayed };
 }

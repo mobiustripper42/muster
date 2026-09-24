@@ -22,7 +22,6 @@ import type {
   EventId,
   GratuityId,
   LocationId,
-  MagicTokenId,
   OfferingId,
   OutboxEntryId,
   PaymentId,
@@ -216,7 +215,7 @@ export type ProtocolOverride = "ask_then_assign" | "assign_then_confirm";
 export interface CrewMember {
   id: CrewMemberId;
   name: string;
-  /** SMS/push target and magic-link destination. */
+  /** SMS/push target. */
   phone: string;
   email?: string;
   /**
@@ -1093,13 +1092,11 @@ export interface Ask {
   decisionBy?: string;
 }
 
-// ── MagicToken (self-rolled magic-link auth — DEC-010, DEC-020) ──────────────
+// ── Auth subjects (DEC-058) ──────────────────────────────────────────────────
 
 /**
- * Who a magic link authenticates. Crew links carry a `CrewMemberId`; the admin
- * (Eric) link carries an operator identifier (email/handle) — there is no admin
- * entity yet, so `subjectId` is a plain string the surface layer interprets per
- * `kind`. Same mechanism for both (DEC-020).
+ * Who a session authenticates. Both kinds carry a crew member's id — an admin is a crew
+ * member with an `admins` row (DEC-092) — and `kind` says which world the session is for.
  */
 export type AuthSubjectKind = "admin" | "crew";
 
@@ -1146,35 +1143,10 @@ export interface Admin {
 }
 
 /**
- * A single-use, short-lived magic-link credential. Only the **hash** of the link
- * secret is ever stored (`tokenHash`) — a DB leak yields no usable links. Verify
- * re-hashes the presented secret, finds this row, and consumes it via a port CAS
- * (`consumeMagicTokenIfUnused`) so a replayed link can't be redeemed twice.
- *
- * This is the link, not the session. A successful verify lets the surface layer
- * (1.5b) mint a longer-lived, renewable session; that session + its storage on
- * the PWA/native client is out of scope here. `issue`→`verify` is the seam.
- */
-export interface MagicToken {
-  id: MagicTokenId;
-  /** sha256 of the raw link secret (hex). The secret itself is never stored. */
-  tokenHash: string;
-  subjectKind: AuthSubjectKind;
-  subjectId: string;
-  /** ISO-8601 UTC. */
-  createdAt: string;
-  /** ISO-8601 UTC. Past this instant the link is dead even if unconsumed. */
-  expiresAt: string;
-  /** ISO-8601 UTC; absent until redeemed. Single-use: set once, by the CAS. */
-  consumedAt?: string;
-}
-
-/**
  * A short numeric login code (DEC-081) — the crew self-serve sign-in primitive.
  *
- * A SIBLING to `MagicToken`, not a reuse: a 6-digit code is NOT globally unique
- * (two crew can mint the same digits), so it cannot ride `magic_tokens` (its
- * `token_hash` is `unique`) and cannot be looked up by hash. Instead it is keyed
+ * A 6-digit code is NOT globally unique (two crew can mint the same digits), so it
+ * cannot be looked up by hash the way a long secret can. Instead it is keyed
  * by SUBJECT — exactly one live code per subject (re-request upserts) — which is
  * also what lets `attempts` cap brute-force guesses against the short secret.
  * Only `sha256(code)` is stored; the digits themselves never touch storage.
@@ -1209,10 +1181,9 @@ export interface LoginCode {
  * A crew member's persistent calendar-feed credential (#355, DEC-098) — the token
  * behind their subscribable iCal URL.
  *
- * Muster's FIRST persistent bearer credential (magic tokens / login codes are both
- * ephemeral). Like `MagicToken` it stores only `sha256(token)` and is looked up by
- * hash of the presented token — but unlike it, it never expires and there is exactly
- * ONE live feed per crew (`crewMemberId` is the PK). "Re-see the URL" is impossible
+ * Muster's FIRST persistent bearer credential (login codes are ephemeral). It stores
+ * only `sha256(token)` and is looked up by hash of the presented token — but it never
+ * expires and there is exactly ONE live feed per crew (`crewMemberId` is the PK). "Re-see the URL" is impossible
  * by design (hash-only); the recovery path is REGENERATE, which replaces this row and
  * kills the old hash — the same lever that revokes/rotates. It mints no session: a
  * read-only data capability, not a login (does not reopen DEC-081).

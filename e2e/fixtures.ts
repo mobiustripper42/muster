@@ -16,7 +16,6 @@ import { resetTestDb, TEST_DATABASE_URL } from "../db/reset-test.js";
 import { SLOW_PATH } from "./slow-path.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { pgConnectionConfig } from "../src/config/db-ssl.js";
-import { issueMagicLink, randomSecret } from "../src/auth/magic-link.js";
 import { TODAY } from "./reservation-demo.js";
 
 /** Local tsx binary — resolved explicitly so we don't depend on PATH/npx. */
@@ -268,37 +267,6 @@ export async function resetAndSeed(...seeds: SeedName[]): Promise<void> {
       stdio: "pipe",
     });
   }
-}
-
-/**
- * Mint a magic link against the TEST database and return its production-shaped path,
- * `/crew/auth?t=<secret>` — WITHOUT consuming it. Only `crewAuthPath` uses it now; the suite's
- * sign-ins moved to the code door (below), and this goes with `/crew/auth` in issue #1030.
- */
-async function mintAuthPath(
-  subjectKind: "crew" | "admin",
-  subjectId: string,
-): Promise<string> {
-  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
-  try {
-    const { secret } = await issueMagicLink(
-      repo,
-      { subjectKind, subjectId, ttlMs: 15 * 60_000 },
-      { now: new Date(), mintSecret: randomSecret },
-    );
-    return `/crew/auth?t=${encodeURIComponent(secret)}`;
-  } finally {
-    await repo.close();
-  }
-}
-
-/**
- * Mint a crew magic link without consuming it — for the two specs about the link itself
- * (DEC-150, `auth-crew` and `crew-header`). Nothing else in the suite signs in this way; both
- * go with `/crew/auth` in issue #1030.
- */
-export async function crewAuthPath(crewId: string): Promise<string> {
-  return mintAuthPath("crew", crewId);
 }
 
 // ── Sign-in: once per identity, through the real door ─────────────────────────

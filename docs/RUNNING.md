@@ -74,7 +74,7 @@ A VSCode port-forward of 3000 works too. The app honors whatever host you arrive
 redirects are host-relative), so all three — `mill-dev`, a port-forward, `localhost` on the box —
 work without config.
 
-## Seeing the crew app (it needs a magic link)
+## Seeing the crew app (it needs a sign-in code)
 The crew surfaces require a session, so you can't visit `/crew` cold — you sign in with a code:
 
 1. Open **http://mill-dev:3000/crew**, enter **quint@bb.test**, submit.
@@ -221,22 +221,21 @@ There is no operator outbox any more. It was three tables and a screen where the
 landed as `sms:` deep links the operator texted from their own phone; #934 deleted it.
 
 When no Twilio key is configured, an ask, an assignment notice or a doorbell ring is **written to
-the server log** instead, magic link included:
+the server log** instead, link included:
 
 ```
 [channel:ask] NOT SENT — no channel configured. to=crew-quint / +15555550101
 Muster: Sat, Sep 13 - Hops - captain. Yes or no?
-http://mill-dev:3000/crew/auth?t=<secret>
+http://mill-dev:3000/crew
 ```
 
 1. `npm run db:reset:dev` for the standard world, then the tick curl above to fire the engine.
 2. Watch the **terminal**, not the browser. Each ask the tick fired prints one of those blocks.
-3. **Paste the link into a private window** → the "Tap to sign in →" confirm page → tap → you land
-   on `/crew` as that crew member with the Yes/No ask. Answer it; the loop is unchanged.
+3. **Open the link** → sign in as that crew member with the code (see *Seeing the crew app*
+   above) → you land on `/crew` with the Yes/No ask. Answer it; the loop is unchanged.
 
-The link is real and lasts 24 hours — the ask's answer window, the same TTL the outbox used
-(`RELAY_LINK_TTL_MS`). That is the whole difference between this and a `console.log`: an ask you
-cannot answer would describe the old screen rather than replace it.
+The link carries no secret (DEC-181) — it is the same `/crew` link a real text carries, so the log
+line is safe in production too. Signing in is the code door, same as everywhere.
 
 With a Twilio key configured, none of this prints — the text just goes.
 
@@ -346,7 +345,8 @@ constant exists to bound. Previews still honour it, so a reviewer can exercise t
 Two env vars are dev-defaulted locally but **must be set in production**:
 - **`SESSION_SECRET`** — signs session cookies. Unset in prod = a repo-public signing key = session
   forgery; the app fails fast if it's missing in production.
-- **`APP_BASE_URL`** — the real external origin, used to build any **delivered** magic link. Without it
-  a delivered link is built from the client-controlled `Host` header (host-header injection → token
-  theft). The dev Host-header fallback is convenience only.
+- **`APP_BASE_URL`** — the real external origin, used to build any **delivered** link. Without it
+  a delivered link is built from the client-controlled `Host` header (host-header injection → a
+  booking link, which is a credential, pointed at someone else's host). The dev Host-header fallback
+  is convenience only.
 - `DATABASE_URL` — the hosted Postgres connection string (the provider is deploy-time, vendor-agnostic).

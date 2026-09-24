@@ -53,7 +53,7 @@ export async function relayAsks(
   if (!asks || asks.length === 0) return;
   const repo = getRepo();
   const base = appBaseUrl();
-  const { channel } = makeSmsChannel(repo, base);
+  const { channel } = makeSmsChannel(base);
   await forwardAsks(repo, channel, asks);
 }
 
@@ -69,7 +69,7 @@ export async function relayNotices(
   if (!changes || changes.length === 0) return;
   const repo = getRepo();
   const base = appBaseUrl();
-  const { channel } = makeSmsChannel(repo, base);
+  const { channel } = makeSmsChannel(base);
   await forwardNotices(repo, channel, changes);
 }
 

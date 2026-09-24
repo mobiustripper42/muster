@@ -98,7 +98,7 @@ export async function sendReservationConfirmation(
     // The `logUnsent` block that stood here went with the same change: it minted the code early,
     // composed the body by hand and wrote it to the console, which is exactly what the log channel
     // below now does for every audience in one place.
-    const { channel: sms, live } = makeSmsChannel(repo, linkBase);
+    const { channel: sms, live } = makeSmsChannel(linkBase);
 
     // Mint (or reuse) the code BEFORE composing the message — there is no link to send without
     // one. A failure here is caught by the outer wrapper and logged: the booking is already
@@ -179,7 +179,7 @@ export async function resendReservationLink(reservation: Reservation): Promise<R
   // DEC-170 states the rule: a log line is not a send. So the outcome still reports
   // `skipped`, never `attempted`, when nothing live was behind it. That distinction is the entire
   // reason `ResendOutcome` is a union, and it survives the refactor unchanged.
-  const { channel: sms, live } = makeSmsChannel(repo, linkBase);
+  const { channel: sms, live } = makeSmsChannel(linkBase);
 
   // Reuses the live code; mints only if there is none (an imported booking, or one whose
   // confirmation predates codes). A resend is NOT a reissue — see `resend-booking-link.ts`.

@@ -12,7 +12,7 @@
  * So the assertions that matter here are the SPACE ones, not the drawer mechanics: the hub leads
  * with work, and the drill-in header is one row rather than two. The drawer is the means.
  */
-import { test, expect, resetAndSeed, signInAsCrew, crewAuthPath } from "./fixtures.js";
+import { test, expect, resetAndSeed, signInAsCrew, SAVED_IDENTITIES } from "./fixtures.js";
 
 /** Every crew route that carries the shared header, with the heading it should show. */
 const ROUTES = [
@@ -258,15 +258,14 @@ test.describe("crew header (#644)", () => {
     // a crew member with JS off on a page with no way off it — strictly worse than before the
     // task. Run with JS disabled outright, because a drawer that "should" work without it and a
     // drawer that does are different claims.
-    const ctx = await browser.newContext({ javaScriptEnabled: false });
+    //
+    // The session is Quint's, saved by the setup project through the code door. The subject here
+    // is the drawer without JS, not signing in without JS — so a JS-off context starts from it.
+    const quint = SAVED_IDENTITIES.find((i) => i.email === "quint@bb.test")!;
+    const ctx = await browser.newContext({ javaScriptEnabled: false, storageState: quint.file });
     const page = await ctx.newPage();
-    // Signs in through the real `/crew/auth` interstitial, whose button is a plain form POST —
-    // so it needs no JS either, which is the whole point of this spec's context. Inlined because
-    // `signInAsCrew` would load a session saved by a JS-enabled browser, which proves nothing
-    // about getting in without JS. Goes with `/crew/auth` in issue #1030.
-    await page.goto(await crewAuthPath("crew-quint"));
-    await page.getByRole("button", { name: /tap to sign in/i }).click();
-    await page.waitForURL((u) => u.pathname === "/crew");
+    await page.goto("/crew");
+    await expect(page.getByRole("heading", { name: "Quint" })).toBeVisible();
 
     const link = page.getByRole("link", { name: "Time off", exact: true });
     // Shut: `<details>` keeps its contents out of the render AND the tab order for free. The

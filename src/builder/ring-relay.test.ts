@@ -65,13 +65,10 @@ describe("doorbell-ring relay loop (#118, DEC-073)", () => {
     expect(r.rings).toHaveLength(2); // alice + bob, both absent
 
     const lines: string[] = [];
-    const channel = new LogChannel(repo, {
+    const channel = new LogChannel({
       linkBase: "https://app.example",
       now: () => NOW,
-      mintSecret: () => "SECRET",
       sink: (l) => lines.push(l),
-      // The thread deep-link is the thing under test; production mints no link (#934).
-      mintLink: true,
     });
     const relayed = await forwardNotifications(repo, channel, r.rings);
     expect(relayed).toBe(2);
@@ -82,7 +79,7 @@ describe("doorbell-ring relay loop (#118, DEC-073)", () => {
     for (const line of lines) {
       // Bare ring body, NOT the note text (#387) — the ring says a message exists.
       expect(line).toContain(RING_NOTIFICATION_BODY);
-      expect(line).toContain(`thread=${encodeURIComponent(String(THREAD))}`);
+      expect(line).toContain(`/crew/threads/${encodeURIComponent(String(THREAD))}`);
       expect(line).toContain("[channel:ring]");
     }
   });

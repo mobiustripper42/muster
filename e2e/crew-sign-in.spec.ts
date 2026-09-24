@@ -170,6 +170,16 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
     await expect(page.getByLabel(/sign in with your crew email/i)).toBeVisible();
   });
 
+  // Every text's link is plain since issue #1030 (DEC-181), so a signed-out crew member tapping
+  // one must meet the code door. These pages used to say "Tap the link your operator sent" —
+  // the link that no longer signs anyone in.
+  for (const path of ["/crew/shift/shift-anything", "/crew/threads", "/crew/threads/thr-anything"]) {
+    test(`signed out at ${path} → the code door, not a dead end`, async ({ page }) => {
+      await page.goto(path);
+      await expect(page.getByLabel(/sign in with your crew email/i)).toBeVisible();
+    });
+  }
+
   test("a signed-in crew member can sign out", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
     await expect(page.getByRole("heading", { name: "Quint" })).toBeVisible();

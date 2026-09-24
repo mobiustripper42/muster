@@ -9,7 +9,7 @@ import { getRepo } from "../../../lib/repo";
 import { CREW_UNAVAILABLE, logSwallowed } from "../../../lib/swallowed";
 import { TENANT_ID } from "../../../lib/tenant";
 import { messagingEnabled } from "../../../lib/flags";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 /**
  * Crew messaging — the thread list (SPEC §2.6 / artifact §10, #117). Insultingly
@@ -20,13 +20,7 @@ import { notFound } from "next/navigation";
 export default async function ThreadsPage() {
   if (!messagingEnabled()) notFound(); // messaging disabled (#389) — route is dark
   const subject = await readSubject();
-  if (!subject || subject.kind !== "crew") {
-    return (
-      <Shell>
-        <Notice>You’re signed out. Tap the link your operator sent.</Notice>
-      </Shell>
-    );
-  }
+  if (!subject || subject.kind !== "crew") redirect("/crew"); // /crew owns the login UI
 
   let view: ThreadListView;
   try {

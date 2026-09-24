@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { CrewHeader } from "../../../../../components/crew/crew-header";
 import { ChangeBanner } from "../../../../../components/crew/change-banner";
 import { buildShiftCard, type ShiftCardView } from "@core/crewapp/shift-card.js";
@@ -67,13 +68,7 @@ export default async function ShiftCardPage({
   const { shiftId } = await params;
   const sp = await searchParams;
   const subject = await readSubject();
-  if (!subject || subject.kind !== "crew") {
-    return (
-      <Shell>
-        <Notice>You’re signed out. Tap the link your operator sent.</Notice>
-      </Shell>
-    );
-  }
+  if (!subject || subject.kind !== "crew") redirect("/crew"); // /crew owns the login UI
 
   let card: ShiftCardView | null;
   try {

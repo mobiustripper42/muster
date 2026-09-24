@@ -29,8 +29,8 @@ describe("buildSmsUrl", () => {
     );
   });
 
-  it("a magic link in the body survives encoding round-trip", () => {
-    const link = "http://mill-dev:3000/crew/auth?t=abc_-123";
+  it("a link with a query string in the body survives encoding round-trip", () => {
+    const link = "http://mill-dev:3000/crew/threads/thr-1?from=abc_-123";
     const url = buildSmsUrl({ phone: "+12162025718", body: `Yes or no?\n${link}` });
     expect(decodeURIComponent(url.split("?body=")[1]!)).toBe(`Yes or no?\n${link}`);
   });

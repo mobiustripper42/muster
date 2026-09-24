@@ -224,5 +224,5 @@ If (3) is "yes, reasonably," reject it.
 
 Two standing notes: **there is no component library** (DEC-021 — surfaces are hand-built from
 Tailwind utilities; its absence is a decision, not a gap), and **there is no auth platform**
-(magic-link is self-rolled in the service layer, DEC-020). Proposals that assume either exists are
+(auth is self-rolled in the service layer — a 6-digit code and a signed session cookie, DEC-020, DEC-081). Proposals that assume either exists are
 working from the wrong stack.

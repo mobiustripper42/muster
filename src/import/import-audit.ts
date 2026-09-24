@@ -10,7 +10,7 @@
  * Two parts, mirroring the DDL (0007): the run-level **summary** (counts +
  * diagnostics that aren't per-row) snapshots as one JSONB blob on `import_runs`;
  * the **identity rows** (which reservations/shifts) explode into `import_run_items`
- * so each names a name/id, not just a tally. Adapter-side state like the outbox
+ * so each names a name/id, not just a tally. Adapter-side state
  * (DEC-030): persisted through the port, never read by the domain — the importer
  * returns the envelope, the EDGE assembles + stamps the run (id/time/source stay
  * out of the clock-free core).

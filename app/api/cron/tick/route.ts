@@ -193,7 +193,7 @@ export async function GET(req: Request) {
   // part (@code-review). `tick` has no transaction around its per-shift loop — `repository.ts:9`
   // says so outright — and `widenAsk`/`escalate` persist as they go while `firedAsks` is only
   // assembled at the end. So a throw on shift 50 of 100 leaves the first 49 shifts' asks durably
-  // committed and thrown away with the exception: never forwarded to the outbox, and never re-widened
+  // committed and thrown away with the exception: never forwarded to the channel, and never re-widened
   // by the next tick, which now reads those seats as already Asked. Crew asked in the database and
   // never texted is the exact state an operator is triaging when they read this line, so the log must
   // not tell them nothing happened. The underlying gap is pre-existing and out of scope here.

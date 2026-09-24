@@ -122,7 +122,7 @@ export async function mergeAction(formData: FormData): Promise<void> {
     // the merge's one-shot re-form observed (#259) — same consume-once reasoning
     // as split. Kept separate from the freedCrew relay so one relay's failure
     // can't suppress the other. A duplicate "removed" to a just-freed member is
-    // fine (Twilio: an extra text beats a missed one; the outbox dedupes by slot).
+    // fine (an extra text beats a missed one).
     try {
       await forwardFormNotices(form);
     } catch (e) {

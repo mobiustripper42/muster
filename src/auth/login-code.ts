@@ -201,7 +201,7 @@ export async function requestLoginCode(
  * leaked the first time. The distinction the cap logic needs is internal to this
  * function and never crosses the return.
  *
- * If failure telemetry is ever wanted, it goes to a log or the outbox — a side
+ * If failure telemetry is ever wanted, it goes to a log — a side
  * channel the person guessing can't observe — never into this type.
  */
 export type VerifyFailure = "invalid";

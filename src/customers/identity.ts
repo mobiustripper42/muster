@@ -6,9 +6,9 @@
  * makes the deferred **phone-or-email** decision cheap (DEC-132): when the Xola importer forces
  * it at cutover, the policy changes in this file rather than across every call site.
  *
- * **Deliberately NOT `normalizePhone` from `src/adapters/sms-deep-link.ts`.** That helper strips
- * non-digits for `sms:` URLs and is permissive by design — it happily returns a 3-digit string.
- * An identity key can't inherit those semantics: two different people must never canonicalize to
+ * **Deliberately not a permissive `sms:`-link normaliser** (the outbox's `normalizePhone`, deleted
+ * with it in #935, stripped non-digits and happily returned a 3-digit string). An identity key
+ * can't have those semantics: two different people must never canonicalize to
  * the same key, and a typo must fail loudly rather than silently key a customer. Same input
  * shape, different contract; keeping them apart is the point.
  */

@@ -28,9 +28,6 @@ import type {
   CancelledBy,
   Offering,
   Payment,
-  OutboxEntry,
-  RingOutboxEntry,
-  NoticeOutboxEntry,
   SmsConsent,
   GuestContact,
   PtoWindow,
@@ -56,9 +53,6 @@ import type {
   EventId,
   LocationId,
   OfferingId,
-  OutboxEntryId,
-  RingOutboxEntryId,
-  NoticeOutboxEntryId,
   PaymentId,
   PtoWindowId,
   TimePunchId,
@@ -159,9 +153,6 @@ export class InMemoryRepository implements Repository {
   readonly #admins = new Map<string, Admin>();
   readonly #loginCodes = new Map<string, LoginCode>();
   readonly #calendarFeeds = new Map<string, CalendarFeed>();
-  readonly #outbox = new Map<OutboxEntryId, OutboxEntry>();
-  readonly #ringOutbox = new Map<RingOutboxEntryId, RingOutboxEntry>();
-  readonly #noticeOutbox = new Map<NoticeOutboxEntryId, NoticeOutboxEntry>();
   readonly #reliability: ReliabilityEvent[] = [];
   readonly #auditEvents: AuditEvent[] = [];
   readonly #trailEvents: TrailEvent[] = [];
@@ -1136,51 +1127,6 @@ export class InMemoryRepository implements Repository {
       ([, x]) => x.tokenHash === tokenHash,
     );
     if (entry) this.#calendarFeeds.set(entry[0], clone({ ...entry[1], lastPolledAt: polledAt }));
-  }
-
-  // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────
-  async saveOutboxEntry(entry: OutboxEntry): Promise<void> {
-    this.#outbox.set(entry.id, clone(entry));
-  }
-  async getOutboxEntry(id: OutboxEntryId): Promise<OutboxEntry | null> {
-    const e = this.#outbox.get(id);
-    return e ? clone(e) : null;
-  }
-  async listOutboxEntries(): Promise<OutboxEntry[]> {
-    return [...this.#outbox.values()].map(clone);
-  }
-  async removeOutboxEntry(id: OutboxEntryId): Promise<void> {
-    this.#outbox.delete(id);
-  }
-
-  // ── Ring outbox entries (doorbell-relay channel adapter state — DEC-073) ────
-  async saveRingOutboxEntry(entry: RingOutboxEntry): Promise<void> {
-    this.#ringOutbox.set(entry.id, clone(entry));
-  }
-  async getRingOutboxEntry(id: RingOutboxEntryId): Promise<RingOutboxEntry | null> {
-    const e = this.#ringOutbox.get(id);
-    return e ? clone(e) : null;
-  }
-  async listRingOutboxEntries(): Promise<RingOutboxEntry[]> {
-    return [...this.#ringOutbox.values()].map(clone);
-  }
-  async removeRingOutboxEntry(id: RingOutboxEntryId): Promise<void> {
-    this.#ringOutbox.delete(id);
-  }
-
-  // ── Notice outbox entries (assignment-change relay adapter state — DEC-084) ─
-  async saveNoticeOutboxEntry(entry: NoticeOutboxEntry): Promise<void> {
-    this.#noticeOutbox.set(entry.id, clone(entry));
-  }
-  async getNoticeOutboxEntry(id: NoticeOutboxEntryId): Promise<NoticeOutboxEntry | null> {
-    const e = this.#noticeOutbox.get(id);
-    return e ? clone(e) : null;
-  }
-  async listNoticeOutboxEntries(): Promise<NoticeOutboxEntry[]> {
-    return [...this.#noticeOutbox.values()].map(clone);
-  }
-  async removeNoticeOutboxEntry(id: NoticeOutboxEntryId): Promise<void> {
-    this.#noticeOutbox.delete(id);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

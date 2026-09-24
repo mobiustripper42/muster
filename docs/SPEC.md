@@ -2722,7 +2722,8 @@ de-prioritized fast-follow whose only job is reliable push, never the participat
 - **Crew: passwordless.** Casual crew will not manage credentials; a forgotten password is a ghosted
   shift (§2.6.1). **One passwordless entry: a 6-digit code emailed to the roster email** (DEC-081).
   The links in crew texts are plain deep-links to the relevant card, ask or thread and carry **no
-  secret** (DEC-181): a signed-in crew member lands there, a signed-out one signs in with the code first.
+  secret** (DEC-181): a signed-in crew member lands there; a signed-out one is sent to the code door and,
+  signed in, lands on `/crew`.
   *A login is always a code; a link is never a login.*
 - **Crew do not self-register.** Roster records are operator-created (§2.1); passwordless entry is for
   *responding, viewing, and self-serve sign-in*, never signup.

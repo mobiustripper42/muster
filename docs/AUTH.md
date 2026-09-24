@@ -46,7 +46,8 @@ The code door lands on **`/crew`**; the switcher lands on **`/admin`**. Sign-out
 
 **The link in a crew text is not a door.** An ask, notice or doorbell ring carries a
 plain link — `/crew`, or `/crew/threads/<id>` — with no secret in it (DEC-181). A
-signed-in crew member lands there; a signed-out one meets the code door first. The
+signed-in crew member lands there; a signed-out one is sent to the code door and lands on
+`/crew` once signed in. The
 magic link that used to ride in those texts, its `magic_tokens` table and the
 `/crew/auth` interstitial are gone.
 

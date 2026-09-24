@@ -12,7 +12,7 @@ claims:
     note: "compensateResidualRaceLoss refunds the loser"
   - kind: "spec"
     target: "2.8.7"
-revisit_if: "A residual-race auto-refund is seen in production — a charge-and-refund pair against a lapsed pending row"
+revisit_if: "The 'SOLD OUT WHILE PAYING' office text, or an 'Auto-refunded after losing the boat' row on /admin/booking-audit, shows up more than rarely"
 ---
 
 ## DEC-182: A residual-race loser is charged and refunded — no authorize-then-capture

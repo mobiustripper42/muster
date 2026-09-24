@@ -26,5 +26,7 @@ the fallback with a channel that writes the message to the log and deleted the s
 Issue #935 finishes it: the three tables, twelve port methods and the integrity scans go. Production
 held 0, 4 and 17 rows — relay cards from before #934 that nothing had read since.
 
-What survives of DEC-030 is stated elsewhere: an ask is answered in the app, with no inbound SMS
-(SPEC §2.6.1). DEC-084's notice rules stand; only its outbox delivery path is gone.
+Two of DEC-030's rules outlive the outbox and stand: adapter state is persisted through the port
+but never read by the domain (DEC-056 leans on it), and channel wiring and actors live at the edge,
+never in the core (DEC-118). An ask is answered in the app with no inbound SMS (SPEC §2.6.1).
+DEC-084's notice rules stand; only its outbox delivery path is gone.

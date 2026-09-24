@@ -7,7 +7,7 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { Payment, Reservation } from "../domain/entities.js";
 import { seedFleet } from "../import/resource-map.js";
-import { cancelReservation, quoteCancelRefund } from "./cancel-reservation.js";
+import { cancelReservation, cancelUnpaidPhoneBooking, quoteCancelRefund } from "./cancel-reservation.js";
 import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
 
 const VESSEL = asId<"VesselId">("vessel-brew-2"); // 2-crew, seeded by the fleet
@@ -223,6 +223,29 @@ describe("cancelReservation", () => {
       expect(await cancelReservation(deps(repo), RESV, "operator")).toEqual({ ok: false, reason: "now_booked" });
       expect(await repo.getReservation(RESV)).toMatchObject({ status: "booked", source: "muster" });
       expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");
+    });
+
+    it("a STALE phone-cancel form on a booking paid since it opened refuses — never the paid-booking cancel", async () => {
+      // The operator opens the confirm, the customer pays (the row is now `muster`, booked, with
+      // an Event), the operator submits. `cancelReservation` would take that row down its ordinary
+      // booked path — Event cancelled, no refund, no crew told — under a screen that just said
+      // "nothing was paid". The phone path must refuse anything that is not still a phone booking.
+      const repo = await seeded(); // booked, `muster`, on EVENT: what a paid phone booking becomes
+      expect(await cancelUnpaidPhoneBooking(deps(repo), RESV, "operator")).toEqual({
+        ok: false,
+        reason: "now_booked",
+      });
+      expect((await repo.getReservation(RESV))?.status).toBe("booked");
+      expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");
+    });
+
+    it("the phone path cancels an unpaid phone booking like cancelReservation does", async () => {
+      const repo = await seeded(unpaid);
+      expect(await cancelUnpaidPhoneBooking(deps(repo), RESV, "customer")).toEqual({
+        ok: true,
+        alreadyCancelled: false,
+      });
+      expect((await repo.getReservation(RESV))?.cancelledBy).toBe("customer");
     });
   });
 

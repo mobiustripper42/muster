@@ -8,6 +8,7 @@ import { createBalanceCheckout } from "@core/reservations/create-balance-checkou
 import { recordTrail } from "@core/reservations/trail.js";
 import {
   cancelReservation,
+  cancelUnpaidPhoneBooking,
   quoteCancelRefund,
   type CancelledBy,
 } from "@core/reservations/cancel-reservation.js";
@@ -147,7 +148,7 @@ export async function createBalanceLink(formData: FormData): Promise<void> {
 
 /** Every code `cancelPhoneBooking` can put in `?cancelErr=` — the pane's copy table is keyed on it. */
 export type PhoneCancelErr =
-  | Extract<Awaited<ReturnType<typeof cancelReservation>>, { ok: false }>["reason"]
+  | Extract<Awaited<ReturnType<typeof cancelUnpaidPhoneBooking>>, { ok: false }>["reason"]
   | "unreachable";
 
 /**
@@ -159,8 +160,10 @@ export type PhoneCancelErr =
  * computing and moving a refund. An unpaid phone booking has no Event and no payment, so none of
  * that applies — and a branch that skipped it all would be the whole function behind an `if`.
  *
- * `cancelReservation` does the guarded write: if the customer pays while this is pressed, exactly
- * one of the two lands, and a paid booking is never cancelled from here (`now_booked`).
+ * `cancelUnpaidPhoneBooking`, not `cancelReservation`: this form can be stale — opened before the
+ * customer paid — and the general function would take a now-paid booking down the booked path.
+ * The phone-only entry refuses anything that is no longer a phone booking (`now_booked`), and its
+ * write is guarded against the customer paying mid-press.
  */
 export async function cancelPhoneBooking(formData: FormData): Promise<void> {
   const subject = await readSubject();
@@ -169,9 +172,9 @@ export async function cancelPhoneBooking(formData: FormData): Promise<void> {
   const { reservationId, back } = readContext(formData);
   const by: CancelledBy = formData.get("by") === "operator" ? "operator" : "customer";
 
-  let result: Awaited<ReturnType<typeof cancelReservation>> | null = null;
+  let result: Awaited<ReturnType<typeof cancelUnpaidPhoneBooking>> | null = null;
   try {
-    result = await cancelReservation(
+    result = await cancelUnpaidPhoneBooking(
       { repo: getRepo(), now: () => new Date().toISOString() },
       asId<"ReservationId">(reservationId),
       by,

@@ -125,6 +125,43 @@ export type CancelOutcome =
     };
 
 /**
+ * End an operator's UNPAID phone booking (16.1, DEC-163) — and nothing else.
+ *
+ * It never lapses, so a person is the only thing that ends it. Nothing was paid, so there is
+ * nothing to refund, and a pending row has no Event, so there is no hull to release beyond the row
+ * itself and no shift to re-form (shifts derive from Events).
+ *
+ * **Never falls through to the booked path**, which is why it is its own entry rather than only a
+ * branch of `cancelReservation`. The phone-booking pane posts here from a confirm the operator may
+ * have opened minutes ago; if the customer paid in between, the row is `muster`, booked, with an
+ * Event and a payment — and `cancelReservation` would cancel that like any booking, with no refund
+ * and no crew told, under a screen that said nothing was paid. So a row that is no longer a phone
+ * booking refuses: `now_booked` when it has since been paid, `not_booked` otherwise.
+ *
+ * The write is guarded too: the customer can pay between the read and the write. The confirm flip
+ * and `cancelPendingIfUnpaid` both require `status='pending'`, so exactly one lands.
+ */
+export async function cancelUnpaidPhoneBooking(
+  deps: Pick<CancelDeps, "repo" | "now">,
+  reservationId: ReservationId,
+  by: CancelledBy,
+): Promise<CancelOutcome> {
+  const reservation = await deps.repo.getReservation(reservationId);
+  if (!reservation) return { ok: false, reason: "reservation_missing" };
+  if (reservation.source !== "admin") {
+    return { ok: false, reason: isBooked(reservation) ? "now_booked" : "not_booked" };
+  }
+  if (reservation.status === "cancelled") return { ok: true, alreadyCancelled: true };
+  if (reservation.status !== "pending") return { ok: false, reason: "not_booked" };
+  if (await deps.repo.cancelPendingIfUnpaid(reservationId, by, deps.now())) {
+    return { ok: true, alreadyCancelled: false };
+  }
+  const now = await deps.repo.getReservation(reservationId);
+  if (now?.status === "cancelled") return { ok: true, alreadyCancelled: true };
+  return { ok: false, reason: now?.status === "booked" ? "now_booked" : "not_booked" };
+}
+
+/**
  * `by` is REQUIRED, not optional (#724). Every caller already knows the answer — the admin
  * confirm asks it to pick a refund policy — and an optional parameter is how a surface ends up
  * recording nothing while looking correct. It is written once and never rewritten; see
@@ -137,23 +174,7 @@ export async function cancelReservation(
 ): Promise<CancelOutcome> {
   const reservation = await deps.repo.getReservation(reservationId);
   if (!reservation) return { ok: false, reason: "reservation_missing" };
-  // ── An operator's unpaid phone booking (16.1, DEC-163) ───────────────────────
-  // It never lapses, so a person is the only thing that ends it. Nothing was paid, so there is
-  // nothing to refund, and a pending row has no Event, so there is no hull to release beyond the
-  // row itself and no shift to re-form (shifts derive from Events). Once paid it is `muster`, so
-  // every `admin` row here is either still unpaid or was cancelled unpaid.
-  if (reservation.source === "admin") {
-    if (reservation.status === "cancelled") return { ok: true, alreadyCancelled: true };
-    if (reservation.status !== "pending") return { ok: false, reason: "not_booked" };
-    // Guarded: the customer can pay between the read above and this write. The confirm flip and
-    // this both require `status='pending'`, so exactly one of them lands.
-    if (await deps.repo.cancelPendingIfUnpaid(reservationId, by, deps.now())) {
-      return { ok: true, alreadyCancelled: false };
-    }
-    const now = await deps.repo.getReservation(reservationId);
-    if (now?.status === "cancelled") return { ok: true, alreadyCancelled: true };
-    return { ok: false, reason: now?.status === "booked" ? "now_booked" : "not_booked" };
-  }
+  if (reservation.source === "admin") return cancelUnpaidPhoneBooking(deps, reservationId, by);
   // Xola owns its own bookings and its own money (DEC-105). Cancelling one here would be
   // overwritten by the next pull and would tell the customer nothing.
   if (reservation.source !== "muster") return { ok: false, reason: "not_muster" };

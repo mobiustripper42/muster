@@ -173,6 +173,59 @@ describe("cancelReservation", () => {
     expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");
   });
 
+  describe("an operator's UNPAID phone booking (16.1, DEC-163)", () => {
+    // It never lapses, so a person is the only thing that ends it. Nobody has paid, so there is
+    // nothing to refund and no Event to release — the hull frees when the row stops being pending.
+    const unpaid: Partial<Reservation> = {
+      source: "admin",
+      status: "pending",
+      eventId: null,
+      vesselId: VESSEL,
+      date: "2026-08-20",
+      time: "17:00",
+      holdMinutes: 120,
+      tripMinutes: 100,
+    };
+
+    it("cancels, and records that the operator did it", async () => {
+      const repo = await seeded(unpaid);
+      const result = await cancelReservation(deps(repo), RESV, "operator");
+
+      expect(result).toEqual({ ok: true, alreadyCancelled: false });
+      expect(await repo.getReservation(RESV)).toMatchObject({
+        status: "cancelled",
+        cancelledBy: "operator",
+        updatedAt: NOW,
+      });
+      // Not its Event to cancel — a pending row has none, and this one belongs to nobody here.
+      expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");
+    });
+
+    it("re-running on one already cancelled is fine and writes nothing", async () => {
+      const repo = await seeded({ ...unpaid, status: "cancelled", cancelledBy: "operator" });
+      expect(await cancelReservation(deps(repo), RESV, "customer")).toEqual({
+        ok: true,
+        alreadyCancelled: true,
+      });
+      expect((await repo.getReservation(RESV))?.cancelledBy).toBe("operator");
+    });
+
+    it("refuses if the customer paid while the operator was pressing cancel — never cancels a paid booking", async () => {
+      const repo = await seeded(unpaid);
+      // The race: the payment's confirm flips the row between this function's read and its write.
+      const real = repo.cancelPendingIfUnpaid.bind(repo);
+      repo.cancelPendingIfUnpaid = async (id, by, at) => {
+        const row = (await repo.getReservation(id))!;
+        await repo.saveReservation({ ...row, status: "booked", source: "muster", eventId: EVENT });
+        return real(id, by, at);
+      };
+
+      expect(await cancelReservation(deps(repo), RESV, "operator")).toEqual({ ok: false, reason: "now_booked" });
+      expect(await repo.getReservation(RESV)).toMatchObject({ status: "booked", source: "muster" });
+      expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");
+    });
+  });
+
   it("records WHO cancelled — the answer the refund turned on and nothing kept (#724)", async () => {
     // The confirm already asks customer-vs-operator, because the refund policy branches on it
     // (`quoteCancelRefund`). Until now that answer picked a policy and was thrown away: the

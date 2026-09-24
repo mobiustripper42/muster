@@ -14,6 +14,8 @@ import { asId, type VesselId } from "../domain/ids.js";
 import {
   candidateVessels,
   claimDepartureSlot,
+  CUSTOMER_RULES,
+  OPERATOR_RULES,
   resolveHoldMinutes,
   HOLD_MINUTES_DEFAULT,
 } from "./claim.js";
@@ -964,5 +966,164 @@ describe("claimDepartureSlot — the trail (issue #1051)", () => {
     await claim(repo, { time: "13:31" });
     await claim(repo, { guestCount: 0 });
     expect(await repo.listTrailEvents()).toHaveLength(0);
+  });
+});
+
+describe("claimDepartureSlot — the operator's rules (§2.10.6, 16.1)", () => {
+  // The table in §2.10.6, one case per row, each asked of BOTH rule sets where they differ. The
+  // operator gives up what protects their own schedule (grid, season, blocks) and keeps what
+  // protects physics and law (one hull in one place, the boat's capacity, a trip that has left).
+
+  /** The operator's row: `admin`, no payment window, so no `reservedAt` (DEC-163). */
+  const adminBuilder = (ask: { date: string; time: string; guestCount: number }) =>
+    (vesselId: VesselId, _prior: Reservation | null, at: string): Reservation => ({
+      id: asId<"ReservationId">(`resv-op-${++seq}`),
+      eventId: null,
+      source: "admin",
+      status: "pending",
+      customerName: "Quint",
+      partySize: ask.guestCount,
+      vesselId,
+      date: ask.date,
+      time: ask.time,
+      offeringId: OFF,
+      holdMinutes: 120,
+      tripMinutes: 100,
+      updatedAt: at,
+    });
+
+  function operatorClaim(
+    repo: InMemoryRepository,
+    ask: { vesselId: VesselId; date?: string; time?: string; guestCount?: number; offeringId?: typeof OFF },
+    clock: () => string = now,
+  ) {
+    const req = {
+      offeringId: ask.offeringId ?? OFF,
+      date: ask.date ?? DATE,
+      time: ask.time ?? TIME,
+      guestCount: ask.guestCount ?? 4,
+      vesselId: ask.vesselId,
+    };
+    return claimDepartureSlot(repo, req, adminBuilder(req), clock, OPERATOR_RULES);
+  }
+
+  const smallHold = { id: asId<"BlockId">("b-small"), kind: "vesselHold" as const, vesselId: SMALL, date: DATE, time: TIME };
+
+  it("customer rules are the default — an existing caller is unchanged", () => {
+    expect(CUSTOMER_RULES).toMatchObject({ grid: "refuse", blocks: "refuse", vessel: "smallest_fit" });
+    expect(OPERATOR_RULES).toMatchObject({ grid: "pass", blocks: "refuse", vessel: "requested" });
+  });
+
+  it("books the boat the operator clicked, not the smallest that fits", async () => {
+    const repo = await seededRepo();
+    const res = await operatorClaim(repo, { vesselId: BIG });
+    expect(claimedVessel(res)).toBe("v-big");
+    expect("claimed" in res && res.claimed.source).toBe("admin");
+  });
+
+  it("season: the customer is refused, the operator passes", async () => {
+    const repo = await seededRepo();
+    const offSeason = { date: "2026-09-05" }; // a Saturday, after seasonEnd
+    expect(await claim(repo, offSeason)).toEqual({ unbookable: "off_schedule" });
+    expect(claimedVessel(await operatorClaim(repo, { vesselId: SMALL, ...offSeason }))).toBe("v-small");
+  });
+
+  it("schedule grid: the customer is refused an unlisted time, the operator passes", async () => {
+    const repo = await seededRepo();
+    expect(await claim(repo, { time: "16:00" })).toEqual({ unbookable: "off_schedule" });
+    expect(claimedVessel(await operatorClaim(repo, { vesselId: SMALL, time: "16:00" }))).toBe("v-small");
+  });
+
+  it("passing the grid is not passing garbage — a malformed slot still refuses, and writes nothing", async () => {
+    const repo = await seededRepo();
+    expect(await operatorClaim(repo, { vesselId: SMALL, date: "2026-09-31" })).toEqual({
+      unbookable: "off_schedule",
+    });
+    expect(await operatorClaim(repo, { vesselId: SMALL, time: "1:30pm" })).toEqual({
+      unbookable: "off_schedule",
+    });
+    expect(await repo.listAllReservations()).toHaveLength(0);
+  });
+
+  it("a block refuses the operator too — unblocking it first is the deliberate choice (operator, 2026-09-23)", async () => {
+    const repo = await seededRepo();
+    await repo.saveBlock(smallHold);
+    // The customer falls through to the unblocked boat — the block removed v-small from the set.
+    expect(claimedVessel(await claim(repo, { guestCount: 4 }))).toBe("v-big");
+    // The operator named v-small, so there is no fall-through: they are told it is blocked, by
+    // name, rather than "busy" — the fix is theirs to make, on the calendar.
+    expect(await operatorClaim(repo, { vesselId: SMALL, guestCount: 2 })).toEqual({ unbookable: "blocked" });
+    expect((await repo.listAllReservations()).filter((r) => r.source === "admin")).toHaveLength(0);
+  });
+
+  it("capacity refuses the operator — the write itself, not a form pre-check (issue #767)", async () => {
+    // The customer path never hits this: `candidateVessels` filters boats that do not fit, so a
+    // party of 8 lands on the 12-seat boat. The operator names the boat, so there is nothing to
+    // fall back to — and the COI is the Coast Guard's number, not ours.
+    const repo = await seededRepo();
+    expect(await operatorClaim(repo, { vesselId: SMALL, guestCount: 7 })).toEqual({
+      unbookable: "over_capacity",
+    });
+    expect(await repo.listAllReservations()).toHaveLength(0);
+    // Exactly at capacity is a fit.
+    expect(claimedVessel(await operatorClaim(repo, { vesselId: SMALL, guestCount: 6 }))).toBe("v-small");
+  });
+
+  it("refuses a boat the offering does not run on", async () => {
+    const repo = await seededRepo();
+    const other = asId<"VesselId">("v-other");
+    await repo.saveVessel(vessel(other, 20));
+    expect(await operatorClaim(repo, { vesselId: other })).toEqual({ unbookable: "vessel_not_offered" });
+  });
+
+  it("a departed trip refuses the operator too", async () => {
+    const repo = await seededRepo();
+    const after = () => "2026-07-04T18:00:00.000Z"; // 14:00 local — the 13:30 has left
+    expect(await operatorClaim(repo, { vesselId: SMALL }, after)).toEqual({ unbookable: "departed" });
+  });
+
+  it("an offering that is not live refuses the operator too", async () => {
+    const repo = await seededRepo();
+    await repo.saveOffering(offering({ status: "hidden" }));
+    expect(await operatorClaim(repo, { vesselId: SMALL })).toEqual({ unbookable: "not_live" });
+  });
+
+  it("another trip on the hull refuses the operator — and does NOT fall through to another boat", async () => {
+    const repo = await seededRepo();
+    await repo.saveEvent({
+      id: asId<"EventId">("x-op"),
+      vesselId: SMALL,
+      date: DATE,
+      time: "13:00",
+      capacity: 6,
+      status: "scheduled",
+      source: "xola",
+    });
+    expect(await operatorClaim(repo, { vesselId: SMALL })).toEqual({ soldOut: true });
+    expect(await repo.listAllReservations()).toHaveLength(0);
+  });
+
+  it("a live checkout on the hull refuses the operator", async () => {
+    const repo = await seededRepo();
+    await claim(repo, {}); // a customer is paying for v-small right now
+    expect(await operatorClaim(repo, { vesselId: SMALL })).toEqual({ soldOut: true });
+  });
+
+  it("the operator's own unpaid booking holds the boat against a customer, and never lapses", async () => {
+    const repo = await seededRepo();
+    // Booked by phone a week before the trip; the customer never paid.
+    await operatorClaim(repo, { vesselId: SMALL }, () => "2026-06-27T12:00:00.000Z");
+    // A week later the funnel still cannot have v-small: an `admin` row has no payment window.
+    expect(claimedVessel(await claim(repo, {}))).toBe("v-big");
+  });
+
+  it("an operator refusal is not a customer turned away — no sold_out row", async () => {
+    // `sold_out` exists to count customers the public funnel turned away (issue #1051). An
+    // operator told "that boat is out then" on a phone call is not that, and counting it would
+    // inflate the one number the row is for.
+    const repo = await seededRepo();
+    await claim(repo, {});
+    await operatorClaim(repo, { vesselId: SMALL });
+    expect((await repo.listTrailEvents()).filter((e) => e.type === "sold_out")).toHaveLength(0);
   });
 });

@@ -1423,6 +1423,74 @@ export function runRepositoryContract(
       expect(await repo.getEvent(SLOT_ID)).toBeNull();
     });
 
+    /** The operator's phone booking, unpaid: `admin`, and no `reservedAt` — it has no window. */
+    const adminPendingRow = (over: Partial<Reservation> = {}): Reservation => {
+      const row = pendingRow({ source: "admin", ...over });
+      delete row.reservedAt;
+      return row;
+    };
+
+    it("bookPendingIfHullFree: an operator's booking becomes `muster` in the write that books it (16.1)", async () => {
+      // `admin` means "the operator booked it and it is awaiting payment" — the thing that exempts
+      // it from lapse (DEC-163). Once paid it is an ordinary booking, and every reader that asks
+      // "is this a Muster booking" — the mutex below, availability, cancel — must see it as one.
+      // Who sold it is kept on the trail's `booked` row, not here.
+      const res = await confirm(adminPendingRow());
+      expect(res.result).toBe("won");
+      if (res.result !== "won") return;
+      expect(res.reservation.source).toBe("muster");
+      expect((await repo.getReservation(rid("pend-1")))!).toMatchObject({ source: "muster", status: "booked" });
+    });
+
+    it("bookPendingIfHullFree: a paid operator booking holds the whole-boat mutex like any other", async () => {
+      // The oversell case the flip exists for: the mutex is `source='muster'`-scoped, so a paid row
+      // left as `admin` would be invisible to it and a second buyer could book the same boat.
+      expect((await confirm(adminPendingRow())).result).toBe("won");
+      const rival = pendingRow({ id: rid("pend-rival"), holderToken: "tok-rival" });
+      expect((await confirm(rival)).result).toBe("lost");
+    });
+
+    it("bookPendingIfHullFree: a customer's row is still `muster` after the flip — only `admin` changes", async () => {
+      const res = await confirm(pendingRow());
+      expect(res.result === "won" && res.reservation.source).toBe("muster");
+    });
+
+    // ── cancelPendingIfUnpaid — the operator ends an unpaid phone booking (16.1) ──────────
+    // DEC-163: an operator's booking never lapses, so only a person ends it. A GUARDED write, not
+    // `saveReservation`: the customer may pay while the operator is pressing cancel, and a
+    // whole-row upsert from the operator's stale read would overwrite a just-booked, paid row
+    // with a cancelled pending one — money taken, booking gone, Event still scheduled.
+    const CANCEL_AT = "2026-06-30T09:00:00.000Z";
+
+    it("cancelPendingIfUnpaid: cancels a pending row and records who and when — and frees the hull", async () => {
+      await repo.saveReservation(adminPendingRow());
+      expect(await repo.cancelPendingIfUnpaid(rid("pend-1"), "operator", CANCEL_AT)).toBe(true);
+      expect((await repo.getReservation(rid("pend-1")))!).toMatchObject({
+        status: "cancelled",
+        cancelledBy: "operator",
+        updatedAt: CANCEL_AT,
+        source: "admin",
+      });
+      // The boat is sellable again: a cancelled row occupies nothing.
+      const next = pendingRow({ id: rid("pend-next"), holderToken: "tok-next" });
+      expect((await repo.savePendingIfHullFree(next, SINCE)).result).toBe("won");
+    });
+
+    it("cancelPendingIfUnpaid: refuses a row the customer has just PAID — and leaves it booked", async () => {
+      // The race: the confirm flips the row between the operator's read and this write.
+      expect((await confirm(adminPendingRow())).result).toBe("won");
+      expect(await repo.cancelPendingIfUnpaid(rid("pend-1"), "operator", CANCEL_AT)).toBe(false);
+      const stored = (await repo.getReservation(rid("pend-1")))!;
+      expect(stored.status).toBe("booked");
+      expect(stored.cancelledBy).toBeUndefined();
+    });
+
+    it("cancelPendingIfUnpaid: false for a missing row, and for one already cancelled", async () => {
+      expect(await repo.cancelPendingIfUnpaid(rid("pend-nope"), "operator", CANCEL_AT)).toBe(false);
+      await repo.saveReservation(adminPendingRow({ status: "cancelled", cancelledBy: "operator" }));
+      expect(await repo.cancelPendingIfUnpaid(rid("pend-1"), "operator", CANCEL_AT)).toBe(false);
+    });
+
     // ── Checkout holds — acquire / lifecycle (12.1, DEC-109) ───────────────────
     /**
      * Save the parent rows the reservations-era foreign keys require (DEC-131). Postgres now

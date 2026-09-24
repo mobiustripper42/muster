@@ -145,6 +145,61 @@ export async function createBalanceLink(formData: FormData): Promise<void> {
   redirect(back({ balanceUrl: result.url }));
 }
 
+/** Every code `cancelPhoneBooking` can put in `?cancelErr=` — the pane's copy table is keyed on it. */
+export type PhoneCancelErr =
+  | Extract<Awaited<ReturnType<typeof cancelReservation>>, { ok: false }>["reason"]
+  | "unreachable";
+
+/**
+ * Cancel an operator's UNPAID phone booking (16.1, DEC-163) — it never lapses, so a person is the
+ * only thing that ends it.
+ *
+ * Its own action rather than a branch of `cancelBooking` below, because nearly everything that
+ * one does is about an Event or money: freeing the Event, re-forming the shift, telling crew,
+ * computing and moving a refund. An unpaid phone booking has no Event and no payment, so none of
+ * that applies — and a branch that skipped it all would be the whole function behind an `if`.
+ *
+ * `cancelReservation` does the guarded write: if the customer pays while this is pressed, exactly
+ * one of the two lands, and a paid booking is never cancelled from here (`now_booked`).
+ */
+export async function cancelPhoneBooking(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "admin") redirect("/admin");
+
+  const { reservationId, back } = readContext(formData);
+  const by: CancelledBy = formData.get("by") === "operator" ? "operator" : "customer";
+
+  let result: Awaited<ReturnType<typeof cancelReservation>> | null = null;
+  try {
+    result = await cancelReservation(
+      { repo: getRepo(), now: () => new Date().toISOString() },
+      asId<"ReservationId">(reservationId),
+      by,
+    );
+  } catch (e) {
+    logSwallowed("admin/reservation:cancelPhoneBooking", e, "the unpaid phone booking was not cancelled");
+  }
+  if (!result) redirect(back({ cancelErr: "unreachable" }));
+  if (!result.ok) redirect(back({ cancelErr: result.reason }));
+
+  // The trail, before the redirect (which throws) — same rule and same event as `cancelBooking`.
+  // Only when THIS press cancelled it: a re-press on one already cancelled is not a second fact.
+  if (!result.alreadyCancelled) {
+    await recordTrail(
+      { repo: getRepo(), now: () => new Date().toISOString() },
+      {
+        id: asId<"TrailEventId">(`cancelled:${randomUUID()}`),
+        reservationId: asId<"ReservationId">(reservationId),
+        actorKind: "admin",
+        actorId: subject.id,
+        type: "cancelled",
+        metadata: { reason: `unpaid phone booking, cancelled by ${by}` },
+      },
+    );
+  }
+  redirect(back({}));
+}
+
 /**
  * Cancel the booking (#616) — the operator action that did not exist anywhere in the product.
  *

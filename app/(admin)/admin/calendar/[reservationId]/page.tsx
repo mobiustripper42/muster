@@ -37,6 +37,7 @@ import {
   actionMessage,
   type PaneActionState,
 } from "./reservation-detail-pane";
+import { PhoneBookingPane } from "./phone-booking-pane";
 
 /**
  * /admin/calendar/[reservationId] (task 12.11 continued, #464) — the reservation detail.
@@ -78,7 +79,11 @@ function safeDecode(segment: string): string {
 // removing this line and reading what eslint said, not estimated — `@code-review` flagged that
 // leaving `58` here would silently undercount the debt for whoever works the queue next, which
 // is how a baseline stops being a baseline and becomes a number nobody trusts.
-// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 59
+//
+// **59 → 61 at 16.1**, from the unpaid-phone-booking early return (measured the same way, with
+// `--no-inline-config`). The pane itself went to its own component so this function grew by the
+// branch and nothing else.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 61
 export default async function ReservationDetailPage({
   params,
   searchParams,
@@ -102,6 +107,8 @@ export default async function ReservationDetailPage({
        *  PRESENCE reveals the new link on production; their value carries the send outcome. */
       reissued?: string;
       reissueErr?: string;
+      /** Present ⇒ the render right after the operator booked this by phone (16.1). */
+      booked?: string;
     }
   >;
 }) {
@@ -132,6 +139,11 @@ export default async function ReservationDetailPage({
         <Notice>Couldn’t load this reservation right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
+  }
+  // An operator's phone booking before it is paid has no Event (16.1) — its own pane. Paid, it is
+  // `muster` with an Event and falls through to the ordinary one below.
+  if (reservation && isUnpaidPhoneBooking(reservation)) {
+    return <PhoneBookingPage reservation={reservation} sp={sp} />;
   }
   if (!reservation || !event) notFound();
 
@@ -250,17 +262,7 @@ export default async function ReservationDetailPage({
       code: liveCode,
       justReissued,
     });
-    const detailHref = (extra: Record<string, string>): string => {
-      const p = new URLSearchParams();
-      if (sp.date) p.set("date", sp.date);
-      if (sp.filter) p.set("filter", sp.filter);
-      for (const [k, val] of Object.entries(extra)) p.set(k, val);
-      const q = p.toString();
-      // Same `#booking-actions` anchor the actions redirect to — the confirm-open and
-      // back-out links must land in the same place a form post does, or the two routes into
-      // the same screen behave differently.
-      return `/admin/calendar/${encodeURIComponent(String(reservation.id))}${q ? `?${q}` : ""}#booking-actions`;
-    };
+    const detailHref = (extra: Record<string, string>): string => paneHref(reservation.id, sp, extra);
 
     // DEC-032: the departure instant is minted from the vessel-local wall clock, never by
     // parsing `date`+`time` as if they were UTC — which would move the 14-day boundary by
@@ -419,6 +421,97 @@ export default async function ReservationDetailPage({
             {...(actions ? { actions } : {})}
           />
 
+          <BookingHistory trail={trail} />
+        </aside>
+      </div>
+
+      <VersionTag />
+    </Shell>
+  );
+}
+
+/**
+ * This pane's own href, keeping the grid's day and filter. Same `#booking-actions` anchor the
+ * actions redirect to — the confirm-open and back-out links must land in the same place a form
+ * post does, or the two routes into the same screen behave differently.
+ */
+function paneHref(
+  reservationId: Reservation["id"],
+  sp: { date?: string | undefined; filter?: string | undefined },
+  extra: Record<string, string>,
+): string {
+  const p = new URLSearchParams();
+  if (sp.date) p.set("date", sp.date);
+  if (sp.filter) p.set("filter", sp.filter);
+  for (const [k, val] of Object.entries(extra)) p.set(k, val);
+  const q = p.toString();
+  return `/admin/calendar/${encodeURIComponent(String(reservationId))}${q ? `?${q}` : ""}#booking-actions`;
+}
+
+/** An `admin` row with no Event is an operator's phone booking that was never paid (16.1) — still
+ *  awaiting payment, or cancelled before it was. Once paid it is `muster` (DEC-163's `admin` means
+ *  unpaid) and has its Event. */
+function isUnpaidPhoneBooking(r: Reservation): boolean {
+  return r.source === "admin" && !r.eventId;
+}
+
+/**
+ * The route for an unpaid phone booking (16.1): the same two-layout frame as the booked pane —
+ * grid beside it on desktop, the pane full-screen on mobile — around `PhoneBookingPane`.
+ */
+async function PhoneBookingPage({
+  reservation,
+  sp,
+}: {
+  reservation: Reservation;
+  sp: Search & { cancel?: string; cancelErr?: string; booked?: string };
+}) {
+  const data = await loadCalendarData({ ...sp, date: sp.date ?? reservation.date });
+  if (!data) {
+    return (
+      <Shell width="6xl">
+        <Notice>Couldn’t reach the calendar right now. Try again in a moment.</Notice>
+      </Shell>
+    );
+  }
+  let trail: TrailEntry[] | null = null;
+  try {
+    trail = await loadReservationTrail(getRepo(), reservation.id, () => new Date().toISOString());
+  } catch (e) {
+    logSwallowed("admin/reservation:trail", e, `the history panel did not load for ${reservation.id}`);
+  }
+
+  return (
+    <Shell width="6xl">
+      <BackLink href={calendarHref(data, {})}>Back to calendar</BackLink>
+
+      <header className="flex flex-col gap-1">
+        <p className="text-xs text-muted">Calendar / Reservation</p>
+        <h1 className="text-[22px] font-semibold leading-tight text-ink">{reservation.customerName}</h1>
+      </header>
+
+      <div className="mt-1 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-4">
+        <div className="hidden lg:block">
+          <CalendarControls data={data} />
+          <CalendarLegend data={data} />
+          <CalendarGrid data={data} selectedReservationId={String(reservation.id)} />
+        </div>
+
+        <aside className="mt-3 lg:sticky lg:top-4 lg:mt-0" data-testid="reservation-detail">
+          <PhoneBookingPane
+            reservation={reservation}
+            vesselName={
+              data.vesselById.get(String(reservation.vesselId))?.name ?? String(reservation.vesselId ?? "—")
+            }
+            offeringName={reservation.offeringId ? data.offeringById.get(String(reservation.offeringId))?.name : undefined}
+            date={sp.date ?? ""}
+            filter={sp.filter ?? ""}
+            justBooked={sp.booked !== undefined}
+            confirmingCancel={sp.cancel === "1"}
+            cancelHref={paneHref(reservation.id, sp, { cancel: "1" })}
+            backHref={paneHref(reservation.id, sp, {})}
+            cancelErr={sp.cancelErr}
+          />
           <BookingHistory trail={trail} />
         </aside>
       </div>

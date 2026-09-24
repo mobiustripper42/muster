@@ -112,7 +112,17 @@ export type CancelOutcome =
       /** The event cancelled, or absent when another active booking still holds it. */
       freedEventId?: EventId;
     }
-  | { ok: false; reason: "reservation_missing" | "not_muster" | "not_booked" };
+  | {
+      ok: false;
+      reason:
+        | "reservation_missing"
+        | "not_muster"
+        | "not_booked"
+        /** An operator's unpaid booking that the customer paid for while the cancel was in
+         *  flight (16.1). It is an ordinary booking now; cancelling it is the booked path's job,
+         *  with its refund, and the operator has to choose that knowingly. */
+        | "now_booked";
+    };
 
 /**
  * `by` is REQUIRED, not optional (#724). Every caller already knows the answer — the admin
@@ -127,6 +137,23 @@ export async function cancelReservation(
 ): Promise<CancelOutcome> {
   const reservation = await deps.repo.getReservation(reservationId);
   if (!reservation) return { ok: false, reason: "reservation_missing" };
+  // ── An operator's unpaid phone booking (16.1, DEC-163) ───────────────────────
+  // It never lapses, so a person is the only thing that ends it. Nothing was paid, so there is
+  // nothing to refund, and a pending row has no Event, so there is no hull to release beyond the
+  // row itself and no shift to re-form (shifts derive from Events). Once paid it is `muster`, so
+  // every `admin` row here is either still unpaid or was cancelled unpaid.
+  if (reservation.source === "admin") {
+    if (reservation.status === "cancelled") return { ok: true, alreadyCancelled: true };
+    if (reservation.status !== "pending") return { ok: false, reason: "not_booked" };
+    // Guarded: the customer can pay between the read above and this write. The confirm flip and
+    // this both require `status='pending'`, so exactly one of them lands.
+    if (await deps.repo.cancelPendingIfUnpaid(reservationId, by, deps.now())) {
+      return { ok: true, alreadyCancelled: false };
+    }
+    const now = await deps.repo.getReservation(reservationId);
+    if (now?.status === "cancelled") return { ok: true, alreadyCancelled: true };
+    return { ok: false, reason: now?.status === "booked" ? "now_booked" : "not_booked" };
+  }
   // Xola owns its own bookings and its own money (DEC-105). Cancelling one here would be
   // overwritten by the next pull and would tell the customer nothing.
   if (reservation.source !== "muster") return { ok: false, reason: "not_muster" };

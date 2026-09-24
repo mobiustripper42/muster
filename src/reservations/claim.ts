@@ -76,6 +76,52 @@ export function candidateVessels(input: {
     .map((v) => v.id);
 }
 
+/**
+ * Which of the claim's refusals a caller may pass (§2.10.6, 16.1). **One claim, two rule sets as
+ * data** — not a second claim function, because a second copy of this file's hull logic is a
+ * second place a fix has to land, and issue #767 is what happens when a check lives apart from
+ * the write it guards.
+ *
+ * **Only the relaxable checks are here.** Hull overlap, capacity and a trip that has already left
+ * are not parameters at all, so no rules object can turn them off. The operator gives up what
+ * protects their own schedule — the grid and the season — and keeps what protects physics and
+ * law: one boat in one place, and the Coast Guard's number.
+ *
+ * **A block is not given up** (operator, 2026-09-23, amending §2.10.6's "passes, but is told"):
+ * a block is somebody's deliberate act, so booking through it takes a second deliberate act —
+ * unblock it on the calendar, then book. `blocks` stays a rule rather than a constant because the
+ * two sets happen to agree today, not because they must.
+ *
+ * The booking cutoff joins this when it exists (16.2/16.3): the customer refuses it, the operator
+ * passes it.
+ */
+export interface ClaimRules {
+  /** Who is claiming — the trail's actor. */
+  actor: "customer" | "admin";
+  /** The offering's schedule grid, season included. `pass` still refuses a malformed slot. */
+  grid: "refuse" | "pass";
+  /** An operator block on the slot. */
+  blocks: "refuse" | "pass";
+  /** Fit-and-fallback across the offering's boats, or exactly `req.vesselId`. */
+  vessel: "smallest_fit" | "requested";
+}
+
+/** The public funnel. The default, so every caller written before 16.1 is unchanged. */
+export const CUSTOMER_RULES: ClaimRules = {
+  actor: "customer",
+  grid: "refuse",
+  blocks: "refuse",
+  vessel: "smallest_fit",
+};
+
+/** The operator taking a booking by phone — the §2.10.6 table. */
+export const OPERATOR_RULES: ClaimRules = {
+  actor: "admin",
+  grid: "pass",
+  blocks: "refuse",
+  vessel: "requested",
+};
+
 export interface DepartureClaimRequest {
   offeringId: OfferingId;
   /** ISO-8601 vessel-local day. */
@@ -83,6 +129,9 @@ export interface DepartureClaimRequest {
   /** Departure clock "HH:MM". */
   time: string;
   guestCount: number;
+  /** The boat the operator clicked. Read only under `vessel: "requested"`; the customer never
+   *  picks a boat, so the public funnel's value is ignored. */
+  vesselId?: VesselId | undefined;
   /**
    * The checkout session's holder token (#575) — proof of possession, from the cookie.
    *
@@ -125,7 +174,72 @@ export type DepartureClaimResult =
    */
   | { claimed: Reservation; reused: true; prior: Reservation }
   | { soldOut: true }
-  | { unbookable: "offering_missing" | "not_live" | "invalid_guest_count" | "off_schedule" | "departed" };
+  | {
+      unbookable:
+        | "offering_missing"
+        | "not_live"
+        | "invalid_guest_count"
+        | "off_schedule"
+        | "departed"
+        /** `vessel: "requested"` only — the named boat cannot take the party. */
+        | "over_capacity"
+        /** `vessel: "requested"` only — the named boat is not one this offering runs on. */
+        | "vessel_not_offered"
+        /** `vessel: "requested"` only — an operator block covers the named boat's slot. The
+         *  customer never sees this: fit-and-fallback just skips a blocked boat. */
+        | "blocked";
+    };
+
+/**
+ * The boats this claim will try, in order, under `rules` — or the refusal that ends it first.
+ *
+ * `smallest_fit` is the customer's fit-and-fallback (`candidateVessels`). `requested` is the
+ * operator's: they clicked one boat's slot, so there is exactly one candidate and nothing to fall
+ * back to. It must be a boat this offering runs on — the money is priced off the offering — and it
+ * must take the party. That capacity refusal is the write's own, not a form's (#767): the customer
+ * path gets the same guarantee from `candidateVessels`' fit filter, and this is that filter for a
+ * caller who names the boat.
+ */
+function candidatesUnder(
+  rules: ClaimRules,
+  input: { offering: Offering; vessels: readonly Vessel[]; blocks: readonly Block[]; req: DepartureClaimRequest },
+): { candidates: VesselId[] } | { unbookable: "vessel_not_offered" | "over_capacity" | "blocked" } {
+  const { offering, vessels, blocks, req } = input;
+  if (rules.vessel === "smallest_fit") {
+    return {
+      candidates: candidateVessels({
+        offering,
+        vessels,
+        date: req.date,
+        time: req.time,
+        guestCount: req.guestCount,
+        blocks: rules.blocks === "refuse" ? blocks : [],
+      }),
+    };
+  }
+  const asked = req.vesselId;
+  const vessel = asked === undefined ? undefined : vessels.find((v) => String(v.id) === String(asked));
+  if (!vessel || !offering.vesselIds.some((id) => String(id) === String(vessel.id))) {
+    return { unbookable: "vessel_not_offered" };
+  }
+  if (vessel.coiMaxPax < req.guestCount) return { unbookable: "over_capacity" };
+  // A named refusal, not an empty candidate list: an empty list reads as "busy", and a block is
+  // the operator's own to lift — the message has to say which.
+  if (rules.blocks === "refuse" && isSlotBlocked(blocks, String(offering.locationId), vessel.id, req.date, req.time)) {
+    return { unbookable: "blocked" };
+  }
+  return { candidates: [vessel.id] };
+}
+
+/** A date that round-trips and an `HH:MM` clock — the shape check the grid guard carries for the
+ *  customer, restated for a caller that passes the grid. Passing the grid is not passing garbage:
+ *  a `1:30pm` or `2026-09-31` would reach the hull math as NaN. */
+function isWellFormedSlot(date: string, time: string): boolean {
+  const ms = Date.parse(`${date}T00:00:00Z`);
+  if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 10) !== date) return false;
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
+  return m !== null;
+}
 
 /**
  * Claim the first free fitting boat of a departure by writing this checkout's pending row on it
@@ -140,6 +254,7 @@ export async function claimDepartureSlot(
   req: DepartureClaimRequest,
   buildRow: PendingRowBuilder,
   now: () => string,
+  rules: ClaimRules = CUSTOMER_RULES,
 ): Promise<DepartureClaimResult> {
   const offering = await repo.getOffering(req.offeringId);
   if (!offering) return { unbookable: "offering_missing" };
@@ -159,9 +274,14 @@ export async function claimDepartureSlot(
   // (availability.ts, the time-change carve-out). When 12.11 wires that path through here, this
   // guard must also admit a slot backed by a materialized muster Event at that identity — else it
   // becomes the admin-side mirror of the very lockout it fixes for customers.
-  if (!isOnScheduleGrid(offering.schedule, req.date, req.time)) {
-    return { unbookable: "off_schedule" };
-  }
+  //
+  // The operator passes the grid and the season (§2.10.6) — but not a malformed slot, which is
+  // the part of this guard that protects the hull math rather than the schedule.
+  const slotOk =
+    rules.grid === "refuse"
+      ? isOnScheduleGrid(offering.schedule, req.date, req.time)
+      : isWellFormedSlot(req.date, req.time);
+  if (!slotOk) return { unbookable: "off_schedule" };
 
   // One clock for the whole claim: the same instant decides whether this departure has sailed,
   // which pending rows are live for the reads below, and the write CAS — so nothing can be
@@ -217,14 +337,9 @@ export async function claimDepartureSlot(
   const holdMinutes = candidateHoldMinutes(offering);
   const startMinute = minutesOfDay(req.time);
 
-  const candidates = candidateVessels({
-    offering,
-    vessels,
-    date: req.date,
-    time: req.time,
-    guestCount: req.guestCount,
-    blocks,
-  });
+  const chosen = candidatesUnder(rules, { offering, vessels, blocks, req });
+  if ("unbookable" in chosen) return chosen;
+  const candidates = chosen.candidates;
 
   /** Everything the write loop refuses a boat for, asked of one vessel. Shared so the reuse path
    *  below cannot drift from the loop and hand back a boat the loop would have skipped. */
@@ -352,7 +467,7 @@ export async function claimDepartureSlot(
           {
             id: asId<"TrailEventId">(`hull_contended:${randomUUID()}`),
             reservationId: row.id,
-            actorKind: "customer",
+            actorKind: rules.actor,
             type: "hull_contended",
             metadata: {
               wantedVesselId: String(wanted),
@@ -382,6 +497,11 @@ export async function claimDepartureSlot(
   // **This is the cheapest row in the trail to cause** — a public form submit, no money, no
   // authentication. It costs four repository reads to reach, which is the real bound; the row
   // is not the expensive part. Deliberately not throttled (operator, 2026-09-21).
+  //
+  // **Customers only (16.1).** The row counts people the public funnel turned away. An operator
+  // told "that boat is out then" on a phone call is not that, and would inflate the one number
+  // the row exists for.
+  if (rules.actor !== "customer") return { soldOut: true };
   await recordTrail(
     { repo, now },
     {

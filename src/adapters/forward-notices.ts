@@ -38,10 +38,8 @@ function fmtDate(iso: string): string {
  * the link + enqueues. Best-effort: a dangling ref or a channel hiccup is swallowed
  * (the domain action — the merge — already committed). Returns how many were sent.
  *
- * The operator-as-crew exclusion (DEC-072/084) is the CALLER's job — the operator id
- * is an app-edge value (`OPERATOR_CREW_MEMBER_ID`), so `mergeAction` filters it out of
- * the change list before calling this. This adapter stays operator-agnostic (and
- * clock-free); it relays exactly the changes it's handed.
+ * Everyone on the change list is told, the operator included (DEC-183). This adapter
+ * stays clock-free and relays exactly the changes it's handed.
  *
  * NO IDEMPOTENCY NET (9.4): the outbox adapter's deterministic slot (terminal
  * on sent) deduped re-issued changes; the Twilio adapter just sends. Call sites

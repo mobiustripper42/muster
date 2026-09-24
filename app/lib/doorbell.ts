@@ -7,7 +7,6 @@ import {
   DOORBELL_SHORT_NOTICE_MAX_CHARS,
 } from "@core/config/tenant.js";
 import { getPresence, getRepo } from "./repo";
-import { OPERATOR_CREW_MEMBER_ID } from "./operator";
 import { makeSmsChannel } from "./sms";
 import { messagingEnabled } from "./flags";
 import { appBaseUrl } from "./base-url";
@@ -37,10 +36,8 @@ export async function runDoorbellTick(now: Date): Promise<{
     presenceWindowMs: DOORBELL_PRESENCE_WINDOW_MS,
     shortNoticeMaxChars: DOORBELL_SHORT_NOTICE_MAX_CHARS,
   });
-  // Exclude the operator from ring-membership (DEC-072): they hold seats as crew
-  // (DEC-030) so they'd otherwise be a member of all-staff + their shifts, and
-  // every broadcast they send would ring them. They monitor via /admin/messages.
-  const r = await doorbellTick(repo, getPresence(), now, rules, OPERATOR_CREW_MEMBER_ID);
+  // Active admins are excluded from ring-membership inside the tick (DEC-072, issue #293).
+  const r = await doorbellTick(repo, getPresence(), now, rules);
   // Delivered links MUST be host-safe — the cron has no trustworthy request Host, so the link
   // rides the configured origin (base-url.ts on host-header poisoning). Fail loud in prod when
   // unset: otherwise every relayed ring is a dead localhost link the operator texts to crew with

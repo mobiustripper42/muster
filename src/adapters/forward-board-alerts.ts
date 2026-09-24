@@ -8,9 +8,7 @@
  * NOT a fourth outbound lane (DEC-095): no port/entity/table. The durable record
  * already exists (`board_landed`, deduped in the tick); recipients ARE the
  * operator; payload is a plain body + static board link riding `ChannelPort` as
- * `admin_alert`. Recipients = active admins, NOT the `OPERATOR_CREW_MEMBER_ID`
- * singleton (its retirement is #293 — `listActiveAdminRecipients` is the helper
- * #293 reuses).
+ * `admin_alert`. Recipients = active admins (`listActiveAdminRecipients`).
  */
 import { asId } from "../domain/ids.js";
 import { logSwallowed } from "../log.js";

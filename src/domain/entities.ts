@@ -1103,7 +1103,7 @@ export type AuthSubjectKind = "admin" | "crew";
 /**
  * The canonical messaging/notification identity (DEC-058). ONE type for everyone
  * the system can address — crew (a `CrewMemberId`) and the operator/office
- * (kind `"admin"`, participating as `OPERATOR_CREW_MEMBER_ID` in v1 — DEC-030 §7).
+ * (kind `"admin"`, whose `id` is the admin's own crew id — every admin is crew, DEC-092).
  * `id` is namespace-local, interpreted per `kind` (no FK — DEC-DATA-1). Auth's
  * `AuthSubject` is an alias of this; `Message.senderKind` and the `PresencePort`
  * (#112) key on this same `AuthSubjectKind` — never a parallel vocabulary, never

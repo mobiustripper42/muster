@@ -30,9 +30,6 @@ import type {
   Customer,
   Event,
   LoginCode,
-  OutboxEntry,
-  RingOutboxEntry,
-  NoticeOutboxEntry,
   SmsConsent,
   GuestContact,
   PtoWindow,
@@ -56,9 +53,6 @@ import type {
   CredentialId,
   CrewMemberId,
   EventId,
-  OutboxEntryId,
-  RingOutboxEntryId,
-  NoticeOutboxEntryId,
   PaymentId,
   PtoWindowId,
   ReservationId,
@@ -663,9 +657,8 @@ export interface Repository {
    * Remove an ask row (#94). Dev-seed reset primitive: a fixture re-run deletes
    * its prior asks rather than closing them (a closed-with-no-response ask is a
    * real "silent" round, so re-runs would otherwise stack fake history). Real
-   * operation never deletes an ask — they're true reliability history. The caller
-   * owns referential cleanup (no-FK schema, DEC-DATA-1): an outbox entry
-   * referencing the ask must be removed too. No-op if the id is already gone.
+   * operation never deletes an ask — they're true reliability history. No-op if
+   * the id is already gone.
    */
   removeAsk(id: AskId): Promise<void>;
 
@@ -747,47 +740,6 @@ export interface Repository {
   /** Best-effort "last synced" stamp — set `lastPolledAt` on a successful fetch.
    *  Keyed by hash (what the route holds); no-op if the feed is gone. */
   touchCalendarFeedPoll(tokenHash: string, polledAt: string): Promise<void>;
-
-  // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────
-  // Adapter-side: persisted through the port so the operator's
-  // outbox survives a restart, but NEVER read by the domain (`src/asks`,
-  // `src/builder`, `src/oracle` are forbidden readers — DEC-030 guardrail).
-  /** Persist an entry (upsert by id) — enqueue, mark-sent, toggle back. */
-  saveOutboxEntry(entry: OutboxEntry): Promise<void>;
-  getOutboxEntry(id: OutboxEntryId): Promise<OutboxEntry | null>;
-  /** Every entry — the outbox page's worklist + the integrity orphan scan. */
-  listOutboxEntries(): Promise<OutboxEntry[]>;
-  /**
-   * Remove an outbox entry (#94). Adapter-side delete, paired with removeAsk for
-   * the dev-seed reset: an entry references an ask, so a fixture re-run drops the
-   * entry alongside its ask to keep the relay worklist clean. No-op if absent.
-   */
-  removeOutboxEntry(id: OutboxEntryId): Promise<void>;
-
-  // ── Ring outbox entries (doorbell-relay channel adapter state — DEC-073) ───
-  // Sibling to the ask outbox, its OWN slot (not a union): the doorbell-ring relay's
-  // worklist. Same adapter-side guardrail — only the `OutboxNotificationChannel`
-  // writes it, only the ring-outbox view reads it; the domain never does.
-  /** Persist a ring entry (upsert by id) — enqueue per ring-cycle, mark-sent. */
-  saveRingOutboxEntry(entry: RingOutboxEntry): Promise<void>;
-  getRingOutboxEntry(id: RingOutboxEntryId): Promise<RingOutboxEntry | null>;
-  /** Every ring entry — the outbox page's "New messages" section + a reset scan. */
-  listRingOutboxEntries(): Promise<RingOutboxEntry[]>;
-  /** Remove a ring entry (dev-seed reset / housekeeping). No-op if absent. */
-  removeRingOutboxEntry(id: RingOutboxEntryId): Promise<void>;
-
-  // ── Notice outbox entries (assignment-change relay adapter state — DEC-084) ─
-  // The THIRD operator-relay sibling (asks / rings / notices), its OWN slot: the
-  // "you're on/off a shift" relay worklist. Same guardrail — only `OutboxNoticeChannel`
-  // writes it, only the notice-outbox view reads it; the domain never does. Terminal-
-  // on-sent (a sent notice stays as the record), so no read-cancellation query.
-  /** Persist a notice entry (upsert by id) — enqueue, mark-sent. */
-  saveNoticeOutboxEntry(entry: NoticeOutboxEntry): Promise<void>;
-  getNoticeOutboxEntry(id: NoticeOutboxEntryId): Promise<NoticeOutboxEntry | null>;
-  /** Every notice entry — the outbox page's "Assignment changes" section + a reset scan. */
-  listNoticeOutboxEntries(): Promise<NoticeOutboxEntry[]>;
-  /** Remove a notice entry (dev-seed reset / housekeeping). No-op if absent. */
-  removeNoticeOutboxEntry(id: NoticeOutboxEntryId): Promise<void>;
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────
   /** Append a reliability event. The log is never mutated, only grown. */
@@ -895,7 +847,7 @@ export interface Repository {
   setSelfClaimRequiresConfirmation(value: boolean, at: string): Promise<void>;
 
   // ── Import-run audit (operator import observability — #128, DEC-056) ───────
-  // Adapter-side, like the outbox (DEC-030): persisted through the port so a run's
+  // Adapter-side: persisted through the port so a run's
   // detail survives, but NEVER read by the domain — the importer returns the
   // envelope; the edge assembles + saves the run.
   /** Persist one import run + its identity rows (atomically). */

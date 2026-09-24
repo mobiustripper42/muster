@@ -15,7 +15,7 @@ import { logSwallowed } from "../../../lib/swallowed";
  * server-side (native role, window, Open+required, §1.3 pool) and performs the
  * guarded `Open → Confirmed` CAS — so this layer only gates the flag + the crew
  * session and maps the result code to feedback. A claim fires no asks, so there's
- * nothing to forward to the outbox (unlike a bail).
+ * nothing to forward (unlike a bail).
  *
  * Feedback rides redirect params as codes only (DEC-026): success lands on /crew
  * (the seat is now in My shifts); a clean-failure (`just_taken` / `conflict`) or

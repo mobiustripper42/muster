@@ -1,9 +1,8 @@
 /**
- * `sms:` deep-link builder — support code for the web-link outbox channel
- * (DEC-030), the fallback when Twilio is not configured (DEC-MSG-1). The
- * operator outbox surfaces `sms:` URIs as
- * per-ask Send buttons that open the operator's native Messages app with the
- * recipient and body pre-filled. RFC 5724 specifies `sms:NUMBER?body=...`; iOS
+ * `sms:` deep-link builder — a link that opens the native Messages app with the
+ * recipient and body pre-filled (used for texting a guest from the crew card,
+ * `src/customers/identity.ts`). It was written for the operator outbox (DEC-030),
+ * gone since #934. RFC 5724 specifies `sms:NUMBER?body=...`; iOS
  * 8+ and Android Chrome both honor this form.
  *
  * Ported from Bushel's send-queue (same operator-relay pattern), pinned

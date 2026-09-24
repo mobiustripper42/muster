@@ -23,18 +23,14 @@ import type {
   GratuityId,
   LocationId,
   OfferingId,
-  OutboxEntryId,
   PaymentId,
   PtoWindowId,
   ReservationId,
-  RingOutboxEntryId,
-  NoticeOutboxEntryId,
   SmsConsentId,
   RoleTypeId,
   SeatId,
   ShiftId,
   TenantId,
-  ThreadId,
   TimePunchId,
   TimePunchEditId,
   VesselId,
@@ -888,7 +884,7 @@ export type PaymentStatus =
 /**
  * One money movement against a Muster-native reservation (DEC-107). A booking is a
  * 1:n money log — `full`, or `deposit` then `balance` — modeled as a separate append
- * record like every other Muster side-effect log (reliability, outbox, audit), NOT as
+ * record like every other Muster side-effect log (reliability, audit), NOT as
  * columns on `Reservation` (which is shared with Xola, whose money lives in Xola —
  * DEC-105/106; payment columns would sit null on every imported row). No FK
  * (DEC-DATA-1). Balance-due is DERIVED (`price + tax − Σ succeeded`), never stored.
@@ -1200,103 +1196,11 @@ export interface CalendarFeed {
   lastPolledAt?: string;
 }
 
-// ── OutboxEntry (channel-adapter state — DEC-030) ────────────────────────────
-
-/** `pending` = the operator hasn't texted it yet; `sent` = they marked it sent. */
-export type OutboxStatus = "pending" | "sent";
-
-/**
- * One queued relay for the web-link outbox channel (DEC-030, DEC-MSG-3): the
- * adapter's `send` enqueues this instead of transmitting, and the operator works
- * the outbox page — tap the `sms:` link, text it, mark it sent.
- *
- * **Adapter-side state, never domain state** (the DEC-030 hard guardrail):
- * nothing in `src/asks`, `src/builder`, or `src/oracle` may read it. The domain
- * `Ask` is unchanged — that's what keeps the eventual Twilio swap a zero-domain-
- * change adapter drop-in (DEC-MSG-1). `body` + `link` are minted ONCE at enqueue
- * and rendered verbatim forever (a page refresh must never re-mint and desync
- * from what was already texted). `sentAt` is the operator's physical text, a
- * channel-side fact only; the domain's delivery stamp is `createdAt` (enqueue).
- */
-export interface OutboxEntry {
-  id: OutboxEntryId;
-  askId: AskId;
-  seatId: SeatId;
-  crewMemberId: CrewMemberId;
-  /** The ask text the operator relays, frozen at enqueue. */
-  body: string;
-  /** The magic link (24h TTL) to the Yes/No screen, minted + frozen at enqueue. */
-  link: string;
-  status: OutboxStatus;
-  /** ISO-8601 UTC — enqueue time, and the channel's `deliveredAt`. */
-  createdAt: string;
-  /** ISO-8601 UTC; set when the operator marks it sent. Channel-side only. */
-  sentAt?: string;
-}
-
-/**
- * One queued doorbell-ring relay (DEC-073, the promotion gate). The
- * `OutboxNotificationChannel`'s `send` enqueues this instead of transmitting; the
- * operator works the same `/admin/outbox` page (a "New messages" section), texts the
- * deep link, marks it sent — the DEC-030 web-link model, mirroring {@link OutboxEntry}.
- *
- * Its OWN type + table (`ring_outbox`), NOT a union on `OutboxEntry` (DEC-073): a ring
- * has no ask/seat/claim — it carries a `threadId` and a deep-link to that thread. Same
- * adapter-side guardrail (nothing in the domain reads it) and freeze rule, but a fresh
- * one-time `link` is minted per ring-cycle, and the entry **drops from the worklist on
- * read** (`message_reads.last_read_at >= createdAt`) rather than settling on an answer —
- * so `createdAt` is the read-cancellation anchor.
- */
-export interface RingOutboxEntry {
-  /** Deterministic `ring-<threadId>-<crewMemberId>` — one slot per (thread, member). */
-  id: RingOutboxEntryId;
-  crewMemberId: CrewMemberId;
-  /** The thread the ring covers — the deep-link target and the drop-on-read key. */
-  threadId: ThreadId;
-  /** The relay text ("N new" / inlined short note), frozen at enqueue. */
-  body: string;
-  /** The thread deep-link magic link (24h TTL), minted fresh per cycle + frozen. */
-  link: string;
-  status: OutboxStatus;
-  /** ISO-8601 UTC — enqueue time / `deliveredAt`, and the drop-on-read anchor. */
-  createdAt: string;
-  /** ISO-8601 UTC; set when the operator marks it sent. Channel-side only. */
-  sentAt?: string;
-}
+// ── Assignment-change notices (DEC-084) ───────────────────────────────────────
 
 /** A crew member put ON or taken OFF a shift (DEC-084) — the two assignment-change
  * notices. `removed` is what merge (8.4) emits for a dropped side-B occupant. */
 export type AssignmentAction = "added" | "removed" | "changed";
-
-/**
- * One queued assignment-change relay (DEC-084, the THIRD operator-relay sibling to
- * {@link OutboxEntry} and {@link RingOutboxEntry}). `OutboxNoticeChannel.send`
- * enqueues this instead of transmitting; the operator works the `/admin/outbox`
- * "Assignment changes" section, texts the `/crew` link, marks it sent — the DEC-030
- * web-link model.
- *
- * Its OWN type + table (`notice_outbox`), NOT a union: a notice has no ask/seat/claim
- * (so not the ask outbox's NOT NULL correlation) and no thread/read-state (so not the
- * ring's drop-on-read). Same adapter-side guardrail (nothing in the domain reads it)
- * and freeze rule (`body` + `link` minted once at enqueue). **Terminal-on-sent**: a
- * sent notice STAYS as the durable "we told them" record — no drop-on-read, no
- * settle-on-answer. Deterministic id = one slot per (shift, member, action).
- */
-export interface NoticeOutboxEntry {
-  /** `notice-<shiftId>-<crewMemberId>-<action>` — one slot per (shift, member, action). */
-  id: NoticeOutboxEntryId;
-  crewMemberId: CrewMemberId;
-  action: AssignmentAction;
-  /** The relay text, frozen at enqueue. */
-  body: string;
-  /** The `/crew` magic link (24h TTL), minted + frozen at enqueue. */
-  link: string;
-  status: OutboxStatus;
-  /** ISO-8601 UTC — enqueue time / `deliveredAt`. */
-  createdAt: string;
-  /** ISO-8601 UTC; set when the operator marks it sent. Channel-side only. */
-  sentAt?: string;
-}
 
 /**
  * SMS-consent record (Twilio 10DLC opt-in — append-only audit). One row per opt-in

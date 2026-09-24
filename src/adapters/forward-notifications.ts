@@ -12,8 +12,8 @@
  * note's text inline. Relaying a message's content out-of-context (no sender, no
  * thread) as an SMS read as confusing (the §7.5 content-inlining, retired here); a
  * pointer-to-the-app is the clear signal, and it also keeps message text out of the
- * SMS transport entirely. The decider's `mode` still flows through so the ring
- * outbox can record it — it just no longer shapes the SMS text.
+ * SMS transport entirely. The decider's `mode` still flows through — it just no
+ * longer shapes the SMS text.
  *
  * BEST-EFFORT by design (like the ask relay): a channel hiccup must not undo a
  * ring the tick already recorded — delivery is the swappable part. Failures are

@@ -22,7 +22,7 @@ import {
 import { TENANT_TIMEZONE, vesselClockOf } from "../config/tenant.js";
 
 // The call lead + teardown + trip length live in `builder/derive` (the shift
-// *end* needs them too, and the outbox reads that end — DEC-041). Re-exported
+// *end* needs them too — DEC-041). Re-exported
 // here so the card's contract and its test keep importing them from the card.
 export { CALL_LEAD_MINUTES, TEARDOWN_MINUTES };
 
@@ -141,7 +141,7 @@ function windowInstants(
  * and add the flat `TRIP_DURATION_MINUTES`, which meant it could not see
  * `Event.durationMinutes` at all. From #570 that made it disagree with
  * `shiftEndFromEvents` on any shift carrying a real per-event length — the operator's
- * outbox card and the crew's ask card rendering different "back by" times for the same
+ * ask text and the crew's ask card rendering different "back by" times for the same
  * ask, and the subscribed calendar feed differing from My Shifts. The claim that "one
  * computation" kept the surfaces agreeing was true only among the clock-string three.
  *
@@ -315,7 +315,7 @@ export async function buildShiftCard(
   // Window math uses SCHEDULED departures only — a cancelled trip moves neither the
   // call time nor the shift end (DEC-041); `committedWindow` filters them itself.
   // One computation, shared with the ask card, the /crew/open claimable view, AND
-  // (since it delegates to `shiftEndFromEvents`) the outbox and the calendar feed.
+  // (since it delegates to `shiftEndFromEvents`) the calendar feed.
   // The manifest above still lists every event.
   const { callTime, shiftEndTime } = committedWindow(rawEvents, TENANT_TIMEZONE);
 

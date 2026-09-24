@@ -67,8 +67,7 @@ async function singleAskBody(repo: Repository, ask: Ask): Promise<string | null>
  * of one SMS per ask (the top candidate for a whole weekend batch would otherwise
  * get a pile of simultaneous texts). Only *delivery* is coalesced: the per-ask
  * domain records are untouched and all show on `/crew`; a batch is sent once,
- * upstream of the channel's per-send cost (one SMS on Twilio; one outbox card on
- * web-link). This is also the module header's missing idempotency net — one send
+ * upstream of the channel's per-send cost (one SMS on Twilio). This is also the module header's missing idempotency net — one send
  * per (recipient, tick), and the tick fires each ask once.
  *
  * Returns how many asks were covered by an accepted send (≤ `asks.length`).
@@ -91,9 +90,9 @@ export async function forwardAsks(
       const crew = await repo.getCrewMember(group[0]!.crewMemberId);
       if (!crew) continue; // dangling ref — nothing to relay
 
-      // The ask that anchors the outbox entry / reply correlation must have a seat
+      // The ask that anchors the reply correlation must have a seat
       // that still resolves — a seat can vanish between firing and forwarding
-      // (manning/merge/form-shifts), and a stale `seatId` writes an orphan entry.
+      // (manning/merge/form-shifts), and a stale `seatId` relays an ask nobody can answer.
       // Lone ask: resolving IS composing its body. Batch: the body is a count, so
       // just walk to the first surviving ask. Skip the group if none survive.
       let rep: Ask | null = null;

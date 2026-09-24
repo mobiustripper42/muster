@@ -13,16 +13,15 @@ import { appBaseUrl } from "./base-url";
 /**
  * App-side channel wiring (DEC-030, DEC-MSG-3). This module is the ONE place
  * the app picks the ask/notice adapters. **With Twilio configured (9.4,
- * DEC-MSG-1) crew relays go out as real SMS**; unset, the web-link outbox relay
- * stays: `send` enqueues an OutboxEntry the operator works from /admin/outbox —
- * dark until the env is set (#70). The swap is exactly the constructors below,
- * zero domain change.
+ * DEC-MSG-1) crew relays go out as real SMS**; unset, each one is written to the log
+ * instead (`LogChannel`, #934). The swap is exactly the constructors below, zero
+ * domain change.
  *
  * Link base: `appBaseUrl()` (#1007), the one answer shared with `alert.ts`, `doorbell.ts`,
  * `booking-confirmation.ts` and `sold-out-notice.ts`. Delivered links must never ride a
  * client-controlled Host header — see `app/lib/base-url.ts` on poisoning and token theft — and
- * with Twilio live a poisoned link is auto-texted to a crew phone with an auth token in it,
- * where pre-9.4 it at least passed through the operator's outbox first.
+ * with Twilio live a poisoned link is auto-texted to a crew phone — where pre-9.4 it at least
+ * passed through the operator's hands first.
  *
  * **Two things changed here at #1007.** The prod check was hand-spelled as
  * `NODE_ENV === "production"`, which Vercel also sets on previews, so every preview threw instead

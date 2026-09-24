@@ -209,6 +209,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-169 — The ledger write is last and idempotent, not in the booking transaction
 - DEC-179 — The Stripe webhook stays synchronous — the 500 is the durability
 - DEC-180 — The webhook endpoint is not IP-allowlisted — the signature is the door
+- DEC-182 — A residual-race loser is charged and refunded — no authorize-then-capture
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred

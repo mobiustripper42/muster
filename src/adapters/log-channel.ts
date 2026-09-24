@@ -14,7 +14,7 @@
  * **The crew link is the same plain one `TwilioChannel` sends** — `/crew`, or the thread
  * for a ring — and since issue #1030 it carries no secret, so it is safe in any log. Until
  * then this class minted a live magic link, and production had to mint nothing because the
- * line was an admin credential for `OPERATOR_CREW_MEMBER_ID`. That whole posture went with
+ * line was an admin credential for the operator's crew id. That whole posture went with
  * the magic link.
  *
  * **One secret can still arrive in a line: a booking code** in a composed customer body —

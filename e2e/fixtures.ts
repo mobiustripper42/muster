@@ -34,7 +34,7 @@ type SeedName = keyof typeof SEED_SCRIPTS;
 /**
  * The e2e operator: a seeded admin whose short handle is `eric` — what every
  * `signInAsAdmin(page, "eric")` resolves through the `getAdminByHandle` lookup
- * (DEC-092). Its id is the operator crew id (`crew-eric-stoffer`, = OPERATOR_CREW_MEMBER_ID).
+ * (DEC-092). Its id is the operator's crew id, `crew-eric-stoffer` — every admin is crew.
  * `resetTestDb` truncates `admins` (dynamic all-tables wipe), so we re-seed it on
  * every reset; the prod roster (the 0018 migration's eric/brendan/drew) is wiped
  * too, which is fine — e2e drives its own synthetic operator.

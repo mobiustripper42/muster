@@ -35,7 +35,6 @@ describe("formNoticeChanges (DEC-084 transition → notice mapping)", () => {
         cancelledCrew: [{ shiftId: S("shift-1"), crewMemberId: C("crew-a") }],
         restoredCrew: [{ shiftId: S("shift-2"), crewMemberId: C("crew-b") }],
       }),
-      OP,
     );
     expect(changes).toEqual([
       { crewMemberId: "crew-a", action: "removed", shiftId: "shift-1" },
@@ -43,7 +42,9 @@ describe("formNoticeChanges (DEC-084 transition → notice mapping)", () => {
     ]);
   });
 
-  it("excludes the operator from both directions (DEC-072/084)", () => {
+  it("tells the operator like anyone else, both directions (issue #1009)", () => {
+    // The operator is staff: they hold seats and work shifts. DEC-084's own principle is that a
+    // crew member put on or taken off a shift always gets a message — no identity carve-out.
     const changes = formNoticeChanges(
       form({
         cancelledCrew: [
@@ -52,14 +53,15 @@ describe("formNoticeChanges (DEC-084 transition → notice mapping)", () => {
         ],
         restoredCrew: [{ shiftId: S("shift-2"), crewMemberId: C(OP) }],
       }),
-      OP,
     );
     expect(changes).toEqual([
+      { crewMemberId: OP, action: "removed", shiftId: "shift-1" },
       { crewMemberId: "crew-a", action: "removed", shiftId: "shift-1" },
+      { crewMemberId: OP, action: "added", shiftId: "shift-2" },
     ]);
   });
 
-  it("maps changedCrew → changed, excluding the operator (#350)", () => {
+  it("maps changedCrew → changed, the operator included (#350, issue #1009)", () => {
     const diff = {
       added: [],
       removed: [],
@@ -73,10 +75,10 @@ describe("formNoticeChanges (DEC-084 transition → notice mapping)", () => {
           { shiftId: S("shift-1"), crewMemberId: C(OP), ...diff },
         ],
       }),
-      OP,
     );
     expect(changes).toEqual([
       { crewMemberId: "crew-a", action: "changed", shiftId: "shift-1", detail: diff },
+      { crewMemberId: OP, action: "changed", shiftId: "shift-1", detail: diff },
     ]);
   });
 
@@ -96,7 +98,6 @@ describe("formNoticeChanges (DEC-084 transition → notice mapping)", () => {
           },
         ],
       }),
-      OP,
     );
     expect(changes[0]!.detail).toEqual({
       added: ["trip-new"],
@@ -107,6 +108,6 @@ describe("formNoticeChanges (DEC-084 transition → notice mapping)", () => {
   });
 
   it("is empty when the form observed no transitions", () => {
-    expect(formNoticeChanges(form({}), OP)).toEqual([]);
+    expect(formNoticeChanges(form({}))).toEqual([]);
   });
 });

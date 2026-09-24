@@ -7,24 +7,24 @@ import { operatorStandingTarget } from "@core/crewapp/thread-list.js";
 import type { Message } from "@core/messaging/entities.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
-import { OPERATOR_CREW_MEMBER_ID } from "../../../lib/operator";
 import { TENANT_ID } from "../../../lib/tenant";
 import { messagingEnabled } from "../../../lib/flags";
 
 /**
- * Post a message as the operator (#118, §10). Admin session only. The office posts
- * AS `OPERATOR_CREW_MEMBER_ID` with `senderKind:"admin"` — one voice, not the
- * non-identity handle (DEC-058/030 §7). The operator may post to ANY thread
+ * Post a message as the office (#118, §10). Admin session only. `senderKind:"admin"` is the
+ * one voice crew see ("Operator"); `senderId` is the signed-in admin's own crew id (every
+ * admin is crew, DEC-092), so the row records which admin wrote it (issue #293 — it used to
+ * be one configured id for every admin). The operator may post to ANY thread
  * (DEC-052): an existing one (reply), or a synth post-target (all-staff / any
  * today-or-future cohort — #317, amending DEC-072) find-or-created on first post. A
  * cohort post auto-leads with "Cohort" (#317). An optional **priority** flag is the
  * operator's alone (§7.4 / DEC-069 — crew hardcode false); manual checkbox only,
  * type-derivation deferred (DEC-072).
  *
- * Records NO read/presence — deliberate, and the inverse of crew `postMessage`: the
- * operator is excluded from doorbell ring-membership (DEC-072), so a `recordRead`
- * here would write state under a `{kind:"crew",id:operator}` key the doorbell never
- * reads for them. (Don't "fix" this by adding the calls.)
+ * Records NO read/presence — deliberate, and the inverse of crew `postMessage`: active
+ * admins are excluded from doorbell ring-membership (DEC-072), so a `recordRead` here
+ * would write state under a `{kind:"crew",id:<admin>}` key the doorbell never reads for
+ * them. (Don't "fix" this by adding the calls.)
  */
 export async function postOperatorMessage(formData: FormData): Promise<void> {
   if (!messagingEnabled()) return; // messaging disabled (#389) — inert
@@ -56,7 +56,7 @@ export async function postOperatorMessage(formData: FormData): Promise<void> {
   const message: Message = {
     id: asId<"MessageId">(`msg-${randomUUID()}`),
     threadId: thread.id,
-    senderId: OPERATOR_CREW_MEMBER_ID,
+    senderId: subject.id,
     senderKind: "admin",
     body: finalBody,
     createdAt: now.toISOString(),

@@ -17,7 +17,6 @@ import { cockpitHref } from "../../../../lib/cockpit-href";
 import { relayAsks, relayNotices } from "../../../../lib/channel";
 import { getRepo } from "../../../../lib/repo";
 import { logSwallowed } from "../../../../lib/swallowed";
-import { OPERATOR_CREW_MEMBER_ID } from "../../../../lib/operator";
 
 /**
  * Cockpit seat actions (SPEC §2.4, #54, DEC-027 §1) — auth + glue over the
@@ -103,7 +102,7 @@ function finish(shiftId: string, ctx: string | null, param: string): never {
 
 /**
  * Relay a "you're on / off this shift" assignment notice (DEC-084) — best-effort,
- * excluding the operator about their own action (DEC-072/084). Never throws: the
+ * to anyone, the operator included (DEC-183). Never throws: the
  * domain action already committed, so a channel hiccup must not fail it. Lands in
  * the /admin/outbox "Assignment changes" section (or straight out as SMS when
  * Twilio is configured — 9.4, DEC-MSG-1).
@@ -113,7 +112,7 @@ async function notify(
   action: "added" | "removed",
   shiftId: string,
 ): Promise<void> {
-  if (!crewMemberId || crewMemberId === OPERATOR_CREW_MEMBER_ID) return;
+  if (!crewMemberId) return;
   try {
     await relayNotices([
       {

@@ -117,7 +117,6 @@ dashboard scroll. Tick each one off against its source.
 | `WAIVER_TERMS_URL` / `WAIVER_TERMS_VERSION` | `src/config/tenant.ts` | Not secret. The version is recorded on signed waivers — carry it over, don't invent one |
 | `PAY_PERIOD_ANCHOR` | `src/config/tenant.ts` | Not secret |
 | `CHECKOUT_HOLD_MINUTES` | `src/reservations/claim.ts` | Not secret |
-| `OPERATOR_CREW_MEMBER_ID` | `app/lib/operator.ts` | Not secret |
 | `OPERATOR_NOTIFY_EMAIL` | `app/b/[code]/actions.ts` | Not secret |
 | `NODE_ENV` | — | `production`. See step 45; getting this wrong is a security hole |
 | `MESSAGING` `RESERVATIONS` `TIME_CLOCK` | `app/lib/flags.ts` | Step 5 |
@@ -158,7 +157,7 @@ tuning vars above that are set.
 `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `TWILIO_FROM`, `TENANT_ID`, `TENANT_NAME`, `TENANT_TZ`,
 `PICKUP_LOCATION`, `PICKUP_MAP_URL`, `WAIVER_TERMS_URL`, `WAIVER_TERMS_VERSION`,
-`PAY_PERIOD_ANCHOR`, `CHECKOUT_HOLD_MINUTES`, `OPERATOR_CREW_MEMBER_ID`, `OPERATOR_NOTIFY_EMAIL`,
+`PAY_PERIOD_ANCHOR`, `CHECKOUT_HOLD_MINUTES`, `OPERATOR_NOTIFY_EMAIL`,
 `MESSAGING`, `RESERVATIONS`.
 
 > ⚠️ **`RESERVATION_LINK_SECRET` no longer exists (#741, DEC-154).** It was never set in

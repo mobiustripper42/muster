@@ -7,7 +7,6 @@ import type { Ask } from "@core/domain/entities.js";
 import type { FormResult } from "@core/builder/form-shifts.js";
 import { formNoticeChanges } from "@core/builder/form-notices.js";
 import { getRepo } from "./repo";
-import { OPERATOR_CREW_MEMBER_ID } from "./operator";
 import { makeSmsChannel } from "./sms";
 import { appBaseUrl } from "./base-url";
 
@@ -80,10 +79,10 @@ export async function relayNotices(
  * and CONSUMES any transition it observes (the new state is written, so no later
  * pull re-sees it), so this single call is the only relay chance. Miss it and a
  * crew member added/removed by that reshape never gets the SMS (#259 finding-3).
- * Operator excluded (DEC-072/084). Best-effort is the caller's (wrap in try/catch).
+ * The operator is told like anyone else (DEC-183). Best-effort is the caller's (wrap in try/catch).
  */
 export async function forwardFormNotices(form: FormResult): Promise<void> {
-  await relayNotices(formNoticeChanges(form, OPERATOR_CREW_MEMBER_ID));
+  await relayNotices(formNoticeChanges(form));
   await recordFormChanges(form);
 }
 

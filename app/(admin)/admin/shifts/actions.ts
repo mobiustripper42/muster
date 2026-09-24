@@ -8,7 +8,6 @@ import { asId } from "@core/domain/ids.js";
 import { logCrewRemoved, logFormAudit } from "@core/oracle/audit-log.js";
 import { readSubject } from "../../../lib/auth";
 import { forwardFormNotices, relayNotices } from "../../../lib/channel";
-import { OPERATOR_CREW_MEMBER_ID } from "../../../lib/operator";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 
@@ -101,11 +100,8 @@ export async function mergeAction(formData: FormData): Promise<void> {
   const now = new Date();
   try {
     const { form, freedCrew } = await mergeShift(getRepo(), asId<"ShiftId">(shiftId), now);
-    // Notify everyone dropped off the far side — except the operator about their own
-    // action (DEC-072/084).
-    const toNotify = freedCrew.filter(
-      (id) => String(id) !== OPERATOR_CREW_MEMBER_ID,
-    );
+    // Notify everyone dropped off the far side, the operator included (DEC-183).
+    const toNotify = freedCrew;
     // The merge is COMMITTED — the relay is best-effort and must never flip this to
     // merge_err (a channel-setup hiccup would otherwise report a false failure for a
     // merge that happened, and a retry then throws `not split`). Its own guard here

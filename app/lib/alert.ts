@@ -20,8 +20,8 @@ import { appBaseUrl } from "./base-url";
  *
  * **The count it returns therefore includes logged alerts**, because `LogChannel` accepts every
  * message. Read it as "reached a recipient's record", not "reached a phone". No civil-hours gating
- * (DEC-088 N/A — a Tier-3 "needs a human" signal is urgent). Recipients are the active admins, not
- * the `OPERATOR_CREW_MEMBER_ID` singleton (#293) — the core sender fans out.
+ * (DEC-088 N/A — a Tier-3 "needs a human" signal is urgent). Recipients are the active admins —
+ * the core sender fans out.
  */
 export async function forwardBoardAlerts(landings: BoardLanding[] | undefined): Promise<number> {
   if (!landings || landings.length === 0) return 0;

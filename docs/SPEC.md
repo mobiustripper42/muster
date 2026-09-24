@@ -141,7 +141,7 @@ The import path is disposable plumbing; everything it feeds is permanent.
 | **Supernumerary seat** | Optional, non-gating seat (trainee). Carries a pairing rule and **consumes a passenger slot** against COI max-pax — not free capacity. |
 | **Crew** | A person who can fill seats — captain and/or mate, by rating. Also a **session kind** (see *Admin*) — the word carries both meanings, deliberately. |
 | **Admin** | The **system** authorization concept, and one of exactly **two session kinds** (`crew` \| `admin`). Since DEC-092 an admin is a row in `admins` keyed by that person's **crew id** — so **every admin is also crew**, and `kind` is what disambiguates which hat they're wearing. There are **no roles and no permissions matrix**: all admins are equal. Per-person revoke is `active=false`. *(Granular roles are a someday/multi-tenant concern; `0018` leaves the `role` column as the clean seam. Until then: two kinds, that's the whole model.)* |
-| **Operator** | The **business** role — the human who runs the operation (Eric; sometimes Drew). **Not a system entity, and not a synonym for admin.** An operator is a person; an admin is a session kind. Beware `OPERATOR_CREW_MEMBER_ID`, which is about neither — it names the *crew* persona the office posts messages as (DEC-030 §7). |
+| **Operator** | The **business** role — the human who runs the operation (Eric; sometimes Drew). **Not a system entity, and not a synonym for admin.** An operator is a person; an admin is a session kind. The office posts messages as whichever admin is signed in (DEC-092). |
 | **Eligible pool** | The people legally fillable for a given open seat (credentials valid on the trip date, correct rating, not double-booked, not on PTO), ranked by reliability. |
 | **Oracle** | The single authoritative function answering "can this trip be booked at this time — yes/no, and if no, why?" A rule engine, not a calendar. |
 | **Horizon** | When a rule gets a vote. **Booking horizon** (property rules, gates the sale) vs **staffing horizon** (crew rules, N days out when humans get committed). |
@@ -2446,7 +2446,7 @@ your hours, and setting it on your own correction would make the surface lie abo
 > **Amended by DEC-161 — 2.10.2's frozen booking carries both durations**
 > **Amended by DEC-162 — 2.10.6 adds the operator booking surface, taking payment by link rather than by card entry**
 > **Amended by DEC-163 — 2.10.6 gives an operator's booking no expiry, and marks it with `admin` as its reservation source**
-> **Amended by DEC-182 — 2.10.6's operator table: a block refuses instead of passing with a warning, and a departed trip and a non-live offering refuse**
+> **Amended by DEC-184 — 2.10.6's operator table: a block refuses instead of passing with a warning, and a departed trip and a non-live offering refuse**
 <!-- /amended-by-dec -->
 
 §2.8 is the customer's ninety seconds. This is the other side of it: the catalog the boats are

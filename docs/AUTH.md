@@ -1,7 +1,7 @@
 # Auth & identity
 
 How a request becomes "this is who you are." Kept deliberately small. Read this
-when sign-in confuses you (it will — see [Two things that trip people up](#two-things-that-trip-people-up)).
+when sign-in confuses you (it will — see [The thing that trips people up](#the-thing-that-trips-people-up)).
 
 > **Stability:** the *shape* below — one signed cookie, two kinds, branch on `kind` —
 > is steady. What moved in Phase 10 is the **admin identity**: DEC-092 made admins
@@ -78,23 +78,18 @@ in the `admins` table or your row is `active=false`.
 > the security model (DEC-081), and why its concurrency bypass was treated as a
 > launch-gating fix (#297, now atomic — `src/auth/login-code.ts`).
 
-## Two things that trip people up
+## The thing that trips people up
 
-1. **"crew" means two different things.**
-   - a session **kind** (`kind: "crew"`), *and*
-   - the **roster of people** (the `crew_members` table).
+**"crew" means two different things.**
+- a session **kind** (`kind: "crew"`), *and*
+- the **roster of people** (the `crew_members` table).
 
-   The operator signs in as `kind: "admin"`, but *also* has a **roster identity**
-   so the office can appear as a participant in messaging and the doorbell. So the
-   operator wears two hats: an `admin` *session* and a `crew-*` *persona*.
-
-2. **`OPERATOR_CREW_MEMBER_ID` is not about login.**
-   It's the crew persona the **office acts as** when posting messages / ringing the
-   doorbell (DEC-030 §7) — default `crew-eric-stoffer`, override in env. Setting it does
-   **not** change your session's `kind`. (It's the env var with `OPERATOR` in the
-   name that *looks* like a role switch but isn't — the classic red herring.) Its
-   value should be a crew id that actually exists in the roster. Defined in
-   `app/lib/operator.ts`.
+Every admin is also a crew member (DEC-092), so the operator wears two hats: an
+`admin` *session* and a `crew-*` *roster row*. When the office posts a message it
+goes out as `senderKind: "admin"` under the signed-in admin's own crew id, and active
+admins are never rung by the doorbell — they read every thread from
+`/admin/messages` (DEC-072). There used to be a single configured "operator" crew id
+(`OPERATOR_CREW_MEMBER_ID`) for all of this; issue #293 retired it.
 
 ## Gating pattern (for devs)
 

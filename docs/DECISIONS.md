@@ -155,6 +155,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-158 — A change notice names what moved — the SMS carries a subset, the app carries all of it
 - DEC-170 — An unconfigured channel always writes to the console — for every audience
 - DEC-172 — An unformed shift alerts every tick, with no dedup
+- DEC-183 — The operator gets shift notices like any crew member
 
 ### Crew self-serve, auth & admin identity
 - DEC-010 — Crew auth is magic-link passwordless; crew don't self-register
@@ -209,7 +210,8 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-169 — The ledger write is last and idempotent, not in the booking transaction
 - DEC-179 — The Stripe webhook stays synchronous — the 500 is the durability
 - DEC-180 — The webhook endpoint is not IP-allowlisted — the signature is the door
-- DEC-182 — A phone booking does not cross a block — unblock it, then book
+- DEC-182 — A residual-race loser is charged and refunded — no authorize-then-capture
+- DEC-184 — A phone booking does not cross a block — unblock it, then book
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred

@@ -53,15 +53,15 @@ export interface Thread {
 }
 
 /** A message's sender kind = the canonical subject kind (DEC-058). `"admin"` is
- *  the operator/office, posting as `OPERATOR_CREW_MEMBER_ID` (DEC-030 §7) — there
- *  is no separate `"operator"` vocabulary. */
+ *  the operator/office, posting under the signed-in admin's own crew id (DEC-092) —
+ *  there is no separate `"operator"` vocabulary. */
 export type MessageSenderKind = AuthSubjectKind;
 
 export interface Message {
   id: MessageId;
   threadId: ThreadId;
-  /** Subject ref — a `CrewMemberId` (crew) or the operator/office id (`"admin"`,
-   *  `OPERATOR_CREW_MEMBER_ID` in v1 — DEC-030 §7). Stored as a plain string
+  /** Subject ref — a `CrewMemberId`: the crew member, or for `"admin"` the admin who
+   *  posted for the office (issue #293). Stored as a plain string
    *  because senders span identity spaces (DEC-052: operators post too, and DMs
    *  are operator-visible). `senderKind` (the canonical subject kind, DEC-058)
    *  tags which. */

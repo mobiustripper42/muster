@@ -71,8 +71,7 @@ try {
   // fill" on shift-open's mate seat texts his actual phone once the three
   // TWILIO_* vars are set. Dev seed only.
   // `crew-eric-stoffer`, NOT `crew-eric` — it must be the SAME id as the admin row
-  // seeded below, `app/lib/operator.ts`'s `OPERATOR_CREW_MEMBER_ID` default, and
-  // migration `0018_admins.sql:31`. `saveAdmin` upserts `on conflict (id)` while
+  // seeded below and migration `0018_admins.sql:31`. `saveAdmin` upserts `on conflict (id)` while
   // `admins.handle` carries its own unique index, so two different ids claiming
   // handle `eric` is a constraint violation, not an upsert — which is exactly how
   // the e2e suite went red: `e2e/fixtures.ts:225` seeds `crew-eric-stoffer`/`eric`

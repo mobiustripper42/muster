@@ -139,15 +139,39 @@ describe("doorbellTick + forwardNotifications (the loop, #167)", () => {
     expect(r.rings).toHaveLength(2); // alice + bob only
   });
 
-  it("never rings the operator — a member by seat/roster, but excluded (#118, DEC-072)", async () => {
+  const admin = (id: string, handle: string, active = true) => ({
+    id,
+    handle,
+    name: handle,
+    active,
+    createdAt: T0,
+    deactivatedAt: active ? null : T0,
+  });
+
+  it("never rings an admin — a member by seat/roster, but excluded (#118, DEC-072, issue #293)", async () => {
     const repo = await seed();
-    // The operator is a real, active roster crew member (operator-as-crew, DEC-030),
-    // so all-staff membership includes them — but the doorbell must not ring them.
-    await repo.saveCrewMember(crew("crew-operator", "Eric"));
+    // Every admin is also a real, active roster crew member (DEC-092), so all-staff
+    // membership includes them — but they monitor every thread from /admin/messages, and
+    // their own broadcast would ring them. ANY admin, not one hardcoded operator id.
+    await repo.saveCrewMember(crew("crew-eric", "Eric"));
+    await repo.saveCrewMember(crew("crew-brendan", "Brendan"));
+    await repo.saveAdmin(admin("crew-eric", "eric"));
+    await repo.saveAdmin(admin("crew-brendan", "brendan"));
     await post(repo, "m1", "hi");
-    const r = await doorbellTick(repo, new InMemoryPresence(), NOW, RULES, "crew-operator");
-    expect(r.decisions.some((d) => d.subject.id === "crew-operator")).toBe(false);
-    expect(r.rings).toHaveLength(2); // alice + bob only — the operator is not rung
+    const r = await doorbellTick(repo, new InMemoryPresence(), NOW, RULES);
+    const rung = r.decisions.map((d) => d.subject.id);
+    expect(rung).not.toContain("crew-eric");
+    expect(rung).not.toContain("crew-brendan");
+    expect(r.rings).toHaveLength(2); // alice + bob only
+  });
+
+  it("rings a REVOKED admin — without an active admin row they are crew like anyone", async () => {
+    const repo = await seed();
+    await repo.saveCrewMember(crew("crew-eric", "Eric"));
+    await repo.saveAdmin(admin("crew-eric", "eric", false));
+    await post(repo, "m1", "hi");
+    const r = await doorbellTick(repo, new InMemoryPresence(), NOW, RULES);
+    expect(r.rings.map((d) => d.subject.id)).toContain("crew-eric");
   });
 
   it("sweeps only threads that have messages", async () => {

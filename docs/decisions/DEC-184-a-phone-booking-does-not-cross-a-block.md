@@ -1,6 +1,6 @@
 ---
 schema: 1
-id: DEC-182
+id: DEC-184
 title: "A phone booking does not cross a block — unblock it, then book"
 topic: "Reservations & payments"
 status: "active"
@@ -18,7 +18,7 @@ amends_spec:
     scope: "2.10.6's operator table: a block refuses instead of passing with a warning, and a departed trip and a non-live offering refuse"
 ---
 
-## DEC-182: A phone booking does not cross a block — unblock it, then book
+## DEC-184: A phone booking does not cross a block — unblock it, then book
 
 §2.10.6 said a block "passes, but is told": the operator could book through it and see a warning.
 Operator, 2026-09-23: *"Unblock then book. If it's blocked, someone needs to make a real choice to

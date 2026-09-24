@@ -28,21 +28,15 @@
  */
 import { randomUUID } from "node:crypto";
 import { logSwallowed } from "../log.js";
-import type { BookingInvoice, Reservation } from "../domain/entities.js";
+import type { Reservation } from "../domain/entities.js";
 import { asId, type OfferingId, type ReservationId, type VesselId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
-import { resolveBasePrice, slotIdentity } from "./availability.js";
+import { priceBooking } from "./booking-invoice.js";
 import { claimDepartureSlot } from "./claim.js";
 import { recordTrail } from "./trail.js";
 import { candidateHoldMinutes, XOLA_TRIP_MINUTES } from "./hull-busy.js";
-import { chargeNowCents, feeCentsFor, taxCentsFor } from "./payment-config.js";
-import {
-  composeFare,
-  effectiveIncludedGuests,
-  gratuityCentsFor,
-  gratuityTiersFor,
-} from "./pricing.js";
+import { gratuityTiersFor } from "./pricing.js";
 
 export interface DeparturePaymentIntentRequest {
   offeringId: OfferingId;
@@ -78,6 +72,11 @@ export type DeparturePaymentIntentStart =
         | "invalid_guest_count"
         | "off_schedule"
         | "departed"
+        /** Operator rules only (16.1) — unreachable here, where the claim runs the customer's.
+         *  Typed so the pass-through below stays total rather than hand-mapped. */
+        | "over_capacity"
+        | "vessel_not_offered"
+        | "blocked"
         | "sold_out"
         | "waiver_required"
         | "gratuity_required"
@@ -132,56 +131,22 @@ export async function createDeparturePaymentIntent(
   // stays there. On a retry the claim hands back the session's existing row as `prior` and skips
   // the write entirely — the row already exists and already occupies the hull.
   const buildPendingRow = (vesselId: VesselId, prior: Reservation | null, at: string): Reservation => {
-    // Price this slot exactly as displayed: an override Event's price wins, else the first-match
-    // variation off the base (DEC-125). Offering is always priced (basePriceCents).
-    const key = slotIdentity(vesselId, req.date, req.time);
-    const slotEvent = events.find(
-      (e) =>
-        e.source === "muster" &&
-        e.status === "scheduled" &&
-        slotIdentity(e.vesselId, e.date, e.time) === key,
-    );
-    const priceCents = slotEvent?.price ?? resolveBasePrice(offering!, req.date);
-
-    // Compose the party fare (DEC-112 / DEC-125 build note, 12.2): base + extra-guests ×
-    // extraGuestPrice. The vessel is guaranteed non-null — the claim only offers boats it read
-    // out of `listVessels` — so assert it (a null must THROW, never silently zero extras and
-    // undercharge).
+    // The vessel is guaranteed non-null — the claim only offers boats it read out of
+    // `listVessels` — so assert it (a null must THROW, never silently zero extras and undercharge).
     const vessel = vesselById.get(String(vesselId));
     if (!vessel) throw new Error(`claimed vessel ${String(vesselId)} not found — cannot price fare`);
-    const fare = composeFare({
-      baseCents: priceCents,
+    // One money model for every surface that writes a booking (§2.10.6) — see `booking-invoice.ts`.
+    const invoice = priceBooking({
+      offering: offering!,
+      vessel,
+      vesselId,
+      events,
+      config,
+      date: req.date,
+      time: req.time,
       guestCount: req.guestCount,
-      includedGuestCount: effectiveIncludedGuests(offering!, vessel),
-      extraGuestPriceCents: offering!.extraGuestPriceCents,
-    });
-    const taxCents = taxCentsFor(fare.fareCents, config.taxRateBps);
-    // Service fee (DEC-134): `serviceFeeBps` of the FARE only — independent of tax and tip,
-    // charged IN FULL with the now-charge (like tax), frozen here, netted out of the balance.
-    const serviceFeeCents = feeCentsFor(fare.fareCents, config.serviceFeeBps);
-    // Gratuity (DEC-124): a % of the tip-free fare, added to the charge IN FULL and UNTAXED —
-    // never through `chargeNowCents` (no deposit-split) or `taxCentsFor` (no tax). Crew money.
-    const gratuityCents = gratuityCentsFor(fare.fareCents, req.gratuityBps);
-    // `totalCents` is the whole quote, not the amount charged now: in deposit mode the charge is
-    // `chargeNowCents` and the remainder is collected later against this same invoice.
-    const invoice: BookingInvoice = {
-      fareCents: priceCents,
-      extrasCents: fare.extrasCents,
-      taxCents,
-      taxRateBps: config.taxRateBps,
-      serviceFeeCents,
-      serviceFeeBps: config.serviceFeeBps,
-      gratuityCents,
       gratuityBps: req.gratuityBps,
-      totalCents: fare.fareCents + taxCents + serviceFeeCents + gratuityCents,
-      // What we are about to ask Stripe for, frozen HERE with everything else rather than
-      // recomputed at the call site (15.4). It is the one money number the row cannot derive
-      // from its own components: the deposit split lives in `config`, which is live and which an
-      // operator can move while a card is being typed. Tip is added outside `chargeNowCents` —
-      // no deposit-split and no tax on crew money (DEC-124).
-      amountDueNowCents:
-        chargeNowCents(fare.fareCents, taxCents, serviceFeeCents, config) + gratuityCents,
-    };
+    });
     return {
       // The SAME row on a retry — its id is the booking's for life. Reserved time is set on the
       // FIRST write and never moved (§2.8.7): a resubmit must not park the hull indefinitely by
@@ -514,7 +479,8 @@ export async function createDeparturePaymentIntent(
 
 /** A fresh `resv-<32 hex>` id per pending row, random: nothing deterministic exists yet to key
  *  it on (the intent id comes after the row). Confirm flips this row rather than deriving a new
- *  id from the payment (14.5) — which is what lets two payments resolve to one reservation. */
-function mintPendingReservationId(): ReservationId {
+ *  id from the payment (14.5) — which is what lets two payments resolve to one reservation.
+ *  Exported for the operator's booking (16.1), whose row is the same kind of row. */
+export function mintPendingReservationId(): ReservationId {
   return asId<"ReservationId">(`resv-${randomUUID().replaceAll("-", "")}`);
 }

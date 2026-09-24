@@ -18,6 +18,7 @@ import type {
   Block,
   BookingCode,
   CalendarFeed,
+  CancelledBy,
   Gratuity,
   GustoIdentity,
   Location,
@@ -378,6 +379,26 @@ export interface Repository {
     reservation: Reservation,
     pendingLiveSince: string,
   ): Promise<{ result: "won" } | { result: "lost" }>;
+
+  /**
+   * End a still-`pending` reservation (16.1): `status → cancelled`, with `cancelledBy` and
+   * `updatedAt`. Returns true iff THIS call made that transition; a missing, booked or already
+   * cancelled row returns false and writes nothing.
+   *
+   * For the operator's unpaid phone booking, which never lapses and so only a person ends
+   * (DEC-163). **Guarded, not `saveReservation`:** the customer can pay while the operator presses
+   * cancel. The confirm flip locks the row and requires `status='pending'`; so does this, so the two
+   * serialize and exactly one wins. A whole-row upsert from the operator's earlier read would
+   * instead overwrite a just-booked, paid row with a cancelled pending one.
+   *
+   * No Event to release: a pending row has none (§2.8.2), so the hull frees the moment the row
+   * stops being pending.
+   */
+  cancelPendingIfUnpaid(
+    reservationId: ReservationId,
+    by: CancelledBy,
+    at: string,
+  ): Promise<boolean>;
 
   /**
    * The row carrying this Stripe PaymentIntent id in its `paymentIntentIds`, or null. How confirm

@@ -40,11 +40,12 @@ import { holdSlot, releaseHold, type CalendarErr } from "./actions";
  * page on mobile, a side pane on desktop) — two native layouts off one server-rendered link,
  * which a media-query-dependent href could never do without client JS.
  *
- * Selling from the calendar stays deferred (it shares the 12.1 claim). The one write that lives
- * here is the SLOT BLOCK (#703): clicking an open departure takes it off the market as a
- * `Block{kind:"vesselHold"}`, and clicking a blocked one puts it back. Both go through a confirm
- * banner above the grid rather than a dialog in the card — no-JS (DEC-026) has no toast to
- * undo into, and a card is ~40px tall, which is not a place to ask a question at 375px.
+ * Clicking an open departure opens a confirm banner that offers two things: **Book** it by phone
+ * (16.1, §2.10.6 — a link to `/admin/calendar/book`, which writes through the shared claim), or
+ * take it off the market as a SLOT BLOCK (#703, a `Block{kind:"vesselHold"}`); clicking a
+ * blocked one puts it back. A banner above the grid rather than a dialog in the card — no-JS
+ * (DEC-026) has no toast to undo into, and a card is ~40px tall, which is not a place to ask a
+ * question at 375px.
  *
  * **The operator's word is "block", not "hold"** (operator, 2026-08-08). The identifiers here
  * still say `hold` — they track the data model's `kind: "vesselHold"`, which is unchanged, and
@@ -147,6 +148,9 @@ export interface CalendarData {
    *  dark card releasable HERE. A slot darkened by a `vessel` or `location` block has no entry,
    *  stays inert, and is lifted on /admin/blocks where its real scope is visible. */
   holdBySlot: Map<string, Block>;
+  /** The operator's unpaid phone booking on each physical `vessel|date|time` (16.1) — what makes
+   *  a `held` card a link to its pane rather than an inert "Checking out". */
+  phoneBookingBySlot: Map<string, Reservation>;
   day: string;
   today: string;
   filter: string;
@@ -276,6 +280,16 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     holdBySlot.set(slotKey(String(b.vesselId), b.date, b.time), b);
   }
 
+  // An `admin` pending row is always unpaid and never lapses (DEC-163; it becomes `muster` when
+  // paid), so on the grid it is a `held` slot that will not clear by itself. Unlike a customer's
+  // checkout it is the operator's own, and the pane is where it is paid for or cancelled.
+  const phoneBookingBySlot = new Map<string, Reservation>();
+  for (const r of reservations) {
+    if (r.source !== "admin" || r.status !== "pending" || r.date !== day) continue;
+    if (!r.vesselId || !r.time) continue;
+    phoneBookingBySlot.set(slotKey(String(r.vesselId), r.date, r.time), r);
+  }
+
   const vesselById = new Map(vessels.map((v) => [String(v.id), v]));
   const nameOf = (id: string) => vesselById.get(id)?.name ?? id;
 
@@ -323,6 +337,7 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     vesselById,
     reservationByEventId,
     holdBySlot,
+    phoneBookingBySlot,
     day,
     today,
     filter,
@@ -565,7 +580,7 @@ export function HoldConfirm({ data }: { data: CalendarData }) {
     >
       <div className="min-w-0">
         <p className="text-sm font-medium text-ink">
-          {p.action === "hold" ? `Block ${when}?` : `Unblock ${when}?`}
+          {p.action === "hold" ? `Book or block ${when}?` : `Unblock ${when}?`}
         </p>
         <p className="mt-0.5 text-xs text-muted">
           {p.action === "hold" ? (
@@ -592,6 +607,17 @@ export function HoldConfirm({ data }: { data: CalendarData }) {
         <AppLink href={cancelHref} className="text-sm text-muted">
           Cancel
         </AppLink>
+        {p.action === "hold" ? (
+          // A phone booking (16.1, §2.10.6). A link, not a form: booking needs the customer's
+          // details, so it is a page of its own, keyed on the same physical slot this banner is.
+          <AppLink
+            href={`/admin/calendar/book?${new URLSearchParams({ date: data.day, vessel: p.vesselId, time: p.time }).toString()}`}
+            data-testid="book-slot"
+            className="rounded-card bg-accent px-4 py-2 text-sm font-semibold text-white"
+          >
+            Book it
+          </AppLink>
+        ) : null}
         <form action={p.action === "hold" ? holdSlot : releaseHold}>
           {/* The write's inputs come from the RESOLVED slot, never from the raw query — the
               param only selects what to ask about. */}
@@ -605,7 +631,15 @@ export function HoldConfirm({ data }: { data: CalendarData }) {
           ) : (
             <input type="hidden" name="id" value={p.blockId} />
           )}
-          <SubmitButton className="rounded-card bg-accent px-4 py-2 text-sm font-semibold text-white">
+          {/* Beside Book, Block is the secondary action — outlined, so the two are never one
+              colour at 375px where a mis-tap would take a slot off the market. */}
+          <SubmitButton
+            className={
+              p.action === "hold"
+                ? "rounded-card border border-line bg-card px-4 py-2 text-sm font-semibold text-ink"
+                : "rounded-card bg-accent px-4 py-2 text-sm font-semibold text-white"
+            }
+          >
             {p.action === "hold" ? "Block it" : "Unblock it"}
           </SubmitButton>
         </form>
@@ -867,6 +901,31 @@ export function CalendarGrid({
                   // They are separate from `blocked` above rather than folded into it because a
                   // dark card there is the operator's own act and undoable from here; neither of
                   // these is either. `held` clears itself when the payment window runs out.
+                  // The one `held` card that IS the operator's own (16.1): an unpaid phone booking.
+                  // It never clears by itself (DEC-163), so it has to lead somewhere — its pane,
+                  // where it is paid for or cancelled.
+                  const phoneBooking =
+                    s.status === "held" ? data.phoneBookingBySlot.get(physical) : undefined;
+                  if (phoneBooking) {
+                    return (
+                      <AppLink
+                        key={key}
+                        href={detailHref(data, String(phoneBooking.id))}
+                        spinner="overlay"
+                        aria-label={`Awaiting payment, ${phoneBooking.customerName}, ${shortTime(s.time)}`}
+                        data-testid="cal-block"
+                        data-vessel={String(s.vesselId)}
+                        data-status="awaiting-payment"
+                        className={`absolute flex items-center justify-center overflow-hidden rounded-lg border border-dashed border-warn-line bg-warn-bg px-1 text-[10px] font-medium text-warn${
+                          selectedReservationId === String(phoneBooking.id) ? " ring-2 ring-ink ring-offset-1" : ""
+                        }`}
+                        style={pos}
+                      >
+                        <span className="truncate">Awaiting payment · {phoneBooking.customerName}</span>
+                      </AppLink>
+                    );
+                  }
+
                   if (s.status === "held" || s.status === "departed") {
                     const departed = s.status === "departed";
                     return (
@@ -887,10 +946,11 @@ export function CalendarGrid({
                     );
                   }
 
-                  // available → an offering-tinted dashed "open" block. Selling from here is
-                  // still deferred (12.1); the link takes the slot OFF the market (#703). The
-                  // href is keyed on the PHYSICAL slot, not the offering, so every card sharing
-                  // a boat-time leads to the same confirm — which is what the block really does.
+                  // available → an offering-tinted dashed "open" block. The link opens the confirm
+                  // that books it by phone (16.1) or takes it OFF the market (#703). The href is
+                  // keyed on the PHYSICAL slot, not the offering, so every card sharing a
+                  // boat-time leads to the same confirm — which is what the block really does, and
+                  // the Book page asks which offering when more than one sells the slot.
                   return (
                     <AppLink
                       key={key}
@@ -898,9 +958,9 @@ export function CalendarGrid({
                         hold: `${String(s.vesselId)}|${s.time}`,
                       })}
                       spinner="overlay"
-                      // The card says "open" and the link BLOCKS it — without a name of its own
-                      // a screen reader announces the state and hides the action.
-                      aria-label={`Block ${shortTime(s.time)}, ${
+                      // The card says "open" and the link asks to BOOK or BLOCK it — without a
+                      // name of its own a screen reader announces the state and hides the action.
+                      aria-label={`Book or block ${shortTime(s.time)}, ${
                         data.vesselById.get(String(s.vesselId))?.name ?? String(s.vesselId)
                       }`}
                       data-testid="cal-block"

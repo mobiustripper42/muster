@@ -112,7 +112,54 @@ export type CancelOutcome =
       /** The event cancelled, or absent when another active booking still holds it. */
       freedEventId?: EventId;
     }
-  | { ok: false; reason: "reservation_missing" | "not_muster" | "not_booked" };
+  | {
+      ok: false;
+      reason:
+        | "reservation_missing"
+        | "not_muster"
+        | "not_booked"
+        /** An operator's unpaid booking that the customer paid for while the cancel was in
+         *  flight (16.1). It is an ordinary booking now; cancelling it is the booked path's job,
+         *  with its refund, and the operator has to choose that knowingly. */
+        | "now_booked";
+    };
+
+/**
+ * End an operator's UNPAID phone booking (16.1, DEC-163) — and nothing else.
+ *
+ * It never lapses, so a person is the only thing that ends it. Nothing was paid, so there is
+ * nothing to refund, and a pending row has no Event, so there is no hull to release beyond the row
+ * itself and no shift to re-form (shifts derive from Events).
+ *
+ * **Never falls through to the booked path**, which is why it is its own entry rather than only a
+ * branch of `cancelReservation`. The phone-booking pane posts here from a confirm the operator may
+ * have opened minutes ago; if the customer paid in between, the row is `muster`, booked, with an
+ * Event and a payment — and `cancelReservation` would cancel that like any booking, with no refund
+ * and no crew told, under a screen that said nothing was paid. So a row that is no longer a phone
+ * booking refuses: `now_booked` when it has since been paid, `not_booked` otherwise.
+ *
+ * The write is guarded too: the customer can pay between the read and the write. The confirm flip
+ * and `cancelPendingIfUnpaid` both require `status='pending'`, so exactly one lands.
+ */
+export async function cancelUnpaidPhoneBooking(
+  deps: Pick<CancelDeps, "repo" | "now">,
+  reservationId: ReservationId,
+  by: CancelledBy,
+): Promise<CancelOutcome> {
+  const reservation = await deps.repo.getReservation(reservationId);
+  if (!reservation) return { ok: false, reason: "reservation_missing" };
+  if (reservation.source !== "admin") {
+    return { ok: false, reason: isBooked(reservation) ? "now_booked" : "not_booked" };
+  }
+  if (reservation.status === "cancelled") return { ok: true, alreadyCancelled: true };
+  if (reservation.status !== "pending") return { ok: false, reason: "not_booked" };
+  if (await deps.repo.cancelPendingIfUnpaid(reservationId, by, deps.now())) {
+    return { ok: true, alreadyCancelled: false };
+  }
+  const now = await deps.repo.getReservation(reservationId);
+  if (now?.status === "cancelled") return { ok: true, alreadyCancelled: true };
+  return { ok: false, reason: now?.status === "booked" ? "now_booked" : "not_booked" };
+}
 
 /**
  * `by` is REQUIRED, not optional (#724). Every caller already knows the answer — the admin
@@ -127,6 +174,7 @@ export async function cancelReservation(
 ): Promise<CancelOutcome> {
   const reservation = await deps.repo.getReservation(reservationId);
   if (!reservation) return { ok: false, reason: "reservation_missing" };
+  if (reservation.source === "admin") return cancelUnpaidPhoneBooking(deps, reservationId, by);
   // Xola owns its own bookings and its own money (DEC-105). Cancelling one here would be
   // overwritten by the next pull and would tell the customer nothing.
   if (reservation.source !== "muster") return { ok: false, reason: "not_muster" };

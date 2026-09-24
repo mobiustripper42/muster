@@ -2446,6 +2446,7 @@ your hours, and setting it on your own correction would make the surface lie abo
 > **Amended by DEC-161 — 2.10.2's frozen booking carries both durations**
 > **Amended by DEC-162 — 2.10.6 adds the operator booking surface, taking payment by link rather than by card entry**
 > **Amended by DEC-163 — 2.10.6 gives an operator's booking no expiry, and marks it with `admin` as its reservation source**
+> **Amended by DEC-184 — 2.10.6's operator table: a block refuses instead of passing with a warning, and a departed trip and a non-live offering refuse**
 <!-- /amended-by-dec -->
 
 §2.8 is the customer's ninety seconds. This is the other side of it: the catalog the boats are
@@ -2617,10 +2618,17 @@ is a one-shot address for money that is still owed.
 | Rule | Operator |
 |---|---|
 | the booking cutoff | **passes freely** — the cutoff exists to protect the operator's own notice, and they are the one giving it up |
-| a block | **passes, but is told** — a block is a deliberate act and letting it be crossed silently would defeat it |
+| **a block** | **refuses — unblock it first.** A block is a deliberate act, so crossing it takes a second one on the calendar rather than a warning on a form |
 | the season, the schedule grid | passes |
 | **another trip overlapping the hull** | **refuses.** One boat cannot be in two places |
 | **the boat's capacity** | **refuses.** That is the Coast Guard's number, not ours |
+| **a departure that has already left** | **refuses.** Selling a trip after it sails is a real case for some operators, not for this one |
+| **an offering that is not live** | **refuses.** Draft has no schedule to book from; hidden is retired |
+
+The operator picks the boat — it is the slot they clicked — so there is no fall-through to a
+bigger one: a party that does not fit that boat is refused, not moved. The two rule sets are one
+claim with its relaxable checks as data; the hull, capacity and departed refusals are not
+parameters at all, so no caller can relax them.
 
 **An operator's booking does not expire, and this holds a boat until a person acts.** Nothing
 frees it. The operator tells the customer to pay by tomorrow, watches the purchases list, and
@@ -2638,6 +2646,13 @@ reading.
 **A reservation the operator wrote carries `admin` as its source.** Third value beside `muster` and
 `xola`. It is there because behaviour branches on it, not for reporting: every other pending row is
 tested with its reserved time against the payment window, and this one has no window to test.
+
+**It carries it only while unpaid.** The confirm that books it turns it into `muster` in the same
+write, so a paid phone booking is an ordinary booking to every reader — the whole-boat mutex,
+availability, cancel — and none of them has to learn a third value. Who sold it is recorded once,
+on the trail's `booked` row (`actorKind: admin`), which is where "how many bookings came by phone"
+is answered. Until then its Event does not exist, so no shift forms for it: crew are scheduled when
+the customer pays, the same as for a web booking.
 
 **2.10.7 Whole-boat is a rule, not a shape.**
 

@@ -929,8 +929,10 @@ export async function processBookingCharge(
           ? { paymentIntentId: asId<"PaymentIntentId">(charge.paymentIntentId) }
           : {}),
         // `admin` when an operator sold it — which is what `admin_booked` was a whole type for
-        // until issue #1048 folded it into this dimension.
-        actorKind: result.reservation.source === "admin" ? "admin" : "customer",
+        // until issue #1048 folded it into this dimension. From the confirm's `soldBy`, never
+        // `result.reservation.source`: the flip has already turned an `admin` row into `muster`
+        // (16.1), so this row is the only place who sold it survives.
+        actorKind: result.soldBy,
         type: "booked",
         metadata: { via: opts.via ?? "webhook" },
       });

@@ -26,7 +26,12 @@ import { resolveCustomerId } from "../customers/resolve.js";
 
 
 export type ConfirmResult =
-  | { outcome: "booked"; reservation: Reservation }
+  /**
+   * `soldBy` is read off the row BEFORE the flip (16.1). The flip turns an operator's `admin` row
+   * into `muster` — once paid it is an ordinary booking — so the returned `reservation` can no
+   * longer say who sold it, and the trail's `booked` row is the permanent record of that.
+   */
+  | { outcome: "booked"; reservation: Reservation; soldBy: "admin" | "customer" }
   | { outcome: "already"; reservation: Reservation }
   // `lost` carries the row, and can: the hull went to a rival, but OUR row was read at the top of
   // `confirmPendingRow` and is still `pending` — the CAS touched somebody else's. The residual-race
@@ -135,7 +140,13 @@ export async function confirmPendingRow(
   // occupies it, so there is no second occupancy record to clean up. Until 14.7 there was — a
   // `checkout_holds` row that had to be deleted here or the boat stayed parked for the rest of
   // the window.
-  if (res.result === "won") return { outcome: "booked", reservation: res.reservation };
+  if (res.result === "won") {
+    return {
+      outcome: "booked",
+      reservation: res.reservation,
+      soldBy: row.source === "admin" ? "admin" : "customer",
+    };
+  }
   if (res.result === "already") return { outcome: "already", reservation: res.reservation };
   return { outcome: "lost", reservation: row };
 }

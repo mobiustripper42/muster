@@ -25,6 +25,7 @@ import type {
   Location,
   LoginCode,
   CalendarFeed,
+  CancelledBy,
   Offering,
   Payment,
   OutboxEntry,
@@ -766,6 +767,10 @@ export class InMemoryRepository implements Repository {
     const booked: Reservation = {
       ...row,
       status: "booked",
+      // An operator's booking becomes an ordinary one the moment it is paid (16.1): `admin` only
+      // ever meant "awaiting payment, never lapses" (DEC-163). Same write as the flip, so no
+      // reader can see a booked `admin` row that the `muster`-scoped mutex above cannot.
+      source: row.source === "admin" ? "muster" : row.source,
       eventId,
       updatedAt: patch.updatedAt,
       ...(patch.customerId !== undefined ? { customerId: patch.customerId } : {}),
@@ -798,6 +803,19 @@ export class InMemoryRepository implements Repository {
     if (hullIsBusy(busy, minutesOfDay(time), holdMinutes)) return { result: "lost" };
     this.#storeWholeReservation(reservation);
     return { result: "won" };
+  }
+
+  async cancelPendingIfUnpaid(
+    reservationId: ReservationId,
+    by: CancelledBy,
+    at: string,
+  ): Promise<boolean> {
+    // Single-threaded ⇒ the status check and the write are atomic; Postgres gets the same from
+    // `where status='pending'` against the confirm flip's row lock.
+    const row = this.#reservations.get(reservationId);
+    if (!row || row.status !== "pending") return false;
+    this.#reservations.set(reservationId, { ...row, status: "cancelled", cancelledBy: by, updatedAt: at });
+    return true;
   }
 
   async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {

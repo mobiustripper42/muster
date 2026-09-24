@@ -34,6 +34,7 @@ import type {
   Location,
   LoginCode,
   CalendarFeed,
+  CancelledBy,
   Offering,
   OfferingSchedule,
   Payment,
@@ -1748,9 +1749,13 @@ export class PostgresRepository implements Repository {
       // an absent patch field leaves what checkout froze. Guarded by `status='pending'` and the
       // `not exists` mutex, so a redelivery that already flipped it, or a rival already booked on
       // the slot, updates zero rows → `lost` (the redelivery is caught earlier as `already`).
+      // `source`: an operator's booking becomes an ordinary one the moment it is paid (16.1) —
+      // `admin` only ever meant "awaiting payment, never lapses" (DEC-163). In this statement, not
+      // a second one, so no reader sees a booked `admin` row the `muster`-scoped mutex cannot.
       const flipped = await client.query(
         `update reservations
             set status='booked',
+                source=case when source='admin' then 'muster' else source end,
                 event_id=$2,
                 updated_at=coalesce($3, updated_at),
                 customer_id=coalesce($4, customer_id),
@@ -1840,6 +1845,23 @@ export class PostgresRepository implements Repository {
     } finally {
       client.release();
     }
+  }
+
+  async cancelPendingIfUnpaid(
+    reservationId: ReservationId,
+    by: CancelledBy,
+    at: string,
+  ): Promise<boolean> {
+    // One guarded statement. The confirm flip holds `for update` on this row and requires
+    // `status='pending'`; this update waits on that lock, re-evaluates its own `status='pending'`
+    // after the flip commits, and matches nothing — so a paid booking is never cancelled here.
+    const res = await this.#pool.query(
+      `update reservations
+          set status='cancelled', cancelled_by=$2, updated_at=$3
+        where id=$1 and status='pending'`,
+      [reservationId, by, at],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {

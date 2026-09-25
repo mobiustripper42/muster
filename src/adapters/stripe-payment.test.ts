@@ -4,7 +4,7 @@
  * **This file covers `parseEvent` and nothing else, deliberately.** It is the only pure function in
  * a 491-line adapter; every other method is a network call, and a unit test of those would have to
  * `vi.mock("stripe")` — mocking the thing under test. The network half is covered by
- * `npm run db:stripe:cancel`, which runs the real adapter against the sandbox. Two mechanisms, each
+ * `npm run test:stripe` (`stripe-payment.sandbox.ts`), which runs the real adapter against the sandbox. Two mechanisms, each
  * suiting its half, rather than one suiting neither.
  *
  * **Payloads are signed, not hand-built.** `Stripe.webhooks.generateTestHeaderString` produces a

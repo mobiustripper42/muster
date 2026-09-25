@@ -500,7 +500,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/**/*.test.ts", "app/**/*.test.ts", "components/**/*.test.ts", "db/**/*.test.ts", "scripts/**/*.test.mjs"],
+    files: ["src/**/*.test.ts", "src/**/*.sandbox.ts", "app/**/*.test.ts", "components/**/*.test.ts", "db/**/*.test.ts", "scripts/**/*.test.mjs"],
     languageOptions: { parser: tseslint.parser, parserOptions: { ecmaFeatures: { jsx: true } } },
     plugins: { vitest },
     rules: { ...recommended(vitest), ...OFF },
@@ -779,9 +779,11 @@ export default tseslint.config(
     // suite while reading as though it guards all of it. It first shipped as `src/**/*.test.ts`
     // alone, which left `app/`, `components/`, `db/` and the `scripts/` tests — 10 files — able
     // to go green on a stray `.only`. A guard whose blind spot is undocumented gets trusted for
-    // things it never checked (DEC-144).
+    // things it never checked (DEC-144). `*.sandbox.ts` is `vitest.sandbox.config.ts`'s include
+    // (`npm run test:stripe`, issue #1021) — the same rule for the suite `verify` never runs.
     files: [
       "src/**/*.test.ts",
+      "src/**/*.sandbox.ts",
       "app/**/*.test.ts",
       "components/**/*.test.ts",
       "db/**/*.test.ts",

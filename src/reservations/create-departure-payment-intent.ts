@@ -381,7 +381,7 @@ export async function createDeparturePaymentIntent(
   // challenge does NOT reach here: Stripe permits an amount update at `requires_action`, in its own
   // words — *"You may only update the amount of a PaymentIntent with one of the following statuses:
   // requires_payment_method, requires_confirmation, requires_action"* (its refusal text, read back
-  // from the sandbox by `db:stripe:cancel` on 2026-09-18). So that retry raises this intent and
+  // from the sandbox on 2026-09-18 by the check now in `npm run test:stripe`). So that retry raises this intent and
   // mints nothing. What actually lands here is a state read that THREW — a provider outage or a
   // timeout outliving the SDK's two retries — which is infrastructure failing, not a customer doing
   // anything. Rare, and not stageable from a browser.

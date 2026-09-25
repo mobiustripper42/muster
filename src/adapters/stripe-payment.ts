@@ -313,7 +313,7 @@ export class StripePaymentPort implements PaymentPort {
     // the key, added it to the port type and threaded it here — and stopped, leaving this call with
     // a single argument. Every test stayed green because every test runs against `FakePaymentPort`,
     // which honoured the key; production dropped it silently. Caught by `/security-review`, not by
-    // the suite, and `db:stripe:cancel` now asserts the round trip so the suite is not the only
+    // the suite, and `npm run test:stripe` now asserts the round trip so the suite is not the only
     // thing standing between this line and a silent regression. Same shape as `refund` above.
     { idempotencyKey: input.idempotencyKey });
     if (!intent.client_secret) throw new Error("Stripe payment intent returned no client_secret");

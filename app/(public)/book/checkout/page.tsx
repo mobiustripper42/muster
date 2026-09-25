@@ -4,7 +4,7 @@
  * (`?offering=&date=&time=&guests=`), re-derives availability for that exact slot (a stale
  * link renders an honest sold-out notice, not a doomed form), prices it with the SAME pure
  * money functions the charge builder freezes (fare → tax → service fee → tip tiers), and
- * renders the inline-Elements form. Gated behind `RESERVATIONS` (DEC-111).
+ * renders the inline-Elements form.
  *
  * Server-rendered shell + ONE client island (`CheckoutForm`, DEC-133 posture): the form is
  * intrinsically interactive (tip tiles re-total live, the card Element is client-only), so
@@ -39,7 +39,6 @@ import { Notice } from "../../../../components/ui/notice";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 import { CheckoutForm } from "./checkout-form";
-import { reservationsEnabled } from "../../../lib/flags";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 export const dynamic = "force-dynamic";
@@ -68,17 +67,6 @@ function backHref(sp: Search, date: string | undefined, time: string | undefined
 }
 
 export default async function CheckoutPage({ searchParams }: { searchParams: Promise<Search> }) {
-  if (!reservationsEnabled()) {
-    return (
-      <main className="mx-auto max-w-2xl px-4 py-16">
-        <h1 className="text-xl font-semibold">Reservations are off</h1>
-        <p className="mt-2 text-muted">
-          Set <code>RESERVATIONS=1</code> to enable booking (DEC-111).
-        </p>
-      </main>
-    );
-  }
-
   const sp = await searchParams;
   const guests = Number(sp.guests ?? 0);
   const validParams =

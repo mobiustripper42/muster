@@ -11,6 +11,10 @@
  * existed anywhere — on in prod, on in e2e, so its off-branch never executed. What a flag like
  * that buys is an untested path: nobody knew what `/crew` rendered with it off, because nothing
  * ran that way. Deleted rather than left as reassurance.
+ *
+ * `RESERVATIONS` went the same way at issue #1093. It kept the customer booking flow dark, but
+ * reservations are not an optional half of the product, and the real gate on taking money is
+ * whether Stripe keys are configured — without them checkout refuses before any row or charge.
  */
 function flagOn(name: string): boolean {
   return process.env[name] === "1";
@@ -33,21 +37,6 @@ export function messagingEnabled(): boolean {
 }
 
 /**
- * `RESERVATIONS` (DEC-111): the customer-facing booking flow — `/book`, checkout, the manage
- * link, and the Stripe webhook that turns a charge into a reservation. **OFF by default**;
- * DEC-111's whole point is that money must not reach production until one real paid
- * reservation has validated end to end.
- *
- * This function exists because the predicate was hand-spelled at five call sites (#588). That is
- * the same shape as the auth-sweep defect where the dev-link route carried its own copy of the
- * production kill-switch while two other files imported the shared one — two spellings of one
- * guard, and only one of them ever gets fixed.
- */
-export function reservationsEnabled(): boolean {
-  return flagOn("RESERVATIONS");
-}
-
-/**
  * `TIME_CLOCK` (#628, SPEC §2.9): the whole Phase 13 punch clock — `/crew/time`, the crew hub's
  * Time tile, `/admin/time-clock`, the Actual-hours reconcile on `/admin/payroll`, and the Gusto
  * export route. **OFF by default**, same kill-switch shape as `MESSAGING` above.
@@ -57,8 +46,8 @@ export function reservationsEnabled(): boolean {
  * is worse than none — crew would clock in against a surface the operator can't yet repair.
  *
  * **Gate the ROUTE, not just the nav.** #621 is the standing example of getting this wrong: the
- * RESERVATIONS switch hid its links and left the admin routes reachable by URL, which is a
- * kill switch that doesn't kill anything. Every entry point below 404s, not just un-links.
+ * since-deleted RESERVATIONS switch hid its links and left the admin routes reachable by URL,
+ * which is a kill switch that doesn't kill anything. Every entry point below 404s, not just un-links.
  */
 export function timeClockEnabled(): boolean {
   return flagOn("TIME_CLOCK");

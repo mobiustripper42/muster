@@ -24,12 +24,8 @@ import { processBookingWebhook } from "@core/reservations/booking-webhook.js";
  * (12.1b, DEC-107 amended); the loud manual-refund alert is the fallback only when the
  * auto-refund can't run.
  *
- * **Gated on `RESERVATIONS` (DEC-111) explicitly**, checked inside `processBookingWebhook`
- * immediately after signature verification (#588): a verified event arriving with the flag off
- * is alerted and acked, never booked. It used to be inert only *by consequence* — the sole live
- * intent-creating path is gated, so nothing upstream could fire — which held, but rested on a
- * Stripe dashboard nobody can read from the repo (#544) and on that other gate never moving.
- * `nodejs` runtime — it writes through `pg`.
+ * No feature flag gates it (issue #1093): a deployment without Stripe keys receives no signed
+ * events. `nodejs` runtime — it writes through `pg`.
  */
 export const runtime = "nodejs";
 

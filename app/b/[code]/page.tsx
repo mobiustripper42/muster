@@ -21,7 +21,6 @@ import { Notice } from "../../../components/ui/notice";
 import { SubmitButton } from "../../../components/ui/submit-button";
 import { requestBookingChange } from "./actions";
 import { loadBookingByCode } from "./load";
-import { reservationsEnabled } from "../../lib/flags";
 
 export const dynamic = "force-dynamic";
 
@@ -38,14 +37,6 @@ export default async function ManagePage({
   params: Promise<{ code: string }>;
   searchParams: Promise<Search>;
 }) {
-  if (!reservationsEnabled()) {
-    return (
-      <main className="mx-auto max-w-2xl px-4 py-16">
-        <h1 className="text-xl font-semibold">Reservations are off</h1>
-      </main>
-    );
-  }
-
   const { code } = await params;
   const sp = await searchParams;
   const load = await loadBookingByCode(code);

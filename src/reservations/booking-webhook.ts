@@ -55,19 +55,9 @@ import { recordTrail } from "./trail.js";
 import type { EmittedTrailType } from "../domain/reservation-trail.js";
 
 export interface WebhookDeps {
-  /**
-   * Is the reservations feature on for this deployment (`RESERVATIONS`, DEC-111)? Injected
-   * rather than read here — the core does not touch `process.env`.
-   *
-   * The route comment used to claim this handler was "gated behind the RESERVATIONS flag."
-   * It wasn't. It was inert only *by consequence*: the sole live PaymentIntent-creating path
-   * is gated, so with the flag off nothing upstream could produce an event. That chain holds
-   * today and the #522 audit verified it — but it rests on a Stripe dashboard nobody can read
-   * from the repo (#544) and on the checkout gate never being removed. A replayed event, a
-   * dashboard test send, or a leftover intent from a flag-on window arrives signature-valid
-   * and books. This makes it inert *because we said so* (#588).
-   */
-  reservationsEnabled: boolean;
+  // No feature-flag dependency (issue #1093). The `RESERVATIONS` switch and its gate here are gone:
+  // reservations are not an optional half of the product, and a deployment with no Stripe keys
+  // receives no signed events to gate.
   repo: Repository;
   payments: PaymentPort;
   now: () => string;
@@ -280,11 +270,8 @@ async function routeVerifiedEvent(
 ): Promise<WebhookResult> {
 
 
-  // A REFUND landed (#616) — reconcile it into the ledger.
-  //
-  // Deliberately BEFORE the RESERVATIONS gate and outside the booking spine entirely. The gate
-  // guards new bookings (#588); money that has already gone back must be recorded in every
-  // deployment, flag on or off, exactly like the balance payment the gate was moved off for.
+  // A REFUND landed (#616) — reconcile it into the ledger. Outside the booking spine entirely:
+  // money that has already gone back is recorded whatever state the booking is in.
   //
   // This is the path that makes a STRIPE DASHBOARD refund visible at all. Before it, the docs
   // told the operator to refund there and Muster never learned: the reservation kept reading
@@ -296,9 +283,8 @@ async function routeVerifiedEvent(
   // cumulative field cannot tell the deliveries apart — see `recordChargeUnmatched`.
   if (event.type === "refund_recorded") return recordRefund(deps, event.data, event.stripeEventId);
 
-  // A CHARGEBACK moved (issue #723) — same posture as the refund above, and before the
-  // RESERVATIONS gate for the same reason: money that has already left the account must be
-  // recorded in every deployment, flag on or off.
+  // A CHARGEBACK moved (issue #723) — same posture as the refund above: money that has already
+  // left the account is recorded, full stop.
   if (event.type === "dispute_updated") return recordDispute(deps, event.data);
 
   // The inline-Elements booking. The body of this branch lives in `confirm-booking.ts` because
@@ -455,10 +441,11 @@ export const paymentIdFor = (chargeKey: string): PaymentId => asId<"PaymentId">(
 /**
  * Money that arrived with no booking to hang it on (issue #1051).
  *
- * **Why the shape is a parameter rather than a sentence in `reason`.** These four are not one
- * situation seen four times: two are a charge Muster refused to book, one is a charge it never
- * knew about, and one is a call that cannot happen today. An operator reading a trail needs to
- * tell "we chose not to book this" from "this was never ours."
+ * **Why the shape is a parameter rather than a sentence in `reason`.** These are not one
+ * situation seen twice: one is a charge Muster never knew about, and one is a call that cannot
+ * happen today. An operator reading a trail needs to tell "we chose not to book this" from "this
+ * was never ours." (`reservations_off`, a charge refused while the `RESERVATIONS` switch was off,
+ * went with the switch in issue #1093; rows already written with it stay readable as history.)
  *
  * **The shape is in the ID, and as of 15.19 that is belt-and-braces rather than load-bearing.**
  * It was load-bearing when there were four shapes: `reservations_off` and `no_payment_intent`
@@ -488,8 +475,6 @@ export const paymentIdFor = (chargeKey: string): PaymentId => asId<"PaymentId">(
  * reservation, so the charge is matched and the problem is the row, not the money's provenance.
  */
 type UnmatchedShape =
-  /** A verified booking charge succeeded while the RESERVATIONS flag was off (#588). */
-  | "reservations_off"
   /** `charge.refunded` for a PaymentIntent that matches no Payment AND no pending row of ours —
    *  a Xola-era charge, or one taken by hand in the dashboard. */
   | "refund_on_unknown_charge"
@@ -792,45 +777,6 @@ export async function processBookingCharge(
   charge: BookingCharge,
   opts: ConfirmOptions = {},
 ): Promise<WebhookResult> {
-  // The RESERVATIONS gate (#588, DEC-111) lives HERE — on the new-booking path only, and after
-  // both event shapes have resolved their purpose.
-  //
-  // The first version of this gated the whole handler right after signature verification, which
-  // read as the safer place and was not. Balance and post-trip gratuity collection ride the same
-  // webhook on EXISTING reservations, and their entry point (`createBalanceLink`) is admin-gated,
-  // not RESERVATIONS-gated. Since the flag is off by default, that version dropped every real
-  // balance payment in a default deployment: Stripe charges the customer, `recordBalancePayment`
-  // never runs, and the operator gets an alert about new-booking readiness that has nothing to do
-  // with what happened. Caught in review before merge.
-  //
-  // Verification still happens first — `parseEvent` throws on a bad signature well upstream — so
-  // an unsigned request still gets its 400 and the flag cannot be used to probe the endpoint.
-  // Metadata-less shadow intents (DEC-134) return before reaching here, so the expected noise of
-  // a hosted session's bare PI never trips the alert.
-  if (!deps.reservationsEnabled) {
-    // Loud, because reaching here means a verified charge SUCCEEDED and Muster is deliberately
-    // not booking it. With the flag off nothing can mint a new booking intent, so this is a
-    // replay, a dashboard send, or a leftover from a flag-on window — in all three money has
-    // already moved. Dropping it silently is how a paying customer ends up with no booking and
-    // nobody knowing. Acked so Stripe stops retrying; alerted so a human looks.
-    await deps.alertPaidButUnbooked(
-      `Verified booking charge received while RESERVATIONS is off - acked and NOT booked ` +
-        `(${charge.key}). Money has moved; investigate before flipping the flag on.`,
-    );
-    // **A kill-flag early return is an event** (issue #1052's rule, and this is the money-side
-    // instance of it). The flag being off is a deliberate refusal to book a charge that
-    // succeeded — the alert says so now, and this row says so in three months when somebody is
-    // reconciling a Stripe statement against a product that has no trace of the charge.
-    // A PaymentIntent succeeds once, so the charge key is the fact's own name and a redelivery
-    // of that one success is exactly what should collide.
-    await recordChargeUnmatched(deps, "reservations_off", {
-      idKey: charge.key,
-      chargeRef: charge.key,
-      paymentIntentId: charge.paymentIntentId,
-    });
-    return { handled: false };
-  }
-
   // The booking is the `pending` row checkout wrote (§2.8.6), found by the PaymentIntent id. The
   // only caller is the inline-Elements `payment_intent.succeeded` path, whose charge key IS that
   // id — so it is always present, which `BookingCharge` now states in the type (15.19). A hosted

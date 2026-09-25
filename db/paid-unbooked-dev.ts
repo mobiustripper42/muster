@@ -151,7 +151,6 @@ try {
 
   const deps: WebhookDeps = {
     repo: target,
-    reservationsEnabled: true,
     payments,
     now: () => new Date().toISOString(),
     alertPaidButUnbooked: async (m) => void alerts.push(m),

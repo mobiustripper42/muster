@@ -19,7 +19,6 @@ import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { SubmitButton } from "../../../components/ui/submit-button";
 import { requestBookingLink } from "./actions";
-import { reservationsEnabled } from "../../lib/flags";
 
 export const dynamic = "force-dynamic";
 
@@ -28,14 +27,6 @@ export default async function FindBookingPage({
 }: {
   searchParams: Promise<{ sent?: string }>;
 }) {
-  if (!reservationsEnabled()) {
-    return (
-      <main className="mx-auto max-w-2xl px-4 py-16">
-        <h1 className="text-xl font-semibold">Reservations are off</h1>
-      </main>
-    );
-  }
-
   const { sent } = await searchParams;
 
   return (

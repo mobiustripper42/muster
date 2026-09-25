@@ -32,8 +32,9 @@
  *  - an **OVERPAID** balance — recorded, then flagged.
  *
  * Every case that cannot be recorded, and every case that is recorded but cannot be reconciled,
- * LOUDLY ALERTS ALL ADMINS to refund manually. Refunds are always manual (Stripe dashboard)
- * except the DEC-109 residual-race auto-refund. Provider-agnostic + `FakePaymentPort`-testable.
+ * LOUDLY ALERTS ALL ADMINS to refund manually — a person refunds these, from the booking's page in
+ * Muster (DEC-153) or the Stripe dashboard. The one automatic refund is the DEC-109
+ * residual-race loser. Provider-agnostic + `FakePaymentPort`-testable.
  */
 import { formShifts, type FormResult } from "../builder/form-shifts.js";
 import { confirmBookingFromIntent } from "./confirm-booking.js";

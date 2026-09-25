@@ -2,9 +2,10 @@
  * Live Stripe adapter for the PaymentPort (DEC-107) — lifted from the sibling `sailbook`
  * project (`src/lib/stripe.ts`, `api/webhooks/stripe/route.ts`) into strict TS behind the
  * port boundary. Hosted Checkout (card), raw PaymentIntents for the inline-Elements
- * checkout (12.5, DEC-134), signature-verified webhook, and a keyed-idempotent
- * `refund` for the ONE automatic case — the DEC-109 residual-race loser (DEC-107 amended,
- * 12.1b). All other refunds stay manual in the Stripe dashboard.
+ * checkout (12.5, DEC-134), signature-verified webhook, and a keyed-idempotent `refund`.
+ * Two callers issue refunds: the ONE automatic case — the DEC-109 residual-race loser
+ * (DEC-107 amended, 12.1b, DEC-182) — and the operator, from a booking's page in Muster
+ * (`src/reservations/refund-payment.ts`, DEC-153). Neither needs the Stripe dashboard.
  *
  * Secrets come from env (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`), read at the route
  * and passed to the constructor — the adapter itself is env-agnostic + unit-constructable.

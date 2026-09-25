@@ -70,6 +70,9 @@ export function computeBlockImpact(block: Block, input: BlockImpactInput): Block
   // The deriver keys a location block on the OFFERING's location and measures it against the
   // offering's trip length (issue #1089); recover both per slot.
   const offeringById = new Map(input.offerings.map((o) => [String(o.id), o]));
+  // A materialized trip is measured by ITS frozen duration, never the offering's current one: an
+  // operator shortening the cruise after a booking must not hide that booking's conflict.
+  const eventById = new Map(input.events.map((e) => [String(e.id), e]));
 
   let removedSlots = 0;
   let conflictCount = 0;
@@ -77,7 +80,8 @@ export function computeBlockImpact(block: Block, input: BlockImpactInput): Block
   for (const s of slots) {
     const offering = offeringById.get(String(s.offeringId));
     const locationId = offering ? String(offering.locationId) : "";
-    const tripMinutes = offering ? candidateTripMinutes(offering) : XOLA_TRIP_MINUTES;
+    const frozen = s.eventId !== undefined ? eventById.get(String(s.eventId))?.durationMinutes : undefined;
+    const tripMinutes = frozen ?? (offering ? candidateTripMinutes(offering) : XOLA_TRIP_MINUTES);
     if (!isSlotBlocked([block], locationId, s.vesselId, s.date, s.time, tripMinutes)) continue;
     if (s.status === "booked") {
       conflictCount += 1;

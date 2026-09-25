@@ -792,6 +792,16 @@ describe("isSlotBlocked — shared block predicate", () => {
     expect(isSlotBlocked(closure, L, V, "2026-07-04", "17:59", TRIP)).toBe(true);
   });
 
+  it("fails closed: a window or time that won't parse blocks the slot rather than selling it", () => {
+    const bad: Block[] = [{ id: asId<"BlockId">("bad"), kind: "location", locationId: asId<"LocationId">("loc-dock"), date: "2026-07-04", startTime: "3pm", endTime: "18:00" }];
+    expect(isSlotBlocked(bad, L, V, "2026-07-04", "09:00", TRIP)).toBe(true);
+    expect(isSlotBlocked(closure, L, V, "2026-07-04", "9ish", TRIP)).toBe(true);
+    expect(isSlotBlocked(closure, L, V, "2026-07-04", "09:00", Number.NaN)).toBe(true);
+    // …only at its own location and date — bad data there doesn't leak to other docks or days.
+    expect(isSlotBlocked(bad, "loc-other", V, "2026-07-04", "09:00", TRIP)).toBe(false);
+    expect(isSlotBlocked(bad, L, V, "2026-07-05", "09:00", TRIP)).toBe(false);
+  });
+
   it("a longer trip reaches further back", () => {
     expect(isSlotBlocked(closure, L, V, "2026-07-04", "13:30", 150)).toBe(true); // back 16:00
     expect(isSlotBlocked(closure, L, V, "2026-07-04", "13:30", 100)).toBe(false); // back 15:10

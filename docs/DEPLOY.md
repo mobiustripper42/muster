@@ -76,7 +76,6 @@ invisible or unable to take money**.
 
 | Var | Where it comes from | Used for |
 |-----|---------------------|----------|
-| `RESERVATIONS` | **you set it** — `1` | The customer flow: `/book`, checkout, the manage page (`app/lib/flags.ts`, DEC-111). **OFF by default** so `main` stays promotable |
 | `STRIPE_SECRET_KEY` | **you set it** — Stripe dashboard, live mode | Every server-side Stripe call |
 | `STRIPE_WEBHOOK_SECRET` | **you set it** — the signing secret of *this deployment's* endpoint | Verifying webhook signatures **and gating checkout** — see the traps |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | **you set it** — Stripe dashboard, live mode | The inline Payment Element (DEC-134). **Build-inlined** — see the traps |

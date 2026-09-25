@@ -15,7 +15,6 @@ import { alertThatNeverThrows, type WebhookDeps } from "@core/reservations/booki
 import { alertMoneyProblem } from "./alert";
 import { sendReservationConfirmation } from "./booking-confirmation";
 import { forwardFormNotices } from "./channel";
-import { reservationsEnabled } from "./flags";
 import { getRepo } from "./repo";
 import { sendReservationSoldOutNotice } from "./sold-out-notice";
 
@@ -30,7 +29,6 @@ export function bookingDeps(secretKey: string, webhookSecret?: string): WebhookD
   return {
     repo: getRepo(),
     payments: new StripePaymentPort(secretKey, webhookSecret ?? ""),
-    reservationsEnabled: reservationsEnabled(),
     now: () => new Date().toISOString(),
     // Texts every active admin AND logs (issue #723). Never throws: a failed alert must not 500
     // the webhook into a Stripe redelivery loop.

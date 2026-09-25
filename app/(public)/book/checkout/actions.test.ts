@@ -41,17 +41,8 @@ import { startElementsCheckout } from "./actions.js";
 import { neverRejects } from "./never-rejects.js";
 
 beforeEach(() => {
-  // `RESERVATIONS` is off by default (DEC-111), and it is the FIRST gate — without this every
-  // case below would pass through "Reservations are currently off." and assert nothing about the
-  // gate it names. Real env, not a mocked flag module: `flagOn` reads `process.env` directly, so
-  // there is nothing to fake.
-  //
-  // **`"1"`, not `"true"`.** `flagOn` is `process.env[name] === "1"` (`app/lib/flags.ts:16`), so
-  // every other truthy-looking string is SILENTLY off. The first draft of this file used `"true"`
-  // and three cases failed against "Reservations are currently off." — which is the trap
-  // `env.example` documents as *"which flag values are silently wrong"*, met live. It is also
-  // issue #761's shape, one flag over.
-  process.env.RESERVATIONS = "1";
+  // Stripe keys are the action's first gate — without them every case below would stop at
+  // "Checkout isn't configured" and assert nothing about the gate it names.
   process.env.STRIPE_SECRET_KEY = "sk_test_x";
   process.env.STRIPE_WEBHOOK_SECRET = "whsec_x";
 });

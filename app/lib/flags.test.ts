@@ -19,19 +19,19 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { messagingEnabled, reservationsEnabled, timeClockEnabled } from "./flags";
+import { messagingEnabled, timeClockEnabled } from "./flags";
 
 /** Every env flag in `flags.ts`, paired with its predicate. */
 const FLAGS: ReadonlyArray<{ env: string; fn: () => boolean }> = [
   { env: "MESSAGING", fn: messagingEnabled },
-  { env: "RESERVATIONS", fn: reservationsEnabled },
   { env: "TIME_CLOCK", fn: timeClockEnabled },
 ];
 
 /** The one value that turns a flag ON, whichever flag it is. */
 const ON = ["1"];
 
-/** Everything else is OFF — including `"true"`, which `RESERVATIONS` alone used to accept. */
+/** Everything else is OFF — including `"true"`, which the since-deleted `RESERVATIONS` alone used
+ *  to accept. */
 const OFF = ["", "0", "true", "TRUE", "True", " 1", "yes", "on", "no", "false"];
 
 describe("feature flags accept one spelling across the board (#736)", () => {
@@ -54,10 +54,11 @@ describe("feature flags accept one spelling across the board (#736)", () => {
 
   it("covers every flag the module exports", () => {
     // Guards the vacuous pass: a flag added without a row here would make every assertion below
-    // true of a set that no longer describes the module. Three since DEC-175 deleted
-    // `CREW_SELF_SERVE` — and this is the assertion that caught the deletion, which is the point
-    // of counting rather than iterating whatever happens to be imported.
-    expect(FLAGS.length).toBe(3);
+    // true of a set that no longer describes the module. Two since issue #1093 deleted
+    // `RESERVATIONS` (and DEC-175 `CREW_SELF_SERVE` before it) — and this is the assertion that
+    // catches a deletion, which is the point of counting rather than iterating whatever happens to
+    // be imported.
+    expect(FLAGS.length).toBe(2);
   });
 
   for (const { env, fn } of FLAGS) {

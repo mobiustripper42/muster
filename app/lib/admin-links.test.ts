@@ -8,8 +8,8 @@
 import { describe, expect, it } from "vitest";
 import { FLAT_LINKS, GROUPS, visibleAdminLinks, visibleAdminNav } from "./admin-links.js";
 
-const ALL = { messaging: true, reservations: true, timeClock: true };
-const NONE = { messaging: false, reservations: false, timeClock: false };
+const ALL = { messaging: true, timeClock: true };
+const NONE = { messaging: false, timeClock: false };
 
 describe("visibleAdminNav", () => {
   it("puts the daily work flat, in the operator's order", () => {
@@ -62,25 +62,25 @@ describe("visibleAdminNav", () => {
     expect(labels).not.toContain("People");
   });
 
-  it("drops a group whose every link is flagged off, rather than rendering it empty", () => {
-    // Bookings is entirely reservations-gated. Opening an empty menu is worse than not seeing it.
+  it("shows the booking surfaces on every deployment — there is no reservations switch (issue #1093)", () => {
+    // Bookings, the Calendar and the catalog used to vanish behind `RESERVATIONS`. Reservations
+    // are not an optional half of the product, so they no longer do.
     const off = visibleAdminNav(NONE);
-    expect(off.groups.map((g) => g.label)).toEqual(["Crew", "Setup", "Settings"]);
+    expect(off.flat.map((l) => l.label)).toEqual(["Shifts", "Calendar", "Import", "At-Risk"]);
+    expect(off.groups.map((g) => g.label)).toEqual(["Bookings", "Crew", "Setup", "Settings"]);
     expect(off.groups.every((g) => g.links.length > 0)).toBe(true);
   });
 
-  it("halves the bar on a default deployment", () => {
-    // RESERVATIONS off (DEC-111) and MESSAGING off (#389) is the default.
-    const off = visibleAdminNav(NONE);
-    expect(off.flat.map((l) => l.label)).toEqual(["Shifts", "Import", "At-Risk"]);
+  it("hides only the flagged crew surfaces on a default deployment", () => {
+    // MESSAGING (#389) and TIME_CLOCK off is the default.
     expect(visibleAdminLinks(NONE).length).toBeLessThan(visibleAdminLinks(ALL).length);
   });
 
-  it("keeps Messages gated on messaging alone, independent of reservations", () => {
+  it("keeps Messages gated on messaging alone, independent of the time clock", () => {
     const crew = (f: Parameters<typeof visibleAdminNav>[0]) =>
       visibleAdminNav(f).groups.find((g) => g.label === "Crew")!.links.map((l) => l.label);
     expect(crew({ ...NONE, messaging: true })).toContain("Messages");
-    expect(crew({ ...NONE, reservations: true })).not.toContain("Messages");
+    expect(crew({ ...NONE, timeClock: true })).not.toContain("Messages");
   });
 
   it("drops Time clock when the phase is dark, and keeps Payroll (#628)", () => {
@@ -136,13 +136,11 @@ describe("visibleAdminNav", () => {
     // The bar's order is muscle memory; filtering must never reorder it.
     const declared = [...FLAT_LINKS, ...GROUPS.flatMap((g) => g.links)];
     for (const messaging of [true, false]) {
-      for (const reservations of [true, false]) {
-        for (const timeClock of [true, false]) {
-          const order = visibleAdminLinks({ messaging, reservations, timeClock }).map((l) =>
-            declared.findIndex((d) => d.href === l.href),
-          );
-          expect(order).toEqual([...order].sort((a, b) => a - b));
-        }
+      for (const timeClock of [true, false]) {
+        const order = visibleAdminLinks({ messaging, timeClock }).map((l) =>
+          declared.findIndex((d) => d.href === l.href),
+        );
+        expect(order).toEqual([...order].sort((a, b) => a - b));
       }
     }
   });
@@ -152,7 +150,7 @@ describe("visibleAdminNav", () => {
     // link silently absent from every deployment is the kind of thing nobody reports.
     for (const l of [...FLAT_LINKS, ...GROUPS.flatMap((g) => g.links)]) {
       if (l.feature !== undefined)
-        expect(["messaging", "reservations", "timeClock"]).toContain(l.feature);
+        expect(["messaging", "timeClock"]).toContain(l.feature);
     }
   });
 });

@@ -9,7 +9,6 @@ import { isHolderToken, mintHolderToken } from "@core/reservations/holder-token.
 import { cookies } from "next/headers";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
-import { reservationsEnabled } from "../../../lib/flags";
 // Deliberately NOT defined in this file: every export of a `"use server"` module is a
 // public POST endpoint, and a helper that invokes a caller-supplied function has no
 // business being one (`/security-review`). See that module's header.
@@ -140,9 +139,8 @@ async function readOrMintHolderToken(): Promise<string | undefined> {
 export async function startElementsCheckout(
   input: StartElementsCheckoutInput,
 ): Promise<StartElementsCheckoutResult> {
-  if (!reservationsEnabled()) {
-    return { ok: false, message: "Reservations are currently off." };
-  }
+  // The first gate. No feature flag precedes it (issue #1093): a deployment without Stripe keys is
+  // the one that must not take a booking, and this is where it says so.
   const secretKey = process.env.STRIPE_SECRET_KEY;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secretKey || !webhookSecret) {

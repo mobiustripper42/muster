@@ -25,15 +25,9 @@ import {
   formatClock,
   formatDuration,
   formatShortDay,
-  guestPricing,
 } from "@core/reservations/availability-screen.js";
-import {
-  GRATUITY_DEFAULT_BPS,
-  gratuityCentsFor,
-  gratuityKindsFor,
-  gratuityTiersFor,
-} from "@core/reservations/pricing.js";
-import { chargeNowCents, feeCentsFor, taxCentsFor } from "@core/reservations/payment-config.js";
+import { checkoutQuote } from "@core/reservations/checkout-quote.js";
+import { candidateVessels } from "@core/reservations/claim.js";
 import { AppLink } from "../../../../components/ui/app-link";
 import { Notice } from "../../../../components/ui/notice";
 import { getRepo } from "../../../lib/repo";
@@ -202,25 +196,39 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  // ── Money (the same pure functions the charge builder freezes — DEC-107/134) ──
-  // `boatCapacity`, not `capacity` (#715): the fare row reads "Fare — up to N guests", and N has
-  // to be the boat they are getting — the smallest that fits, the one `candidateVessels` claims.
-  // The departure's ceiling is a bigger hull that is about to be sold to a bigger party.
-  const fare = guestPricing(chosen, row.boatCapacity, row.priceCents, guests);
-  const taxCents = taxCentsFor(fare.fareCents, config.taxRateBps);
-  const serviceFeeCents = feeCentsFor(fare.fareCents, config.serviceFeeBps);
-  // Due now, EXCLUDING tip (the island adds the selected tier's tip on top live).
-  const dueNowBeforeTipCents = chargeNowCents(fare.fareCents, taxCents, serviceFeeCents, config);
-  const depositMode = config.depositMode === "deposit";
-  // The later balance = remaining fare only (tax + fee ride the deposit in full).
-  const balanceLaterCents = depositMode ? fare.fareCents + taxCents + serviceFeeCents - dueNowBeforeTipCents : 0;
-
-  // Tip tiers (DEC-124 via the per-kind config): 15/20/25 default, 20% preselected, required.
-  const tiersBps = gratuityTiersFor(chosen);
-  const defaultBps =
-    gratuityKindsFor(chosen).find((k) => k.kind === "pre")?.defaultBps ?? GRATUITY_DEFAULT_BPS;
-  const tiers = tiersBps.map((bps) => ({ bps, tipCents: gratuityCentsFor(fare.fareCents, bps) }));
-  const selectedDefaultBps = tiersBps.includes(defaultBps) ? defaultBps : tiersBps[0]!;
+  // ── Money: the quote the charge will be priced from (16.1d, `checkout-quote.ts`) ──
+  // Priced on THE boat the claim will take: the first open, fitting hull in `candidateVessels`
+  // order — smallest that fits (#715, DEC-109). The screen used to compose its own fare from the
+  // row's lowest price and smallest cap, which could describe two different boats; now it reads
+  // the same `priceBooking` the pending row freezes and Stripe is charged from.
+  const openHere = new Set(
+    slots.filter((s) => s.date === date && s.time === time && s.status === "available").map((s) => String(s.vesselId)),
+  );
+  const boatId = candidateVessels({ offering: chosen, vessels, date, time, guestCount: guests, blocks }).find((id) =>
+    openHere.has(String(id)),
+  );
+  const boat = vessels.find((v) => String(v.id) === String(boatId));
+  if (!boat) {
+    // `bookable` above found an open boat that fits, so this is unreachable unless the deriver and
+    // the claim's ordering disagree about which boats exist — say so rather than price nothing.
+    logSwallowed("book/checkout", new Error("no priceable boat"), `bookable slot ${date} ${time} had no candidate vessel`);
+    return (
+      <main className="mx-auto max-w-2xl px-4 py-16">
+        <Notice tone="bad">Couldn&rsquo;t price this departure. Please try again in a moment.</Notice>
+      </main>
+    );
+  }
+  const quote = checkoutQuote({
+    offering: chosen,
+    vessel: boat,
+    vesselId: boat.id,
+    events,
+    config,
+    date,
+    time,
+    guestCount: guests,
+  });
+  const { tiers, defaultBps, ...money } = quote;
 
   const location = locations.find((l) => String(l.id) === String(chosen.locationId));
   const durationLabel = formatDuration(chosen.tripLengthMinutes);
@@ -275,23 +283,9 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             publishableKey={publishableKey}
             returnUrl={`${base}/book/success`}
             slot={{ offeringId: String(chosen.id), date, time, guests }}
-            money={{
-              fareCents: fare.fareCents,
-              baseCents: row.priceCents,
-              extraGuests: fare.extraGuests,
-              extrasCents: fare.extrasCents,
-              extraGuestPriceCents: fare.extraGuestPriceCents,
-              includedGuests: fare.included,
-              taxCents,
-              taxRateBps: config.taxRateBps,
-              serviceFeeCents,
-              serviceFeeBps: config.serviceFeeBps,
-              dueNowBeforeTipCents,
-              depositMode,
-              balanceLaterCents,
-            }}
+            money={money}
             tiers={tiers}
-            defaultBps={selectedDefaultBps}
+            defaultBps={defaultBps}
             waiverUrl={WAIVER_TERMS_URL}
             cancellationTerms={CANCELLATION_TERMS}
           />

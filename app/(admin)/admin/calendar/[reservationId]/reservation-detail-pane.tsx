@@ -293,9 +293,8 @@ export function actionMessage(
         // resolver instead of returning a tidy skip — and on a preview, where it used to fire
         // every time because the variable is scoped to Production by design (DEC-057), the resend
         // simply works. The string travels as a URL param, so nothing in the type system was ever
-        // going to name this case; it was found by grepping the render sites.
-        case "messaging_off":
-          return "Messaging is switched off on this deployment, so nothing was sent.";
+        // going to name this case; it was found by grepping the render sites. `messaging_off` went
+        // the same way at issue #761: `MESSAGING` switches crew messaging, never a customer send.
         case "no_channels":
           return "No email or SMS channel is configured on this deployment, so nothing was sent.";
         case "all_failed":

@@ -119,6 +119,8 @@ export const EMITTED_TRAIL_TYPES = [
   // ── Reaching the customer (issue #1052) ─────────────────────────────────────
   /** The messaging flag was off. The booking is written, the operator sees a sale,
    *  the customer never hears — and today there is no log at any level. */
+  /** No longer emitted since issue #761 — `MESSAGING` stopped gating customer sends. Kept so rows
+   *  already written still type-check and render. */
   "confirmation_skipped",
   "link_resent",
   /** DESTRUCTIVE in a way a resend is not: it kills the customer's existing link.

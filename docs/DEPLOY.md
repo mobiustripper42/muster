@@ -110,15 +110,11 @@ so setting it on a running deployment changes nothing **until a rebuild**. It fa
 checkout page renders a red "Checkout is not configured" card rather than a broken Element
 (`app/(public)/book/checkout/page.tsx:180`) — but the fix is a redeploy, not a var edit.
 
-**3. `MESSAGING` is read two ways, and they disagree (issue #761).** Every flag is now on for `1`
-and nothing else, through one helper (`flagOn`, `app/lib/flags.ts`, #736) — that half of this trap
-is gone. What remains is `MESSAGING` specifically: `messagingEnabled()` asks whether it is **on**,
-but `app/lib/booking-confirmation.ts:31,103`, `app/lib/sold-out-notice.ts:20` and
-`app/b/find/actions.ts:40` separately treat `MESSAGING === "false"` as a hard kill for booking
-confirmation and sold-out sends. Those are different questions of the same variable, so
-**`MESSAGING=0` leaves booking confirmations ON** and **`MESSAGING=false` silently kills them**
-while `messagingEnabled()` reads off either way. Set it to `1`, or leave it unset; never `0` or
-`false`.
+**3. `MESSAGING` switches crew messaging only.** Every flag is on for `1` and nothing else, through
+one helper (`flagOn`, `app/lib/flags.ts`, #736). `MESSAGING` used to be read a second way — `=== "false"`
+as a kill switch in the customer send paths — so `MESSAGING=false` silently stopped booking
+confirmations. Issue #761 removed that: customer email and SMS never read the flag, and a test in
+`app/lib/flags.test.ts` fails if anything but `messagingEnabled()` does.
 
 ---
 

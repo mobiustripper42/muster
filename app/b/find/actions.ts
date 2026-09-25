@@ -34,56 +34,53 @@ export async function requestBookingLink(formData: FormData): Promise<void> {
   const contact = String(formData.get("contact") ?? "").slice(0, 200);
   const lastName = String(formData.get("lastName") ?? "").slice(0, 100);
 
-  // MESSAGING kill-flag, same as every other send path. The link rides the trusted origin or
-  // nothing at all — never a Host header, which is how a recovery link would get minted against
-  // an attacker-supplied domain (base-url.ts).
+  // The link rides the trusted origin or nothing at all — never a Host header, which is how a
+  // recovery link would get minted against an attacker-supplied domain (base-url.ts).
   const linkBase = appBaseUrl();
-  if (process.env.MESSAGING !== "false") {
-    after(async () => {
-      try {
-        const repo = getRepo();
-        const emailEnv = readEmailEnv();
-        const email = emailEnv ? new EmailChannel(emailEnv) : undefined;
-        // #955: always a channel. This used to be `?? undefined` and then spread away below, so a
-        // Twilio-dark deploy sent a customer nothing and recorded nothing — on the one screen
-        // whose entire job is recovering a booking they have already lost the link to.
-        const { channel: sms } = makeSmsChannel(linkBase);
+  after(async () => {
+    try {
+      const repo = getRepo();
+      const emailEnv = readEmailEnv();
+      const email = emailEnv ? new EmailChannel(emailEnv) : undefined;
+      // #955: always a channel. This used to be `?? undefined` and then spread away below, so a
+      // Twilio-dark deploy sent a customer nothing and recorded nothing — on the one screen
+      // whose entire job is recovering a booking they have already lost the link to.
+      const { channel: sms } = makeSmsChannel(linkBase);
 
-        await recoverBookingLink(
-          {
-            repo,
-            linkBase,
-            ...(email ? { email } : {}),
-            sms,
-            now: () => new Date().toISOString(),
-            today: vesselDateOf(new Date()),
-            onFailure: (detail) => console.error(`[reservations] ${detail}`),
-          },
-          // The scan, deferred until the throttle has been claimed inside.
-          async () => {
-            const [reservations, events] = await Promise.all([
-              repo.listAllReservations(),
-              repo.listEvents(),
-            ]);
-            const eventById = new Map(events.map((e) => [String(e.id), e]));
-            return reservations
-              .map((reservation) => ({
-                reservation,
-                event: eventById.get(String(reservation.eventId)),
-              }))
-              .filter((r): r is RecoveryRow => r.event !== undefined);
-          },
-          { contact, lastName },
-        );
-      } catch (e) {
-        // Inside the callback, so it can never reach the response — which is the point. An error
-        // page is a different answer from the confirmation, and that difference is the oracle.
-        console.error(
-          `[reservations] recovery request errored — ${e instanceof Error ? e.message : e}`,
-        );
-      }
-    });
-  }
+      await recoverBookingLink(
+        {
+          repo,
+          linkBase,
+          ...(email ? { email } : {}),
+          sms,
+          now: () => new Date().toISOString(),
+          today: vesselDateOf(new Date()),
+          onFailure: (detail) => console.error(`[reservations] ${detail}`),
+        },
+        // The scan, deferred until the throttle has been claimed inside.
+        async () => {
+          const [reservations, events] = await Promise.all([
+            repo.listAllReservations(),
+            repo.listEvents(),
+          ]);
+          const eventById = new Map(events.map((e) => [String(e.id), e]));
+          return reservations
+            .map((reservation) => ({
+              reservation,
+              event: eventById.get(String(reservation.eventId)),
+            }))
+            .filter((r): r is RecoveryRow => r.event !== undefined);
+        },
+        { contact, lastName },
+      );
+    } catch (e) {
+      // Inside the callback, so it can never reach the response — which is the point. An error
+      // page is a different answer from the confirmation, and that difference is the oracle.
+      console.error(
+        `[reservations] recovery request errored — ${e instanceof Error ? e.message : e}`,
+      );
+    }
+  });
 
   // Fires immediately, identically, for every submission.
   redirect("/b/find?sent=1");

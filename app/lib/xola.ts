@@ -49,7 +49,7 @@ export async function runXolaPull(
   // of the same cancelled shift doesn't duplicate.
   // cancelledCrew → "you're off"; restoredCrew (#244 resurrection) → "you're on".
   // Shared with the split/merge commands via `forwardFormNotices`. In prod the
-  // channel is Twilio (per-send, no dedup); the outbox fallback dedupes by slot.
+  // channel is Twilio (per-send, no dedup).
   try {
     await forwardFormNotices(result.form);
   } catch (e) {

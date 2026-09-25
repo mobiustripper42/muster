@@ -47,7 +47,7 @@ import { logSwallowed } from "../../../lib/swallowed";
  * (`components/assignment/shift-cockpit.tsx`) alongside the board: desktop shows
  * both panes (6xl grid), mobile shows the cockpit full-screen (the list is
  * display-hidden — its "← All shifts" link is the way back). Selection is a plain
- * row `<AppLink>`; deep links from At-Risk/outbox keep the standalone route. `sel`
+ * row `<AppLink>`; deep links from At-Risk keep the standalone route. `sel`
  * rides the filter-param set so mode/filter/split navigation never closes the pane.
  *
  * **Filter + ShiftRow live in `components/admin/`** (#357): this file grew past 4×

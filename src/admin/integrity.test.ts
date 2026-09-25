@@ -197,31 +197,13 @@ describe("checkIntegrity", () => {
   });
 
   it("catches the refs that arrived after this diagnostic was written (#584)", async () => {
-    // Notice + ring outbox (DEC-084/DEC-073), the DEC-106 coexistence partition, the crew
-    // audit log (DEC-118) and vessel→location. Each is a table that landed after the
+    // The crew audit log (DEC-118) and vessel→location. (The notice and ring outbox checks went
+    // with their tables in issue #935.) Each is a table that landed after the
     // diagnostic and inherited no check, because nothing made adding one part of adding a
     // table — see integrity-coverage.ts.
     const repo = await seedSpine();
     const ghostCrew = asId<"CrewMemberId">("crew-ghost");
 
-    await repo.saveNoticeOutboxEntry({
-      id: asId<"NoticeOutboxEntryId">("notice-1"),
-      crewMemberId: ghostCrew,
-      action: "added",
-      body: "b",
-      link: "l",
-      status: "pending",
-      createdAt: NOW,
-    });
-    await repo.saveRingOutboxEntry({
-      id: asId<"RingOutboxEntryId">("ring-1"),
-      crewMemberId: ghostCrew,
-      threadId: asId<"ThreadId">("thr-1"),
-      body: "b",
-      link: "l",
-      status: "pending",
-      createdAt: NOW,
-    });
     await repo.appendAuditEvent({
       id: asId<"AuditEventId">("audit-1"),
       crewMemberId: ghostCrew,
@@ -234,13 +216,7 @@ describe("checkIntegrity", () => {
     const report = await checkIntegrity(repo);
     expect(report.ok).toBe(false);
     const refs = report.violations.map((v) => `${v.entity}.${v.ref}`).sort();
-    expect(refs).toEqual(
-      [
-        "auditEvent.crewMemberId",
-          "noticeOutboxEntry.crewMemberId",
-        "ringOutboxEntry.crewMemberId",
-      ].sort(),
-    );
+    expect(refs).toEqual(["auditEvent.crewMemberId"]);
   });
 
   it("catches a time punch whose auto-matched shift is gone, and tolerates an untagged one (#625)", async () => {

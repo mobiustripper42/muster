@@ -322,8 +322,17 @@ export async function signInWithCode(page: Page, email: string): Promise<void> {
   // then crew B on the same page) would otherwise land on A's app instead of the sign-in form —
   // the magic link overwrote whatever session was there; the door does not, correctly.
   await page.context().clearCookies();
-  await page.goto("/crew");
-  await page.getByLabel(/sign in with your crew email/i).fill(email);
+  // Reload until the form is there. On the CI path (`next dev`) the first request compiles
+  // `/crew`, and that compile sometimes fails with `SyntaxError: Unexpected end of JSON input`
+  // from Next's own manifest read — seen on a green lane-B run and on PR #1094's red one. The
+  // setup project made this the first request of every run, so it always takes the hit; a
+  // reload gets the finished compile. A real rendering defect still fails, one budget later.
+  const emailField = page.getByLabel(/sign in with your crew email/i);
+  await expect(async () => {
+    await page.goto("/crew");
+    await expect(emailField).toBeVisible({ timeout: 5_000 });
+  }).toPass({ timeout: 60_000 * SLOW_PATH });
+  await emailField.fill(email);
   await page.getByRole("button", { name: /email me a code/i }).click();
   await expect(page.getByText(CODE_SENT)).toBeVisible();
   const res = await page.request.get(`/crew/dev-code?email=${encodeURIComponent(email)}`);

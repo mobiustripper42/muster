@@ -2690,8 +2690,8 @@ The system mediates every interaction, so notifications are the nervous system �
 keeps info from going stale across channels.
 
 - **The ask** → to crew, **port-mediated**, answerable without opening the app (§2.6.1). Transport is
-  a swappable adapter (DEC-MSG-3): **SMS in production** (DEC-MSG-1), an operator-relayed web-link
-  outbox when Twilio is unset (DEC-030), and a fake for tests.
+  a swappable adapter (DEC-MSG-3): **SMS in production** (DEC-MSG-1), a log line when Twilio is
+  unset (DEC-185), and a fake for tests.
 - **Live card updates** → to assigned crew, when a shift's details change (§2.6, principle 1).
 - **Credential nudges** → to crew, before expiry (§2.6, principle 3 / §2.1).
 - **At-Risk ping** → to Eric, **push not pull**: a shift reaching the board summons him; he does not

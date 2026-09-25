@@ -104,7 +104,7 @@ function finish(shiftId: string, ctx: string | null, param: string): never {
  * Relay a "you're on / off this shift" assignment notice (DEC-084) — best-effort,
  * to anyone, the operator included (DEC-183). Never throws: the
  * domain action already committed, so a channel hiccup must not fail it. Lands in
- * the /admin/outbox "Assignment changes" section (or straight out as SMS when
+ * `makeSmsChannel`: straight out as SMS when
  * Twilio is configured — 9.4, DEC-MSG-1).
  */
 async function notify(
@@ -147,7 +147,7 @@ export async function assignTo(formData: FormData): Promise<void> {
     await relayAsks(out.ask ? [out.ask] : undefined);
   } catch (e) {
     // A throw AFTER `askOne` returned leaves the ask fired and unforwarded — the
-    // seat looks Asked and nothing reached the outbox. `act_error=unavailable`
+    // seat looks Asked and nothing was sent. `act_error=unavailable`
     // cannot distinguish that from "nothing happened at all".
     logSwallowed("admin/shift:assignTo", e, "the ask was not placed, or was placed and not forwarded");
     param = "act_error=unavailable";

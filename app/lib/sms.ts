@@ -33,10 +33,9 @@ function logChannel(linkBase: string, now?: () => Date): LogChannel {
  * Twilio config seam (9.4/#225, DEC-MSG-1) — server-only.
  *
  * **Dark until set** (#70 — never silently go prod): all three vars or nothing.
- * Unset ⇒ callers keep the operator-relay outbox; set ⇒ crew relays go out as
- * real SMS. A HALF-set config is treated as unset but shouted about in prod —
- * the operator would otherwise believe SMS is live while every relay quietly
- * lands back on the outbox they've stopped watching.
+ * Unset ⇒ every relay is logged, not sent; set ⇒ crew relays go out as real SMS.
+ * A HALF-set config is treated as unset but shouted about in prod — the operator
+ * would otherwise believe SMS is live while every relay quietly lands in a log.
  *
  * The from-number is Drew's TEST number for now — the production campaign
  * number waits on A2P 10DLC brand+campaign registration (#225 notes, #119).

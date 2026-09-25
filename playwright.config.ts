@@ -90,7 +90,7 @@ export default defineConfig({
       // Scoped to the surfaces with real mobile layout risk; the functional flows
       // don't vary by viewport, so the rest stays desktop-only to save wall-clock.
       // Covers: crew (auth-crew), the admin nav + hamburger drawer (admin-nav), the
-      // outbox copy/overflow + Dismiss|Send (outbox-relay), the messaging surfaces
+      // messaging surfaces
       // (#117 — chat bubbles, the 3-button co-crew row, the compose box), the
       // fixed corner version tag (version-tag — must clear content at 375px), the
       // crew self-serve sign-in form + code entry (crew-sign-in — DEC-081), and the
@@ -100,7 +100,7 @@ export default defineConfig({
       // packs two <input type="time"> plus Save on one row, the tightest row in §2.9).
       name: "mobile",
       dependencies: ["setup"],
-      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|ask-trail|time-off|payroll|payroll-reconcile|shifts-view|calendar-feed|other-shifts-today|vessel-location-admin|offering-catalog|add-ons|blocks|calendar|customers|purchases|book-availability|book-checkout|book-manage|crew-time|admin-time-clock)\.spec\.ts/,
+      testMatch: /(auth-crew|admin-nav|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|time-off|payroll|payroll-reconcile|shifts-view|calendar-feed|other-shifts-today|vessel-location-admin|offering-catalog|add-ons|blocks|calendar|customers|purchases|book-availability|book-checkout|book-manage|crew-time|admin-time-clock)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
     {
@@ -195,18 +195,11 @@ export default defineConfig({
       // value is never used against Stripe.
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "pk_test_e2e_dummy",
-      // Blank Twilio so notice/SMS e2e uses the OUTBOX channel, not live Twilio.
+      // Blank Twilio so notice/SMS e2e uses the log channel (#934), not live Twilio.
       // `.env.local` (auto-loaded by next dev/start) holds real Twilio creds for
-      // the live-SMS smoke (#242/#252); without this override the notice path
-      // would send to the fake seed phones and 400 ("not a valid phone number"),
-      // which the best-effort catches swallow → an empty outbox → a false failure
-      // (any spec asserting a relayed notice landed — `other-shifts-today`,
-      // `crew-messaging`). Empty overrides .env.local.
-      //
-      // The example here used to be `trainee-staffing`, deleted at #904. Since #902 those
-      // catches also log, so the swallow is no longer silent — but the outbox is still
-      // empty and the assertion still fails, so this override is still what makes the
-      // suite deterministic.
+      // the live-SMS smoke (#242/#252); without this override every relay would send
+      // real texts to the fake seed phones and 400 ("not a valid phone number"). Empty
+      // overrides .env.local.
       TWILIO_ACCOUNT_SID: "",
       TWILIO_AUTH_TOKEN: "",
       TWILIO_FROM: "",

@@ -39,14 +39,11 @@ import type {
   OfferingSchedule,
   Payment,
   PriceVariation,
-  NoticeOutboxEntry,
   SmsConsent,
   GuestContact,
-  OutboxEntry,
   PtoWindow,
   TimePunch,
   TimePunchEdit,
-  RingOutboxEntry,
   Reservation,
   RoleType,
   Seat,
@@ -66,13 +63,10 @@ import type {
   CrewMemberId,
   EventId,
   LocationId,
-  NoticeOutboxEntryId,
   OfferingId,
-  OutboxEntryId,
   PaymentId,
   PtoWindowId,
   TimePunchId,
-  RingOutboxEntryId,
   ReservationId,
   RoleTypeId,
   SeatId,
@@ -546,40 +540,6 @@ const toCalendarFeed = (r: any): CalendarFeed => ({
   tokenHash: r.token_hash,
   createdAt: r.created_at,
   ...opt("lastPolledAt", r.last_polled_at),
-});
-
-const toOutboxEntry = (r: any): OutboxEntry => ({
-  id: asId<"OutboxEntryId">(r.id),
-  askId: asId<"AskId">(r.ask_id),
-  seatId: asId<"SeatId">(r.seat_id),
-  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
-  body: r.body,
-  link: r.link,
-  status: r.status,
-  createdAt: r.created_at,
-  ...opt("sentAt", r.sent_at),
-});
-
-const toRingOutboxEntry = (r: any): RingOutboxEntry => ({
-  id: asId<"RingOutboxEntryId">(r.id),
-  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
-  threadId: asId<"ThreadId">(r.thread_id),
-  body: r.body,
-  link: r.link,
-  status: r.status,
-  createdAt: r.created_at,
-  ...opt("sentAt", r.sent_at),
-});
-
-const toNoticeOutboxEntry = (r: any): NoticeOutboxEntry => ({
-  id: asId<"NoticeOutboxEntryId">(r.id),
-  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
-  action: r.action,
-  body: r.body,
-  link: r.link,
-  status: r.status,
-  createdAt: r.created_at,
-  ...opt("sentAt", r.sent_at),
 });
 
 const toReliability = (r: any): ReliabilityEvent => ({
@@ -2380,88 +2340,6 @@ export class PostgresRepository implements Repository {
       "update calendar_feeds set last_polled_at=$2 where token_hash=$1",
       [tokenHash, polledAt],
     );
-  }
-
-  // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────
-  async saveOutboxEntry(e: OutboxEntry): Promise<void> {
-    await this.#pool.query(
-      `insert into outbox_entries(id, ask_id, seat_id, crew_member_id, body, link, status, created_at, sent_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       on conflict (id) do update set ask_id=excluded.ask_id, seat_id=excluded.seat_id,
-         crew_member_id=excluded.crew_member_id, body=excluded.body, link=excluded.link,
-         status=excluded.status, created_at=excluded.created_at, sent_at=excluded.sent_at`,
-      [
-        e.id,
-        e.askId,
-        e.seatId,
-        e.crewMemberId,
-        e.body,
-        e.link,
-        e.status,
-        e.createdAt,
-        e.sentAt ?? null,
-      ],
-    );
-  }
-  async getOutboxEntry(id: OutboxEntryId): Promise<OutboxEntry | null> {
-    const { rows } = await this.#pool.query(
-      "select * from outbox_entries where id=$1",
-      [id],
-    );
-    return rows[0] ? toOutboxEntry(rows[0]) : null;
-  }
-  async listOutboxEntries(): Promise<OutboxEntry[]> {
-    const { rows } = await this.#pool.query("select * from outbox_entries");
-    return rows.map(toOutboxEntry);
-  }
-  async removeOutboxEntry(id: OutboxEntryId): Promise<void> {
-    await this.#pool.query("delete from outbox_entries where id=$1", [id]);
-  }
-
-  // ── Ring outbox entries (doorbell-relay channel adapter state — DEC-073) ────
-  async saveRingOutboxEntry(e: RingOutboxEntry): Promise<void> {
-    await this.#pool.query(
-      `insert into ring_outbox(id, crew_member_id, thread_id, body, link, status, created_at, sent_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8)
-       on conflict (id) do update set crew_member_id=excluded.crew_member_id,
-         thread_id=excluded.thread_id, body=excluded.body, link=excluded.link,
-         status=excluded.status, created_at=excluded.created_at, sent_at=excluded.sent_at`,
-      [e.id, e.crewMemberId, e.threadId, e.body, e.link, e.status, e.createdAt, e.sentAt ?? null],
-    );
-  }
-  async getRingOutboxEntry(id: RingOutboxEntryId): Promise<RingOutboxEntry | null> {
-    const { rows } = await this.#pool.query("select * from ring_outbox where id=$1", [id]);
-    return rows[0] ? toRingOutboxEntry(rows[0]) : null;
-  }
-  async listRingOutboxEntries(): Promise<RingOutboxEntry[]> {
-    const { rows } = await this.#pool.query("select * from ring_outbox");
-    return rows.map(toRingOutboxEntry);
-  }
-  async removeRingOutboxEntry(id: RingOutboxEntryId): Promise<void> {
-    await this.#pool.query("delete from ring_outbox where id=$1", [id]);
-  }
-
-  // ── Notice outbox entries (assignment-change relay adapter state — DEC-084) ─
-  async saveNoticeOutboxEntry(e: NoticeOutboxEntry): Promise<void> {
-    await this.#pool.query(
-      `insert into notice_outbox(id, crew_member_id, action, body, link, status, created_at, sent_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8)
-       on conflict (id) do update set crew_member_id=excluded.crew_member_id,
-         action=excluded.action, body=excluded.body, link=excluded.link,
-         status=excluded.status, created_at=excluded.created_at, sent_at=excluded.sent_at`,
-      [e.id, e.crewMemberId, e.action, e.body, e.link, e.status, e.createdAt, e.sentAt ?? null],
-    );
-  }
-  async getNoticeOutboxEntry(id: NoticeOutboxEntryId): Promise<NoticeOutboxEntry | null> {
-    const { rows } = await this.#pool.query("select * from notice_outbox where id=$1", [id]);
-    return rows[0] ? toNoticeOutboxEntry(rows[0]) : null;
-  }
-  async listNoticeOutboxEntries(): Promise<NoticeOutboxEntry[]> {
-    const { rows } = await this.#pool.query("select * from notice_outbox");
-    return rows.map(toNoticeOutboxEntry);
-  }
-  async removeNoticeOutboxEntry(id: NoticeOutboxEntryId): Promise<void> {
-    await this.#pool.query("delete from notice_outbox where id=$1", [id]);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

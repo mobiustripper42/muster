@@ -222,7 +222,7 @@ export const XOLA_PULL_LEAD_DAYS = envPositiveInt(
  * Tier-1 ask **drip** interval, in **minutes** (DEC-063). The engine seeds one ask
  * to the top-ranked candidate per seat, then widens by one more every interval
  * until someone accepts or the pool is walked — so the reliability ranking finally
- * drives *timing*, not just outbox display order. Env-overridable
+ * drives *timing*, not just display order. Env-overridable
  * (`ASK_DRIP_INTERVAL_MINUTES`), default **15** (aligned to the 15-minute tick
  * cadence — the floor on widen granularity). **`0` = blast the whole pool at once** (the
  * pre-drip behaviour, the rollback). Inside the fills-by deadline the tick blasts
@@ -446,7 +446,7 @@ const MINUTE_MS = 60 * 1000;
  * when it lands. NOT the same lead as `STAFFING_HORIZON_LEAD_DAYS` /
  * `FILL_DEADLINE_HOURS` above — those are engine *days/hours* horizons; this is
  * the same-day clock lead. Lives here (not in the crew card) because the shift
- * *end* needs it too, and the outbox reads that end (DEC-041).
+ * *end* needs it too (DEC-041).
  */
 export const CALL_LEAD_MINUTES = 45;
 

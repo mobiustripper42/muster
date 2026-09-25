@@ -1132,7 +1132,7 @@ export async function processBookingCharge(
  * Relay + audit a re-form's crew transitions. Each leg is independently best-effort: the booking
  * is committed and PAID, so neither a channel hiccup nor an audit write may 500 the webhook — and
  * a relay failure must not skip the audit, or vice versa. Same posture as the cron edge's
- * `forwardToOutbox` / `forwardBoardAlerts` pair.
+ * `relayAsks` / `forwardBoardAlerts` pair.
  */
 async function relayAndAudit(deps: WebhookDeps, form: FormResult): Promise<void> {
   try {

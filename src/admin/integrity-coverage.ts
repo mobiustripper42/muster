@@ -60,10 +60,7 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   // unlike time_punches.shift_id, a dangling ref is the expected steady state, not a
   // defect. Classified by the net that actually enforces something.
   time_punch_edits: { kind: "fk", refs: ["actor_id"] },
-  outbox_entries: { kind: "checked", refs: ["ask_id", "seat_id", "crew_member_id"] },
   locations: { kind: "checked", refs: [] },
-  notice_outbox: { kind: "checked", refs: ["crew_member_id"] },
-  ring_outbox: { kind: "checked", refs: ["crew_member_id"] },
   // Checked despite being append-only and unbounded, unlike `reliability_events` below. Two
   // differences carry it: volume (this logs operator ACTIONS — a crew add, drop or change —
   // where the scoring log records every ask and every response, several per ask), and

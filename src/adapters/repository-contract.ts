@@ -25,9 +25,6 @@ import type {
   Location,
   LoginCode,
   Offering,
-  OutboxEntry,
-  RingOutboxEntry,
-  NoticeOutboxEntry,
   SmsConsent,
   GuestContact,
   PtoWindow,
@@ -172,39 +169,6 @@ const WRONG_HASH = "not-the-stored-code";
  *  indifferent to it; the 14.4 block builds its rows around it. */
 const NOW = "2026-06-01T12:00:00.000Z";
 const SINCE = "2026-06-01T11:45:00.000Z";
-const outboxEntry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({
-  id: asId<"OutboxEntryId">("obx-ask-1"),
-  askId: asId<"AskId">("ask-1"),
-  seatId: SEAT,
-  crewMemberId: CREW,
-  body: "Muster: Wed, Jul 1 · Hops · captain — yes or no?",
-  link: "https://app.example/crew/auth?t=secret",
-  status: "pending",
-  createdAt: "2026-07-01T12:00:00.000Z",
-  ...over,
-});
-const ringOutboxEntry = (over: Partial<RingOutboxEntry> = {}): RingOutboxEntry => ({
-  id: asId<"RingOutboxEntryId">("ring-thread-1-crew-a"),
-  crewMemberId: CREW,
-  threadId: asId<"ThreadId">("thread-1"),
-  body: "2 new messages",
-  link: "https://app.example/crew/auth?t=secret&thread=thread-1",
-  status: "pending",
-  createdAt: "2026-07-01T12:00:00.000Z",
-  ...over,
-});
-const noticeOutboxEntry = (
-  over: Partial<NoticeOutboxEntry> = {},
-): NoticeOutboxEntry => ({
-  id: asId<"NoticeOutboxEntryId">("notice-shift-1-crew-a-removed"),
-  crewMemberId: CREW,
-  action: "removed",
-  body: "Muster: you're off the Sat, Jul 4 · Barrel shift.",
-  link: "https://app.example/crew/auth?t=secret",
-  status: "pending",
-  createdAt: "2026-07-01T12:00:00.000Z",
-  ...over,
-});
 const importRun = (over: Partial<ImportRun> = {}): ImportRun => ({
   id: asId<"ImportRunId">("run-1"),
   source: "manual-pull",
@@ -2706,81 +2670,6 @@ export function runRepositoryContract(
       await repo.deleteCalendarFeed(CREW); // no throw
     });
 
-    it("outbox entries: round-trip incl. sentAt optional; status flip via upsert (DEC-030)", async () => {
-      await repo.saveOutboxEntry(outboxEntry()); // pending, never sent
-      const got = await repo.getOutboxEntry(asId<"OutboxEntryId">("obx-ask-1"));
-      expect(got).toEqual(outboxEntry());
-      expect("sentAt" in got!).toBe(false); // omitted, not undefined
-      expect(await repo.getOutboxEntry(asId<"OutboxEntryId">("ghost"))).toBeNull();
-      // Operator marks it sent → the upsert flips status + stamps sentAt; body
-      // and link must come back VERBATIM (frozen at enqueue — DEC-030).
-      await repo.saveOutboxEntry(
-        outboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
-      );
-      expect(await repo.listOutboxEntries()).toEqual([
-        outboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
-      ]);
-    });
-
-    it("removeOutboxEntry: deletes the row; absent id is a no-op (#94 seed reset)", async () => {
-      await repo.saveOutboxEntry(outboxEntry());
-      await repo.removeOutboxEntry(asId<"OutboxEntryId">("obx-ask-1"));
-      expect(await repo.getOutboxEntry(asId<"OutboxEntryId">("obx-ask-1"))).toBeNull();
-      expect(await repo.listOutboxEntries()).toHaveLength(0);
-      // Removing something already gone must not throw.
-      await expect(
-        repo.removeOutboxEntry(asId<"OutboxEntryId">("ghost")),
-      ).resolves.toBeUndefined();
-    });
-
-    it("ring outbox entries: round-trip incl. sentAt optional; status flip via upsert (#118, DEC-073)", async () => {
-      await repo.saveRingOutboxEntry(ringOutboxEntry()); // pending, never sent
-      const got = await repo.getRingOutboxEntry(asId<"RingOutboxEntryId">("ring-thread-1-crew-a"));
-      expect(got).toEqual(ringOutboxEntry());
-      expect("sentAt" in got!).toBe(false); // omitted, not undefined
-      expect(await repo.getRingOutboxEntry(asId<"RingOutboxEntryId">("ghost"))).toBeNull();
-      // Mark sent → upsert flips status + stamps sentAt; body/link come back VERBATIM.
-      await repo.saveRingOutboxEntry(
-        ringOutboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
-      );
-      expect(await repo.listRingOutboxEntries()).toEqual([
-        ringOutboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
-      ]);
-      // Remove: gone, and an absent id is a no-op.
-      await repo.removeRingOutboxEntry(asId<"RingOutboxEntryId">("ring-thread-1-crew-a"));
-      expect(await repo.listRingOutboxEntries()).toHaveLength(0);
-      await expect(
-        repo.removeRingOutboxEntry(asId<"RingOutboxEntryId">("ghost")),
-      ).resolves.toBeUndefined();
-    });
-
-    it("notice outbox entries: round-trip incl. sentAt optional; status flip via upsert (DEC-084)", async () => {
-      await repo.saveNoticeOutboxEntry(noticeOutboxEntry()); // pending, never sent
-      const got = await repo.getNoticeOutboxEntry(
-        asId<"NoticeOutboxEntryId">("notice-shift-1-crew-a-removed"),
-      );
-      expect(got).toEqual(noticeOutboxEntry());
-      expect("sentAt" in got!).toBe(false); // omitted, not undefined
-      expect(
-        await repo.getNoticeOutboxEntry(asId<"NoticeOutboxEntryId">("ghost")),
-      ).toBeNull();
-      // Mark sent → upsert flips status + stamps sentAt; body/link come back VERBATIM.
-      await repo.saveNoticeOutboxEntry(
-        noticeOutboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
-      );
-      expect(await repo.listNoticeOutboxEntries()).toEqual([
-        noticeOutboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
-      ]);
-      // Remove: gone, and an absent id is a no-op.
-      await repo.removeNoticeOutboxEntry(
-        asId<"NoticeOutboxEntryId">("notice-shift-1-crew-a-removed"),
-      );
-      expect(await repo.listNoticeOutboxEntries()).toHaveLength(0);
-      await expect(
-        repo.removeNoticeOutboxEntry(asId<"NoticeOutboxEntryId">("ghost")),
-      ).resolves.toBeUndefined();
-    });
-
     it("listAll enumerators feed the integrity diagnostic identically", async () => {
       // A small connected spine — both adapters must enumerate it the same way,
       // so checkIntegrity (which leans on every listAll*) returns the same verdict.
@@ -2794,12 +2683,10 @@ export function runRepositoryContract(
       await repo.saveShift(shift());
       await repo.saveSeat(seat({ state: "Confirmed", assignedCrewMemberId: CREW }));
       await repo.saveAsk(ask());
-      await repo.saveOutboxEntry(outboxEntry());
 
       const clean = await checkIntegrity(repo);
       expect(clean.ok).toBe(true);
       expect(clean.scanned.seats).toBe(1);
-      expect(clean.scanned.outboxEntries).toBe(1);
 
       // Now break a reference the DB's missing FK would never have caught.
       await repo.saveSeat(

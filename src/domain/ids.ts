@@ -37,9 +37,6 @@ export type TrailEventId = Brand<string, "TrailEventId">;
 /** Stripe's `pi_…`. The reservation trail's second key: the only thing a fact with no
  *  booking has to name itself with. */
 export type PaymentIntentId = Brand<string, "PaymentIntentId">;
-export type OutboxEntryId = Brand<string, "OutboxEntryId">;
-export type RingOutboxEntryId = Brand<string, "RingOutboxEntryId">;
-export type NoticeOutboxEntryId = Brand<string, "NoticeOutboxEntryId">;
 export type ImportRunId = Brand<string, "ImportRunId">;
 export type ImportRunItemId = Brand<string, "ImportRunItemId">;
 export type TimePunchId = Brand<string, "TimePunchId">;

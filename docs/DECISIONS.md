@@ -145,17 +145,16 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-070 — The doorbell tick — a separate cron that sweeps threads-with-messages and records-on-decide
 - DEC-071 — Crew messaging UI — read + presence are one edge signal on real view; DM list is a participant index; view-auth is the DEC-052 predicate
 - DEC-072 — Operator messaging surface — cross-visibility via the DEC-052 predicate ORed into `buildThreadView`; the operator is excluded from doorbell rings
-- DEC-073 — Real doorbell-ring relay — the operator-outbox `NotificationPort` adapter, on its own table
 - DEC-167 — A cron interval is chosen against the host's idle timeout, not for latency alone
 
 ### Outbound notifications & operator relay
-- DEC-030 — Pilot channel = operator-relayed web link; the outbox is adapter state, never domain state
 - DEC-084 — Crew assignment-change notice — a third operator-relay sibling
 - DEC-095 — Operator At-Risk alert — the deferred delivery half of DEC-026, NOT a fourth outbound lane
 - DEC-158 — A change notice names what moved — the SMS carries a subset, the app carries all of it
 - DEC-170 — An unconfigured channel always writes to the console — for every audience
 - DEC-172 — An unformed shift alerts every tick, with no dedup
 - DEC-183 — The operator gets shift notices like any crew member
+- DEC-185 — No operator outbox — every relay is sent by SMS or written to the log
 
 ### Crew self-serve, auth & admin identity
 - DEC-010 — Crew auth is magic-link passwordless; crew don't self-register

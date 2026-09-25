@@ -51,10 +51,7 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     asks,
     credentials,
     ptoWindows,
-    outboxEntries,
     locations,
-    noticeOutbox,
-    ringOutbox,
     auditEvents,
     timePunches,
   ] = await Promise.all([
@@ -68,10 +65,7 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     repo.listAllAsks(),
     repo.listAllCredentials(),
     repo.listAllPtoWindows(),
-    repo.listOutboxEntries(),
     repo.listLocations(),
-    repo.listNoticeOutboxEntries(),
-    repo.listRingOutboxEntries(),
     repo.listAuditEvents(),
     repo.listAllTimePunches(),
   ]);
@@ -155,24 +149,6 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
       miss(shiftIds, "timePunch", p.id, "shiftId", p.shiftId);
     }
   }
-  // Outbox entries (DEC-030): channel-adapter state, but it points into the
-  // spine (ask/seat/crew) — a dangling ref means the relay card can't render.
-  const askIds = new Set(asks.map((a) => a.id as string));
-  for (const o of outboxEntries) {
-    miss(askIds, "outboxEntry", o.id, "askId", o.askId);
-    miss(seatIds, "outboxEntry", o.id, "seatId", o.seatId);
-    miss(crewIds, "outboxEntry", o.id, "crewMemberId", o.crewMemberId);
-  }
-
-  // The two relay worklists that arrived after this diagnostic was written (DEC-084 notices,
-  // DEC-073 doorbell rings). Same argument as `outbox_entries` above — adapter state, but it
-  // points into the spine, and a dangling ref means a relay card that can't render.
-  for (const n of noticeOutbox) {
-    miss(crewIds, "noticeOutboxEntry", n.id, "crewMemberId", n.crewMemberId);
-  }
-  for (const r of ringOutbox) {
-    miss(crewIds, "ringOutboxEntry", r.id, "crewMemberId", r.crewMemberId);
-  }
   // Crew audit log (DEC-118) — the operator-facing record of who changed what. A row naming a
   // crew member who no longer exists renders as a blank actor (`audit-trail.ts`).
   //
@@ -204,10 +180,7 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
       asks: asks.length,
       credentials: credentials.length,
       ptoWindows: ptoWindows.length,
-      outboxEntries: outboxEntries.length,
       locations: locations.length,
-      noticeOutboxEntries: noticeOutbox.length,
-      ringOutboxEntries: ringOutbox.length,
       auditEvents: auditEvents.length,
       timePunches: timePunches.length,
     },

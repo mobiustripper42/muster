@@ -22,7 +22,7 @@ import { addMyTimeOff, removeMyTimeOff, setMyDaysOff, type CrewTimeOffErr } from
  * **recurring weekday** blackout ("Weekdays I never work", #426/DEC-119). Both are
  * subtractive — a window or a checked weekday means OFF; absence means available.
  * This is NOT an availability/scheduling screen (DEC-009). Server-rendered, no
- * client JS (DEC-026): every form posts to a server action. Mobile-primary (DEC-085).
+ * client JS (DEC-147): every form posts to a server action. Mobile-primary (DEC-085).
  */
 
 export const dynamic = "force-dynamic";

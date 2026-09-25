@@ -24,7 +24,7 @@ export type CrewTimeOffErr = AddTimeOffCode | "error";
  * `addTimeOff` / `removeTimeOff` domain use-cases (validation lives there).
  *
  * DEC-009 line held: subtractive only ("I'm OFF these dates"), never availability.
- * Feedback rides redirect params as codes (DEC-026); `redirect()` throws → OUTSIDE
+ * Feedback rides redirect params as codes (DEC-147); `redirect()` throws → OUTSIDE
  * the try. Remove is ownership-gated (10.3): a forged id can't wipe someone else's.
  */
 export async function addMyTimeOff(formData: FormData): Promise<void> {

@@ -876,6 +876,26 @@ describe("the calendar and the write refuse the same set (criterion 5)", () => {
     expect(byCalendar).toContain("18:00");
     expect(byCalendar).toEqual(await refusedByWrite(seed));
   });
+
+  it("agree on a location closure that starts partway through a trip (issue #1089)", async () => {
+    // 14:31–17:59: the 13:30 trip (100 min, back 15:10) is still out when the river closes, so
+    // both sides refuse it — along with 16:00, which starts inside. 10:00 is back at 11:40.
+    const seed = async (repo: InMemoryRepository) => {
+      await repo.saveBlock({
+        id: asId<"BlockId">("b-closure"),
+        kind: "location",
+        locationId: LOC,
+        date: DAY,
+        startTime: "14:31",
+        endTime: "17:59",
+      });
+    };
+    const repo = await world();
+    await seed(repo);
+    const byCalendar = await refusedByCalendar(repo);
+    expect(byCalendar).toEqual(["08:00", "13:30", "16:00"]);
+    expect(byCalendar).toEqual(await refusedByWrite(seed));
+  });
 });
 
 /**
@@ -1054,6 +1074,21 @@ describe("claimDepartureSlot — the operator's rules (§2.10.6, 16.1)", () => {
     // name, rather than "busy" — the fix is theirs to make, on the calendar.
     expect(await operatorClaim(repo, { vesselId: SMALL, guestCount: 2 })).toEqual({ unbookable: "blocked" });
     expect((await repo.listAllReservations()).filter((r) => r.source === "admin")).toHaveLength(0);
+  });
+
+  it("a location closure that begins while the operator's trip would be out refuses it (issue #1089)", async () => {
+    // TIME is 13:30; the offering has no trip length, so the 100-minute fallback puts it out
+    // until 15:10 — past a 15:00 closure.
+    const repo = await seededRepo();
+    await repo.saveBlock({
+      id: asId<"BlockId">("b-river"),
+      kind: "location",
+      locationId: LOC,
+      date: DATE,
+      startTime: "15:00",
+      endTime: "18:00",
+    });
+    expect(await operatorClaim(repo, { vesselId: SMALL })).toEqual({ unbookable: "blocked" });
   });
 
   it("capacity refuses the operator — the write itself, not a form pre-check (issue #767)", async () => {

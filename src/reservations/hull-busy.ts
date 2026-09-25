@@ -160,6 +160,16 @@ export function candidateHoldMinutes(offering: Pick<Offering, "holdMinutes" | "t
 }
 
 /**
+ * How long a departure on this offering is ON THE WATER — what a location closure is measured
+ * against (issue #1089). Not the hold: turnaround happens at the dock, and a closed river doesn't
+ * care about it (operator, 2026-09-25). The Xola stand-in when no trip length is configured, the
+ * same fallback every other reader uses.
+ */
+export function candidateTripMinutes(offering: Pick<Offering, "tripLengthMinutes">): number {
+  return offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES;
+}
+
+/**
  * Would a trip starting at `startMinute` for `durationMinutes` collide with any busy window?
  *
  * **Half-open**, `[start, end)`: a trip beginning exactly when the previous one ends is legal.

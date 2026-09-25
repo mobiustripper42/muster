@@ -105,6 +105,22 @@ describe("computeBlockImpact", () => {
     expect(impact.conflictCents).toBe(54900);
   });
 
+  it("counts a departure whose trip runs INTO the closure, not just one starting inside it (issue #1089)", () => {
+    // 15:31–18:00 on Aug 12. The 15:30 trip (100-minute fallback — no trip length on this
+    // offering) is out until 17:10, so it is removed along with 17:30. 13:30 is back at 15:10.
+    const block: Block = {
+      id: asId<"BlockId">("blk-overlap"),
+      kind: "location",
+      locationId: LOC,
+      date: "2026-08-12",
+      startTime: "15:31",
+      endTime: "18:00",
+    };
+    const impact = computeBlockImpact(block, inputWith([]));
+    expect(impact.removedSlots).toBe(2);
+    expect(impact.conflictCount).toBe(0);
+  });
+
   it("sums the fare across multiple conflicting bookings", () => {
     const b1 = booking("2026-08-12", "13:30", 54900);
     const b2 = booking("2026-08-13", "15:30", 43900);

@@ -17,6 +17,8 @@
  * environment per-case is enough — no module reset needed. If that ever changes, these tests
  * fail rather than silently reading a value captured at import time.
  */
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { messagingEnabled, timeClockEnabled } from "./flags";
@@ -59,6 +61,34 @@ describe("feature flags accept one spelling across the board (#736)", () => {
     // catches a deletion, which is the point of counting rather than iterating whatever happens to
     // be imported.
     expect(FLAGS.length).toBe(2);
+  });
+
+  it("MESSAGING is read in exactly one place — this module — and switches crew messaging only (#761)", () => {
+    // MESSAGING turns off the crew's internal messaging (threads, the doorbell). It has nothing to
+    // do with customer email or SMS. It used to be read a second way — `=== "false"` as a kill
+    // switch — in four customer send paths, so `MESSAGING=false` silently stopped every booking
+    // confirmation while `MESSAGING=0` did not. Scanning the source is what keeps a fifth path
+    // from growing the same check: every reader has to go through `messagingEnabled()`.
+    const root = join(__dirname, "..", "..");
+    const readers: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+          const src = readFileSync(path, "utf8");
+          const reads =
+            /env\.MESSAGING\b|env\[["']MESSAGING["']\]|flagOn\(\s*["']MESSAGING["']/.test(src) ||
+            // destructured: `const { MESSAGING } = process.env` — any line naming both
+            src.split("\n").some((l) => /\bMESSAGING\b/.test(l) && l.includes("process.env"));
+          if (reads) {
+            readers.push(relative(root, path));
+          }
+        }
+      }
+    };
+    for (const dir of ["app", "src", "components", "db", "scripts"]) walk(join(root, dir));
+    expect(readers).toEqual(["app/lib/flags.ts"]);
   });
 
   for (const { env, fn } of FLAGS) {

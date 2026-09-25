@@ -1,7 +1,4 @@
-import { randomUUID } from "node:crypto";
 import { EmailChannel } from "@core/adapters/email-channel.js";
-import { asId } from "@core/domain/ids.js";
-import { recordTrail } from "@core/reservations/trail.js";
 import type { Reservation } from "@core/domain/entities.js";
 import { sendBookingConfirmation } from "@core/reservations/booking-confirmation.js";
 import { ensureBookingCode } from "@core/reservations/ensure-booking-code.js";
@@ -39,38 +36,13 @@ export async function sendReservationConfirmation(
   // was dead code because this function swallowed everything and returned `void`, so the recovery
   // the port documented could not happen.
   //
-  // `false` covers "deliberately not sent" as well as "tried and failed" — MESSAGING off, an
-  // unset `APP_BASE_URL`, no channel configured. That is the right answer for all of them: none
+  // `false` covers "deliberately not sent" as well as "tried and failed" — an unset
+  // `APP_BASE_URL`, no channel configured. That is the right answer for all of them: none
   // of those customers has been told, and a deployment where confirmations silently are not
   // going out is exactly what §2.8.9's reconciler should be reporting.
   //
   // The old text credited DEC-122, retired 2026-08-26. The live authority is §2.8.6.
   try {
-    // MESSAGING kill-flag — future-proofs #390 (not yet on this branch). A hard
-    // "false" silences every send; anything else (incl. unset) leaves sends on.
-    //
-    // **This early return is the defect that opened issue #886.** The booking is written, the
-    // operator sees a sale, the customer never hears, and until now there was no log at any
-    // level — not an alert, not a console line, nothing. The trail row is the only artifact
-    // that will ever exist for it, which is exactly the case the table was built for.
-    //
-    // A fresh id per skip: a customer can be skipped on a first send and again on a resend,
-    // and "it happened twice" is the fact. Determinism is a webhook property (issue #1050) and
-    // there is no redelivery here.
-    if (process.env.MESSAGING === "false") {
-      await recordTrail(
-        { repo: getRepo(), now: () => new Date().toISOString() },
-        {
-          id: asId<"TrailEventId">(`confirmation_skipped:${randomUUID()}`),
-          reservationId: reservation.id,
-          actorKind: "engine",
-          type: "confirmation_skipped",
-          metadata: { reason: "MESSAGING=false" },
-        },
-      );
-      return false;
-    }
-
     // #1007: was a skip-and-log when `APP_BASE_URL` was unset, which meant a PREVIEW could never
     // send a booking confirmation — the variable is scoped to Production on purpose (DEC-057), so
     // unset is a preview's normal state and this branch fired every time. Smoke-testing a booking
@@ -150,7 +122,7 @@ export async function sendReservationConfirmation(
  */
 export type ResendOutcome =
   | { kind: "attempted"; result: ResendResult }
-  | { kind: "skipped"; reason: "messaging_off" | "no_channels" };
+  | { kind: "skipped"; reason: "no_channels" };
 
 /**
  * Resend the manage link from an operator press (#686) — the same channel wiring as the
@@ -162,8 +134,6 @@ export type ResendOutcome =
  * email-only booking, a Twilio outage, and a deployment with no channels configured at all.
  */
 export async function resendReservationLink(reservation: Reservation): Promise<ResendOutcome> {
-  if (process.env.MESSAGING === "false") return { kind: "skipped", reason: "messaging_off" };
-
   // #1007: same rule as the confirmation, and now literally the same function. The link rides the
   // trusted origin, never a Host header. The `not_configured` skip is gone with the guard that
   // produced it — on a preview the operator can now resend and watch it arrive, and on a

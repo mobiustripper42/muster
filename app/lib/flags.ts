@@ -28,6 +28,9 @@ function flagOn(name: string): boolean {
  * and the doorbell sweep no-ops (so it can't ring about pre-existing unread
  * threads once the buttons are gone). The code is all left in place — flip
  * `MESSAGING=1` to restore the whole feature. e2e sets it on to keep exercising it.
+ *
+ * **Crew only.** Customer email and SMS never read this flag (issue #761); a test in
+ * `flags.test.ts` fails if anything but this function reads `MESSAGING`.
  */
 export function messagingEnabled(): boolean {
   return flagOn("MESSAGING");

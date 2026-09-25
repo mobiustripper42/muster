@@ -2,8 +2,7 @@
  * Customer availability screen (Phase 12.4, #457) — "Date & time", the first designed public
  * booking surface. Replaces the throwaway 11.6 harness that lived here (DEC-108). Re-expresses
  * the approved mockup (docs/design/mockups — "Muster · Customer booking flow", screen 1) against
- * Muster's own design tokens (DEC-021: read the mockup's values, don't import them). Gated behind
- * `RESERVATIONS` (DEC-111).
+ * Muster's own design tokens (DEC-021: read the mockup's values, don't import them).
  *
  * Zero-JS except one island (DEC-133): date and time are picked by `AppLink` server navigation
  * — each `scroll={false}`, so choosing a date or a departure leaves you where you were rather
@@ -45,7 +44,6 @@ import { Notice } from "../../../components/ui/notice";
 import { getRepo } from "../../lib/repo";
 import { logSwallowed } from "../../lib/swallowed";
 import { BookingProvider, Footer, GuestCard } from "./book-controls";
-import { reservationsEnabled } from "../../lib/flags";
 
 export const dynamic = "force-dynamic";
 
@@ -55,17 +53,6 @@ const DOW = ["S", "M", "T", "W", "T", "F", "S"];
 type Search = { offering?: string; date?: string; time?: string; guests?: string };
 
 export default async function BookPage({ searchParams }: { searchParams: Promise<Search> }) {
-  if (!reservationsEnabled()) {
-    return (
-      <main className="mx-auto max-w-2xl px-4 py-16">
-        <h1 className="text-xl font-semibold">Reservations are off</h1>
-        <p className="mt-2 text-muted">
-          Set <code>RESERVATIONS=1</code> to enable booking (DEC-111).
-        </p>
-      </main>
-    );
-  }
-
   const sp = await searchParams;
   let offerings: Offering[];
   let vessels: Vessel[];

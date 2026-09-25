@@ -33,7 +33,7 @@ export interface AdminLink {
   href: string;
   label: string;
   /** Server-resolved flag this entry is gated on. Absent = always shown. */
-  feature?: "messaging" | "reservations" | "timeClock";
+  feature?: "messaging" | "timeClock";
 }
 
 export interface AdminGroup {
@@ -43,7 +43,6 @@ export interface AdminGroup {
 
 export interface AdminFlags {
   messaging: boolean;
-  reservations: boolean;
   timeClock: boolean;
 }
 
@@ -58,7 +57,7 @@ export interface AdminFlags {
  */
 export const FLAT_LINKS: readonly AdminLink[] = [
   { href: "/admin/shifts", label: "Shifts" },
-  { href: "/admin/calendar", label: "Calendar", feature: "reservations" },
+  { href: "/admin/calendar", label: "Calendar" },
   { href: "/admin/import", label: "Import" },
   { href: "/admin/at-risk", label: "At-Risk" },
 ];
@@ -82,21 +81,21 @@ export const GROUPS: readonly AdminGroup[] = [
   {
     label: "Bookings",
     links: [
-      { href: "/admin/purchases", label: "Purchases", feature: "reservations" },
-      { href: "/admin/customers", label: "Customers", feature: "reservations" },
+      { href: "/admin/purchases", label: "Purchases" },
+      { href: "/admin/customers", label: "Customers" },
       // Blocks is about a date's availability, not catalog data — it belongs with the booking
       // surfaces rather than with Setup.
-      { href: "/admin/blocks", label: "Blocks", feature: "reservations" },
+      { href: "/admin/blocks", label: "Blocks" },
       // Sits with the booking surfaces rather than under Settings, because it answers a question
       // about SALES — how much boat time is being held by people who don't buy (§2.8.8) — not one
       // about the system's health. `Integrity check` is the diagnostic; this is a business number.
-      { href: "/admin/abandonment", label: "Abandoned checkouts", feature: "reservations" },
+      { href: "/admin/abandonment", label: "Abandoned checkouts" },
       // `Audit`, matching `Crew › Audit` (operator, 2026-09-21). The group header is what tells
       // the two apart, which is what a grouped nav is for — the first cut called this one
       // `Booking audit` to avoid a collision with a FLAT `Audit`, and the answer was to move
       // that one into its own group rather than to make these two read as different kinds of
       // thing. The URL stays `/admin/booking-audit`: unlike a label, it has no group around it.
-      { href: "/admin/booking-audit", label: "Audit", feature: "reservations" },
+      { href: "/admin/booking-audit", label: "Audit" },
     ],
   },
   {
@@ -125,8 +124,8 @@ export const GROUPS: readonly AdminGroup[] = [
   {
     label: "Setup",
     links: [
-      { href: "/admin/offerings", label: "Offerings", feature: "reservations" },
-      { href: "/admin/add-ons", label: "Add-ons", feature: "reservations" },
+      { href: "/admin/offerings", label: "Offerings" },
+      { href: "/admin/add-ons", label: "Add-ons" },
       { href: "/admin/vessels", label: "Vessels" },
       { href: "/admin/locations", label: "Locations" },
     ],

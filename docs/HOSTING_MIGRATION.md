@@ -119,7 +119,7 @@ dashboard scroll. Tick each one off against its source.
 | `CHECKOUT_HOLD_MINUTES` | `src/reservations/claim.ts` | Not secret |
 | `OPERATOR_NOTIFY_EMAIL` | `app/b/[code]/actions.ts` | Not secret |
 | `NODE_ENV` | — | `production`. See step 45; getting this wrong is a security hole |
-| `MESSAGING` `RESERVATIONS` `TIME_CLOCK` | `app/lib/flags.ts` | Step 5 |
+| `MESSAGING` `TIME_CLOCK` | `app/lib/flags.ts` | Step 5 |
 
 > Not needed on the box: `E2E`, `E2E_PROD`, `SEED_TODAY`, `TEST_DATABASE_URL`,
 > `BACKFILL_CONFIRM`, `OUTBOX_TEST_PHONE`, `XOLA_REPORT_*` (CLI script args), `PROBE_*`
@@ -158,7 +158,7 @@ tuning vars above that are set.
 `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `TWILIO_FROM`, `TENANT_ID`, `TENANT_NAME`, `TENANT_TZ`,
 `PICKUP_LOCATION`, `PICKUP_MAP_URL`, `WAIVER_TERMS_URL`, `WAIVER_TERMS_VERSION`,
 `PAY_PERIOD_ANCHOR`, `CHECKOUT_HOLD_MINUTES`, `OPERATOR_NOTIFY_EMAIL`,
-`MESSAGING`, `RESERVATIONS`.
+`MESSAGING`. (`RESERVATIONS` was also unset; the flag was deleted in issue #1093.)
 
 > ⚠️ **`RESERVATION_LINK_SECRET` no longer exists (#741, DEC-154).** It was never set in
 > production, and that fact is what made it cheap to delete: no deploy had ever minted a link
@@ -212,7 +212,7 @@ Record from Neon:
    |---|---|---|
    | `TIME_CLOCK` | **ON** | `1` |
    | `MESSAGING` | **OFF** | not set |
-   | `RESERVATIONS` | **OFF** | not set |
+   | `RESERVATIONS` | **OFF** | not set — **flag deleted since, issue #1093; don't carry it** |
 
    Carry all four into the box's env file **explicitly**, including the two that are off — an
    unset flag reads off today, but writing it down is what stops a later reader assuming it was
@@ -488,7 +488,7 @@ there is no public-side cert change.
    - `/crew/dev-code` → **404**
    - Sign in as admin, load `/admin/at-risk`
    - Both timers fire on schedule (`journalctl`)
-   - If `RESERVATIONS` is on: a test Stripe event reaches `/api/webhooks/stripe` and returns 200.
+   - If Stripe keys are set: a test Stripe event reaches `/api/webhooks/stripe` and returns 200.
      The HMAC is over the **raw body**, not the URL, so nothing needed re-pointing
 
 **62.** ✅ **There are no inbound Twilio webhooks** — no status callback, no inbound SMS. Twilio is

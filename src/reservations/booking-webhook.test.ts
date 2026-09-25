@@ -112,7 +112,6 @@ function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new Fake
   const soldOut = vi.fn(async (_c: unknown) => {});
   const deps: WebhookDeps = {
     repo,
-    reservationsEnabled: true,
     payments,
     now: NOW,
     alertPaidButUnbooked: alert,
@@ -122,59 +121,14 @@ function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new Fake
   return { deps, alert, confirm, soldOut, payments };
 }
 
-describe("processBookingWebhook — the RESERVATIONS gate (#588, DEC-111)", () => {
-  it("acks a valid signed event without booking anything when the flag is off", async () => {
+describe("processBookingWebhook — signature", () => {
+  it("rejects a bad signature before anything else runs", async () => {
     const repo = new InMemoryRepository();
     await seedPending(repo);
-    const { deps, alert, confirm } = makeDeps(repo);
-
-    const r = await processBookingWebhook(
-      { ...deps, reservationsEnabled: false },
-      bookingPi(),
-      FAKE_SIGNATURE,
-    );
-
-    // Acked, not errored: a non-2xx would make Stripe retry an event we never want.
-    expect(r).toEqual({ handled: false });
-    // Nothing flipped, nobody emailed — the pending row stays pending.
-    expect((await repo.getReservation(PEND))!.status).toBe("pending");
-    expect(await repo.listPaymentsForReservation(PEND)).toHaveLength(0);
-    expect(confirm).not.toHaveBeenCalled();
-    // But loud — a verified charge succeeded and we deliberately did not book it.
-    expect(alert).toHaveBeenCalledOnce();
-    expect(alert.mock.calls[0]![0]).toMatch(/RESERVATIONS is off/);
-  });
-
-  it("still records a BALANCE payment when the flag is off — the gate is about new bookings only", async () => {
-    // The regression this pins: the gate first sat right after signature verification, ahead of
-    // purpose dispatch, so it swallowed balance collection too. Balance links are minted by an
-    // admin-gated action that has no RESERVATIONS check, and the flag is off by default — so in a
-    // default deployment Stripe charged the customer and Muster recorded nothing.
-    const repo = new InMemoryRepository();
-    await seedDepositBooking(repo);
-    const { deps, alert } = makeDeps(repo);
-
-    const r = await processBookingWebhook(
-      { ...deps, reservationsEnabled: false },
-      JSON.stringify(balanceCompleted()),
-      FAKE_SIGNATURE,
-    );
-
-    expect(r).toEqual({ handled: true, outcome: "balance_paid" });
-    const balances = (await repo.listPaymentsForReservation(RES)).filter((p) => p.kind === "balance");
-    expect(balances).toHaveLength(1);
-    expect(alert).not.toHaveBeenCalled();
-  });
-
-  it("still rejects a bad signature when the flag is off, so the flag can't probe the endpoint", async () => {
-    // The gate sits AFTER verification deliberately. If it ran first, a forged request would
-    // get the same ack as a real one and an attacker could tell a live endpoint from a dark one.
-    const repo = new InMemoryRepository();
     const { deps } = makeDeps(repo);
 
-    await expect(
-      processBookingWebhook({ ...deps, reservationsEnabled: false }, bookingPi(), "bad_signature"),
-    ).rejects.toThrow();
+    await expect(processBookingWebhook(deps, bookingPi(), "bad_signature")).rejects.toThrow();
+    expect((await repo.getReservation(PEND))!.status).toBe("pending");
   });
 });
 
@@ -1176,17 +1130,6 @@ describe("processBookingWebhook — charge.refunded reconciles the ledger (#616)
     expect(alert).toHaveBeenCalledOnce();
     expect(alert.mock.calls[0]![0]).toMatch(/pi_unknown/);
   });
-
-  it("is NOT gated by the RESERVATIONS flag — a refund must reconcile in any deployment", async () => {
-    // Same reasoning that moved the flag off the whole handler and onto the new-booking path:
-    // money that has already moved must be recorded regardless of whether new sales are on.
-    const repo = await paidWorld();
-    const { deps } = makeDeps(repo);
-
-    await processBookingWebhook({ ...deps, reservationsEnabled: false }, refunded(), FAKE_SIGNATURE);
-
-    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({ status: "refunded" });
-  });
 });
 
 /**
@@ -1367,15 +1310,6 @@ describe("processBookingWebhook — charge.dispute.* records the chargeback (iss
     expect(alert).toHaveBeenCalledOnce();
     expect(alert.mock.calls[0]![0]).toMatch(/pi_unknown/);
   });
-
-  it("is NOT gated by the RESERVATIONS flag — money that left must be recorded anywhere", async () => {
-    const repo = await paidWorld();
-    const { deps } = makeDeps(repo);
-
-    await processBookingWebhook({ ...deps, reservationsEnabled: false }, dispute(), FAKE_SIGNATURE);
-
-    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({ status: "disputed" });
-  });
 });
 
 /**
@@ -1431,23 +1365,6 @@ describe("processBookingWebhook — payment_intent.payment_failed is acked and i
     expect(confirm).not.toHaveBeenCalled();
     expect(alert).not.toHaveBeenCalled();
     expect(await repo.listEvents()).toHaveLength(0);
-  });
-
-  it("is ignored with the RESERVATIONS flag off too — no money moved, so there is nothing to say", async () => {
-    // Contrast with a SUCCEEDED charge under the same flag, which alerts loudly because money HAS
-    // moved and somebody has to look. A decline moved none.
-    const repo = new InMemoryRepository();
-    await seedPending(repo);
-    const { deps, alert } = makeDeps(repo);
-
-    const r = await processBookingWebhook(
-      { ...deps, reservationsEnabled: false },
-      failed(),
-      FAKE_SIGNATURE,
-    );
-
-    expect(r).toMatchObject({ handled: true, outcome: "ignored" });
-    expect(alert).not.toHaveBeenCalled();
   });
 });
 
@@ -1935,18 +1852,6 @@ describe("processBookingWebhook — the trail's money-in events (issue #1051)", 
   });
 
   // ── charge_unmatched ───────────────────────────────────────────────────────
-
-  it("charge_unmatched: a verified charge arriving while RESERVATIONS is off", async () => {
-    const repo = new InMemoryRepository();
-    await seedPending(repo);
-    const { deps } = makeDeps(repo);
-
-    await processBookingWebhook({ ...deps, reservationsEnabled: false }, bookingPi(), FAKE_SIGNATURE);
-
-    const [row] = await trailOf(repo, "charge_unmatched");
-    expect(String(row?.paymentIntentId)).toBe(PI);
-    expect(row?.metadata.reason).toBe("reservations_off");
-  });
 
   it("charge_unmatched: a refund on a charge Muster never recorded", async () => {
     const repo = await paidWorld();

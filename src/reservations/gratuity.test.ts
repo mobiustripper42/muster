@@ -64,7 +64,6 @@ function makeDeps(repo: InMemoryRepository, payments = new FakePaymentPort()) {
   const alert = vi.fn(async (_m: string) => {});
   const deps: WebhookDeps = {
     repo, payments, now,
-    reservationsEnabled: true,
     alertPaidButUnbooked: alert,
     sendConfirmation: vi.fn(async () => true),
     notifyCustomerSoldOut: vi.fn(async () => {}),

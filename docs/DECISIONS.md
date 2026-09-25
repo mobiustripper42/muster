@@ -175,8 +175,6 @@ cross-reference left, and it points at the spec, never at another decision.
 
 ### Reservations & payments
 - DEC-106 — Every departure and booking records which system sold it
-- DEC-107 — Sales tax is read live, not frozen onto the booking
-- DEC-109 — Atomic capacity claim on public booking (the customer-side REQ-CLAIM-1)
 - DEC-112 — A departure's price comes from the offering, with a per-departure override
 - DEC-124 — Muster reports its own tips; joining them to Xola's stays in the operator's tool
 - DEC-126 — The flip from Xola is a cutover, not a natural drain

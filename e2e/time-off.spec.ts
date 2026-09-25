@@ -35,6 +35,20 @@ test.describe("crew /crew/time-off — my days off", () => {
     await expect(page.getByText(/available for asks on every date/i)).toBeVisible();
   });
 
+  test("a single day needs only the first date — a blank last day means that one day (#432)", async ({
+    page,
+  }) => {
+    // Before #432 both inputs were `required`, so the browser refused to submit with the last
+    // day blank and a one-day request meant typing the same date twice.
+    await signInAsCrew(page, "crew-quint");
+    await page.goto("/crew/time-off");
+    await page.fill("#start", "2026-08-15");
+    await page.getByRole("button", { name: "Add" }).click();
+    await page.waitForURL(/added=1/);
+    // `fmtDateRange` prints one date, not a range, only when start === end.
+    await expect(page.getByText("Sat, Aug 15", { exact: true })).toBeVisible();
+  });
+
   test("an inverted range is refused with calm copy, nothing added", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
     await page.goto("/crew/time-off");

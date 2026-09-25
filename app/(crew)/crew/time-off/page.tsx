@@ -175,8 +175,9 @@ export default async function CrewTimeOff({
 }
 
 /** The add-a-window form — two native date inputs (mobile date pickers, no JS)
- *  and one button. `end` defaults to whatever `start` is via required inputs;
- *  the domain enforces `start ≤ end`, so a same-day off is just start === end. */
+ *  and one button. `end` is optional: left blank, the action defaults it to
+ *  `start` (#432). The domain enforces `start ≤ end`, so a same-day off is just
+ *  start === end. */
 function AddForm({
   action,
   draft,
@@ -205,14 +206,13 @@ function AddForm({
       </div>
       <div className="flex flex-col gap-2">
         <label htmlFor="end" className="text-sm text-muted">
-          Last day off (same day for a single day)
+          Last day off (leave blank for a single day)
         </label>
         <input
           id="end"
           name="end"
           type="date"
           defaultValue={draft?.get("end") ?? ""}
-          required
           className={inputClass}
         />
       </div>

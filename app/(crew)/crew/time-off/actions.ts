@@ -31,7 +31,8 @@ export async function addMyTimeOff(formData: FormData): Promise<void> {
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") redirect("/crew");
   const start = String(formData.get("start") ?? "");
-  const end = String(formData.get("end") ?? "");
+  // A blank last day means a single day off (#432) — the domain accepts start === end.
+  const end = String(formData.get("end") ?? "") || start;
 
   let code: CrewTimeOffErr | null = null;
   try {

@@ -195,7 +195,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-180 — The webhook endpoint is not IP-allowlisted — the signature is the door
 - DEC-182 — A residual-race loser is charged and refunded — no authorize-then-capture
 - DEC-184 — A phone booking does not cross a block — unblock it, then book
-- DEC-185 — RESERVATIONS is deleted — Stripe keys are the gate
+- DEC-186 — RESERVATIONS is deleted — Stripe keys are the gate
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred

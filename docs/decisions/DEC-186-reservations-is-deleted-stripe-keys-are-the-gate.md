@@ -1,6 +1,6 @@
 ---
 schema: 1
-id: DEC-185
+id: DEC-186
 title: "RESERVATIONS is deleted — Stripe keys are the gate"
 topic: "Reservations & payments"
 status: "active"
@@ -19,7 +19,7 @@ claims:
 revisit_if: "A deployment needs Stripe keys set while booking stays off, such as a live payments test before launch"
 ---
 
-## DEC-185: RESERVATIONS is deleted — Stripe keys are the gate
+## DEC-186: RESERVATIONS is deleted — Stripe keys are the gate
 
 The flag kept `/book`, checkout, the manage pages and the webhook's new-booking path dark. The
 decision it cited, DEC-111, was already retired (issue #816), so nothing active stood behind it.

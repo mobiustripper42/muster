@@ -173,7 +173,7 @@ if (!haveKeys) {
   describe.skip("Stripe sandbox — SKIPPED: no sandbox keys", () => {
     // Inside `describe.skip`, so it never runs; it exists to print what to set (the script's
     // verbose reporter prints skipped names). Same shape as `postgres-repository.test.ts`.
-    // eslint-disable-next-line sonarjs/assertions-in-tests -- never runs
+    // eslint-disable-next-line sonarjs/assertions-in-tests, vitest/expect-expect -- never runs
     it("set STRIPE_SECRET_KEY (sk_test_…) and STRIPE_WEBHOOK_SECRET in .env.local, then `npm run test:stripe`", () => {});
   });
 } else {

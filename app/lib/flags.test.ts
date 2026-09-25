@@ -75,13 +75,18 @@ describe("feature flags accept one spelling across the board (#736)", () => {
         const path = join(dir, entry.name);
         if (entry.isDirectory()) walk(path);
         else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
-          if (/env\.MESSAGING\b|env\[["']MESSAGING["']\]|flagOn\(\s*["']MESSAGING["']/.test(readFileSync(path, "utf8"))) {
+          const src = readFileSync(path, "utf8");
+          const reads =
+            /env\.MESSAGING\b|env\[["']MESSAGING["']\]|flagOn\(\s*["']MESSAGING["']/.test(src) ||
+            // destructured: `const { MESSAGING } = process.env` — any line naming both
+            src.split("\n").some((l) => /\bMESSAGING\b/.test(l) && l.includes("process.env"));
+          if (reads) {
             readers.push(relative(root, path));
           }
         }
       }
     };
-    for (const dir of ["app", "src", "components"]) walk(join(root, dir));
+    for (const dir of ["app", "src", "components", "db", "scripts"]) walk(join(root, dir));
     expect(readers).toEqual(["app/lib/flags.ts"]);
   });
 

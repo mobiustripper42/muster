@@ -284,7 +284,7 @@ export function actionMessage(
           return "This booking has no email or phone on it, so there’s nowhere to send.";
         case "not_muster":
           return "Xola bookings have no Muster manage link.";
-        // The two below mean NOTHING was attempted — a deployment problem, not a bad booking.
+        // The one below means NOTHING was attempted — a deployment problem, not a bad booking.
         // Retrying changes nothing until the deployment does, so the copy says so rather than
         // inviting a second press.
         //

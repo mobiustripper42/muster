@@ -32,6 +32,7 @@ import {
   XOLA_TRIP_MINUTES,
   busyIntervalsFor,
   candidateHoldMinutes,
+  candidateTripMinutes,
   hullIsBusy,
   minutesOfDay,
   pendingIntervalsFor,
@@ -316,16 +317,27 @@ function variationMatches(v: PriceVariation, date: string): boolean {
   }
 }
 
-/** Is the physical slot `(vesselId, date, time)` blocked (DEC-125)? Covers all three block
- *  kinds: a `vesselHold` on the exact slot, a `vessel` block whose date range contains
- *  `date`, or a `location` block at `locationId` on `date` whose time window contains
- *  `time`. Shared by the deriver and `candidateVessels` so both agree. */
+/**
+ * Is the physical slot `(vesselId, date, time)` blocked (DEC-125)? Covers all three block kinds:
+ * a `vesselHold` on the exact slot, a `vessel` block whose date range contains `date`, or a
+ * `location` block at `locationId` on `date` that the trip would be **on the water during**.
+ * Shared by the deriver, both claims and the blocks page's "removes N", so all four agree.
+ *
+ * **A location block is measured against the whole trip, not its start (issue #1089).** It used
+ * to ask only whether the departure time fell inside the window, so a 15:31 river closure left
+ * the 15:30 trip — out until 17:10 — for sale. `tripMinutes` is the offering's time on the water
+ * (`candidateTripMinutes`); turnaround at the dock doesn't need the river (operator, 2026-09-25).
+ * Half-open at both ends, like `hullIsBusy`: back exactly as it closes, or leaving exactly as it
+ * reopens, is clear. A window or time that won't parse blocks the slot — bad data costs a slot,
+ * never a boat sold into a closure.
+ */
 export function isSlotBlocked(
   blocks: readonly Block[],
   locationId: string,
   vesselId: VesselId,
   date: string,
   time: string,
+  tripMinutes: number,
 ): boolean {
   return blocks.some((b) => {
     switch (b.kind) {
@@ -339,13 +351,14 @@ export function isSlotBlocked(
           b.startDate <= date &&
           date <= b.endDate
         );
-      case "location":
-        return (
-          String(b.locationId) === locationId &&
-          b.date === date &&
-          b.startTime <= time &&
-          time <= b.endTime
-        );
+      case "location": {
+        if (String(b.locationId) !== locationId || b.date !== date) return false;
+        const start = minutesOfDay(time);
+        const closes = minutesOfDay(b.startTime);
+        const reopens = minutesOfDay(b.endTime);
+        if (![start, closes, reopens, tripMinutes].every(Number.isFinite)) return true;
+        return start < reopens && start + tripMinutes > closes;
+      }
     }
   });
 }
@@ -546,7 +559,14 @@ export function deriveVirtualAvailability(
           // has to show it; `unavailable` is hidden there when nothing runs at that time, so
           // ranking busy first made an operator's own blackout disappear from the grid and from
           // the Blocked count. Being unsellable twice over is still blocked.
-          const blocked = isSlotBlocked(blocks, String(offering.locationId), vesselId, date, time);
+          const blocked = isSlotBlocked(
+            blocks,
+            String(offering.locationId),
+            vesselId,
+            date,
+            time,
+            candidateTripMinutes(offering),
+          );
           slots.push({
             offeringId: offering.id,
             vesselId,

@@ -37,7 +37,14 @@ import { asId, type OfferingId, type VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { recordTrail } from "./trail.js";
 import { hasDeparted, isActiveMusterClaim, isOnScheduleGrid, isSlotBlocked, slotIdentity } from "./availability.js";
-import { busyIntervalsFor, candidateHoldMinutes, hullIsBusy, minutesOfDay, pendingIntervalsFor } from "./hull-busy.js";
+import {
+  busyIntervalsFor,
+  candidateHoldMinutes,
+  candidateTripMinutes,
+  hullIsBusy,
+  minutesOfDay,
+  pendingIntervalsFor,
+} from "./hull-busy.js";
 import { isLivePending, pendingLiveSince } from "./pending.js";
 
 // The payment window and its env override live in `pending.ts` — the deriver needs the same
@@ -68,7 +75,10 @@ export function candidateVessels(input: {
     .map((id) => vesselById.get(String(id)))
     .filter((v): v is Vessel => v !== undefined)
     .filter((v) => v.coiMaxPax >= guestCount)
-    .filter((v) => !isSlotBlocked(blocks, String(offering.locationId), v.id, date, time))
+    .filter(
+      (v) =>
+        !isSlotBlocked(blocks, String(offering.locationId), v.id, date, time, candidateTripMinutes(offering)),
+    )
     .sort(
       (a, b) =>
         a.coiMaxPax - b.coiMaxPax || String(a.id).localeCompare(String(b.id)),
@@ -225,7 +235,10 @@ function candidatesUnder(
   if (vessel.coiMaxPax < req.guestCount) return { unbookable: "over_capacity" };
   // A named refusal, not an empty candidate list: an empty list reads as "busy", and a block is
   // the operator's own to lift — the message has to say which.
-  if (rules.blocks === "refuse" && isSlotBlocked(blocks, String(offering.locationId), vessel.id, req.date, req.time)) {
+  if (
+    rules.blocks === "refuse" &&
+    isSlotBlocked(blocks, String(offering.locationId), vessel.id, req.date, req.time, candidateTripMinutes(offering))
+  ) {
     return { unbookable: "blocked" };
   }
   return { candidates: [vessel.id] };

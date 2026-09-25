@@ -584,6 +584,28 @@ describe("deriveVirtualAvailability — blocks subtract (DEC-125)", () => {
     expect(out.find((s) => s.time === "17:00")!.status).toBe("available"); // outside window
   });
 
+  it("location block darks a departure whose TRIP runs into it, by the offering's trip length (issue #1089)", () => {
+    const at = (tripLengthMinutes?: number) =>
+      deriveVirtualAvailability({
+        ...base,
+        offerings: [
+          offering({
+            ...(tripLengthMinutes !== undefined ? { tripLengthMinutes } : {}),
+            schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["13:30", "15:30"] },
+          }),
+        ],
+        blocks: [{ id: asId<"BlockId">("blk-c"), kind: "location", locationId: asId<"LocationId">("loc-dock"), date: "2026-07-04", startTime: "15:31", endTime: "18:00" }],
+      });
+    // 15:30 is out until 17:10 — through the closure. 13:30 is back at 15:10.
+    expect(at(100).find((s) => s.time === "15:30")!.status).toBe("blocked");
+    expect(at(100).find((s) => s.time === "13:30")!.status).toBe("available");
+    // A 150-minute trip from 13:30 is out until 16:00, so it is blocked too.
+    expect(at(150).find((s) => s.time === "13:30")!.status).toBe("blocked");
+    // No trip length set → the 100-minute fallback every other reader uses.
+    expect(at(undefined).find((s) => s.time === "15:30")!.status).toBe("blocked");
+    expect(at(undefined).find((s) => s.time === "13:30")!.status).toBe("available");
+  });
+
   it("a location block at a DIFFERENT location doesn't touch this offering", () => {
     const out = deriveVirtualAvailability({
       ...base,
@@ -730,21 +752,59 @@ describe("deriveVirtualAvailability — what outranks a live pending row", () =>
 
 describe("isSlotBlocked — shared block predicate", () => {
   const L = "loc-dock";
+  const TRIP = 100;
   it("vesselHold matches exact slot only", () => {
     const blocks: Block[] = [{ id: asId<"BlockId">("b"), kind: "vesselHold", vesselId: V, date: "2026-07-04", time: "13:30" }];
-    expect(isSlotBlocked(blocks, L, V, "2026-07-04", "13:30")).toBe(true);
-    expect(isSlotBlocked(blocks, L, V, "2026-07-04", "17:00")).toBe(false);
+    expect(isSlotBlocked(blocks, L, V, "2026-07-04", "13:30", TRIP)).toBe(true);
+    expect(isSlotBlocked(blocks, L, V, "2026-07-04", "17:00", TRIP)).toBe(false);
   });
   it("vessel block covers its inclusive date range", () => {
     const blocks: Block[] = [{ id: asId<"BlockId">("b"), kind: "vessel", vesselId: V, startDate: "2026-07-04", endDate: "2026-07-06" }];
-    expect(isSlotBlocked(blocks, L, V, "2026-07-05", "13:30")).toBe(true);
-    expect(isSlotBlocked(blocks, L, V, "2026-07-07", "13:30")).toBe(false);
+    expect(isSlotBlocked(blocks, L, V, "2026-07-05", "13:30", TRIP)).toBe(true);
+    expect(isSlotBlocked(blocks, L, V, "2026-07-07", "13:30", TRIP)).toBe(false);
   });
   it("location block covers its time window at its location", () => {
     const blocks: Block[] = [{ id: asId<"BlockId">("b"), kind: "location", locationId: asId<"LocationId">("loc-dock"), date: "2026-07-04", startTime: "13:00", endTime: "14:00" }];
-    expect(isSlotBlocked(blocks, "loc-dock", V, "2026-07-04", "13:30")).toBe(true);
-    expect(isSlotBlocked(blocks, "loc-dock", V, "2026-07-04", "15:00")).toBe(false);
-    expect(isSlotBlocked(blocks, "loc-other", V, "2026-07-04", "13:30")).toBe(false);
+    expect(isSlotBlocked(blocks, "loc-dock", V, "2026-07-04", "13:30", TRIP)).toBe(true);
+    expect(isSlotBlocked(blocks, "loc-dock", V, "2026-07-04", "15:00", TRIP)).toBe(false);
+    expect(isSlotBlocked(blocks, "loc-other", V, "2026-07-04", "13:30", TRIP)).toBe(false);
+  });
+
+  // ── Issue #1089: a closure covers every trip that would be ON THE WATER during it ──────
+  // It used to test the departure's START only, so a closure beginning a minute after a boat
+  // left kept that trip for sale — a boat sold into a closed river.
+  const closure: Block[] = [{ id: asId<"BlockId">("c"), kind: "location", locationId: asId<"LocationId">("loc-dock"), date: "2026-07-04", startTime: "15:31", endTime: "18:00" }];
+
+  it("blocks a departure that starts BEFORE the closure but is still out when it begins (operator's case)", () => {
+    // 15:30 + 100 = 17:10, straight through a 15:31 closure.
+    expect(isSlotBlocked(closure, L, V, "2026-07-04", "15:30", TRIP)).toBe(true);
+  });
+
+  it("measures by TRIP length — a trip back before the closure is not blocked", () => {
+    // 13:45 + 100 = 15:25, back six minutes before the river closes (operator, 2026-09-25: trip,
+    // not hold — turnaround at the dock doesn't need the river).
+    expect(isSlotBlocked(closure, L, V, "2026-07-04", "13:45", TRIP)).toBe(false);
+  });
+
+  it("half-open at both edges: back exactly at the start, or leaving exactly at the end, is clear", () => {
+    expect(isSlotBlocked(closure, L, V, "2026-07-04", "13:51", TRIP)).toBe(false); // back 15:31
+    expect(isSlotBlocked(closure, L, V, "2026-07-04", "18:00", TRIP)).toBe(false); // leaves 18:00
+    expect(isSlotBlocked(closure, L, V, "2026-07-04", "17:59", TRIP)).toBe(true);
+  });
+
+  it("fails closed: a window or time that won't parse blocks the slot rather than selling it", () => {
+    const bad: Block[] = [{ id: asId<"BlockId">("bad"), kind: "location", locationId: asId<"LocationId">("loc-dock"), date: "2026-07-04", startTime: "3pm", endTime: "18:00" }];
+    expect(isSlotBlocked(bad, L, V, "2026-07-04", "09:00", TRIP)).toBe(true);
+    expect(isSlotBlocked(closure, L, V, "2026-07-04", "9ish", TRIP)).toBe(true);
+    expect(isSlotBlocked(closure, L, V, "2026-07-04", "09:00", Number.NaN)).toBe(true);
+    // …only at its own location and date — bad data there doesn't leak to other docks or days.
+    expect(isSlotBlocked(bad, "loc-other", V, "2026-07-04", "09:00", TRIP)).toBe(false);
+    expect(isSlotBlocked(bad, L, V, "2026-07-05", "09:00", TRIP)).toBe(false);
+  });
+
+  it("a longer trip reaches further back", () => {
+    expect(isSlotBlocked(closure, L, V, "2026-07-04", "13:30", 150)).toBe(true); // back 16:00
+    expect(isSlotBlocked(closure, L, V, "2026-07-04", "13:30", 100)).toBe(false); // back 15:10
   });
 });
 

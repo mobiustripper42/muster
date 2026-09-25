@@ -17,6 +17,7 @@
  */
 import type { Block, Event, Offering, Reservation, Vessel } from "../domain/entities.js";
 import { deriveVirtualAvailability, isSlotBlocked } from "./availability.js";
+import { candidateTripMinutes, XOLA_TRIP_MINUTES } from "./hull-busy.js";
 
 export interface BlockImpactInput {
   offerings: readonly Offering[];
@@ -66,17 +67,22 @@ export function computeBlockImpact(block: Block, input: BlockImpactInput): Block
     reservations: input.reservations,
   });
 
-  // The deriver keys a location block on the OFFERING's location; recover it per slot.
-  const locByOffering = new Map(
-    input.offerings.map((o) => [String(o.id), String(o.locationId)]),
-  );
+  // The deriver keys a location block on the OFFERING's location and measures it against the
+  // offering's trip length (issue #1089); recover both per slot.
+  const offeringById = new Map(input.offerings.map((o) => [String(o.id), o]));
+  // A materialized trip is measured by ITS frozen duration, never the offering's current one: an
+  // operator shortening the cruise after a booking must not hide that booking's conflict.
+  const eventById = new Map(input.events.map((e) => [String(e.id), e]));
 
   let removedSlots = 0;
   let conflictCount = 0;
   let conflictCents = 0;
   for (const s of slots) {
-    const locationId = locByOffering.get(String(s.offeringId)) ?? "";
-    if (!isSlotBlocked([block], locationId, s.vesselId, s.date, s.time)) continue;
+    const offering = offeringById.get(String(s.offeringId));
+    const locationId = offering ? String(offering.locationId) : "";
+    const frozen = s.eventId !== undefined ? eventById.get(String(s.eventId))?.durationMinutes : undefined;
+    const tripMinutes = frozen ?? (offering ? candidateTripMinutes(offering) : XOLA_TRIP_MINUTES);
+    if (!isSlotBlocked([block], locationId, s.vesselId, s.date, s.time, tripMinutes)) continue;
     if (s.status === "booked") {
       conflictCount += 1;
       conflictCents += s.priceCents;

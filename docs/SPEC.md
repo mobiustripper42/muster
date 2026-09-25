@@ -2536,6 +2536,12 @@ A block is another subtraction in the availability rule, which is why the comput
 it for nothing. Blocks are their **own surface**, not a field on the offering — and an operator's
 hold on a boat writes a block, never a trip.
 
+**A location block closes every departure that would be on the water during it**, not only those
+that leave inside the window. A 3:31 closure takes the 3:30 trip too, because that boat is still
+out when the river closes. Measured by the offering's trip length — time on the water — not its
+hold, since turnaround happens at the dock. A trip back exactly as the window opens, or leaving
+exactly as it ends, is clear.
+
 **2.10.4 The catalog.**
 
 An offering carries its descriptive content, its **location**, the **boats** it runs on, one

@@ -604,8 +604,14 @@ export function HoldConfirm({ data }: { data: CalendarData }) {
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
-        <AppLink href={cancelHref} className="text-sm text-muted">
-          Cancel
+        {/* A close ✕, not "Cancel" (16.1d): beside Book it and Block it, a word read as a third
+            thing to do TO the booking. This only dismisses the question; nothing is written. */}
+        <AppLink
+          href={cancelHref}
+          aria-label="Close"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-lg leading-none text-muted"
+        >
+          <span aria-hidden="true">✕</span>
         </AppLink>
         {p.action === "hold" ? (
           // A phone booking (16.1, §2.10.6). A link, not a form: booking needs the customer's

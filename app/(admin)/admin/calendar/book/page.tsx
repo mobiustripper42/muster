@@ -1,12 +1,14 @@
 import type { Block, Event, Offering, Reservation, Vessel } from "@core/domain/entities.js";
-import { deriveVirtualAvailability, resolveBasePrice } from "@core/reservations/availability.js";
-import { effectiveIncludedGuests, GRATUITY_DEFAULT_BPS, gratuityTiersFor } from "@core/reservations/pricing.js";
+import { deriveVirtualAvailability } from "@core/reservations/availability.js";
+import { checkoutQuote } from "@core/reservations/checkout-quote.js";
+import type { PaymentConfig } from "@core/reservations/payment-config.js";
 import { settingsInputClass } from "../../../../../components/admin/settings-field";
 import { AdminSignedOut } from "../../../../../components/admin/admin-signed-out";
+import { AppLink } from "../../../../../components/ui/app-link";
 import { BackLink } from "../../../../../components/ui/back-link";
+import { GetFormSubmit } from "../../../../../components/ui/get-form-submit";
 import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
-import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../../components/ui/version-tag";
 import { readSubject } from "../../../../lib/auth";
 import { errCopyFor } from "../../../../lib/err-copy";
@@ -14,17 +16,25 @@ import { readFormDraft } from "../../../../lib/form-draft";
 import { getRepo } from "../../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../../lib/swallowed";
 import { clockTime, formatFullDay } from "../calendar-view";
-import { bookPhoneReservation, type BookErr } from "./actions";
+import type { BookErr } from "./actions";
+import { PhoneBookingForm } from "./phone-booking-form";
 
 /**
- * /admin/calendar/book (16.1, SPEC §2.10.6) — someone rings up, and the operator books them.
+ * /admin/calendar/book (16.1, 16.1d, SPEC §2.10.6) — someone rings up, and the operator books them.
  *
- * Reached from the calendar's confirm banner, which names one boat and one time. Collects what
- * public checkout collects — name, phone, email, party size, tip — and writes an unpaid booking
+ * Reached from the calendar's confirm banner, which names one boat and one time. Two steps, the
+ * same two a customer takes: **how many**, then **the checkout** — the public checkout's own
+ * contact fields, tip tiles, money summary and pay bar (`components/checkout/`, issue #1092),
+ * priced by the same `checkoutQuote` on the boat the operator clicked. It writes an unpaid booking
  * that holds the boat until the customer pays or a person cancels it (DEC-163).
  *
- * **No card field, ever** (DEC-162). **No waiver box:** consent is the customer's to give, so it
- * is taken where they pay. Server-rendered and no-JS like the rest of the calendar (DEC-026).
+ * **Passengers first because the money depends on them** — extras, and every percentage built on
+ * the fare. The public funnel gets the count from `/book` before checkout; here the calendar has
+ * already chosen the boat and the time, so the count is the only thing left to ask. A plain GET,
+ * so it works without JS like the rest of the calendar (DEC-026); the checkout step is a client
+ * island only because tip tiles re-total live.
+ *
+ * **No card field, ever** (DEC-162). **No waiver box:** phone orders collect none (2026-09-23).
  */
 
 export const dynamic = "force-dynamic";
@@ -34,6 +44,10 @@ type Search = {
   vessel?: string;
   time?: string;
   offering?: string;
+  /** Selects the checkout step, for this party. */
+  guests?: string;
+  /** Prefills the passengers step, from the checkout's Change link. */
+  party?: string;
   err?: string;
 };
 
@@ -55,9 +69,7 @@ const ERR_COPY: Record<BookErr, string> = {
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM = /^\d{2}:\d{2}$/;
-
-const dollars = (cents: number) =>
-  `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const SURFACE = "/admin/calendar/book";
 
 export default async function BookPage({ searchParams }: { searchParams: Promise<Search> }) {
   const sp = await searchParams;
@@ -74,14 +86,16 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   let blocks: Block[];
   let events: Event[];
   let reservations: Reservation[];
+  let config: PaymentConfig;
   try {
     const repo = getRepo();
-    [offerings, vessels, blocks, events, reservations] = await Promise.all([
+    [offerings, vessels, blocks, events, reservations, config] = await Promise.all([
       repo.listOfferings(),
       repo.listVessels(),
       repo.listBlocks(),
       repo.listEvents(),
       repo.listAllReservations(),
+      repo.getPaymentConfig(),
     ]);
   } catch (e) {
     logSwallowed("admin/calendar/book", e, "the booking page did not load");
@@ -107,12 +121,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
           events,
           reservations,
           asOf: new Date().toISOString(),
-        }).filter(
-          (s) =>
-            String(s.vesselId) === vesselId &&
-            s.time === time &&
-            s.status === "available",
-        )
+        }).filter((s) => String(s.vesselId) === vesselId && s.time === time && s.status === "available")
       : [];
   const choices = slots
     .map((s) => offerings.find((o) => String(o.id) === String(s.offeringId)))
@@ -130,18 +139,24 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
     );
   }
 
-  const draft = sp.err ? await readFormDraft("/admin/calendar/book") : null;
+  const draft = sp.err ? await readFormDraft(SURFACE) : null;
   const offering = choices.find((o) => String(o.id) === (draft?.get("offeringId") ?? sp.offering)) ?? choices[0]!;
-  const tiers = gratuityTiersFor(offering);
-  const tipDefault = draft?.get("gratuityBps") ?? String(tiers.includes(GRATUITY_DEFAULT_BPS) ? GRATUITY_DEFAULT_BPS : tiers[0]);
-  const included = effectiveIncludedGuests(offering, vessel);
-  const error = errCopyFor(ERR_COPY, sp.err, "unreachable");
-  const input = `${settingsInputClass} w-full`;
+  const cap = vessel.coiMaxPax;
+  const guests = Number(sp.guests);
+  const guestsOk = sp.guests !== undefined && Number.isInteger(guests) && guests >= 1 && guests <= cap;
+  // A count that came in and could not be used is said on the passengers step, not dropped.
+  let guestsErr: string | null = null;
+  if (sp.guests !== undefined && !guestsOk) {
+    guestsErr =
+      Number.isInteger(guests) && guests > cap
+        ? `${vessel.name} takes ${cap} guests at most. A bigger party needs a bigger boat — pick one on the calendar.`
+        : "Enter how many guests, 1 or more.";
+  }
 
-  return (
-    <Shell width="md">
+  const slotQuery = { date, vessel: String(vessel.id), time };
+  const header = (
+    <>
       <BackLink href={back}>Back to calendar</BackLink>
-
       <header className="flex flex-col gap-1">
         <p className="text-xs text-muted">Calendar / Book by phone</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">
@@ -149,91 +164,112 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
         </h1>
         <p className="text-sm text-muted">{formatFullDay(date)}</p>
       </header>
+    </>
+  );
 
+  if (!guestsOk) {
+    const input = `${settingsInputClass} w-full`;
+    return (
+      <Shell width="md">
+        {header}
+        {guestsErr ? <Notice tone="bad">{guestsErr}</Notice> : null}
+        {/* GET back to this page: the count selects the checkout step. No write happens here. */}
+        <form method="get" action={SURFACE} className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
+          <input type="hidden" name="date" value={slotQuery.date} />
+          <input type="hidden" name="vessel" value={slotQuery.vessel} />
+          <input type="hidden" name="time" value={slotQuery.time} />
+          {choices.length > 1 ? (
+            <label className="flex flex-col gap-1 text-xs font-medium text-ink">
+              Cruise
+              <select name="offering" defaultValue={String(offering.id)} className={input}>
+                {choices.map((o) => (
+                  <option key={String(o.id)} value={String(o.id)}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <>
+              <input type="hidden" name="offering" value={String(offering.id)} />
+              <p className="text-sm text-ink">{offering.name}</p>
+            </>
+          )}
+          <label className="flex flex-col gap-1 text-xs font-medium text-ink">
+            <span>
+              Guests <span className="font-normal text-muted">· this boat takes {cap}</span>
+            </span>
+            <input
+              name="guests"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={cap}
+              required
+              defaultValue={sp.party ?? ""}
+              className={input}
+            />
+          </label>
+          <GetFormSubmit className="w-full rounded-card bg-accent px-4 py-2.5 text-sm font-semibold text-white">
+            Continue
+          </GetFormSubmit>
+        </form>
+        <VersionTag />
+      </Shell>
+    );
+  }
+
+  const quote = checkoutQuote({
+    offering,
+    vessel,
+    vesselId: vessel.id,
+    events,
+    config,
+    date,
+    time,
+    guestCount: guests,
+  });
+  const { tiers, defaultBps, ...money } = quote;
+  const changeHref = `${SURFACE}?${new URLSearchParams({ ...slotQuery, offering: String(offering.id), party: String(guests) }).toString()}`;
+  const error = errCopyFor(ERR_COPY, sp.err, "unreachable");
+  const draftTip = Number(draft?.get("gratuityBps"));
+
+  return (
+    <Shell width="md">
+      {header}
       {error ? <Notice tone="bad">{error}</Notice> : null}
 
-      <form action={bookPhoneReservation} className="mt-2 flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
-        <input type="hidden" name="date" value={date} />
-        <input type="hidden" name="time" value={time} />
-        <input type="hidden" name="vesselId" value={String(vessel.id)} />
-
-        {choices.length > 1 ? (
-          <label className="flex flex-col gap-1 text-xs font-medium text-ink">
-            Cruise
-            <select name="offeringId" defaultValue={String(offering.id)} className={input}>
-              {choices.map((o) => (
-                <option key={String(o.id)} value={String(o.id)}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <>
-            <input type="hidden" name="offeringId" value={String(offering.id)} />
-            <p className="text-sm text-ink">{offering.name}</p>
-          </>
-        )}
-        <p className="text-xs text-muted">
-          {dollars(resolveBasePrice(offering, date))} for up to {included} guest{included === 1 ? "" : "s"}
-          {offering.extraGuestPriceCents > 0 ? `, ${dollars(offering.extraGuestPriceCents)} each after that` : ""}.
-          Tax, service fee and tip are added the same as online.
-        </p>
-
-        <label className="flex flex-col gap-1 text-xs font-medium text-ink">
-          Guest’s full name
-          <input name="customerName" required autoComplete="off" defaultValue={draft?.get("customerName") ?? ""} className={input} />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-ink">
-          Mobile number
-          <input name="phone" type="tel" required autoComplete="off" defaultValue={draft?.get("phone") ?? ""} className={input} />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-ink">
-          <span>
-            Email <span className="font-normal text-muted">· optional</span>
-          </span>
-          <input name="email" type="email" autoComplete="off" defaultValue={draft?.get("email") ?? ""} className={input} />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-ink">
-          <span>
-            Guests <span className="font-normal text-muted">· this boat takes {vessel.coiMaxPax}</span>
-          </span>
-          <input
-            name="guests"
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={vessel.coiMaxPax}
-            required
-            defaultValue={draft?.get("guests") ?? ""}
-            className={input}
-          />
-        </label>
-
-        <fieldset className="flex flex-col gap-1">
-          <legend className="text-xs font-medium text-ink">Crew tip</legend>
-          <div className="flex gap-2">
-            {tiers.map((bps) => (
-              <label
-                key={bps}
-                className="flex flex-1 basis-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-line px-3 py-2 text-sm text-ink has-[:checked]:border-accent has-[:checked]:font-medium"
-              >
-                <input type="radio" name="gratuityBps" value={bps} defaultChecked={String(bps) === tipDefault} />
-                {bps / 100}%
-              </label>
-            ))}
+      <div className="flex flex-col rounded-card border border-line bg-card">
+        {/* The trip, changeable — the public checkout's "Your trip" row. */}
+        <div className="px-4 pt-4">
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Their trip</div>
+          <div className="flex items-center gap-2.5 rounded-xl border border-line px-3.5 py-3">
+            <span className="min-w-0 flex-1 text-sm">
+              <b className="font-semibold">{offering.name}</b>
+              <span className="text-muted">
+                {" "}
+                · {guests} {guests === 1 ? "guest" : "guests"}
+              </span>
+            </span>
+            <AppLink href={changeHref} className="text-xs font-semibold text-accent">
+              Change
+            </AppLink>
           </div>
-        </fieldset>
+        </div>
 
-        <p className="text-xs text-muted">
-          This holds the boat until the customer pays or you cancel it — it never expires on its
-          own. They agree to the waiver when they pay.
-        </p>
-
-        <SubmitButton className="w-full rounded-card bg-accent px-4 py-2.5 text-sm font-semibold text-white">
-          Book it
-        </SubmitButton>
-      </form>
+        <PhoneBookingForm
+          slot={{ ...slotQuery, vesselId: slotQuery.vessel, offeringId: String(offering.id), guests }}
+          money={money}
+          tiers={tiers}
+          initial={{
+            name: draft?.get("customerName") ?? "",
+            phone: draft?.get("phone") ?? "",
+            email: draft?.get("email") ?? "",
+            gratuityBps: Number.isInteger(draftTip) && draftTip > 0 ? draftTip : defaultBps,
+          }}
+          restored={draft !== null}
+        />
+      </div>
 
       <VersionTag />
     </Shell>

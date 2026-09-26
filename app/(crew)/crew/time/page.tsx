@@ -167,6 +167,7 @@ export default async function CrewTime({
             Here there are two and only one is live, which is a different thing to say. */}
         <div className="flex flex-col gap-2 p-3">
           <form action={clockInNow}>
+            {/* eslint-disable-next-line no-restricted-syntax -- live/idle clock pair, green follows enablement (operator 2026-08-09), not a #1103 kind */}
             <SubmitButton disabled={clockInOff} className={clockBtn(!clockInOff)}>
               Clock in
             </SubmitButton>
@@ -175,6 +176,7 @@ export default async function CrewTime({
               error or a destructive act — `bad` stays reserved for the earlier-day warning
               below and for Delete on the admin bench. */}
           <form action={clockOutNow}>
+            {/* eslint-disable-next-line no-restricted-syntax -- live/idle clock pair, green follows enablement (operator 2026-08-09), not a #1103 kind */}
             <SubmitButton disabled={clockOutOff} className={clockBtn(!clockOutOff)}>
               Clock out
             </SubmitButton>
@@ -488,7 +490,7 @@ function PunchForm({
             left silent, because the first cut of this island attached its listener to
             the button instead of the enclosing form — so it did nothing at all, and
             only a test caught it. If this stops warning, that's where to look. */}
-        <DirtySubmit className="min-h-[44px] rounded-card bg-ok px-4 font-semibold text-white disabled:opacity-40">
+        <DirtySubmit className="btn-primary min-h-[44px]">
           Save
         </DirtySubmit>
         <AppLink
@@ -507,7 +509,7 @@ function PunchForm({
         {mode === "edit" && (
           <SubmitButton
             formAction={deleteMyPunch}
-            className="ml-auto min-h-[44px] rounded-card border border-bad px-4 font-semibold text-bad"
+            className="btn-danger ml-auto min-h-[44px]"
           >
             Delete
           </SubmitButton>

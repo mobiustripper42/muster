@@ -112,7 +112,7 @@ export default async function CrewTimeOff({
               <span className="font-medium text-ink">{fmtDateRange(w.start, w.end)}</span>
               <form action={removeMyTimeOff}>
                 <input type="hidden" name="id" value={w.id} />
-                <SubmitButton className="text-sm text-bad underline">Remove</SubmitButton>
+                <SubmitButton className="btn-quiet text-bad">Remove</SubmitButton>
               </form>
             </div>
           ))
@@ -148,7 +148,7 @@ export default async function CrewTimeOff({
               <li key={d.value} className="border-b border-line last:border-b-0">
                 <label
                   htmlFor={`day-${d.value}`}
-                  className="flex min-h-[52px] cursor-pointer items-center gap-3"
+                  className="flex min-h-[52px] items-center gap-3"
                 >
                   <input
                     id={`day-${d.value}`}
@@ -163,7 +163,7 @@ export default async function CrewTimeOff({
               </li>
             ))}
           </ul>
-          <SubmitButton className="min-h-[52px] w-full rounded-card bg-accent font-semibold text-white">
+          <SubmitButton className="btn-primary min-h-[52px] w-full">
             Save
           </SubmitButton>
         </form>
@@ -216,7 +216,7 @@ function AddForm({
           className={inputClass}
         />
       </div>
-      <SubmitButton className="min-h-[52px] w-full rounded-card bg-accent font-semibold text-white">
+      <SubmitButton className="btn-primary min-h-[52px] w-full">
         Add
       </SubmitButton>
     </form>

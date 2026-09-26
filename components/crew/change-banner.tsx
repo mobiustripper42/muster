@@ -81,9 +81,7 @@ export function ChangeBanner({
         <form action={dismiss}>
           <input type="hidden" name="shiftId" value={shiftId} />
           {/* 44px minimum — this is a phone surface and the button sits beside a timestamp. */}
-          <SubmitButton className="min-h-[44px] rounded-card bg-accent px-4 text-sm font-semibold text-white">
-            Got it
-          </SubmitButton>
+          <SubmitButton className="btn-primary min-h-[44px]">Got it</SubmitButton>
         </form>
       </div>
     </section>

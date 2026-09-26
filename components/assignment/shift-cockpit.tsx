@@ -213,7 +213,7 @@ export async function ShiftCockpit({
         // drill-in's way back (desktop shows the board alongside — link hidden).
         <AppLink
           href={ctx ? `/admin/shifts?${ctx}` : "/admin/shifts"}
-          className="inline-flex min-h-9 items-center self-start text-xs font-semibold text-accent lg:hidden"
+          className="btn-quiet inline-flex min-h-9 items-center self-start text-xs lg:hidden"
         >
           <span aria-hidden="true">←&nbsp;</span>All shifts
         </AppLink>
@@ -305,7 +305,7 @@ export async function ShiftCockpit({
       {messagingEnabled() && view.date >= vesselDateOf(now) && (
         <AppLink
           href={`/admin/messages/${standingThreadId("cohort", TENANT_ID, view.date)}`}
-          className="inline-flex min-h-9 items-center self-start rounded-card border border-line bg-card px-3 text-sm font-semibold text-accent shadow-sm"
+          className="btn-secondary btn-sm min-h-9 self-start"
         >
           ✉ Message this day’s crew →
         </AppLink>

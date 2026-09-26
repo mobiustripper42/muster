@@ -158,7 +158,7 @@ export function GuestCard() {
           aria-label="Fewer guests"
           onClick={() => setCount(count - 1)}
           disabled={count <= 1}
-          className="h-[38px] w-[38px] rounded-[10px] border border-line bg-card text-xl leading-none text-ink disabled:opacity-40"
+          className="h-[38px] w-[38px] rounded-[10px] border border-line bg-card text-xl leading-none text-ink"
         >
           −
         </button>
@@ -174,7 +174,7 @@ export function GuestCard() {
           aria-label="More guests"
           onClick={() => setCount(count + 1)}
           disabled={count >= cap}
-          className="h-[38px] w-[38px] rounded-[10px] border border-line bg-card text-xl leading-none text-ink disabled:opacity-40"
+          className="h-[38px] w-[38px] rounded-[10px] border border-line bg-card text-xl leading-none text-ink"
         >
           +
         </button>
@@ -230,15 +230,13 @@ export function Footer({
         <AppLink
           data-testid="continue"
           href={`${continueBase}&guests=${count}`}
-          className="ml-auto flex items-center gap-2 rounded-[11px] bg-accent px-[22px] py-[13px] text-[14.5px] font-semibold text-white active:brightness-90"
+          className="btn-primary btn-lg ml-auto"
         >
           Continue →
         </AppLink>
       ) : (
-        <span
-          aria-disabled="true"
-          className="ml-auto flex cursor-not-allowed items-center gap-2 rounded-[11px] bg-accent/40 px-[22px] py-[13px] text-[14.5px] font-semibold text-white"
-        >
+        // Not pressable yet: `aria-disabled` fades it and shows "not allowed" (globals.css).
+        <span aria-disabled="true" className="btn-primary btn-lg ml-auto">
           Continue →
         </span>
       )}

@@ -354,6 +354,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       );
                     if (c.state === "selected")
                       return (
+                        // eslint-disable-next-line no-restricted-syntax -- selected day in the date picker, not an action button (#1103)
                         <span key={i} className={`${base} border border-accent bg-accent font-bold text-white`}>
                           {c.day}
                         </span>

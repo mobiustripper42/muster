@@ -262,7 +262,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                 aria-label={`Move variation ${i + 1} up`}
                 onClick={() => move(i, i - 1)}
                 disabled={i === 0}
-                className="rounded-lg border border-line px-2 py-1 text-xs text-muted disabled:opacity-40"
+                className="rounded-lg border border-line px-2 py-1 text-xs text-muted"
               >
                 ▲
               </button>
@@ -271,7 +271,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                 aria-label={`Move variation ${i + 1} down`}
                 onClick={() => move(i, i + 1)}
                 disabled={i === rows.length - 1}
-                className="rounded-lg border border-line px-2 py-1 text-xs text-muted disabled:opacity-40"
+                className="rounded-lg border border-line px-2 py-1 text-xs text-muted"
               >
                 ▼
               </button>

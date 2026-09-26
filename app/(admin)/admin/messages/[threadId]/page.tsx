@@ -71,6 +71,7 @@ export default async function AdminThread({
               key={m.id}
               className={`flex max-w-[85%] flex-col gap-0.5 rounded-card border px-3 py-2 ${
                 m.mine
+                  // eslint-disable-next-line no-restricted-syntax -- a chat message bubble, not an action button (#1103)
                   ? "self-end border-accent bg-accent text-white"
                   : "self-start border-line bg-card text-ink"
               }`}
@@ -108,7 +109,7 @@ export default async function AdminThread({
             <input type="checkbox" name="priority" className="h-4 w-4" />
             Priority — ring now, skip the batch hold
           </label>
-          <SubmitButton className="min-h-[44px] w-full rounded-lg bg-accent px-4 font-semibold text-white">
+          <SubmitButton className="btn-primary min-h-[44px] w-full">
             Send
           </SubmitButton>
         </form>
@@ -123,7 +124,7 @@ export default async function AdminThread({
 
 function BackLink() {
   return (
-    <AppLink href="/admin/messages" className="text-sm font-semibold text-accent">
+    <AppLink href="/admin/messages" className="btn-quiet text-sm">
       ‹ Messages
     </AppLink>
   );

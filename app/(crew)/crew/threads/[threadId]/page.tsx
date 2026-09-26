@@ -64,6 +64,7 @@ export default async function ThreadPage({
               key={m.id}
               className={`flex max-w-[85%] flex-col gap-0.5 rounded-card border px-3 py-2 ${
                 m.mine
+                  // eslint-disable-next-line no-restricted-syntax -- own-message chat bubble, not an action button (#1103)
                   ? "self-end border-accent bg-accent text-white"
                   : "self-start border-line bg-card text-ink"
               }`}
@@ -95,7 +96,7 @@ export default async function ThreadPage({
           placeholder="Message…"
           className="w-full resize-none rounded-card border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-muted"
         />
-        <SubmitButton className="min-h-[44px] w-full rounded-card bg-accent px-4 font-semibold text-white">
+        <SubmitButton className="btn-primary min-h-[44px] w-full">
           Send
         </SubmitButton>
       </form>

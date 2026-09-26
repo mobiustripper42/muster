@@ -43,7 +43,7 @@ export function WarmingPanel({
     return (
       <AppLink
         href={openHref}
-        className="inline-flex min-h-9 items-center self-start text-xs font-semibold text-accent"
+        className="btn-quiet inline-flex min-h-9 items-center self-start text-xs"
       >
         Trending at-risk <span aria-hidden="true">&nbsp;→</span>
       </AppLink>
@@ -60,7 +60,7 @@ export function WarmingPanel({
         </div>
         <AppLink
           href={closeHref}
-          className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
+          className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-xs"
         >
           Hide
         </AppLink>
@@ -82,7 +82,7 @@ export function WarmingPanel({
                 ) : (
                   <AppLink
                     href={r.href}
-                    className="inline-flex min-h-9 items-center font-semibold text-accent"
+                    className="btn-quiet inline-flex min-h-9 items-center"
                   >
                     {r.vesselName} · {r.dateLabel}
                     <span aria-hidden="true">&nbsp;↗</span>

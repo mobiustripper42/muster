@@ -254,8 +254,6 @@ function SignedOut({
 
 const inputClass =
   "min-h-[52px] rounded-card border border-line bg-card px-4 text-ink placeholder:text-muted";
-const primaryButtonClass =
-  "min-h-[52px] w-full rounded-card bg-accent font-semibold text-white";
 
 /**
  * SMS opt-in consent block (Twilio 10DLC vetting). A public, visible,
@@ -329,7 +327,7 @@ function EmailStep() {
           className={inputClass}
         />
         <SmsConsentBlock />
-        <SubmitButton className={primaryButtonClass}>
+        <SubmitButton className="btn-primary min-h-[52px] w-full">
           Email me a code
         </SubmitButton>
       </form>
@@ -370,14 +368,14 @@ function CodeStep({ email, err }: { email: string; err?: string }) {
           placeholder="123456"
           className={`${inputClass} tracking-[0.5em]`}
         />
-        <SubmitButton className={primaryButtonClass}>
+        <SubmitButton className="btn-primary min-h-[52px] w-full">
           Sign in
         </SubmitButton>
       </form>
       {/* Re-mint: the email rides as a hidden field (the cookie also holds it). */}
       <form action={requestLoginCode}>
         <input type="hidden" name="email" value={email} />
-        <SubmitButton className="text-sm text-muted underline">
+        <SubmitButton className="btn-quiet">
           Send a new code
         </SubmitButton>
       </form>
@@ -446,7 +444,7 @@ function CrewApp({
         href="/crew/open"
         prefetch={false}
         spinner="overlay"
-        className="relative flex items-center justify-between rounded-card border border-accent bg-accent px-4 py-3 font-semibold text-white shadow-sm"
+        className="btn-primary relative flex items-center justify-between shadow-sm"
       >
         <span>Pick up a shift</span>
         <span aria-hidden>›</span>
@@ -560,12 +558,15 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
       </div>
       {/* One form, two submit buttons — only the tapped button's response posts;
           each spins alone via its own name/value (DEC-089). No-JS still submits;
-          green Yes / red No is the scannable polarity (mockup). */}
+          green Yes / red No is the scannable polarity (mockup).
+          Not two of #1103's button kinds: a paired answer control, like a segmented switch.
+          Declining is not a loss (so not btn-danger), and Yes is green, not the accent. */}
       <form action={respondToAsk} className="grid grid-cols-2 gap-px bg-line">
         <input type="hidden" name="askId" value={ask.askId} />
         <SubmitButton
           name="response"
           value="declined"
+          // eslint-disable-next-line no-restricted-syntax -- paired Yes/No answer, not an action button (#1103)
           className="min-h-[52px] w-full bg-card font-semibold text-bad"
         >
           No
@@ -573,6 +574,7 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
         <SubmitButton
           name="response"
           value="accepted"
+          // eslint-disable-next-line no-restricted-syntax -- paired Yes/No answer, not an action button (#1103)
           className="min-h-[52px] w-full bg-ok font-semibold text-white"
         >
           Yes

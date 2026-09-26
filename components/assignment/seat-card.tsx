@@ -89,9 +89,7 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
         </span>
         <form action={confirmInto} className="inline-flex">
           <HiddenIds vm={vm} />
-          <SubmitButton className="min-h-9 rounded-full border border-ok-line bg-ok px-3 py-1 text-xs font-semibold text-white">
-            Confirm into seat
-          </SubmitButton>
+          <SubmitButton className="btn-primary btn-sm min-h-9">Confirm into seat</SubmitButton>
         </form>
       </div>
     );
@@ -105,13 +103,13 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
             <span className="flex gap-1">
               <a
                 href={tel(vm.occupant.phone)}
-                className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
+                className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-xs"
               >
                 <span aria-hidden="true">✆&nbsp;</span>Call
               </a>
               <a
                 href={sms(vm.occupant.phone)}
-                className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
+                className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-xs"
               >
                 <span aria-hidden="true">✉&nbsp;</span>Text
               </a>
@@ -124,7 +122,7 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
             (reportBail/DEC-028). Explicit choice, never a default — a wrong
             default starves the reliability log or wrongly penalizes. */}
         <details>
-          <summary className="cursor-pointer text-xs text-muted">
+          <summary className="text-xs text-muted">
             Remove from shift…
           </summary>
           <p className="py-1 text-xs text-muted">
@@ -135,15 +133,11 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
           <div className="flex flex-wrap gap-2 py-1">
             <form action={removeSeat} className="inline-flex">
               <HiddenIds vm={vm} />
-              <SubmitButton className="min-h-9 rounded-full border border-line bg-bg px-3 py-1 text-xs font-medium text-muted">
-                Remove
-              </SubmitButton>
+              <SubmitButton className="btn-secondary btn-sm min-h-9">Remove</SubmitButton>
             </form>
             <form action={reportBail} className="inline-flex">
               <HiddenIds vm={vm} />
-              <SubmitButton className="min-h-9 rounded-full border border-bad-line bg-bad-bg px-3 py-1 text-xs font-medium text-bad">
-                Bailed
-              </SubmitButton>
+              <SubmitButton className="btn-danger btn-sm min-h-9">Bailed</SubmitButton>
             </form>
           </div>
         </details>
@@ -193,7 +187,7 @@ export function SeatCard({
         // uniformly compact cockpit for now (may revisit if daily use wants the
         // actively-worked seat pre-opened).
         <details className="border-t border-line pt-2">
-          <summary className="cursor-pointer text-xs font-semibold text-muted">
+          <summary className="text-xs font-semibold text-muted">
             Eligible pool · {vm.pool.length}
             {vm.state === "Asked" && askedSummary(vm.pool)}
           </summary>
@@ -212,7 +206,7 @@ export function SeatCard({
       )}
 
       <details className="border-t border-line pt-2">
-        <summary className="cursor-pointer text-xs text-muted">
+        <summary className="text-xs text-muted">
           Manual override
         </summary>
         <p className="py-1 text-xs text-muted">
@@ -244,9 +238,7 @@ export function SeatCard({
                 </option>
               ))}
             </select>
-            <SubmitButton className="inline-flex min-h-[36px] items-center rounded-lg border border-accent bg-accent px-3 text-sm font-semibold text-white">
-              Place
-            </SubmitButton>
+            <SubmitButton className="btn-primary min-h-[36px]">Place</SubmitButton>
           </form>
         )}
       </details>

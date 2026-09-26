@@ -74,7 +74,7 @@ export function CrewMenu({
           `list-none` + the marker reset kills the default disclosure triangle in both engines. */}
       <summary
         aria-label="Open menu"
-        className="relative z-50 flex size-[44px] cursor-pointer list-none items-center justify-center rounded-lg text-ink [&::-webkit-details-marker]:hidden"
+        className="relative z-50 flex size-[44px] list-none items-center justify-center rounded-lg text-ink [&::-webkit-details-marker]:hidden"
       >
         {/* `group-open:z-50` puts the control ABOVE the panel. Without it, at 375px the panel
             (w-64, max-w-[80vw]) covers the top-right corner and there is NO visible way to close
@@ -188,13 +188,23 @@ export function CrewMenu({
         <div className="mt-auto flex flex-col gap-1 border-t border-line pt-2">
           {viewerIsActiveAdmin && (
             <form action={switchToAdmin}>
-              <SubmitButton className={`${rowClass} w-full text-accent`}>
+              {/* A drawer menu row, styled like the nav links above it — not one of #1103's
+                  button kinds, which would shrink it and recolour Sign out next to its siblings. */}
+              <SubmitButton
+                // eslint-disable-next-line no-restricted-syntax -- drawer menu row, not an action button (#1103)
+                className={`${rowClass} w-full text-accent`}
+              >
                 Switch to admin
               </SubmitButton>
             </form>
           )}
           <form action={signOut}>
-            <SubmitButton className={`${rowClass} w-full text-muted`}>Sign out</SubmitButton>
+            <SubmitButton
+              // eslint-disable-next-line no-restricted-syntax -- drawer menu row, not an action button (#1103)
+              className={`${rowClass} w-full text-muted`}
+            >
+              Sign out
+            </SubmitButton>
           </form>
         </div>
       </div>

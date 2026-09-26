@@ -137,13 +137,13 @@ export function PhoneBookingPane({
                 <AppLink href={backHref} className="text-sm text-muted">
                   Keep it
                 </AppLink>
-                <SubmitButton className="rounded-card bg-bad px-4 py-2 text-sm font-semibold text-white">
+                <SubmitButton className="btn-danger">
                   Cancel booking
                 </SubmitButton>
               </div>
             </form>
           ) : (
-            <AppLink href={cancelHref} data-testid="phone-booking-cancel" className="text-sm font-semibold text-bad">
+            <AppLink href={cancelHref} data-testid="phone-booking-cancel" className="btn-quiet text-sm text-bad">
               Cancel booking…
             </AppLink>
           )}

@@ -68,7 +68,7 @@ export function CopyButton({
           setTimeout(() => setCopied(false), 1500);
         }
       }}
-      className="min-h-[44px] shrink-0 rounded-lg border border-line bg-card px-3 text-xs font-medium text-ink"
+      className="btn-secondary btn-sm min-h-[44px] shrink-0"
     >
       {copied ? "Copied ✓" : label}
     </button>

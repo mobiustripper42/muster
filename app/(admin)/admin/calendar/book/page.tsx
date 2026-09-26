@@ -210,7 +210,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
               className={input}
             />
           </label>
-          <GetFormSubmit className="w-full rounded-card bg-accent px-4 py-2.5 text-sm font-semibold text-white">
+          <GetFormSubmit className="btn-primary w-full">
             Continue
           </GetFormSubmit>
         </form>
@@ -251,7 +251,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                 · {guests} {guests === 1 ? "guest" : "guests"}
               </span>
             </span>
-            <AppLink href={changeHref} className="text-xs font-semibold text-accent">
+            <AppLink href={changeHref} className="btn-quiet text-xs">
               Change
             </AppLink>
           </div>

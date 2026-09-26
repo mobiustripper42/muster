@@ -83,7 +83,7 @@ export default async function FindBookingPage({
                     className="min-h-[44px] w-full rounded-[10px] border border-line bg-bg px-3 text-[15px] text-ink placeholder:text-muted"
                   />
                 </label>
-                <SubmitButton className="min-h-[44px] rounded-[10px] bg-accent px-4 text-[14px] font-semibold text-white">
+                <SubmitButton className="btn-primary min-h-[44px]">
                   Send me my link
                 </SubmitButton>
               </form>

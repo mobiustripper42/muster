@@ -99,7 +99,7 @@ export default async function BookingSuccessPage(props: {
               We’ve texted you this as well, so you have a record of it.
             </p>
             <div className="mt-5">
-              <AppLink href="/book" className="text-[13px] font-semibold text-accent">
+              <AppLink href="/book" className="btn-quiet text-[13px]">
                 {SOLD_OUT_VIEW_COPY.action} →
               </AppLink>
             </div>
@@ -130,7 +130,7 @@ export default async function BookingSuccessPage(props: {
             reach out and we’ll resend.
           </p>
           <div className="mt-5">
-            <AppLink href="/book" className="text-[13px] font-semibold text-accent">
+            <AppLink href="/book" className="btn-quiet text-[13px]">
               Book another trip →
             </AppLink>
           </div>

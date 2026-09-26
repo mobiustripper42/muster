@@ -46,6 +46,7 @@ export function DirtySubmit({
 
   return (
     <span ref={ref} className="contents">
+      {/* eslint-disable-next-line no-restricted-syntax -- a wrapper forwarding its caller's class; the kind is checked at each <DirtySubmit> call site (#1103) */}
       <SubmitButton className={className} disabled={!dirty}>
         {children}
       </SubmitButton>

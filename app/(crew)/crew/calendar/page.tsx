@@ -87,7 +87,7 @@ export default async function CrewCalendar() {
           </label>
           <AddInstructions />
           <form action={hideCalendarUrl}>
-            <SubmitButton className="min-h-[44px] w-full rounded-lg bg-accent px-4 font-semibold text-white">
+            <SubmitButton className="btn-primary min-h-[44px] w-full">
               I’ve saved it — done
             </SubmitButton>
           </form>
@@ -109,12 +109,12 @@ export default async function CrewCalendar() {
             the old link stops working.
           </p>
           <form action={mintCalendarFeed}>
-            <SubmitButton className="min-h-[44px] w-full rounded-lg border border-accent bg-card px-4 font-semibold text-accent">
+            <SubmitButton className="btn-secondary min-h-[44px] w-full">
               Make a new link
             </SubmitButton>
           </form>
           <form action={revokeCalendarFeed}>
-            <SubmitButton className="min-h-[44px] w-full rounded-lg border border-bad-line bg-card px-4 font-semibold text-bad">
+            <SubmitButton className="btn-danger min-h-[44px] w-full">
               Turn off calendar sync
             </SubmitButton>
           </form>
@@ -126,7 +126,7 @@ export default async function CrewCalendar() {
             calendar app — that’s it.
           </p>
           <form action={mintCalendarFeed}>
-            <SubmitButton className="min-h-[44px] w-full rounded-lg bg-accent px-4 font-semibold text-white">
+            <SubmitButton className="btn-primary min-h-[44px] w-full">
               Create my calendar link
             </SubmitButton>
           </form>

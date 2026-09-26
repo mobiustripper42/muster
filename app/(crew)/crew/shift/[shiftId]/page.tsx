@@ -247,14 +247,14 @@ function Card({
               <span className="flex flex-wrap items-center gap-2">
                 <a
                   href={tel(c.phone)}
-                  className="inline-flex min-h-[44px] items-center rounded-card border border-line bg-bg px-3 font-semibold text-accent"
+                  className="btn-secondary min-h-[44px]"
                   aria-label={`Call ${c.name}`}
                 >
                   Call
                 </a>
                 <a
                   href={sms(c.phone)}
-                  className="inline-flex min-h-[44px] items-center rounded-card border border-line bg-bg px-3 font-semibold text-accent"
+                  className="btn-secondary min-h-[44px]"
                   aria-label={`Text ${c.name}`}
                 >
                   Text
@@ -263,7 +263,7 @@ function Card({
                   <form action={startDm} className="inline-flex">
                     <input type="hidden" name="crewMemberId" value={c.crewMemberId} />
                     <SubmitButton
-                      className="inline-flex min-h-[44px] items-center rounded-card border border-accent bg-accent px-3 font-semibold text-white"
+                      className="btn-primary min-h-[44px]"
                       aria-label={`Message ${c.name}`}
                     >
                       Message
@@ -294,7 +294,7 @@ function Card({
         {/* The summary owns the 44px hit area (clicks on details padding don't
             toggle); marker kept deliberately — the "…" + triangle reads as
             "more here" without borrowing the manifest's chevron idiom. */}
-        <summary className="flex min-h-[44px] cursor-pointer items-center text-sm font-semibold text-muted">
+        <summary className="flex min-h-[44px] items-center text-sm font-semibold text-muted">
           I can’t make it…
         </summary>
         <p className="pb-2 text-sm text-muted">
@@ -307,7 +307,7 @@ function Card({
             deliberate tap — the button reveals the confirm rather than dropping.
             No-JS: a nested <details>, same posture as the claim confirm (DEC-077). */}
         <details className="rounded-card border border-bad-line bg-bad-bg">
-          <summary className="flex min-h-[44px] cursor-pointer items-center justify-center px-4 text-sm font-semibold text-bad [&::-webkit-details-marker]:hidden">
+          <summary className="btn-quiet flex min-h-[44px] items-center justify-center px-4 text-sm text-bad [&::-webkit-details-marker]:hidden">
             Drop this shift
           </summary>
           <div className="flex flex-col gap-2 border-t border-bad-line px-4 py-3">
@@ -317,7 +317,7 @@ function Card({
             <form action={bailFromSeat}>
               <input type="hidden" name="seatId" value={card.mySeatId} />
               <input type="hidden" name="shiftId" value={shiftId} />
-              <SubmitButton className="min-h-[44px] w-full rounded-card border border-bad-line bg-bad px-4 font-semibold text-white">
+              <SubmitButton className="btn-danger min-h-[44px] w-full">
                 Yes, drop this shift
               </SubmitButton>
             </form>

@@ -75,7 +75,7 @@ export function PhoneBookingForm({
 
       <PayBar m={money} tipCents={tip.tipCents}>
         <span data-testid="book-phone" className="ml-auto">
-          <SubmitButton className="rounded-[11px] bg-accent px-[22px] py-[13px] text-[14.5px] font-semibold text-white">
+          <SubmitButton className="btn-primary btn-lg">
             Book it
           </SubmitButton>
         </span>

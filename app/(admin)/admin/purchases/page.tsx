@@ -171,7 +171,7 @@ export default async function AdminPurchases({
         />
         {/* Keep the active state filter when searching. */}
         {state !== "all" && <input type="hidden" name="state" value={state} />}
-        <GetFormSubmit className="rounded-lg border border-line bg-ink px-3 py-1.5 text-sm font-medium text-white">
+        <GetFormSubmit className="btn-primary btn-sm">
           Search
         </GetFormSubmit>
         {query && (

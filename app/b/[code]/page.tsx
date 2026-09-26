@@ -63,7 +63,7 @@ export default async function ManagePage({
         <div className="mt-5 flex justify-center">
           <AppLink
             href="/b/find"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-accent px-5 text-[14px] font-semibold text-white"
+            className="btn-primary min-h-[44px]"
           >
             Send me a new link
           </AppLink>
@@ -255,13 +255,13 @@ export default async function ManagePage({
             <Section title="Manage">
               <a
                 href={`/b/${code}/calendar`}
-                className="flex items-center gap-2 border-b border-line-soft py-3 text-[13.5px] font-semibold text-accent"
+                className="btn-quiet flex items-center gap-2 border-b border-line-soft py-3 text-[13.5px]"
               >
                 📅 Add to calendar
               </a>
               <AppLink
                 href={detail.offeringId ? `/book?offering=${encodeURIComponent(detail.offeringId)}` : "/book"}
-                className="flex items-center gap-2 border-b border-line-soft py-3 text-[13.5px] font-semibold text-accent"
+                className="btn-quiet flex items-center gap-2 border-b border-line-soft py-3 text-[13.5px]"
               >
                 ⟲ Book again
               </AppLink>
@@ -269,13 +269,13 @@ export default async function ManagePage({
               {/* Option (b): request cancel/change — emailed to the operator (self-service is #616;
                   the terms it will enforce are `refund-terms.ts`, rendered below since #619). */}
               <details className="border-b border-line-soft py-3">
-                <summary className="cursor-pointer list-none text-[13.5px] font-semibold text-accent">
+                <summary className="btn-quiet list-none text-[13.5px]">
                   ↻ Request a date/time change
                 </summary>
                 <RequestForm code={code} kind="change" placeholder="Any preferred dates or times?" />
               </details>
               <details className="py-3">
-                <summary className="cursor-pointer list-none text-[13.5px] font-semibold text-bad">
+                <summary className="btn-quiet list-none text-[13.5px] text-bad">
                   ✕ Request cancellation
                 </summary>
                 <RequestForm code={code} kind="cancel" placeholder="Anything we should know? (optional)" />
@@ -372,7 +372,7 @@ function RequestForm({ code, kind, placeholder }: { code: string; kind: "cancel"
         className="w-full rounded-[10px] border border-line bg-bg px-3 py-2 text-[13px] text-ink placeholder:text-muted"
       />
       <SubmitButton
-        className={`self-start rounded-[10px] px-4 py-2 text-[13px] font-semibold text-white ${kind === "cancel" ? "bg-bad" : "bg-accent"}`}
+        className={kind === "cancel" ? "self-start btn-danger" : "self-start btn-primary"}
       >
         Send request
       </SubmitButton>

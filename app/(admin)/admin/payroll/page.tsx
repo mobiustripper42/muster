@@ -130,7 +130,7 @@ export default async function AdminPayroll({
             })}
           </select>
         </div>
-        <GetFormSubmit className="min-h-[44px] rounded-card bg-accent px-4 font-semibold text-white">
+        <GetFormSubmit className="btn-primary min-h-[44px]">
           View
         </GetFormSubmit>
       </form>
@@ -184,7 +184,7 @@ export default async function AdminPayroll({
               {tips.rows.length > 0 && (
                 <a
                   href={`/admin/payroll/tips.csv?period=${encodeURIComponent(selValue)}`}
-                  className="min-h-[36px] rounded-card border border-line bg-card px-3 py-1.5 text-sm font-semibold text-ink"
+                  className="btn-secondary min-h-[36px]"
                 >
                   Download Gusto CSV
                 </a>
@@ -264,7 +264,7 @@ function ReconcileSection({
           ) : (
             <a
               href={`/admin/payroll/gusto.csv?period=${encodeURIComponent(selValue)}`}
-              className="min-h-[36px] rounded-card border border-line bg-card px-3 py-1.5 text-sm font-semibold text-ink"
+              className="btn-secondary min-h-[36px]"
             >
               Download Gusto CSV
             </a>

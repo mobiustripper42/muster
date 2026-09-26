@@ -523,16 +523,9 @@ async function PhoneBookingPage({
 /**
  * This booking's history, under the actions pane (issue #1049).
  *
- * **The empty state is the point of this component.** An empty list reads as "nothing happened
- * to this booking", and for anything sold before 2026-09-20 that is false — nothing was being
- * recorded. Those are opposite facts and a blank panel says the wrong one. There is no backfill
- * (issue #886; DEC-118 took the same posture for the crew log: capture starts at ship, and the
- * surface says so).
- *
- * The notice also admits that the types did not all start together, because they did not —
- * money-out landed with the table, money-in and customer-reach the next day, and `booked` /
- * `cancelled` / `refunded` later still. A per-type begins-on map would be exact and would be a
- * table nobody keeps true.
+ * The empty state is a plain "nothing recorded". It used to name the date recording began, for
+ * bookings sold before the trail shipped; no Muster booking predates it (reservations were not
+ * live yet), so the caveat was dropped.
  *
  * Oldest first, as the deriver returns it: this is one booking's story and a story runs forwards.
  * The cross-booking feed is newest-first because a feed is a different thing.

@@ -105,7 +105,7 @@ export default async function BookingAudit({
           <Notice>
             {filtered
               ? "Nothing to show — try a wider filter."
-              : `Nothing recorded yet.`}
+              : "Nothing recorded yet."}
           </Notice>
         ) : (
           rows.map((r) => <TrailRow key={String(r.id)} row={r} />)

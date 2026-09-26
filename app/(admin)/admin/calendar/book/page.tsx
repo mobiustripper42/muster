@@ -22,7 +22,7 @@ import { PhoneBookingForm } from "./phone-booking-form";
 /**
  * /admin/calendar/book (16.1, 16.1d, SPEC §2.10.6) — someone rings up, and the operator books them.
  *
- * Reached from the calendar's confirm banner, which names one boat and one time. Two steps, the
+ * Reached from the calendar's slot pane, which names one boat and one time. Two steps, the
  * same two a customer takes: **how many**, then **the checkout** — the public checkout's own
  * contact fields, tip tiles, money summary and pay bar (`components/checkout/`, issue #1092),
  * priced by the same `checkoutQuote` on the boat the operator clicked. It writes an unpaid booking

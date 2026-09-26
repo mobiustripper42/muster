@@ -42,12 +42,11 @@ import { holdSlot, releaseHold, type CalendarErr } from "./actions";
  * page on mobile, a side pane on desktop) — two native layouts off one server-rendered link,
  * which a media-query-dependent href could never do without client JS.
  *
- * Clicking an open departure opens a confirm banner that offers two things: **Book** it by phone
- * (16.1, §2.10.6 — a link to `/admin/calendar/book`, which writes through the shared claim), or
- * take it off the market as a SLOT BLOCK (#703, a `Block{kind:"vesselHold"}`); clicking a
- * blocked one puts it back. A banner above the grid rather than a dialog in the card — no-JS
- * (DEC-026) has no toast to undo into, and a card is ~40px tall, which is not a place to ask a
- * question at 375px.
+ * Clicking an open departure opens its slot pane beside the grid (#1104, `SlotPane`), which offers
+ * two things: **Book** it by phone (16.1, §2.10.6 — a link to `/admin/calendar/book`, which writes
+ * through the shared claim), or take it off the market as a SLOT BLOCK (#703, a
+ * `Block{kind:"vesselHold"}`); a blocked one's pane puts it back. A pane rather than a question in
+ * the card — no-JS (DEC-026) has no toast to undo into, and a card is ~40px tall.
  *
  * **The operator's word is "block", not "hold"** (operator, 2026-08-08). The identifiers here
  * still say `hold` — they track the data model's `kind: "vesselHold"`, which is unchanged, and
@@ -58,9 +57,9 @@ import { holdSlot, releaseHold, type CalendarErr } from "./actions";
 export type Search = {
   date?: string;
   filter?: string;
-  /** `<vesselId>|<HH:MM>` — the open slot the confirm banner is asking about (#703). */
+  /** `<vesselId>|<HH:MM>` — the open slot whose pane is open (#703, #1104). */
   hold?: string;
-  /** A `vesselHold` block id — the held slot the banner is offering to release. */
+  /** A `vesselHold` block id — the blocked slot whose pane is open, offering to release it. */
   release?: string;
   err?: string;
 };

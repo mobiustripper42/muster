@@ -103,7 +103,7 @@ export function ShiftManifest({
                     <span className="flex shrink-0 gap-1">
                       <a
                         href={tel(g.phone)}
-                        className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-xs"
+                        className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-base"
                       >
                         <span aria-hidden="true">✆&nbsp;</span>Call
                       </a>
@@ -123,7 +123,7 @@ export function ShiftManifest({
                         )}
                         reservationId={g.reservationId}
                         shiftId={shiftId}
-                        className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-xs"
+                        className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-base"
                       />
                     </span>
                   )}

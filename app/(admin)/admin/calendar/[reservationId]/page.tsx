@@ -6,7 +6,6 @@ import {
   loadReservationTrail,
   type TrailEntry,
 } from "@core/reservations/reservation-trail-view.js";
-import { TRAIL_BEGINS_AT } from "@core/admin/reservation-trail-list.js";
 import { TrailEntryRow } from "../../../../../components/admin/trail-row";
 import { quoteCancelRefund, type CancelledBy } from "@core/reservations/cancel-reservation.js";
 import { refundableTotalFor, refundedTotalFor } from "@core/reservations/refund-payment.js";
@@ -560,8 +559,7 @@ function BookingHistoryBody({ trail }: { trail: TrailEntry[] | null }) {
   if (trail.length === 0) {
     return (
       <Notice>
-        Nothing recorded for this booking. Recording began {TRAIL_BEGINS_AT}, and some kinds of
-        event started later — anything before that happened without being written down.
+        Nothing recorded for this booking.
       </Notice>
     );
   }

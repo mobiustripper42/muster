@@ -1,7 +1,6 @@
 import {
   buildReservationTrailList,
   TRAIL_ACTOR_LABEL,
-  TRAIL_BEGINS_AT,
   TRAIL_TYPE_LABEL,
   type TrailListRow,
 } from "@core/admin/reservation-trail-list.js";
@@ -106,7 +105,7 @@ export default async function BookingAudit({
           <Notice>
             {filtered
               ? "Nothing to show — try a wider filter."
-              : `Nothing recorded yet. Recording began ${TRAIL_BEGINS_AT}, and some kinds of event started later than others — anything before that happened without being written down.`}
+              : `Nothing recorded yet.`}
           </Notice>
         ) : (
           rows.map((r) => <TrailRow key={String(r.id)} row={r} />)

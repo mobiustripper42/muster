@@ -15,7 +15,6 @@ import type { TrailEvent } from "../domain/reservation-trail.js";
 import {
   buildReservationTrailList,
   TRAIL_ACTOR_LABEL,
-  TRAIL_BEGINS_AT,
   TRAIL_TYPE_LABEL,
 } from "./reservation-trail-list.js";
 import { EMITTED_TRAIL_TYPES, DERIVED_TRAIL_TYPES, TRAIL_ACTOR_KINDS } from "../domain/reservation-trail.js";
@@ -176,9 +175,5 @@ describe("the vocabulary the surface renders", () => {
     // is unambiguously broken: an underscore reaching an operator's screen.
     const raw = Object.entries(TRAIL_TYPE_LABEL).filter(([, label]) => label.includes("_"));
     expect(raw).toEqual([]);
-  });
-
-  it("states when capture began, as a date the surface can show", () => {
-    expect(TRAIL_BEGINS_AT).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

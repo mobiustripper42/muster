@@ -39,10 +39,13 @@ import { visibleAdminNav } from "../../app/lib/admin-links";
 function AccountActions({ className }: { className: string }) {
   return (
     <>
+      {/* Menu rows, styled like the nav entries beside them — not one of #1103's button kinds. */}
       <form action={switchToCrew}>
+        {/* eslint-disable-next-line no-restricted-syntax -- menu row, not an action button (#1103) */}
         <SubmitButton className={`${className} w-full text-accent`}>Switch to crew</SubmitButton>
       </form>
       <form action={signOutAdmin}>
+        {/* eslint-disable-next-line no-restricted-syntax -- menu row, not an action button (#1103) */}
         <SubmitButton className={`${className} w-full text-muted`}>Sign out</SubmitButton>
       </form>
     </>
@@ -202,7 +205,7 @@ export function AdminNav({
                   // panel is closed, so the highlighted GROUP is the signal. `data-active` states
                   // that in markup rather than leaving a test to infer it from class strings.
                   data-active={holdsActive ? "" : undefined}
-                  className={`inline-flex cursor-pointer list-none items-center gap-1 whitespace-nowrap py-1.5 ${holdsActive ? "font-semibold text-accent" : "text-muted"}`}
+                  className={`inline-flex list-none items-center gap-1 whitespace-nowrap py-1.5 ${holdsActive ? "font-semibold text-accent" : "text-muted"}`}
                 >
                   {g.label}
                   <span aria-hidden className="text-[0.65rem] transition-transform group-open:rotate-180 motion-reduce:transition-none">
@@ -236,7 +239,7 @@ export function AdminNav({
               three feature flags and no subject, so the handle is a new prop from the server
               layout. That is a decision, not a detail, and it isn't this issue's. */}
           <details name="admin-nav" className="group relative">
-            <summary className="inline-flex cursor-pointer list-none items-center gap-1 whitespace-nowrap py-1.5 text-muted">
+            <summary className="inline-flex list-none items-center gap-1 whitespace-nowrap py-1.5 text-muted">
               Account
               <span aria-hidden className="text-[0.65rem] transition-transform group-open:rotate-180 motion-reduce:transition-none">
                 ▾
@@ -331,7 +334,7 @@ export function AdminNav({
                 <details key={g.label} name="admin-drawer" className="group border-t border-line">
                   <summary
                     data-active={holdsActive ? "" : undefined}
-                    className="flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-3 text-base text-ink"
+                    className="flex list-none items-center justify-between rounded-lg px-3 py-3 text-base text-ink"
                   >
                     <span className={holdsActive ? "font-semibold text-accent" : undefined}>{g.label}</span>
                     <span aria-hidden className="text-xs text-muted transition-transform group-open:rotate-180 motion-reduce:transition-none">

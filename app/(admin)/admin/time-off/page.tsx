@@ -111,7 +111,7 @@ export default async function AdminTimeOff({
                     <span className="text-sm text-ink">{fmtDateRange(w.start, w.end)}</span>
                     <form action={adminRemoveTimeOff}>
                       <input type="hidden" name="id" value={w.id} />
-                      <SubmitButton className="text-sm text-bad underline">
+                      <SubmitButton className="btn-quiet text-bad">
                         Remove
                       </SubmitButton>
                     </form>
@@ -188,7 +188,7 @@ function AddForm({ crew, draft }: { crew: CrewMember[]; draft: FormDraft | null 
           />
         </div>
       </div>
-      <SubmitButton className="min-h-[48px] rounded-card bg-accent px-4 font-semibold text-white">
+      <SubmitButton className="btn-primary min-h-[48px]">
         Add time off
       </SubmitButton>
     </form>

@@ -32,13 +32,9 @@ export function EngineControl({ paused }: { paused: boolean | null }) {
       </div>
       <form action={setEnginePaused}>
         <input type="hidden" name="paused" value={String(!paused)} />
-        {/* Button color = the state you'd switch TO (white card so it reads on
-            the tinted status card). */}
-        <SubmitButton
-          className={`shrink-0 rounded-card border bg-card px-4 py-2 text-sm font-semibold shadow-sm ${
-            paused ? "border-ok-line text-ok" : "border-bad-line text-bad"
-          }`}
-        >
+        {/* Kind = the state you'd switch TO: pausing commits to a loss (no automatic
+            asks), resuming doesn't, so danger vs secondary rather than one look. */}
+        <SubmitButton className={paused ? "btn-secondary shrink-0" : "btn-danger shrink-0"}>
           {paused ? "Resume staffing" : "Pause staffing"}
         </SubmitButton>
       </form>

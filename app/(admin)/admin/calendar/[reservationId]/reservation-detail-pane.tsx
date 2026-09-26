@@ -570,7 +570,7 @@ export function ReservationDetailPane({
                 <input type="hidden" name="reservationId" value={v.reservationId} />
                 <input type="hidden" name="date" value={balance.date} />
                 <input type="hidden" name="filter" value={balance.filter} />
-                <SubmitButton className="min-h-[44px] w-full rounded-lg border border-line bg-ink px-3 text-sm font-medium text-white">
+                <SubmitButton className="btn-primary min-h-[44px] w-full">
                   Create balance link
                 </SubmitButton>
                 {balance.err && (
@@ -667,7 +667,7 @@ function PaneActions({
           <div className="flex gap-2">
             <SubmitButton
               data-commits="refund"
-              className="min-h-[44px] flex-1 rounded-lg border border-line bg-bad px-3 text-sm font-medium text-white"
+              className="btn-danger min-h-[44px] flex-1"
             >
               Yes, refund {formatCents(actions.confirmingRefundCents)}
             </SubmitButton>
@@ -711,7 +711,7 @@ function PaneActions({
               defaultValue={actions.refundPrefill}
               className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-line bg-bg px-2 font-mono text-sm text-ink"
             />
-            <SubmitButton className="min-h-[44px] rounded-lg border border-line bg-ink px-3 text-sm font-medium text-white">
+            <SubmitButton className="btn-primary min-h-[44px]">
               Refund
             </SubmitButton>
           </div>
@@ -736,7 +736,7 @@ function PaneActions({
           </p>
           <SubmitButton
             data-commits="release"
-            className="min-h-[44px] w-full rounded-lg border border-line bg-ink px-3 text-sm font-medium text-white"
+            className="btn-primary min-h-[44px] w-full"
           >
             Release the boat
           </SubmitButton>
@@ -821,7 +821,7 @@ function PaneActions({
             <div className="flex gap-2">
               <SubmitButton
                 data-commits="cancel"
-                className="min-h-[44px] flex-1 rounded-lg border border-line bg-bad px-3 text-sm font-medium text-white"
+                className="btn-danger min-h-[44px] flex-1"
               >
                 {actions.refundableCents > 0 ? "Cancel and refund" : "Cancel this booking"}
               </SubmitButton>
@@ -836,7 +836,7 @@ function PaneActions({
         ) : (
           <AppLink
             href={actions.cancelHref}
-            className="mb-2 flex min-h-[44px] items-center justify-center rounded-lg border border-line px-3 text-sm font-medium text-ink"
+            className="btn-secondary mb-2 flex min-h-[44px]"
             data-testid="cancel-start"
           >
             Cancel booking
@@ -866,7 +866,7 @@ function PaneActions({
           <SubmitButton
             data-commits="resend"
             disabled={!actions.canResend || cancelled}
-            className="min-h-[44px] w-full rounded-lg border border-line px-3 text-sm text-ink disabled:cursor-not-allowed disabled:text-faint"
+            className="btn-secondary min-h-[44px] w-full"
           >
             Resend confirmation + manage link
           </SubmitButton>
@@ -886,7 +886,7 @@ function PaneActions({
           link, and a cancelled booking has no live trip to issue one for. */}
       {!confirming && (
         <details className="mt-2">
-          <summary className="cursor-pointer list-none text-[13px] text-muted underline decoration-dotted">
+          <summary className="list-none text-[13px] text-muted underline decoration-dotted">
             Customer lost their link, or it leaked?
           </summary>
           <form action={reissueBookingLink} className="mt-2">
@@ -898,7 +898,7 @@ function PaneActions({
             <SubmitButton
               data-commits="reissue"
               disabled={!actions.canResend || cancelled}
-              className="min-h-[44px] w-full rounded-lg border border-line px-3 text-sm text-ink disabled:cursor-not-allowed disabled:text-faint"
+              className="btn-secondary min-h-[44px] w-full"
             >
               Replace their link
             </SubmitButton>

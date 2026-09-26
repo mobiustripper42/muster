@@ -167,7 +167,7 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
               <form key={p.id} action={leanOn} className="inline-flex">
                 <input type="hidden" name="shiftId" value={row.shiftId} />
                 <input type="hidden" name="crewMemberId" value={p.id} />
-                <SubmitButton className="min-h-9 rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-accent hover:border-accent">
+                <SubmitButton className="btn-secondary btn-sm min-h-9">
                   <span aria-hidden="true">↗ </span>Nudge {p.name}
                 </SubmitButton>
               </form>
@@ -188,7 +188,7 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
             </div>
             <AppLink
               href={`/admin/shift/${row.shiftId}`}
-              className="text-xs font-semibold text-accent"
+              className="btn-quiet text-xs"
             >
               Assignment ↗
             </AppLink>

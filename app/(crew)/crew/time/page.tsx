@@ -488,7 +488,7 @@ function PunchForm({
             left silent, because the first cut of this island attached its listener to
             the button instead of the enclosing form — so it did nothing at all, and
             only a test caught it. If this stops warning, that's where to look. */}
-        <DirtySubmit className="min-h-[44px] rounded-card bg-ok px-4 font-semibold text-white disabled:opacity-40">
+        <DirtySubmit className="btn-primary min-h-[44px]">
           Save
         </DirtySubmit>
         <AppLink
@@ -507,7 +507,7 @@ function PunchForm({
         {mode === "edit" && (
           <SubmitButton
             formAction={deleteMyPunch}
-            className="ml-auto min-h-[44px] rounded-card border border-bad px-4 font-semibold text-bad"
+            className="btn-danger ml-auto min-h-[44px]"
           >
             Delete
           </SubmitButton>

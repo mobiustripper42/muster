@@ -7,7 +7,7 @@
  * (src/admin/audit-trail.test.ts); here we drive the SURFACE: the list renders and
  * the crew filter narrows it. Runs desktop + 375px.
  */
-import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import { test, expect, clickHydrated, resetAndSeed, signInAsAdmin } from "./fixtures.js";
 
 test.describe("admin /admin/asks — crew audit trail", () => {
   test.beforeEach(async () => {
@@ -26,7 +26,11 @@ test.describe("admin /admin/asks — crew audit trail", () => {
     // Scoped to the nav and to `Crew`, because a bare /Audit/ now matches `Bookings › Audit` too
     // — and a test that silently opened the wrong audit would still be green.
     const nav = page.getByRole("navigation", { name: "Admin" });
-    await nav.locator("summary:visible").filter({ hasText: "Crew" }).click();
+    // `clickHydrated`, not `.click()`: a click that lands before the nav hydrates opens the group
+    // natively, and the nav's mount effect then shuts every open group (`admin-nav.tsx`, the
+    // `[pathname]` effect) — the Audit link vanishes under the test. It lost that race twice on a
+    // cold dev server (issue #1103's full run) and won it three times warm.
+    await clickHydrated(nav.locator("summary:visible").filter({ hasText: "Crew" }));
     await nav.getByRole("link", { name: "Audit", exact: true }).click();
     await page.waitForURL(/\/admin\/asks/);
 

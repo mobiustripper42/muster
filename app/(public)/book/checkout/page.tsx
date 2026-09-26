@@ -172,7 +172,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
         <p className="mt-4">
           <AppLink
             href={backHref(sp, date, time, guests)}
-            className="inline-block rounded-[11px] bg-accent px-5 py-3 text-sm font-semibold text-white"
+            className="btn-primary"
           >
             Pick another time
           </AppLink>
@@ -273,7 +273,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
                 <b className="font-semibold">{dateTimeLabel}</b>
                 <span className="text-muted"> · {guests} {guests === 1 ? "guest" : "guests"}</span>
               </span>
-              <AppLink href={backHref(sp, date, time, guests)} className="text-xs font-semibold text-accent">
+              <AppLink href={backHref(sp, date, time, guests)} className="btn-quiet text-xs">
                 Change
               </AppLink>
             </div>

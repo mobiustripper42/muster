@@ -108,7 +108,7 @@ export function Filter({
           (DEC-026 — native disclosure, no client JS). Open by default when one of
           them is actually active so an in-effect filter is never hidden. */}
       <details open={moreOpen} className="flex flex-col gap-2">
-        <summary className="cursor-pointer select-none text-xs font-semibold text-accent">
+        <summary className="btn-quiet select-none text-xs">
           More filters
         </summary>
 
@@ -137,9 +137,7 @@ export function Filter({
               className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
             />
           </label>
-          <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-            Show
-          </GetFormSubmit>
+          <GetFormSubmit className="btn-secondary btn-sm">Show</GetFormSubmit>
         </form>
 
         {/* Crew filter (#330, DEC-042 amendment) — narrow the board to one crew

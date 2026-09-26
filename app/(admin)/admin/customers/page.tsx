@@ -79,7 +79,7 @@ export default async function AdminCustomers({
           aria-label="Search customers"
           className="min-w-[240px] flex-1 rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-ink"
         />
-        <GetFormSubmit className="rounded-lg border border-line bg-ink px-3 py-1.5 text-sm font-medium text-white">
+        <GetFormSubmit className="btn-primary btn-sm">
           Search
         </GetFormSubmit>
         {query && (

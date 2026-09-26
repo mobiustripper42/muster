@@ -139,7 +139,7 @@ export default async function AdminVessels({
             </h1>
           </div>
           {(selected || creating) && (
-            <SubmitButton className="ml-auto min-h-[40px] shrink-0 rounded-card bg-accent px-4 text-sm font-semibold text-white">
+            <SubmitButton className="btn-primary ml-auto min-h-[40px] shrink-0">
               {creating || !selected ? "Create" : "Save"}
             </SubmitButton>
           )}
@@ -285,7 +285,7 @@ function CrewRows({
               value={`remove-crew-${i}`}
               disabled={shown.length === 1}
               formNoValidate
-              className="min-h-[44px] min-w-[44px] rounded-lg border border-line px-2 text-sm text-muted disabled:cursor-not-allowed disabled:text-faint"
+              className="btn-secondary min-h-[44px] min-w-[44px]"
             >
               <span aria-hidden="true">✕</span>
               <span className="sr-only">Remove this role</span>
@@ -298,7 +298,7 @@ function CrewRows({
           name="intent"
           value="add-crew"
           formNoValidate
-          className="min-h-[44px] self-start rounded-lg border border-line px-3 text-sm font-medium text-accent hover:border-accent"
+          className="btn-secondary min-h-[44px] self-start"
         >
           + Add a role
         </SubmitButton>
@@ -355,7 +355,7 @@ function VesselCard({
           <fieldset className="flex flex-wrap gap-2 pt-1.5">
             <legend className="sr-only">Color</legend>
             {Array.from({ length: HUE_COUNT }, (_, i) => i + 1).map((h) => (
-              <label key={h} className="cursor-pointer">
+              <label key={h}>
                 <input
                   type="radio"
                   name="hue"

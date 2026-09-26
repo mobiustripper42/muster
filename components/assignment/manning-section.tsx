@@ -96,7 +96,7 @@ export function ManningSection({
                   <input type="hidden" name="crewMemberId" value={s.occupantId} />
                   {hostCtx}
                   <span className="text-xs text-muted">{s.occupantName ?? "riding"}</span>
-                  <SubmitButton className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-accent">
+                  <SubmitButton className="btn-quiet btn-sm inline-flex min-h-9 items-center px-2">
                     Take off seat
                   </SubmitButton>
                 </form>
@@ -131,16 +131,14 @@ export function ManningSection({
                           ))}
                         </select>
                       </label>
-                      <SubmitButton className="min-h-9 rounded-lg border border-line bg-bg px-3 py-1 text-xs font-semibold text-accent">
-                        Assign
-                      </SubmitButton>
+                      <SubmitButton className="btn-secondary btn-sm min-h-9">Assign</SubmitButton>
                     </form>
                   )}
                   <form action={removeManningSeat}>
                     <input type="hidden" name="shiftId" value={shiftId} />
                     <input type="hidden" name="seatId" value={s.seatId} />
                     {hostCtx}
-                    <SubmitButton className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-accent">
+                    <SubmitButton className="btn-quiet btn-sm inline-flex min-h-9 items-center px-2">
                       Remove
                     </SubmitButton>
                   </form>
@@ -151,7 +149,7 @@ export function ManningSection({
                   <input type="hidden" name="seatId" value={s.seatId} />
                   {hostCtx}
                   {/* min-h-9 + padding: real tap target (9.7) — operator's on a phone. */}
-                  <SubmitButton className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-accent">
+                  <SubmitButton className="btn-quiet btn-sm inline-flex min-h-9 items-center px-2">
                     Remove
                   </SubmitButton>
                 </form>
@@ -167,18 +165,14 @@ export function ManningSection({
           <input type="hidden" name="kind" value="required" />
           {hostCtx}
           {rolePicker("Role for the required hand")}
-          <SubmitButton className="min-h-9 rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-            + Required hand
-          </SubmitButton>
+          <SubmitButton className="btn-secondary btn-sm min-h-9">+ Required hand</SubmitButton>
         </form>
         <form action={addManningSeat} className="flex items-center gap-1.5">
           <input type="hidden" name="shiftId" value={shiftId} />
           <input type="hidden" name="kind" value="supernumerary" />
           {hostCtx}
           {rolePicker("Role for the trainee seat")}
-          <SubmitButton className="min-h-9 rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-            + Trainee seat
-          </SubmitButton>
+          <SubmitButton className="btn-secondary btn-sm min-h-9">+ Trainee seat</SubmitButton>
         </form>
       </div>
     </section>

@@ -34,7 +34,7 @@ import { DepartureTimesEditor } from "./departure-times-editor";
 
 const inputClass = settingsInputClass;
 const chipClass =
-  "cursor-pointer select-none rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-ink peer-checked:bg-ink peer-checked:font-medium peer-checked:text-white";
+  "select-none rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-ink peer-checked:bg-ink peer-checked:font-medium peer-checked:text-white";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]; // Mon=0…Sun=6
 
@@ -193,7 +193,7 @@ export function DetailsSection({
                 }
                 className="peer sr-only"
               />
-              <span className="flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">
+              <span className="flex select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">
                 <span
                   className={`inline-block h-2 w-2 rounded-full ${vesselHueClass(v.id, v.hue)}`}
                   aria-hidden
@@ -500,7 +500,7 @@ export function AddOnsSection({
                   defaultChecked={draft ? draft.has("addOnIds", a.id) : attached.has(a.id)}
                   className="peer sr-only"
                 />
-                <span className="flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">
+                <span className="flex select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">
                   {a.label}
                   <span className="text-xs text-muted">${(a.amountCents / 100).toFixed(2)}</span>
                   {a.required && (

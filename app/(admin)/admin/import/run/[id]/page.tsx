@@ -51,7 +51,7 @@ export default async function ImportRunView({
     return (
       <Shell width="2xl">
         <Notice>That import run wasn’t found.</Notice>
-        <AppLink href="/admin/import" className="text-sm font-semibold text-accent">
+        <AppLink href="/admin/import" className="btn-quiet text-sm">
           ← Import
         </AppLink>
       </Shell>
@@ -186,7 +186,7 @@ export default async function ImportRunView({
         </section>
       )}
 
-      <AppLink href="/admin/import" className="text-sm font-semibold text-accent">
+      <AppLink href="/admin/import" className="btn-quiet text-sm">
         ← Import
       </AppLink>
     </Shell>

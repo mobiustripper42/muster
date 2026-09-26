@@ -309,7 +309,7 @@ function Filters({
             className="min-h-[44px] rounded-lg border border-line bg-bg px-2 text-ink"
           />
         </label>
-        <GetFormSubmit className="inline-flex min-h-[44px] items-center rounded-lg border border-line bg-bg px-3 font-semibold text-accent">
+        <GetFormSubmit className="btn-secondary min-h-[44px]">
           Show
         </GetFormSubmit>
       </form>
@@ -361,7 +361,7 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
   const facts = confirmFacts(row);
   return (
     <details className="group overflow-hidden rounded-card border border-line bg-card shadow-sm">
-      <summary className="flex min-h-[44px] cursor-pointer items-start justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-[44px] items-start justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
         {/* Left: day over vessel · role. The role lives here, so the confirm copy
             below doesn't repeat "as captain". */}
         <span className="flex min-w-0 flex-col">
@@ -403,7 +403,7 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
         <form action={claimSeat}>
           <input type="hidden" name="seatId" value={row.seatId} />
           <input type="hidden" name="back" value={back} />
-          <SubmitButton className="min-h-[44px] w-full rounded-card border border-accent bg-accent px-4 font-semibold text-white">
+          <SubmitButton className="btn-primary min-h-[44px] w-full">
             Claim this shift
           </SubmitButton>
         </form>

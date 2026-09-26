@@ -54,7 +54,7 @@ export function ShiftManifest({
           className="group overflow-hidden rounded-card border border-line bg-card"
           open={events.length === 1}
         >
-          <summary className="flex min-h-[44px] cursor-pointer items-center justify-between px-4 py-3 font-semibold text-ink [&::-webkit-details-marker]:hidden">
+          <summary className="flex min-h-[44px] items-center justify-between px-4 py-3 font-semibold text-ink [&::-webkit-details-marker]:hidden">
             <span className="font-mono">{fmt12(ev.departureTime)}</span>
             <span className="flex items-center gap-2 text-sm font-normal text-muted">
               {ev.pax} guests
@@ -103,7 +103,7 @@ export function ShiftManifest({
                     <span className="flex shrink-0 gap-1">
                       <a
                         href={tel(g.phone)}
-                        className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
+                        className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-xs"
                       >
                         <span aria-hidden="true">✆&nbsp;</span>Call
                       </a>
@@ -123,7 +123,7 @@ export function ShiftManifest({
                         )}
                         reservationId={g.reservationId}
                         shiftId={shiftId}
-                        className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
+                        className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-xs"
                       />
                     </span>
                   )}

@@ -51,24 +51,6 @@ import type {
 } from "../domain/reservation-trail.js";
 
 /**
- * The date capture began — the day `reservation_trail` shipped.
- *
- * **The surface must state this, because an empty trail otherwise reads as "nothing happened".**
- * There is no backfill (issue #886, and DEC-118's posture for the crew log before it: the
- * unlogged history was never persisted, so capture starts at ship). A booking from August has an
- * empty trail because nothing was recording, not because it was uneventful, and those are
- * opposite facts.
- *
- * **One date, and it is deliberately approximate in one direction.** The emitters did not all
- * land together: money-out on 2026-09-20 with the table, money-in and customer-reach on
- * 2026-09-21, and `booked` / `cancelled` / `refunded` with issue #1048 later the same day. A
- * per-type begins-on map would be exact and would be a table nobody keeps true. So the notice
- * states this date and says that some types began recording later — true, checkable, and it
- * promises no precision the data cannot back.
- */
-export const TRAIL_BEGINS_AT = "2026-09-20";
-
-/**
  * What each event is called on an operator's screen.
  *
  * Covers BOTH surfaces — the feed renders emitted types, a booking's page renders derived ones

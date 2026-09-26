@@ -85,7 +85,7 @@ export default async function ImportPage({
       {sp.ximported && (
         <Notice tone="warn">
           ✓ Imported — the board’s updated.{" "}
-          <AppLink href="/admin/at-risk" className="font-semibold text-accent">
+          <AppLink href="/admin/at-risk" className="btn-quiet">
             See the board →
           </AppLink>{" "}
           (Couldn’t save this run’s audit detail this time; nothing else is wrong.)
@@ -101,7 +101,7 @@ export default async function ImportPage({
           This is the only way trips get imported — there’s no scheduled pull
           behind it. You’ll land on a full breakdown of what changed.
         </p>
-        <SubmitButton className="mt-1 min-h-11 rounded-card bg-accent px-4 font-semibold text-white shadow-sm">
+        <SubmitButton className="btn-primary mt-1 min-h-11 shadow-sm">
           Pull from Xola now
         </SubmitButton>
       </form>

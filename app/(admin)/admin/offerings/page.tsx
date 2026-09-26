@@ -146,7 +146,7 @@ export default async function AdminOfferings({
               )}
             </h1>
           </div>
-          <SubmitButton className="ml-auto min-h-[40px] shrink-0 rounded-card bg-accent px-4 text-sm font-semibold text-white">
+          <SubmitButton className="btn-primary ml-auto min-h-[40px] shrink-0">
             {creating || !selected ? "Create" : "Save"}
           </SubmitButton>
         </header>

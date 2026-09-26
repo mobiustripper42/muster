@@ -29,9 +29,7 @@ export function MiniButton({
   // Folds into <SubmitButton> (DEC-089): every candidate-row Ask/Nudge gets the
   // pending spinner + disabled double-tap guard for free.
   return (
-    <SubmitButton
-      className="min-h-9 rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-accent hover:border-accent"
-    >
+    <SubmitButton className="btn-secondary btn-sm min-h-9">
       {glyph && <span aria-hidden="true">{glyph} </span>}
       {label}
     </SubmitButton>

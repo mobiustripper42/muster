@@ -131,7 +131,7 @@ export default async function AtRiskBoard({
         <Notice tone="warn">
           Engine paused — the automation isn’t firing asks. An empty board here
           means the engine is muted, not that every shift is covered.{" "}
-          <AppLink href="/admin/settings" className="font-semibold text-accent">
+          <AppLink href="/admin/settings" className="btn-quiet">
             Resume staffing ↗
           </AppLink>
         </Notice>
@@ -148,7 +148,7 @@ export default async function AtRiskBoard({
               {" — "}
               <AppLink
                 href={`/admin/shift/${encodeURIComponent(leanedShiftId)}`}
-                className="font-semibold text-accent"
+                className="btn-quiet"
               >
                 watch it ↗
               </AppLink>

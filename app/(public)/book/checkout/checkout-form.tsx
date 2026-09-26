@@ -46,7 +46,7 @@ import { startElementsCheckout } from "./actions";
  */
 const INERT_PROMO_ROW =
   // eslint-disable-next-line no-restricted-syntax -- inactive control, WCAG 1.4.3; see above
-  "flex cursor-not-allowed items-center justify-between rounded-xl border border-dashed border-line px-3.5 py-3 text-[13px] text-faint";
+  "flex items-center justify-between rounded-xl border border-dashed border-line px-3.5 py-3 text-[13px] text-faint";
 
 export interface CheckoutFormProps {
   publishableKey: string;
@@ -385,11 +385,15 @@ function InnerForm(p: InnerProps) {
             (elements.submit → server action → confirmPayment), not a form action, so
             useFormStatus/<SubmitButton> never sees pending; the local `submitting` state
             drives the in-flight label + disable instead. */}
+        {/* The pay-bar call to action (#1103): `btn-lg`, the size shared with `/book`'s Continue
+            and the operator's Book it — the same control on three screens. */}
         {/* eslint-disable-next-line no-restricted-syntax -- client onSubmit flow, see above */}
         <button type="submit"
           data-testid="book-pay"
           disabled={!canSubmit}
-          className="ml-auto flex items-center gap-2 rounded-[11px] bg-accent px-[22px] py-[13px] text-[14.5px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          // Working, not refused: the shared disabled fade skips a busy button (#1103).
+          aria-busy={submitting}
+          className="btn-primary btn-lg ml-auto"
         >
           {submitting ? "Booking…" : "🔒 Book & pay"}
         </button>

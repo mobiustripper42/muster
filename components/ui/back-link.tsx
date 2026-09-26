@@ -24,7 +24,7 @@ export function BackLink({
     <AppLink
       href={href}
       {...(prefetch === false ? { prefetch: false } : {})}
-      className="-ml-1 inline-flex min-h-[44px] items-center gap-1 px-1 text-sm font-semibold text-accent"
+      className="btn-quiet -ml-1 inline-flex min-h-[44px] items-center gap-1 px-1 text-sm"
     >
       <span aria-hidden>‹</span>
       {children}

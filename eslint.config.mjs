@@ -180,8 +180,69 @@ const REDIRECT_IN_TRY_SELECTOR = {
  * written to stop #951 recurring was absent from four of the files most likely to grow a
  * new one. A `.filter()` naming the single exemption cannot drift that way.
  */
+/**
+ * ## Four kinds of button, one look each (issue #1103)
+ *
+ * Every action button names its kind — `btn-primary`, `btn-secondary`, `btn-danger` or
+ * `btn-quiet`, defined once in `app/globals.css` — instead of carrying its own colours, radius
+ * and padding. The audit that opened #1103 found 32 different class strings on `SubmitButton`
+ * alone, five radii, and hover/disabled/pointer styles hand-written in 14, 13 and 23 places:
+ * the operator was seeing a finger on one button and an arrow on the one beside it.
+ *
+ * **What counts as an action button:** every `SubmitButton` and `GetFormSubmit` (a press that
+ * does something, by construction), plus anything wearing the FILLED look by hand
+ * (`bg-accent`/`bg-bad` with `text-white`) — which is how an `AppLink` or a raw `<button>`
+ * dresses as one. Selection controls (tip tiles, slot pills, list rows), tabs and icon buttons
+ * are not action buttons and keep their own per-type styling; the pointer, press, focus and
+ * disabled states they share come from `globals.css` like everything else.
+ *
+ * **Pointer and disabled are never hand-written** — `globals.css` owns both for every control.
+ */
+const BUTTON_KIND = "\\bbtn-(primary|secondary|danger|quiet)\\b";
+// `DirtySubmit` wraps a `SubmitButton` (save-when-changed); `@ui-reviewer` found the crew Save
+// slipping past the guard because the wrapper's name was not in this list.
+const ACTION_BUTTON = "JSXOpeningElement[name.name=/^(SubmitButton|GetFormSubmit|DirtySubmit)$/]";
+const BUTTON_KIND_MESSAGE =
+  "An action button names its kind: btn-primary, btn-secondary, btn-danger or btn-quiet (issue #1103, app/globals.css). Keep layout utilities (w-full, ml-auto, margins) beside it; drop hand-written colour, radius, padding, hover and disabled styles.";
+const HAND_STATE_MESSAGE =
+  "Pointer and disabled styles are set once in app/globals.css for every control (issue #1103) — drop the hand-written one.";
+const BUTTON_KIND_SELECTORS = [
+  {
+    selector: `${ACTION_BUTTON} > JSXAttribute[name.name='className'] > Literal:not([value=/${BUTTON_KIND}/])`,
+    message: BUTTON_KIND_MESSAGE,
+  },
+  {
+    selector: `${ACTION_BUTTON} > JSXAttribute[name.name='className'] > JSXExpressionContainer > TemplateLiteral:not(:has(TemplateElement[value.raw=/${BUTTON_KIND}/]))`,
+    message: BUTTON_KIND_MESSAGE,
+  },
+  {
+    selector: `${ACTION_BUTTON} > JSXAttribute[name.name='className'] > JSXExpressionContainer > ConditionalExpression > Literal:not([value=/${BUTTON_KIND}/])`,
+    message: BUTTON_KIND_MESSAGE,
+  },
+  { selector: `${ACTION_BUTTON}:not(:has(JSXAttribute[name.name='className']))`, message: BUTTON_KIND_MESSAGE },
+  // A class passed through a variable can't be read here, so it isn't allowed on an action button
+  // (`@code-review`): a `const primaryButtonClass = "..."` was the one pattern the guard could not
+  // see, and stripping the kind from that constant would have passed in silence. Write the kind
+  // at the call site. The wrappers that forward a caller's class (`DirtySubmit`) disable this line.
+  {
+    selector: `${ACTION_BUTTON} > JSXAttribute[name.name='className'] > JSXExpressionContainer > :matches(Identifier, MemberExpression, CallExpression)`,
+    message: BUTTON_KIND_MESSAGE,
+  },
+  {
+    selector: `Literal[value=/\\bbg-(accent|bad)\\b/][value=/\\btext-white\\b/]:not([value=/${BUTTON_KIND}/])`,
+    message: BUTTON_KIND_MESSAGE,
+  },
+  {
+    selector: `TemplateElement[value.raw=/\\bbg-(accent|bad)\\b/][value.raw=/\\btext-white\\b/]:not([value.raw=/${BUTTON_KIND}/])`,
+    message: BUTTON_KIND_MESSAGE,
+  },
+  { selector: "Literal[value=/\\b(cursor-(pointer|not-allowed)|disabled:[a-z-]+)/]", message: HAND_STATE_MESSAGE },
+  { selector: "TemplateElement[value.raw=/\\b(cursor-(pointer|not-allowed)|disabled:[a-z-]+)/]", message: HAND_STATE_MESSAGE },
+];
+
 const APP_SELECTORS = [
   RAW_SUBMIT_SELECTOR,
+  ...BUTTON_KIND_SELECTORS,
   APP_CATCH_SELECTOR,
   REDIRECT_IN_TRY_SELECTOR,
   CLOCK_SELECTOR,

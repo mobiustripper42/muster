@@ -87,7 +87,7 @@ export default async function AdminIntegrity({
         <AppLink
           href="/admin/integrity?run=1"
           prefetch={false}
-          className="inline-flex rounded-card border border-accent bg-card px-4 py-3 font-semibold text-accent shadow-sm"
+          className="btn-secondary"
         >
           {requested ? "Run again →" : "Run check →"}
         </AppLink>

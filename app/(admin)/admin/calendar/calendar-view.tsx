@@ -599,7 +599,7 @@ export function HoldConfirm({ data }: { data: CalendarData }) {
           <AppLink
             href={`/admin/calendar/book?${new URLSearchParams({ date: data.day, vessel: p.vesselId, time: p.time }).toString()}`}
             data-testid="book-slot"
-            className="rounded-card bg-accent px-4 py-2 text-sm font-semibold text-white"
+            className="btn-primary"
           >
             Book it
           </AppLink>
@@ -620,11 +620,7 @@ export function HoldConfirm({ data }: { data: CalendarData }) {
           {/* Beside Book, Block is the secondary action — outlined, so the two are never one
               colour at 375px where a mis-tap would take a slot off the market. */}
           <SubmitButton
-            className={
-              p.action === "hold"
-                ? "rounded-card border border-line bg-card px-4 py-2 text-sm font-semibold text-ink"
-                : "rounded-card bg-accent px-4 py-2 text-sm font-semibold text-white"
-            }
+            className={p.action === "hold" ? "btn-secondary" : "btn-primary"}
           >
             {p.action === "hold" ? "Block it" : "Unblock it"}
           </SubmitButton>

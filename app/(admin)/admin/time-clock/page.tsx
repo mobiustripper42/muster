@@ -240,7 +240,7 @@ export default async function AdminTimeClock({
             <AppLink
               href={`/admin/time-clock?day=${addDays(day, -1)}`}
               aria-label="Previous day"
-              className="min-h-[44px] rounded-card border border-line px-4 py-2 font-semibold text-ink"
+              className="btn-secondary min-h-[44px]"
             >
               ‹
             </AppLink>
@@ -259,7 +259,7 @@ export default async function AdminTimeClock({
             <AppLink
               href={`/admin/time-clock?day=${addDays(day, 1)}`}
               aria-label="Next day"
-              className="min-h-[44px] rounded-card border border-line px-4 py-2 font-semibold text-ink"
+              className="btn-secondary min-h-[44px]"
             >
               ›
             </AppLink>
@@ -463,7 +463,7 @@ function PunchCard({
         </label>
         {/* Disabled until something in this row actually changes — a column of live
             Save buttons on rows you're only reading is noise. */}
-        <DirtySubmit className="min-h-[44px] rounded-card bg-accent px-4 font-semibold text-white disabled:opacity-40">
+        <DirtySubmit className="btn-primary min-h-[44px]">
           Save
         </DirtySubmit>
       </form>
@@ -471,11 +471,11 @@ function PunchCard({
       {/* Delete behind a disclosure — no-JS confirmation. The copy states it's real
           deletion BEFORE the button is reachable (#627 AC). */}
       <details>
-        <summary className="cursor-pointer text-xs text-muted">Delete this punch</summary>
+        <summary className="text-xs text-muted">Delete this punch</summary>
         <form action={deletePunchAction} className="mt-2 flex flex-wrap items-center gap-3">
           <ContextFields context={context} />
           <input type="hidden" name="punchId" value={row.id} />
-          <SubmitButton className="min-h-[44px] rounded-card border border-bad px-4 font-semibold text-bad">
+          <SubmitButton className="btn-danger min-h-[44px]">
             Delete
           </SubmitButton>
         </form>
@@ -590,7 +590,7 @@ function AddPunchForm({
           />
           Out is next day
         </label>
-        <SubmitButton className="min-h-[44px] rounded-card bg-accent px-4 font-semibold text-white">
+        <SubmitButton className="btn-primary min-h-[44px]">
           Add
         </SubmitButton>
       </form>

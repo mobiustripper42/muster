@@ -170,7 +170,7 @@ export function ShiftRow({
           {row.state === "AtRisk" && (
             <AppLink
               href="/admin/at-risk"
-              className="relative inline-flex min-h-9 items-center text-xs font-semibold text-accent"
+              className="btn-quiet relative inline-flex min-h-9 items-center text-xs"
             >
               needs attention<span aria-hidden="true">&nbsp;↗</span>
             </AppLink>
@@ -202,9 +202,7 @@ export function ShiftRow({
               ))}
             </select>
           </label>
-          <SubmitButton className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-            Split
-          </SubmitButton>
+          <SubmitButton className="btn-secondary btn-sm">Split</SubmitButton>
         </form>
       )}
 
@@ -219,9 +217,7 @@ export function ShiftRow({
         >
           <input type="hidden" name="shiftId" value={canonicalIdOf(row)} />
           <input type="hidden" name="back" value={back} />
-          <SubmitButton className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-            Merge back into one shift
-          </SubmitButton>
+          <SubmitButton className="btn-secondary btn-sm">Merge back into one shift</SubmitButton>
         </form>
       )}
     </div>

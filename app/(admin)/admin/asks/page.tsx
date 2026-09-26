@@ -156,7 +156,7 @@ function FilterForm({ crew, sp }: { crew: { id: string; name: string }[]; sp: Se
           ))}
         </select>
       </div>
-      <GetFormSubmit className="min-h-[44px] rounded-card bg-accent px-4 font-semibold text-white">
+      <GetFormSubmit className="btn-primary min-h-[44px]">
         Filter
       </GetFormSubmit>
       {(sp.crew || sp.kind) && (

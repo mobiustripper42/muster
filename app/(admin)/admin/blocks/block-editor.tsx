@@ -104,7 +104,7 @@ export function BlockEditor({
                   type="button"
                   aria-pressed={kind === k}
                   onClick={() => setKind(k)}
-                  className={`flex flex-1 basis-0 cursor-pointer select-none flex-col rounded-lg border px-3 py-1.5 text-left text-sm ${
+                  className={`flex flex-1 basis-0 select-none flex-col rounded-lg border px-3 py-1.5 text-left text-sm ${
                     kind === k
                       ? "border-accent bg-bg font-medium text-ink"
                       : "border-line bg-card text-muted"
@@ -232,7 +232,7 @@ export function BlockEditor({
         </div>
 
         <div className="py-3">
-          <SubmitButton className="w-full rounded-card bg-accent px-4 py-2.5 text-sm font-semibold text-white">
+          <SubmitButton className="btn-primary w-full">
             Save
           </SubmitButton>
         </div>
@@ -241,7 +241,7 @@ export function BlockEditor({
       {editing && (
         <form action={liftBlock} className="border-t border-line px-4 py-3">
           <input type="hidden" name="id" value={String(selected.id)} />
-          <SubmitButton className="text-xs font-semibold text-bad hover:underline">
+          <SubmitButton className="btn-quiet text-bad">
             Delete
           </SubmitButton>
         </form>

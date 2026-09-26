@@ -17,7 +17,7 @@ export function OtherShiftsToday({ shifts }: { shifts: OtherShiftToday[] }) {
   if (shifts.length === 0) return null;
   return (
     <details className="group rounded-card border border-line bg-card px-4 pb-3">
-      <summary className="flex min-h-[44px] cursor-pointer items-center justify-between text-sm font-semibold text-muted [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-[44px] items-center justify-between text-sm font-semibold text-muted [&::-webkit-details-marker]:hidden">
         <span>
           Other shifts today
           <span className="ml-1 font-normal text-muted">({shifts.length})</span>

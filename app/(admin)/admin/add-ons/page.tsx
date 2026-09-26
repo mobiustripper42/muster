@@ -99,7 +99,7 @@ export default async function AdminAddOns({
             <h1 className="truncate text-[22px] font-semibold leading-tight text-ink">{title}</h1>
           </div>
           {(selected || creating) && (
-            <SubmitButton className="ml-auto min-h-[40px] shrink-0 rounded-card bg-accent px-4 text-sm font-semibold text-white">
+            <SubmitButton className="btn-primary ml-auto min-h-[40px] shrink-0">
               {creating || !selected ? "Create" : "Save"}
             </SubmitButton>
           )}

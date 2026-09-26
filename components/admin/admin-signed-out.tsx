@@ -43,9 +43,7 @@ export async function AdminSignedOut({
             surface.
           </Notice>
           <form action={switchToAdmin}>
-            <SubmitButton className="rounded-card border border-accent bg-card px-4 py-2 text-sm font-semibold text-accent shadow-sm">
-              Switch to admin →
-            </SubmitButton>
+            <SubmitButton className="btn-secondary">Switch to admin →</SubmitButton>
           </form>
         </Shell>
       );

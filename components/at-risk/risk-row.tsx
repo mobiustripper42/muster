@@ -13,15 +13,13 @@ import { SubmitButton } from "../ui/submit-button";
 
 /**
  * Reschedule and Cancel, rendered `disabled` until their cascades land. One const for
- * both because they were two identical strings, and because the disable below needs a
- * line of its own — `className` sits inside a JSX opening tag, where a comment cannot.
+ * both because they were two identical strings.
  *
- * `text-faint` is correct here (#951): WCAG 1.4.3 exempts text that is part of an
- * inactive user interface component, and dimming is the whole signal that these two do
- * not work yet. Moving them to `text-muted` would make an inert button look live.
+ * The dimming that says these two do not work yet now comes from the shared disabled fade
+ * and "not allowed" cursor in `globals.css` (#1103), so only the kind is written here — the
+ * old `text-faint` (#951's WCAG 1.4.3 exemption) and hand-written cursor went with it.
  */
-// eslint-disable-next-line no-restricted-syntax -- inactive control, WCAG 1.4.3; see above
-const INERT_ACTION = "cursor-not-allowed rounded-full border border-line px-2.5 py-1 text-xs text-faint";
+const INERT_ACTION = "btn-secondary btn-sm";
 
 export interface RiskRowVM {
   shiftId: string;
@@ -167,7 +165,7 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
               <form key={p.id} action={leanOn} className="inline-flex">
                 <input type="hidden" name="shiftId" value={row.shiftId} />
                 <input type="hidden" name="crewMemberId" value={p.id} />
-                <SubmitButton className="min-h-9 rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-accent hover:border-accent">
+                <SubmitButton className="btn-secondary btn-sm min-h-9">
                   <span aria-hidden="true">↗ </span>Nudge {p.name}
                 </SubmitButton>
               </form>
@@ -188,7 +186,7 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
             </div>
             <AppLink
               href={`/admin/shift/${row.shiftId}`}
-              className="text-xs font-semibold text-accent"
+              className="btn-quiet text-xs"
             >
               Assignment ↗
             </AppLink>

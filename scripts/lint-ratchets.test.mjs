@@ -129,13 +129,36 @@ const CASES = [
     ],
     good: [
       ['<p className="text-xs text-muted">Scanned 12 rows</p>;', "the AA-passing tone"],
-      [
-        '<button disabled className="text-xs disabled:text-faint">Go</button>;',
-        "disabled: — WCAG 1.4.3 exempts an inactive control",
-      ],
+      // `disabled:text-faint` WAS a good case here (WCAG 1.4.3 exempts an inactive control). It
+      // moved to the #1103 case below as a BAD one: disabled styling is now set once in
+      // globals.css, so any hand-written `disabled:` class is refused, faint or not.
       ['<div className="rounded-card border border-faint" />;', "a border is not text"],
       ['<span className="bg-faint" />;', "a fill is not text"],
       ['<p className="text-muted">faint is 2.36:1</p>;', "the word alone, with no class attached"],
+    ],
+  },
+  {
+    /**
+     * Four button kinds, pointer and disabled set once (#1103). The `good` cases are the three
+     * shapes a correct button takes — a literal, a ternary of literals, a selection control that
+     * is not an action button — so a selector that eats one of them is caught here.
+     */
+    rule: "an action button names its kind; pointer and disabled are never hand-written (#1103)",
+    filePath: "app/(admin)/admin/probe/page.tsx",
+    bad: [
+      ['<SubmitButton className="rounded-card bg-accent px-4 text-white">Save</SubmitButton>;', "no kind"],
+      ["<SubmitButton>Save</SubmitButton>;", "no className at all"],
+      ["<GetFormSubmit className={cls}>Show</GetFormSubmit>;", "a class the guard cannot read, via a variable"],
+      ['<DirtySubmit className="min-h-[44px] bg-ok text-white">Save</DirtySubmit>;', "the wrapper that slipped past once"],
+      ['<a href="/x" className="rounded-lg bg-accent px-4 text-white">Go</a>;', "a link dressed as a filled button"],
+      ['<button type="button" className="cursor-pointer">x</button>;', "a hand-written pointer"],
+      ['<button disabled className="text-xs disabled:text-faint">Go</button>;', "a hand-written disabled style"],
+    ],
+    good: [
+      ['<SubmitButton className="btn-primary w-full">Save</SubmitButton>;', "a kind plus layout"],
+      ['<SubmitButton className={x ? "btn-secondary" : "btn-danger"}>Go</SubmitButton>;', "a ternary of kinds"],
+      ['<button type="button" className="rounded-xl border border-line px-1">15%</button>;', "a selection tile"],
+      ['<AppLink href="/x" className="btn-quiet text-xs">Change</AppLink>;', "a quiet link keeping its size"],
     ],
   },
 ];

@@ -673,7 +673,7 @@ function PaneActions({
             </SubmitButton>
             <AppLink
               href={actions.refundBackHref}
-              className="flex min-h-[44px] items-center rounded-lg border border-line px-3 text-sm text-muted"
+              className="btn-secondary min-h-[44px]"
             >
               Do Not Refund
             </AppLink>
@@ -827,7 +827,7 @@ function PaneActions({
               </SubmitButton>
               <AppLink
                 href={actions.backHref}
-                className="flex min-h-[44px] items-center rounded-lg border border-line px-3 text-sm text-muted"
+                className="btn-secondary min-h-[44px]"
               >
                 Do Not Cancel
               </AppLink>

@@ -236,8 +236,8 @@ const BUTTON_KIND_SELECTORS = [
     selector: `TemplateElement[value.raw=/\\bbg-(accent|bad)\\b/][value.raw=/\\btext-white\\b/]:not([value.raw=/${BUTTON_KIND}/])`,
     message: BUTTON_KIND_MESSAGE,
   },
-  { selector: "Literal[value=/\\b(cursor-pointer|disabled:[a-z-]+)/]", message: HAND_STATE_MESSAGE },
-  { selector: "TemplateElement[value.raw=/\\b(cursor-pointer|disabled:[a-z-]+)/]", message: HAND_STATE_MESSAGE },
+  { selector: "Literal[value=/\\b(cursor-(pointer|not-allowed)|disabled:[a-z-]+)/]", message: HAND_STATE_MESSAGE },
+  { selector: "TemplateElement[value.raw=/\\b(cursor-(pointer|not-allowed)|disabled:[a-z-]+)/]", message: HAND_STATE_MESSAGE },
 ];
 
 const APP_SELECTORS = [

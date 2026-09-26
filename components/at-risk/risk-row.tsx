@@ -13,15 +13,13 @@ import { SubmitButton } from "../ui/submit-button";
 
 /**
  * Reschedule and Cancel, rendered `disabled` until their cascades land. One const for
- * both because they were two identical strings, and because the disable below needs a
- * line of its own — `className` sits inside a JSX opening tag, where a comment cannot.
+ * both because they were two identical strings.
  *
- * `text-faint` is correct here (#951): WCAG 1.4.3 exempts text that is part of an
- * inactive user interface component, and dimming is the whole signal that these two do
- * not work yet. Moving them to `text-muted` would make an inert button look live.
+ * The dimming that says these two do not work yet now comes from the shared disabled fade
+ * and "not allowed" cursor in `globals.css` (#1103), so only the kind is written here — the
+ * old `text-faint` (#951's WCAG 1.4.3 exemption) and hand-written cursor went with it.
  */
-// eslint-disable-next-line no-restricted-syntax -- inactive control, WCAG 1.4.3; see above
-const INERT_ACTION = "cursor-not-allowed rounded-full border border-line px-2.5 py-1 text-xs text-faint";
+const INERT_ACTION = "btn-secondary btn-sm";
 
 export interface RiskRowVM {
   shiftId: string;

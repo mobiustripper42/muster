@@ -46,7 +46,7 @@ import { startElementsCheckout } from "./actions";
  */
 const INERT_PROMO_ROW =
   // eslint-disable-next-line no-restricted-syntax -- inactive control, WCAG 1.4.3; see above
-  "flex cursor-not-allowed items-center justify-between rounded-xl border border-dashed border-line px-3.5 py-3 text-[13px] text-faint";
+  "flex items-center justify-between rounded-xl border border-dashed border-line px-3.5 py-3 text-[13px] text-faint";
 
 export interface CheckoutFormProps {
   publishableKey: string;

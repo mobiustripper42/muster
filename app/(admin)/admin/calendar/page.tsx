@@ -1,6 +1,7 @@
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
+import { MasterDetail } from "../../../../components/admin/master-detail";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import {
@@ -9,7 +10,8 @@ import {
   CalendarError,
   CalendarGrid,
   CalendarLegend,
-  HoldConfirm,
+  SlotPane,
+  calendarHref,
   loadCalendarData,
   type Search,
 } from "./calendar-view";
@@ -20,10 +22,10 @@ import {
  * block spanning its true duration (`docs/design/mockups/reservation-calendar-scale.html`,
  * "Day · Grid (A revised)"). The blocks registry links single-slot holds here ("On calendar →").
  *
- * A booked block links to `/admin/calendar/[reservationId]` (the detail pane). An OPEN block
- * takes the departure off the market as a single-slot hold, behind a confirm banner (#703); a
- * held one releases it. Selling from here is still deferred (it shares the 12.1 claim), as are
- * week/month views. Everything the two calendar routes share lives in `calendar-view.tsx`.
+ * **Every card opens a pane (#1104).** A booked block links to `/admin/calendar/[reservationId]`;
+ * an OPEN or BLOCKED block opens its slot's pane beside the grid, in the same list-and-detail
+ * frame (`MasterDetail`) — where Book it, Block it and Unblock it live. Nothing selected, the grid
+ * has the page to itself. Everything the two calendar routes share lives in `calendar-view.tsx`.
  */
 
 export const dynamic = "force-dynamic";
@@ -46,23 +48,34 @@ export default async function AdminCalendar({
     );
   }
 
+  const calendar = (
+    <>
+      <CalendarError err={data.err} />
+      <CalendarControls data={data} />
+      <CalendarLegend data={data} />
+      {data.slots.length === 0 && <CalendarEmptyNotice day={data.day} />}
+      <CalendarGrid data={data} />
+    </>
+  );
+
   return (
     <Shell width="6xl">
-
       <header className="flex flex-col gap-1">
         <p className="text-xs text-muted">Calendar</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Calendar</h1>
       </header>
 
-      <CalendarError err={data.err} />
-
-      <CalendarControls data={data} />
-      <CalendarLegend data={data} />
-      <HoldConfirm data={data} />
-
-      {data.slots.length === 0 && <CalendarEmptyNotice day={data.day} />}
-
-      <CalendarGrid data={data} />
+      {data.pending ? (
+        <MasterDetail
+          layout="calendar"
+          list={calendar}
+          pane={<SlotPane data={data} />}
+          closeHref={calendarHref(data, {})}
+          back={{ href: calendarHref(data, {}), label: "Back to calendar" }}
+        />
+      ) : (
+        calendar
+      )}
 
       <VersionTag />
     </Shell>

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type {
   Block,
   Event,
@@ -6,6 +7,7 @@ import type {
   Vessel,
 } from "@core/domain/entities.js";
 import { isBooked } from "@core/domain/entities.js";
+import { formatDuration } from "@core/reservations/availability-screen.js";
 import { vesselDateOf } from "@core/config/tenant.js";
 import {
   deriveVirtualAvailability,
@@ -160,24 +162,25 @@ export interface CalendarData {
 }
 
 /**
- * A resolved confirm step. Both variants carry the physical slot, because the banner names the
- * boat and time and the form posts them — a param that no longer resolves to a real open slot
- * (someone booked it while the banner sat open) produces `null` and no banner at all.
+ * The slot whose pane is open (#1104; was the confirm banner, #703). Both variants carry the
+ * physical slot, because the pane names the boat and time and its form posts them — a param that
+ * no longer resolves to a real slot (someone booked it while the pane sat open) produces `null`
+ * and no pane at all.
+ *
+ * `offerings` is every offering proposing this boat-time — one slot, several cruises when more
+ * than one sells the boat — so the pane can say what is being booked or blocked.
  */
+interface PendingSlot {
+  vesselId: string;
+  vesselName: string;
+  time: string;
+  /** The boat's certified capacity — "Boat takes 12 guests". */
+  capacity: number;
+  offerings: { name: string; tripMinutes?: number | undefined }[];
+}
 export type PendingHold =
-  | {
-      action: "hold";
-      vesselId: string;
-      vesselName: string;
-      time: string;
-    }
-  | {
-      action: "release";
-      blockId: string;
-      vesselId: string;
-      vesselName: string;
-      time: string;
-    };
+  | (PendingSlot & { action: "hold" })
+  | (PendingSlot & { action: "release"; blockId: string });
 
 /** The physical slot key shared by `tripBySlot`, `holdBySlot` and the confirm params. */
 export function slotKey(vesselId: string, date: string, time: string): string {
@@ -290,6 +293,15 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
 
   const vesselById = new Map(vessels.map((v) => [String(v.id), v]));
   const nameOf = (id: string) => vesselById.get(id)?.name ?? id;
+  const offeringByIdLocal = new Map(offerings.map((o) => [String(o.id), o]));
+  /** What the pane says about a physical slot: the boat's capacity and every offering on it. */
+  const slotFacts = (vesselId: string, time: string, onSlot: readonly VirtualSlot[]) => ({
+    capacity: vesselById.get(vesselId)?.coiMaxPax ?? 0,
+    offerings: [...new Set(onSlot.map((s) => String(s.offeringId)))]
+      .map((id) => offeringByIdLocal.get(id))
+      .filter((o): o is Offering => o !== undefined)
+      .map((o) => ({ name: o.name, tripMinutes: o.tripLengthMinutes })),
+  });
 
   // Resolve the confirm from the query. A param that names nothing real renders NO banner
   // rather than an error: the common way to get one is a slot that was booked or already
@@ -298,12 +310,14 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
   if (sp.release) {
     const block = [...holdBySlot.values()].find((b) => String(b.id) === sp.release);
     if (block && block.kind === "vesselHold") {
+      const vid = String(block.vesselId);
       pending = {
         action: "release",
         blockId: String(block.id),
-        vesselId: String(block.vesselId),
-        vesselName: nameOf(String(block.vesselId)),
+        vesselId: vid,
+        vesselName: nameOf(vid),
         time: block.time,
+        ...slotFacts(vid, block.time, slots.filter((s) => String(s.vesselId) === vid && s.time === block.time)),
       };
     }
   } else if (sp.hold) {
@@ -317,6 +331,7 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
         vesselId,
         vesselName: nameOf(vesselId),
         time,
+        ...slotFacts(vesselId, time, open),
       };
     }
   }
@@ -553,80 +568,103 @@ export function CalendarError({ err }: { err?: string | undefined }) {
 }
 
 /**
- * The confirm step for blocking or unblocking one departure (#703).
+ * The pane for one open or blocked departure (#1104; the confirm banner of #703 before it).
  *
- * A banner above the grid, not a dialog in the card: no-JS (DEC-026) rules out a toast to undo
- * into, and an open block is ~40px tall — there is no room to ask a question in it, least of all
- * at 375px.
+ * **Every card opens a pane.** A booked card always opened its reservation beside the grid; an
+ * open or blocked one opened a strip above it that fitted no pattern the operator could name, and
+ * had nowhere to put more than two buttons. Now both go the same way, in the same frame
+ * (`MasterDetail`), with the same header shape as the shift cockpit: the thing's name, a status
+ * pill, a meta line, cards, then what you can do.
  *
- * **The boat-time and the verbs, nothing else** (operator, 2026-09-25, 16.1d). The title names
- * the departure and the buttons say what can be done to it, so an explanatory sentence under the
- * title was reading, not deciding. That included the scope clause for a boat-time several
- * offerings sell ("off the market for all N offerings"): dropped with the rest on the operator's
- * call. A slot block is still physical — one boat, one clock time, every offering proposing it —
- * and the registry row still counts what it removes.
+ * The title names the departure and the buttons say what can be done to it — no explanatory
+ * sentence (operator, 2026-09-25). A slot block is physical: one boat, one clock time, every
+ * offering proposing it, which is why the Cruise rows list them all.
  *
- * The buttons sit beside the title rather than at the far edge, and the ✕ sits in the corner,
- * where a dialog's close does: apart from the two verbs, so it is never read as a third one.
+ * Server-rendered and no-JS like the rest of the calendar (DEC-026): the URL says which slot is
+ * open, Close is a link back to the grid, and the write's inputs come from the RESOLVED slot,
+ * never from the raw query.
  */
-export function HoldConfirm({ data }: { data: CalendarData }) {
+export function SlotPane({ data }: { data: CalendarData }) {
   const p = data.pending;
   if (!p) return null;
-
-  const cancelHref = calendarHref(data, {});
-  const when = `${shortTime(p.time)} on ${p.vesselName}`;
+  const blocked = p.action === "release";
+  const one = p.offerings.length === 1 ? p.offerings[0] : undefined;
+  const onWater = one ? formatDuration(one.tripMinutes) : null;
+  const cruiseLabel = p.offerings.length > 1 ? "Cruises" : "Cruise";
 
   return (
-    <div
-      data-testid="hold-confirm"
-      className="relative mt-3 flex flex-wrap items-center gap-x-6 gap-y-3 rounded-card border border-line bg-card py-3 pl-4 pr-12 shadow-sm"
-    >
-      {/* Dismiss only — nothing is written. Top-right, like a dialog's close (16.1d). */}
-      <AppLink
-        href={cancelHref}
-        aria-label="Close"
-        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg text-lg leading-none text-muted hover:bg-bg hover:text-ink"
-      >
-        <span aria-hidden="true">✕</span>
-      </AppLink>
+    <div data-testid="slot-pane" className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-xl font-semibold text-ink">
+          {clockTime(p.time)} · {p.vesselName}
+        </h2>
+        <span
+          data-testid="slot-state"
+          className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+            blocked ? "border-line bg-bg text-accent" : "border-line bg-card text-muted"
+          }`}
+        >
+          {blocked ? "Blocked" : "Open"}
+        </span>
+      </div>
+      <p className="-mt-2 text-sm text-muted">{formatFullDay(data.day)}</p>
 
-      <p className="text-base font-semibold text-ink">{when}</p>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-card border border-line bg-card px-4 py-3 text-sm">
+        {blocked ? (
+          <>
+            <dt className="text-muted">Blocked</dt>
+            <dd className="text-right text-ink">This departure only</dd>
+          </>
+        ) : null}
+        {p.offerings.map((o, i) => (
+          <SlotRow key={o.name} label={i === 0 ? cruiseLabel : ""}>
+            {o.name}
+          </SlotRow>
+        ))}
+        {!blocked ? <SlotRow label="Boat takes">{p.capacity} guests</SlotRow> : null}
+        {!blocked && onWater ? <SlotRow label="On the water">{onWater}</SlotRow> : null}
+      </dl>
 
-      <div className="flex items-center gap-3">
-        {p.action === "hold" ? (
+      <div className="flex gap-3">
+        {!blocked ? (
           // A phone booking (16.1, §2.10.6). A link, not a form: booking needs the customer's
-          // details, so it is a page of its own, keyed on the same physical slot this banner is.
+          // details, so it is a page of its own, keyed on the same physical slot this pane is.
           <AppLink
             href={`/admin/calendar/book?${new URLSearchParams({ date: data.day, vessel: p.vesselId, time: p.time }).toString()}`}
             data-testid="book-slot"
-            className="btn-primary"
+            className="btn-primary flex-1"
           >
             Book it
           </AppLink>
         ) : null}
-        <form action={p.action === "hold" ? holdSlot : releaseHold}>
-          {/* The write's inputs come from the RESOLVED slot, never from the raw query — the
-              param only selects what to ask about. */}
+        <form action={blocked ? releaseHold : holdSlot} className="flex flex-1">
           <input type="hidden" name="date" value={data.day} />
           <input type="hidden" name="filter" value={data.filter} />
-          {p.action === "hold" ? (
+          {blocked ? (
+            <input type="hidden" name="id" value={p.blockId} />
+          ) : (
             <>
               <input type="hidden" name="vesselId" value={p.vesselId} />
               <input type="hidden" name="time" value={p.time} />
             </>
-          ) : (
-            <input type="hidden" name="id" value={p.blockId} />
           )}
           {/* Beside Book, Block is the secondary action — outlined, so the two are never one
               colour at 375px where a mis-tap would take a slot off the market. */}
-          <SubmitButton
-            className={p.action === "hold" ? "btn-secondary" : "btn-primary"}
-          >
-            {p.action === "hold" ? "Block it" : "Unblock it"}
+          <SubmitButton className={blocked ? "btn-primary w-full" : "btn-secondary w-full"}>
+            {blocked ? "Unblock it" : "Block it"}
           </SubmitButton>
         </form>
       </div>
     </div>
+  );
+}
+
+function SlotRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <>
+      <dt className="text-muted">{label}</dt>
+      <dd className="text-right text-ink">{children}</dd>
+    </>
   );
 }
 
@@ -899,12 +937,18 @@ export function CalendarGrid({
                         data-testid="cal-block"
                         data-vessel={String(s.vesselId)}
                         data-status="awaiting-payment"
-                        className={`absolute flex items-center justify-center overflow-hidden rounded-lg border border-dashed border-warn-line bg-warn-bg px-1 text-[10px] font-medium text-warn${
+                        className={`absolute flex flex-col justify-center overflow-hidden rounded-lg border border-dashed border-warn-line bg-warn-bg px-2 py-1 text-warn${
                           selectedReservationId === String(phoneBooking.id) ? " ring-2 ring-ink ring-offset-1" : ""
                         }`}
                         style={pos}
                       >
-                        <span className="truncate">Awaiting payment · {phoneBooking.customerName}</span>
+                        {/* Laid out like a booked card — who, then time · party — so the customer is
+                            on the grid (#1104). The amber dashed tint and "Unpaid" say it is not a
+                            sale yet. */}
+                        <span className="truncate text-[11px] font-semibold">{phoneBooking.customerName}</span>
+                        <span className="font-mono text-[9.5px]">
+                          {shortTime(s.time)} · {phoneBooking.partySize} · Unpaid
+                        </span>
                       </AppLink>
                     );
                   }

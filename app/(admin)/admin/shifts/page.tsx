@@ -11,6 +11,7 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { Filter } from "../../../../components/admin/shifts-filter";
 import { ShiftRow, canonicalIdOf } from "../../../../components/admin/shift-row";
 import { RevealSelectedRow } from "../../../../components/admin/reveal-selected-row";
+import { MasterDetail } from "../../../../components/admin/master-detail";
 import type { Mode, Scope } from "../../../../components/admin/shifts-view-types";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
@@ -532,32 +533,19 @@ export default async function AllShifts({
           the selected row — can't snap the list to the top; the cockpit stays put
           while you scroll the list, and vice-versa. Below lg none of this applies:
           normal-flow full-screen drill-in, the list display-hidden (DEC-085). */}
-      <div className="lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,4fr)] lg:gap-6">
-        <div
-          // DUAL-PURPOSE hook: e2e selects `board-col`, AND the DEC-114
-          // `RevealSelectedRow` island scrolls this exact node. Renaming the
-          // testid silently breaks the scroll reveal (no type/test error) — keep
-          // the two in sync.
-          data-testid="board-col"
-          className="hidden min-w-0 lg:flex lg:min-h-0 lg:flex-col lg:gap-4 lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:pr-1"
-        >
-          {board}
-        </div>
-        <div
-          data-testid="pane-col"
-          className="flex min-w-0 flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:pr-1"
-        >
-          <div className="hidden lg:flex lg:justify-end">
-            <AppLink
-              href={boardHref}
-              className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-xs"
-            >
-              Close<span aria-hidden="true">&nbsp;✕</span>
-            </AppLink>
-          </div>
-          <ShiftCockpit shiftId={sel} sp={sp} ctx={ctx} headingLevel="h2" senderName={senderName} />
-        </div>
-      </div>
+      {/* The shared list-and-detail frame (#1104) — the calendar and the reservation page use it
+          too. `board-col` is a DUAL-PURPOSE hook: e2e selects it, AND the DEC-114
+          `RevealSelectedRow` island scrolls this exact node. Renaming the testid silently breaks
+          the scroll reveal (no type/test error) — keep the two in sync. No `back`: the cockpit
+          draws its own "← All shifts" below desktop. */}
+      <MasterDetail
+        layout="shifts"
+        list={board}
+        pane={<ShiftCockpit shiftId={sel} sp={sp} ctx={ctx} headingLevel="h2" senderName={senderName} />}
+        closeHref={boardHref}
+        listTestId="board-col"
+        paneTestId="pane-col"
+      />
       {/* Keep the operator's place in the list when a row opens the pane (#365,
           DEC-114) — a DEC-026-family client-JS island, scoped to board-col's own
           scroll (never the window), inert on mobile. `nav={ctx}` re-reveals the

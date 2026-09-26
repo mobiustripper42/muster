@@ -212,17 +212,19 @@ test.describe("admin /admin/calendar", () => {
     // 3:30 is open (the offering's second departure; nobody has taken it).
     await expect(openAt(page, shortLabel(OPEN_TIME))).toBeVisible();
 
-    // Clicking it asks first — a misclick on a busy grid must not silently unsell a departure.
+    // Clicking it opens the slot's pane first (#1104) — a misclick on a busy grid must not
+    // silently unsell a departure.
     await openAt(page, shortLabel(OPEN_TIME)).click();
-    const confirm = page.getByTestId("hold-confirm");
+    const confirm = page.getByTestId("slot-pane");
     await expect(confirm).toBeVisible();
     await expect(confirm).toContainText("Brew 3");
     await expect(confirm).toContainText(shortLabel(OPEN_TIME));
-    // Still on sale until the second click — the confirm is a question, not a receipt.
-    await expect(openAt(page, shortLabel(OPEN_TIME))).toBeVisible();
+    // Still on sale until the second click — the pane is a question, not a receipt. Counted, not
+    // `toBeVisible`: at 375px the pane takes the screen and the grid is hidden behind it.
+    await expect(openAt(page, shortLabel(OPEN_TIME))).toHaveCount(1);
 
     await confirm.getByRole("button", { name: "Block it" }).click();
-    await expect(page.getByTestId("hold-confirm")).toHaveCount(0);
+    await expect(page.getByTestId("slot-pane")).toHaveCount(0);
     await expect(openAt(page, shortLabel(OPEN_TIME))).toHaveCount(0);
     await expect(slotBlock).toBeVisible();
     await expect(slotBlock).toContainText("Blocked");
@@ -253,12 +255,40 @@ test.describe("admin /admin/calendar", () => {
 
     // Unblocked from the calendar, the slot comes back on sale (DEC-125, reversible-in-spirit).
     await slotBlock.click();
-    const release = page.getByTestId("hold-confirm");
+    const release = page.getByTestId("slot-pane");
     await expect(release).toContainText(shortLabel(OPEN_TIME));
+    await expect(release).toContainText("Blocked");
     await release.getByRole("button", { name: "Unblock it" }).click();
 
     await expect(openAt(page, shortLabel(OPEN_TIME))).toBeVisible();
     await expect(slotBlock).toHaveCount(0);
+  });
+
+  /**
+   * Every card opens a pane (#1104): an open slot's pane names the departure, what sells it, and
+   * the two things you can do. Closing it is an answer too, and must write nothing.
+   */
+  test("an open card opens its pane: the slot, the cruise, both verbs; Close writes nothing", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto(`/admin/calendar?date=${BOOKED.date}`);
+    await openAt(page, shortLabel(OPEN_TIME)).click();
+
+    const pane = page.getByTestId("slot-pane");
+    await expect(pane.getByRole("heading", { name: `${shortLabel(OPEN_TIME)} PM · Brew 3` })).toBeVisible();
+    await expect(pane.getByTestId("slot-state")).toHaveText("Open");
+    await expect(pane).toContainText("Reservation Demo Cruise");
+    await expect(pane).toContainText("12 guests");
+    await expect(pane.getByTestId("book-slot")).toHaveAttribute("href", /\/admin\/calendar\/book\?/);
+    await expect(pane.getByRole("button", { name: "Block it" })).toBeVisible();
+
+    // Desktop closes with "Close ✕"; at 375px the pane is the whole screen and "Back to calendar"
+    // is the way out. Only the one this viewport shows is reachable by role.
+    await page.getByRole("link", { name: /^(Close|Back to calendar)$/ }).click();
+    await expect(page.getByTestId("slot-pane")).toHaveCount(0);
+    await expect(openAt(page, shortLabel(OPEN_TIME))).toBeVisible();
+    await expect(page.locator('[data-testid="cal-block"][data-blocked-by="slot"]')).toHaveCount(0);
   });
 
   /**
@@ -291,8 +321,8 @@ test.describe("admin /admin/calendar", () => {
     expect(new Set(hrefs).size).toBe(1);
 
     await opens.last().click();
-    const confirm = page.getByTestId("hold-confirm");
-    // The banner no longer spells out the scope (operator, 2026-09-25) — the outcome below is
+    const confirm = page.getByTestId("slot-pane");
+    // The pane does not spells out the scope (operator, 2026-09-25) — the outcome below is
     // the assertion: one press takes BOTH offerings' cards off the market.
     await confirm.getByRole("button", { name: "Block it" }).click();
 

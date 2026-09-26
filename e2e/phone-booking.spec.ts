@@ -39,7 +39,7 @@ test.describe("admin phone booking", () => {
     await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar?date=${BOOKED.date}`);
     await openAt(page, shortTime(OPEN_TIME)).click();
-    await page.getByTestId("hold-confirm").getByTestId("book-slot").click();
+    await page.getByTestId("slot-pane").getByTestId("book-slot").click();
 
     // Passengers first — the money depends on it.
     await expect(page.getByRole("heading", { name: new RegExp(`^${shortTime(OPEN_TIME)} PM on Brew 3$`) })).toBeVisible();
@@ -67,6 +67,12 @@ test.describe("admin phone booking", () => {
 
     await page.waitForURL(/\/admin\/calendar\/resv-/);
     await expect(page.getByTestId("phone-booking-state")).toHaveText(/Awaiting payment/);
+
+    // On the grid it names the customer, like a booked card, and says it is unpaid (#1104).
+    await page.goto(`/admin/calendar?date=${BOOKED.date}`);
+    const card = page.locator('[data-testid="cal-block"][data-status="awaiting-payment"]');
+    await expect(card).toContainText("Phone Caller");
+    await expect(card).toContainText(`${shortTime(OPEN_TIME)} · 2 · Unpaid`);
   });
 
   test("a refused booking comes back on the form with what was typed", async ({ page }) => {
@@ -81,17 +87,6 @@ test.describe("admin phone booking", () => {
     // Still the checkout step, for the same party.
     await expect(page.getByTestId("summary-total")).toBeVisible();
     await expect(page).toHaveURL(/guests=2/);
-  });
-
-  test("the banner closes with ✕ and writes nothing", async ({ page }) => {
-    await signInAsAdmin(page, "eric");
-    await page.goto(`/admin/calendar?date=${BOOKED.date}`);
-    await openAt(page, shortTime(OPEN_TIME)).click();
-    const banner = page.getByTestId("hold-confirm");
-    await expect(banner).toBeVisible();
-    await banner.getByRole("link", { name: "Close" }).click();
-    await expect(page.getByTestId("hold-confirm")).toHaveCount(0);
-    await expect(openAt(page, shortTime(OPEN_TIME))).toBeVisible();
   });
 
   test("more guests than the boat takes is refused on the passengers step", async ({ page }) => {

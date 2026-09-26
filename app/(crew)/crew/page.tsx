@@ -254,7 +254,6 @@ function SignedOut({
 
 const inputClass =
   "min-h-[52px] rounded-card border border-line bg-card px-4 text-ink placeholder:text-muted";
-const primaryButtonClass = "btn-primary min-h-[52px] w-full";
 
 /**
  * SMS opt-in consent block (Twilio 10DLC vetting). A public, visible,
@@ -328,7 +327,7 @@ function EmailStep() {
           className={inputClass}
         />
         <SmsConsentBlock />
-        <SubmitButton className={primaryButtonClass}>
+        <SubmitButton className="btn-primary min-h-[52px] w-full">
           Email me a code
         </SubmitButton>
       </form>
@@ -369,7 +368,7 @@ function CodeStep({ email, err }: { email: string; err?: string }) {
           placeholder="123456"
           className={`${inputClass} tracking-[0.5em]`}
         />
-        <SubmitButton className={primaryButtonClass}>
+        <SubmitButton className="btn-primary min-h-[52px] w-full">
           Sign in
         </SubmitButton>
       </form>

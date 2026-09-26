@@ -96,7 +96,10 @@ export function SubmitButton({
       disabled={pending || disabled}
 
       data-commits={dataCommits}
-      aria-busy={showing}
+      // `mine ||`, not `showing` alone (#1103): `showing` is held state that turns on in an effect
+      // AFTER the render that sets `disabled`, so for that one frame the button was disabled and
+      // not busy — exactly what the shared disabled fade in globals.css keys on.
+      aria-busy={mine || showing}
       // `relative` only while spinning, to host the centered spinner overlay.
       className={showing ? `relative ${className ?? ""}` : className}
     >

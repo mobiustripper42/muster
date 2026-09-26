@@ -220,6 +220,14 @@ const BUTTON_KIND_SELECTORS = [
     message: BUTTON_KIND_MESSAGE,
   },
   { selector: `${ACTION_BUTTON}:not(:has(JSXAttribute[name.name='className']))`, message: BUTTON_KIND_MESSAGE },
+  // A class passed through a variable can't be read here, so it isn't allowed on an action button
+  // (`@code-review`): a `const primaryButtonClass = "..."` was the one pattern the guard could not
+  // see, and stripping the kind from that constant would have passed in silence. Write the kind
+  // at the call site. The wrappers that forward a caller's class (`DirtySubmit`) disable this line.
+  {
+    selector: `${ACTION_BUTTON} > JSXAttribute[name.name='className'] > JSXExpressionContainer > :matches(Identifier, MemberExpression, CallExpression)`,
+    message: BUTTON_KIND_MESSAGE,
+  },
   {
     selector: `Literal[value=/\\bbg-(accent|bad)\\b/][value=/\\btext-white\\b/]:not([value=/${BUTTON_KIND}/])`,
     message: BUTTON_KIND_MESSAGE,

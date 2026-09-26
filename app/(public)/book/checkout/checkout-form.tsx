@@ -391,6 +391,8 @@ function InnerForm(p: InnerProps) {
         <button type="submit"
           data-testid="book-pay"
           disabled={!canSubmit}
+          // Working, not refused: the shared disabled fade skips a busy button (#1103).
+          aria-busy={submitting}
           className="btn-primary btn-lg ml-auto"
         >
           {submitting ? "Booking…" : "🔒 Book & pay"}

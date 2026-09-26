@@ -62,9 +62,11 @@ export async function bookPhoneReservation(formData: FormData): Promise<void> {
   }
 
   // Nothing was written, so the form comes back with what the operator typed — a caller is on
-  // the line, and retyping their details is the thing not to make them wait through.
+  // the line, and retyping their details is the thing not to make them wait through. `guests`
+  // rides the URL (16.1d): it selects the checkout step the refusal is shown on.
   await stashFormDraft(SURFACE, formData);
   const q = new URLSearchParams({ date, vessel: vesselId, time, err: result ? result.reason : "unreachable" });
   if (offeringId) q.set("offering", offeringId);
+  if (field("guests")) q.set("guests", field("guests"));
   redirect(`${SURFACE}?${q.toString()}`);
 }

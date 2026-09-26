@@ -17,12 +17,22 @@
  *
  * Inputs use the tinted `bg-bg` fill (the #484 settings-form treatment) — a white input in a
  * white card is invisible; the app-wide #484 decision stays open.
+ *
+ * **Built from `components/checkout/` since 16.1d** (issue #1092): the contact fields, tip tiles,
+ * money summary and pay bar are shared with the operator's phone booking, so the two surfaces
+ * cannot drift into quoting a trip differently. What stays HERE is everything only a paying
+ * customer has — the card, the waiver, the promo row, the in-flight lock — and the one submit
+ * path into Stripe. The operator's form lives under `app/(admin)/` and nothing here can reach it.
  */
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { Stripe, StripeElements } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { settingsInputClass } from "../../../../components/admin/settings-field";
+import { CheckoutSummary } from "../../../../components/checkout/checkout-summary";
+import { ContactFields, type ContactValues } from "../../../../components/checkout/contact-fields";
+import { totalsWithTip, type CheckoutMoney, type TipTier } from "../../../../components/checkout/money";
+import { PayBar } from "../../../../components/checkout/pay-bar";
+import { TipTiles } from "../../../../components/checkout/tip-tiles";
 import { startElementsCheckout } from "./actions";
 
 /**
@@ -38,37 +48,12 @@ const INERT_PROMO_ROW =
   // eslint-disable-next-line no-restricted-syntax -- inactive control, WCAG 1.4.3; see above
   "flex cursor-not-allowed items-center justify-between rounded-xl border border-dashed border-line px-3.5 py-3 text-[13px] text-faint";
 
-/** Local mirror of `formatCents` — inlined so the client bundle stays tiny (book-controls idiom). */
-function money(cents: number): string {
-  const abs = Math.abs(cents);
-  const dollars = Math.floor(abs / 100).toLocaleString("en-US");
-  return `$${dollars}.${String(abs % 100).padStart(2, "0")}`;
-}
-
-export interface CheckoutMoney {
-  fareCents: number;
-  baseCents: number;
-  extraGuests: number;
-  extrasCents: number;
-  extraGuestPriceCents: number;
-  includedGuests: number;
-  taxCents: number;
-  taxRateBps: number;
-  serviceFeeCents: number;
-  serviceFeeBps: number;
-  /** Charge-now excluding the tip (deposit share + full tax + full fee, or full total). */
-  dueNowBeforeTipCents: number;
-  depositMode: boolean;
-  /** Remaining fare charged later (deposit mode only; 0 in full mode). */
-  balanceLaterCents: number;
-}
-
 export interface CheckoutFormProps {
   publishableKey: string;
   returnUrl: string;
   slot: { offeringId: string; date: string; time: string; guests: number };
   money: CheckoutMoney;
-  tiers: { bps: number; tipCents: number }[];
+  tiers: TipTier[];
   defaultBps: number;
   waiverUrl: string;
   /** The published cancellation terms (#619) — passed as plain data, waiverUrl idiom. */
@@ -97,7 +82,7 @@ export function CheckoutForm(props: CheckoutFormProps) {
   }, [props.publishableKey]);
 
   const tip = props.tiers.find((t) => t.bps === tipBps) ?? props.tiers[0]!;
-  const dueNowCents = props.money.dueNowBeforeTipCents + tip.tipCents;
+  const { dueNowCents } = totalsWithTip(props.money, tip.tipCents);
 
   const inner = (bridge: { stripe: Stripe | null; elements: StripeElements | null; inElements: boolean }) => (
     <InnerForm
@@ -165,14 +150,12 @@ type InnerProps = CheckoutFormProps & {
 };
 
 function InnerForm(p: InnerProps) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [contact, setContact] = useState<ContactValues>({ name: "", phone: "", email: "" });
   const [waiver, setWaiver] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const totalCents = p.money.fareCents + p.money.taxCents + p.money.serviceFeeCents + p.tipCents;
+  const { name, email, phone } = contact;
   const canSubmit = waiver && !submitting;
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -246,8 +229,6 @@ function InnerForm(p: InnerProps) {
     }
   }
 
-  const inputClass = `${settingsInputClass} w-full text-[15px]`;
-
   return (
     <form onSubmit={onSubmit} className="relative flex flex-col">
       {/*
@@ -276,87 +257,13 @@ function InnerForm(p: InnerProps) {
       */}
       <div inert={submitting}>
       <div className="px-[18px]">
-        {/* CONTACT */}
-        <div className="pt-4">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">
-            Who&rsquo;s booking?
-          </div>
-          {/* Helper text sits under the field it describes, not under the group (#679). Email is
-              optional and nothing said what skipping it costs — a guest who left it blank got no
-              receipt and no warning. Now the trade is stated where the choice is made. */}
-          <div className="flex flex-col gap-2">
-            <input
-              className={inputClass}
-              placeholder="Full name"
-              autoComplete="name"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <div>
-              <input
-                className={inputClass}
-                type="tel"
-                placeholder="Mobile — with country code if outside the US"
-                autoComplete="tel"
-                required
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-              <div className="mt-1 text-xs text-muted">
-                We&rsquo;ll text you your booking link and trip updates.
-              </div>
-            </div>
-            <div>
-              <input
-                className={inputClass}
-                type="email"
-                placeholder="Email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <div className="mt-1 text-xs text-muted">
-                Add an email if you want a copy of the receipt.
-              </div>
-            </div>
-          </div>
-        </div>
+        <ContactFields
+          voice="self"
+          values={contact}
+          onChange={(field, value) => setContact((c) => ({ ...c, [field]: value }))}
+        />
 
-        {/* TIP — required, no decline (DEC-124) */}
-        <div className="pt-5">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">
-            Tip your crew <span className="font-normal normal-case text-muted">· required</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {p.tiers.map((t) => (
-              <button
-                key={t.bps}
-                type="button"
-                data-testid={`tip-${t.bps}`}
-                aria-pressed={t.bps === p.tipBps}
-                onClick={() => p.setTipBps(t.bps)}
-                className={`rounded-xl border px-1 py-2.5 text-center ${
-                  t.bps === p.tipBps
-                    ? "border-accent bg-accent/5 ring-1 ring-accent"
-                    : "border-line bg-card"
-                }`}
-              >
-                <span className="block text-[17px] font-bold">{t.bps / 100}%</span>
-                <span className="block font-mono text-xs text-muted">{money(t.tipCents)}</span>
-              </button>
-            ))}
-          </div>
-          {/* One line, and it only normalizes. The competitor version justifies the tip with a
-              list of crew duties — safety, cleanliness, supplies — which reads as "tip us or the
-              boat is a shithole". The old line here ("100% goes to the crew — never taxed, never
-              fee'd") was us talking to ourselves: `fee'd` isn't a word, and the tax treatment is
-              an internal accounting fact, not something a guest asked. The heading already says
-              who the tip is for. */}
-          <div className="mt-2 text-xs text-muted">
-            Gratuity is included for groups, like a restaurant or a limo.
-          </div>
-        </div>
+        <TipTiles tiers={p.tiers} selectedBps={p.tipBps} onSelect={p.setTipBps} />
 
         {/* CARD */}
         <div className="pt-5">
@@ -421,59 +328,7 @@ function InnerForm(p: InnerProps) {
           </label>
         </div>
 
-        {/* SUMMARY */}
-        <div className="pt-5">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Summary</div>
-          <div className="border-t border-line pt-2 text-[13.5px]">
-            <SummaryRow
-              label={`Fare — up to ${p.money.includedGuests} guests`}
-              value={money(p.money.baseCents)}
-            />
-            {p.money.extraGuests > 0 && (
-              <SummaryRow
-                label={`${p.money.extraGuests} extra ${p.money.extraGuests === 1 ? "guest" : "guests"} · ${money(p.money.extraGuestPriceCents)}`}
-                value={money(p.money.extrasCents)}
-              />
-            )}
-            <SummaryRow
-              label={`Tip your crew · ${p.tipBps / 100}% → crew`}
-              value={money(p.tipCents)}
-              tone="crew"
-              testId="summary-tip"
-            />
-            <SummaryRow
-              label={`Tax · ${(p.money.taxRateBps / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`}
-              value={money(p.money.taxCents)}
-            />
-            <SummaryRow
-              label={`Service fee · ${(p.money.serviceFeeBps / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`}
-              value={money(p.money.serviceFeeCents)}
-              testId="summary-fee"
-            />
-            <div
-              className="mt-1 flex justify-between border-t border-line pt-2 text-[15px] font-bold"
-              data-testid="summary-total"
-            >
-              <span>Total</span>
-              <span className="font-mono">{money(totalCents)}</span>
-            </div>
-            {p.money.depositMode && (
-              <>
-                <div className="mt-1 flex justify-between border-t border-line pt-2 font-semibold" data-testid="summary-due-now">
-                  <span>Due now</span>
-                  <span className="font-mono">{money(p.dueNowCents)}</span>
-                </div>
-                <div className="flex justify-between py-1 text-muted">
-                  {/* Not "charged" — nothing collects this automatically (#617; #712 is the
-                      unbuilt auto-collect). Promising it at the point of sale is the worst
-                      place to promise it. */}
-                  <span>Balance · due before your trip</span>
-                  <span className="font-mono">{money(p.money.balanceLaterCents)}</span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+        <CheckoutSummary m={p.money} tipBps={p.tipBps} tipCents={p.tipCents} />
 
         {/* cancellation terms + manage note (#619). The terms are the operator's published
             policy, quoted from the constants in `refund-terms.ts` — never retyped here.
@@ -525,17 +380,7 @@ function InnerForm(p: InnerProps) {
         </div>
       )}
 
-      {/* sticky pay bar — pinned inside the card's scroll region (book-controls idiom) */}
-      <div className="sticky bottom-0 z-10 flex items-center gap-3.5 border-t border-line bg-card px-4 py-3">
-        <div className="flex flex-col">
-          <span className="text-[10.5px] text-muted">{p.money.depositMode ? "Due now" : "Total"}</span>
-          <b className="text-[18px] font-bold tabular-nums" data-testid="due-now">
-            {money(p.dueNowCents)}
-          </b>
-          {p.money.depositMode && (
-            <span className="text-[10.5px] text-muted">{money(totalCents)} total</span>
-          )}
-        </div>
+      <PayBar m={p.money} tipCents={p.tipCents}>
         {/* Genuine DEC-090 exception: this form submits via a client onSubmit
             (elements.submit → server action → confirmPayment), not a form action, so
             useFormStatus/<SubmitButton> never sees pending; the local `submitting` state
@@ -548,29 +393,7 @@ function InnerForm(p: InnerProps) {
         >
           {submitting ? "Booking…" : "🔒 Book & pay"}
         </button>
-      </div>
+      </PayBar>
     </form>
-  );
-}
-
-function SummaryRow({
-  label,
-  value,
-  tone,
-  testId,
-}: {
-  label: string;
-  value: string;
-  tone?: "crew";
-  testId?: string;
-}) {
-  return (
-    <div
-      className={`flex justify-between py-1 ${tone === "crew" ? "text-mate" : ""}`}
-      {...(testId ? { "data-testid": testId } : {})}
-    >
-      <span className={tone === "crew" ? "" : "text-muted"}>{label}</span>
-      <span className="font-mono">{value}</span>
-    </div>
   );
 }

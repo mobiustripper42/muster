@@ -170,8 +170,6 @@ export type PendingHold =
       vesselId: string;
       vesselName: string;
       time: string;
-      /** How many offerings propose this one boat-time — the scope sentence's number. */
-      offeringCount: number;
     }
   | {
       action: "release";
@@ -319,9 +317,6 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
         vesselId,
         vesselName: nameOf(vesselId),
         time,
-        // Distinct offerings, not cards: the deriver emits one slot per offering, but counting
-        // rows would say "2 offerings" for one offering that somehow produced two.
-        offeringCount: new Set(open.map((s) => String(s.offeringId))).size,
       };
     }
   }
@@ -562,9 +557,17 @@ export function CalendarError({ err }: { err?: string | undefined }) {
  *
  * A banner above the grid, not a dialog in the card: no-JS (DEC-026) rules out a toast to undo
  * into, and an open block is ~40px tall — there is no room to ask a question in it, least of all
- * at 375px. It also gives the SCOPE sentence somewhere to live, and that sentence is the point.
- * A slot block is physical (one boat, one clock time), so it removes every offering proposing
- * that boat-time — a fact the registry row cannot show, because the row has no offering on it.
+ * at 375px.
+ *
+ * **The boat-time and the verbs, nothing else** (operator, 2026-09-25, 16.1d). The title names
+ * the departure and the buttons say what can be done to it, so an explanatory sentence under the
+ * title was reading, not deciding. That included the scope clause for a boat-time several
+ * offerings sell ("off the market for all N offerings"): dropped with the rest on the operator's
+ * call. A slot block is still physical — one boat, one clock time, every offering proposing it —
+ * and the registry row still counts what it removes.
+ *
+ * The buttons sit beside the title rather than at the far edge, and the ✕ sits in the corner,
+ * where a dialog's close does: apart from the two verbs, so it is never read as a third one.
  */
 export function HoldConfirm({ data }: { data: CalendarData }) {
   const p = data.pending;
@@ -576,37 +579,20 @@ export function HoldConfirm({ data }: { data: CalendarData }) {
   return (
     <div
       data-testid="hold-confirm"
-      className="mt-3 flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3 shadow-sm min-[560px]:flex-row min-[560px]:items-center min-[560px]:justify-between"
+      className="relative mt-3 flex flex-wrap items-center gap-x-6 gap-y-3 rounded-card border border-line bg-card py-3 pl-4 pr-12 shadow-sm"
     >
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-ink">
-          {p.action === "hold" ? `Book or block ${when}?` : `Unblock ${when}?`}
-        </p>
-        <p className="mt-0.5 text-xs text-muted">
-          {p.action === "hold" ? (
-            // The scope clause appears only when there IS scope to explain. On the usual slot
-            // it would be a sentence about a number that is always 1 — noise the operator
-            // learns to skip, which is how they miss it on the day it says 2.
-            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-            p.offeringCount > 1 ? (
-              <>
-                Takes the departure off the market for all {p.offeringCount}
-                {" offerings that sell this boat-time — it’s one boat."} It stays off until you
-                unblock it.
-              </>
-            ) : (
-              <>Takes the departure off the market until you unblock it.</>
-            )
-          ) : (
-            <>The departure goes back on sale.</>
-          )}
-        </p>
-      </div>
+      {/* Dismiss only — nothing is written. Top-right, like a dialog's close (16.1d). */}
+      <AppLink
+        href={cancelHref}
+        aria-label="Close"
+        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg text-lg leading-none text-muted hover:bg-bg hover:text-ink"
+      >
+        <span aria-hidden="true">✕</span>
+      </AppLink>
 
-      <div className="flex shrink-0 items-center gap-3">
-        <AppLink href={cancelHref} className="text-sm text-muted">
-          Cancel
-        </AppLink>
+      <p className="text-base font-semibold text-ink">{when}</p>
+
+      <div className="flex items-center gap-3">
         {p.action === "hold" ? (
           // A phone booking (16.1, §2.10.6). A link, not a form: booking needs the customer's
           // details, so it is a page of its own, keyed on the same physical slot this banner is.
@@ -825,7 +811,8 @@ export function CalendarGrid({
 
                   const physical = slotKey(String(s.vesselId), s.date, s.time);
                   // Ring what the banner is asking about. With several cards on one boat-time
-                  // it rings ALL of them, which is the scope sentence shown rather than stated.
+                  // it rings ALL of them — with the banner's scope sentence gone (16.1d), this ring
+                  // is the only thing showing that a block takes every offering at that boat-time.
                   const asked =
                     data.pending?.action === "hold" &&
                     data.pending.vesselId === String(s.vesselId) &&

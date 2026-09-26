@@ -254,7 +254,7 @@ test.describe("admin /admin/calendar", () => {
     // Unblocked from the calendar, the slot comes back on sale (DEC-125, reversible-in-spirit).
     await slotBlock.click();
     const release = page.getByTestId("hold-confirm");
-    await expect(release).toContainText("back on sale");
+    await expect(release).toContainText(shortLabel(OPEN_TIME));
     await release.getByRole("button", { name: "Unblock it" }).click();
 
     await expect(openAt(page, shortLabel(OPEN_TIME))).toBeVisible();
@@ -292,8 +292,8 @@ test.describe("admin /admin/calendar", () => {
 
     await opens.last().click();
     const confirm = page.getByTestId("hold-confirm");
-    // The scope is said out loud, because the row this writes cannot show it.
-    await expect(confirm).toContainText("2 offerings");
+    // The banner no longer spells out the scope (operator, 2026-09-25) — the outcome below is
+    // the assertion: one press takes BOTH offerings' cards off the market.
     await confirm.getByRole("button", { name: "Block it" }).click();
 
     // BOTH are gone from the open filter — one physical boat, one block.

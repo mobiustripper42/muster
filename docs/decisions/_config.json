@@ -18,6 +18,7 @@
     "Outbound notifications & operator relay",
     "Crew self-serve, auth & admin identity",
     "Reservations & payments",
+    "Check-in & waivers",
     "UI, brand & frontend patterns",
     "Deployment, infra & versioning",
     "Open questions"

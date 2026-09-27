@@ -38,5 +38,6 @@ binding rules here, stated in §0.2 so no module can drift from them:
 *Rejected: appending to SPEC.md.* Each new module would add hundreds of lines to a document every
 session reads as ground truth.
 
-DEC-012's "no waivers for crew" predates check-in. Converting that frozen record, and correcting the
-SPEC lines that repeat it, is Phase 0 of the waiver work.
+DEC-012's "no waivers for crew" predates check-in. It is not superseded here, deliberately: it is
+frozen, nothing reads it as a gate, and nothing is built until Phase 0 of the waiver work converts it
+and corrects the SPEC lines that repeat it.

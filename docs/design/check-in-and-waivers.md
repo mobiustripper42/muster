@@ -261,8 +261,9 @@ enforced at the input rather than validated after it (WaiverSign's detail).
 
 **Email required, phone optional.** All three products require email and none requires phone, and
 BrewBoat's own data agrees: DEC-017 found **email inline on 100% of reservations** against an
-all-time phone fill of 97/497. Phone is the `customers` identity key (DEC-132), so capture it where
-offered, but never gate a signature on it. **Nothing verifies either** — no confirm-your-email step.
+all-time phone fill of 97/497. Phone is the `customers` identity key (`phone_e164`, unique —
+`db/migrations/20260722143000_customers.sql`), so capture it where offered, but never gate a signature
+on it. **Nothing verifies either** — no confirm-your-email step.
 
 **No `waivers` table.** The signature is four columns on the guest.
 
@@ -467,8 +468,9 @@ day one.
 
 ### Scope correction (logged deliberately)
 
-The SPEC records that crew do **not** need waiver data (SPEC §149, §612, §687, §1293, §1376) and
-defers a per-guest waiver roster (§2075). That was correct **for its purpose** — it answered "what
+The SPEC records that crew do **not** need waiver data (the §0.4 glossary's *Manifest* row, §2.2's
+manifest source and acceptance criteria, §2.6's shift card) and defers a per-guest waiver roster
+(§2.8.12), as does DEC-012. That was correct **for its purpose** — it answered "what
 does the crew manifest need before crew can stop opening Xola."
 
 It does not survive contact with check-in: the mate at the dock is the only person standing there.

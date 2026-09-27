@@ -50,8 +50,8 @@ import {
  * dialog, so the whole thing works on a phone with no script running.
  *
  * One route, two native layouts, zero client JS, in the calendar's `MasterDetail` frame (issue
- * #1104): **desktop** renders the day grid beside a sticky pane with Close ✕ (the open reservation
- * ringed in the grid); **mobile** hides the grid and shows the pane full screen, with Back to
+ * #1104): **desktop** renders the day grid beside the pane with Close ✕, each scrolling on its own
+ * (the open reservation ringed in the grid); **mobile** hides the grid and shows the pane full screen, with Back to
  * calendar. A server-rendered `href` can't vary by viewport, so the split has to happen here in
  * layout rather than in the link — which is also why the grid links to a route at all instead of
  * a `?r=` pane (DEC-123 dual-form-factor posture). Every booking, paid or not, renders through the
@@ -425,7 +425,9 @@ function BookingFrame({
 }) {
   const home = calendarHref(data, {});
   return (
-    <Shell width="6xl">
+    // `fill`: bounded to the window on desktop, so the grid and the pane each scroll on their own
+    // and the window doesn't (as /admin/shifts, `master-detail.tsx`).
+    <Shell width="6xl" fill>
       <header className="flex flex-col gap-1">
         <p className="text-xs text-muted">Calendar</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Calendar</h1>
@@ -447,6 +449,8 @@ function BookingFrame({
         }
         closeHref={home}
         back={{ href: home, label: "Back to calendar" }}
+        listTestId="cal-list-col"
+        paneTestId="cal-pane-col"
       />
 
       <VersionTag />

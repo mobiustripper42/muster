@@ -10,11 +10,14 @@ import { BackLink } from "../ui/back-link";
  *
  * **Two proportions, because the lists differ.** The shift board is a column of cards and wants
  * room for the cockpit (3:4, each column scrolling on its own — #253). The calendar is a wide grid
- * across the whole fleet and keeps its width; its pane is narrow and sticks as the page scrolls
- * (operator, 2026-09-26). A pane taller than the window scrolls on its own (issue #1104 part 3):
- * pinned, its foot — a booking's Book it, a paid booking's last actions — was out of reach until
- * the grid beside it ran out. Written as two literal class sets, not interpolated, so Tailwind sees
- * every class.
+ * across the whole fleet and keeps its width; its pane is narrow (operator, 2026-09-26).
+ *
+ * **Both scroll the same way: each column on its own, the window not at all** (#253; the calendar
+ * since the PR #1110 review). The page wraps this in `<Shell fill>`, which bounds it to the window
+ * on desktop. The calendar tried a pinned pane that scrolled inside a page that also scrolled — two
+ * scrollbars, one inside the other, which the operator found confusing. Below `lg` none of it
+ * applies: the list is hidden and the pane is a normal full-screen page. Written as two literal
+ * class sets, not interpolated, so Tailwind sees every class.
  *
  * Server component, no JS: which pane is open is the URL, and Close is a link back to the list.
  */
@@ -25,9 +28,9 @@ const LAYOUT = {
     pane: "flex min-w-0 flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:pr-1",
   },
   calendar: {
-    frame: "lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-5",
-    list: "hidden min-w-0 lg:block",
-    pane: "flex min-w-0 flex-col gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:pr-1",
+    frame: "lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-5",
+    list: "hidden min-w-0 lg:block lg:min-h-0 lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:pr-1",
+    pane: "flex min-w-0 flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:pr-1",
   },
 } as const;
 

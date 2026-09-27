@@ -61,7 +61,9 @@ export default async function AdminCalendar({
   );
 
   return (
-    <Shell width="6xl">
+    // `fill` only with a pane open: then the grid and the pane each scroll on their own and the
+    // window doesn't (as /admin/shifts). With nothing selected the grid has the page and it scrolls.
+    <Shell width="6xl" fill={data.pending !== null}>
       <header className="flex flex-col gap-1">
         <p className="text-xs text-muted">Calendar</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Calendar</h1>
@@ -80,6 +82,8 @@ export default async function AdminCalendar({
           }
           closeHref={calendarHref(data, {})}
           back={{ href: calendarHref(data, {}), label: "Back to calendar" }}
+          listTestId="cal-list-col"
+          paneTestId="cal-pane-col"
         />
       ) : (
         calendar

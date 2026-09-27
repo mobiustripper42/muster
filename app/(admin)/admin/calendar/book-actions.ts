@@ -17,7 +17,7 @@ export type BookErr = Extract<OperatorBookingResult, { ok: false }>["reason"] | 
 /**
  * The form lives in the calendar's pane (issue #1104 part 3), so its draft cookie is scoped to the
  * calendar (`form-draft.ts`). The reservation pane's refund draft shares that cookie; each reader
- * checks the draft is its own (this one by boat and time, that one by reservation id).
+ * checks the draft is its own (this one by boat, day and time; that one by reservation id).
  */
 const SURFACE = "/admin/calendar";
 

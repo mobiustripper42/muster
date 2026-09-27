@@ -79,7 +79,14 @@ export async function BookPane({ data, sp }: { data: CalendarData; sp: BookSearc
     .filter((s) => String(s.vesselId) === p.vesselId && s.time === p.time && s.status === "available")
     .map((s) => data.offeringById.get(String(s.offeringId)))
     .filter((o): o is Offering => o !== undefined);
-  if (!vessel || choices.length === 0) return null;
+  if (!vessel || choices.length === 0) {
+    return (
+      <Notice>
+        That departure isn’t open to book anymore — someone may have just taken it. The calendar
+        shows what’s free.
+      </Notice>
+    );
+  }
 
   let config: PaymentConfig;
   try {
@@ -89,11 +96,17 @@ export async function BookPane({ data, sp }: { data: CalendarData; sp: BookSearc
     return <Notice>Couldn’t load this departure’s prices right now. {ADMIN_LOG_HINT}</Notice>;
   }
 
-  // The refused booking's draft — only when it is this slot's. The cookie is the calendar's, and
-  // the reservation pane's refund draft shares it (`book-actions.ts`).
+  // The refused booking's draft — only when it is this physical slot's: boat, day and time (a boat
+  // runs the same clock time every day). The cookie is the calendar's, and the reservation pane's
+  // refund draft shares it (`book-actions.ts`).
   const rawDraft = sp.bookErr ? await readFormDraft(SURFACE) : null;
   const draft =
-    rawDraft && rawDraft.get("vesselId") === p.vesselId && rawDraft.get("time") === p.time ? rawDraft : null;
+    rawDraft &&
+    rawDraft.get("vesselId") === p.vesselId &&
+    rawDraft.get("date") === data.day &&
+    rawDraft.get("time") === p.time
+      ? rawDraft
+      : null;
 
   const offering =
     choices.find((o) => String(o.id) === (draft?.get("offeringId") ?? sp.offering)) ?? choices[0]!;

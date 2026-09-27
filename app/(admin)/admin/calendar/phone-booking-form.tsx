@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { CheckoutSummary } from "../../../../../components/checkout/checkout-summary";
-import { ContactFields, type ContactValues } from "../../../../../components/checkout/contact-fields";
-import type { CheckoutMoney, TipTier } from "../../../../../components/checkout/money";
-import { PayBar } from "../../../../../components/checkout/pay-bar";
-import { TipTiles } from "../../../../../components/checkout/tip-tiles";
-import { SubmitButton } from "../../../../../components/ui/submit-button";
-import { UnsavedGuard } from "../../../../../components/ui/unsaved-guard";
-import { bookPhoneReservation } from "./actions";
+import { CheckoutSummary } from "../../../../components/checkout/checkout-summary";
+import { ContactFields, type ContactValues } from "../../../../components/checkout/contact-fields";
+import type { CheckoutMoney, TipTier } from "../../../../components/checkout/money";
+import { PayBar } from "../../../../components/checkout/pay-bar";
+import { TipTiles } from "../../../../components/checkout/tip-tiles";
+import { SubmitButton } from "../../../../components/ui/submit-button";
+import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
+import { bookPhoneReservation } from "./book-actions";
 
 /**
  * The operator's side of the checkout (16.1d, issue #1092) — the SAME contact fields, tip tiles,

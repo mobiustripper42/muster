@@ -54,7 +54,10 @@ export function ContactFields({
             className={inputClass}
             name="phone"
             type="tel"
-            placeholder="Mobile — with country code if outside the US"
+            // Just "Mobile" (operator, 2026-09-27): the callers are nearly all local, and the longer
+            // hint was cut off at 375px. A non-US number still works — `+` and a country code — and
+            // the refusal copy says so if one is typed without it.
+            placeholder="Mobile"
             autoComplete={self ? "tel" : "off"}
             required
             value={values.phone}

@@ -44,8 +44,8 @@ import { holdSlot, releaseHold, type CalendarErr } from "./actions";
  * which a media-query-dependent href could never do without client JS.
  *
  * Clicking an open departure opens its slot pane beside the grid (#1104, `SlotPane`), which offers
- * two things: **Book** it by phone (16.1, §2.10.6 — a link to `/admin/calendar/book`, which writes
- * through the shared claim), or take it off the market as a SLOT BLOCK (#703, a
+ * two things: **Book** it by phone (16.1, §2.10.6 — the phone booking's two steps in the same pane,
+ * `BookPane`, writing through the shared claim), or take it off the market as a SLOT BLOCK (#703, a
  * `Block{kind:"vesselHold"}`); a blocked one's pane puts it back. A pane rather than a question in
  * the card — no-JS (DEC-026) has no toast to undo into, and a card is ~40px tall.
  *
@@ -356,6 +356,9 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
   };
 }
 
+/** What every calendar href is built from: the day on screen, today, and the filter chip. */
+export type HrefData = Pick<CalendarData, "day" | "today" | "filter">;
+
 /**
  * Build the `/admin/calendar` href preserving the other axis (date ↔ filter).
  *
@@ -363,7 +366,7 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
  * filter chips, the banner's own Cancel) should DROP an open confirm, because moving off the
  * slot you were asked about is an answer. They are set explicitly, one link each.
  */
-export function calendarHref(data: Pick<CalendarData, "day" | "today" | "filter">, o: {
+export function calendarHref(data: HrefData, o: {
   date?: string;
   filter?: string;
   hold?: string;
@@ -382,7 +385,7 @@ export function calendarHref(data: Pick<CalendarData, "day" | "today" | "filter"
 
 /** The same query string, hung off a reservation's detail route. */
 export function detailHref(
-  data: Pick<CalendarData, "day" | "today" | "filter">,
+  data: HrefData,
   reservationId: string,
 ): string {
   const params = new URLSearchParams();
@@ -594,20 +597,7 @@ export function SlotPane({ data }: { data: CalendarData }) {
 
   return (
     <div data-testid="slot-pane" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-xl font-semibold text-ink">
-          {clockTime(p.time)} · {p.vesselName}
-        </h2>
-        <span
-          data-testid="slot-state"
-          className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-            blocked ? "border-line bg-bg text-accent" : "border-line bg-card text-muted"
-          }`}
-        >
-          {blocked ? "Blocked" : "Open"}
-        </span>
-      </div>
-      <p className="-mt-2 text-sm text-muted">{formatFullDay(data.day)}</p>
+      <SlotHeader data={data} p={p} />
 
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-card border border-line bg-card px-4 py-3 text-sm">
         {blocked ? (
@@ -628,9 +618,10 @@ export function SlotPane({ data }: { data: CalendarData }) {
       <div className="flex gap-3">
         {!blocked ? (
           // A phone booking (16.1, §2.10.6). A link, not a form: booking needs the customer's
-          // details, so it is a page of its own, keyed on the same physical slot this pane is.
+          // details, so it turns this pane into the booking's two steps (issue #1104 part 3),
+          // keyed on the same physical slot, with the calendar still beside it.
           <AppLink
-            href={`/admin/calendar/book?${new URLSearchParams({ date: data.day, vessel: p.vesselId, time: p.time }).toString()}`}
+            href={bookHref(data, p, {})}
             data-testid="book-slot"
             className="btn-primary flex-1"
           >
@@ -657,6 +648,48 @@ export function SlotPane({ data }: { data: CalendarData }) {
       </div>
     </div>
   );
+}
+
+/**
+ * The slot pane's header — "3:30 PM · Brew 3", the Open / Blocked pill, the day. Shared with the
+ * booking steps (`BookPane`), so the pane does not jump when Book it turns it into a booking.
+ */
+export function SlotHeader({ data, p }: { data: CalendarData; p: PendingHold }) {
+  const blocked = p.action === "release";
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-xl font-semibold text-ink">
+          {clockTime(p.time)} · {p.vesselName}
+        </h2>
+        <span
+          data-testid="slot-state"
+          className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+            blocked ? "border-line bg-bg text-accent" : "border-line bg-card text-muted"
+          }`}
+        >
+          {blocked ? "Blocked" : "Open"}
+        </span>
+      </div>
+      <p className="-mt-2 text-sm text-muted">{formatFullDay(data.day)}</p>
+    </>
+  );
+}
+
+/**
+ * The booking steps' href (issue #1104 part 3): the calendar, this slot's pane, `book=1`, plus the
+ * step's own params — `offering`, `guests` (selects the checkout step), `party` (prefills Guests).
+ */
+export function bookHref(
+  data: HrefData,
+  p: Pick<PendingHold, "vesselId" | "time">,
+  extra: Record<string, string>,
+): string {
+  const base = calendarHref(data, { hold: `${p.vesselId}|${p.time}` });
+  const q = new URLSearchParams(base.split("?")[1] ?? "");
+  q.set("book", "1");
+  for (const [k, v] of Object.entries(extra)) q.set(k, v);
+  return `/admin/calendar?${q.toString()}`;
 }
 
 function SlotRow({ label, children }: { label: string; children: ReactNode }) {

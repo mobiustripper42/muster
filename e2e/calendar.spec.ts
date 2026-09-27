@@ -303,7 +303,8 @@ test.describe("admin /admin/calendar", () => {
     await expect(pane.getByTestId("slot-state")).toHaveText("Open");
     await expect(pane).toContainText("Reservation Demo Cruise");
     await expect(pane).toContainText("12 guests");
-    await expect(pane.getByTestId("book-slot")).toHaveAttribute("href", /\/admin\/calendar\/book\?/);
+    // Book it stays on the calendar: the same slot's pane, in booking mode (#1104 part 3).
+    await expect(pane.getByTestId("book-slot")).toHaveAttribute("href", /^\/admin\/calendar\?.*hold=.*&book=1/);
     await expect(pane.getByRole("button", { name: "Block it" })).toBeVisible();
 
     // Desktop closes with "Close ✕"; at 375px the pane is the whole screen and "Back to calendar"

@@ -94,17 +94,22 @@ test.describe("admin /admin/calendar", () => {
 
     const pane = page.getByTestId("reservation-detail");
     await expect(pane).toBeVisible();
-    // The page heading names the reservation; the pane deliberately doesn't repeat it.
-    await expect(page.getByRole("heading", { name: "Marcus Webb", level: 1 })).toBeVisible();
+    // One pane for every booking (#1104 part 2): the PANE names the customer, with the booking's
+    // state beside it, and the page heading stays "Calendar" as you click around.
+    await expect(page.getByRole("heading", { name: "Calendar", level: 1 })).toBeVisible();
+    await expect(pane.getByRole("heading", { name: "Marcus Webb", level: 2 })).toBeVisible();
+    await expect(pane.getByTestId("booking-state")).toHaveText("Booked");
+    await expect(pane).toContainText(
+      new RegExp(`1:30 PM · Brew 3 · \\w{3}, ${monthDay(BOOKED.date)} · Booked online`),
+    );
 
     // Guests against the boat's COI cap — "8 of 12", never a seat count.
     await expect(pane).toContainText("8");
     await expect(pane).toContainText("of 12");
 
-    // The three rows the model can't source the mockup's way.
+    // The rows the model can't source the mockup's way.
     await expect(pane).toContainText("Waiver");
     await expect(pane).toContainText("Not on file"); // one consent record, not "7 of 7"
-    await expect(pane).toContainText("Updated"); // updatedAt, never "Booked"
     await expect(pane).not.toContainText("Add-on"); // no per-reservation add-ons exist
 
     // Money: fare + tax, nothing paid, balance still due. No service fee (Xola's, unmodelled).
@@ -134,8 +139,9 @@ test.describe("admin /admin/calendar", () => {
     if (wide) await expect(grid).toBeVisible();
     else await expect(grid).toBeHidden();
 
-    // Back returns to the day you came from.
-    await page.getByRole("link", { name: "Back to calendar" }).click();
+    // Close (desktop) or Back (375px, where the pane is the whole screen) returns to the day you
+    // came from — the same frame as a slot's pane.
+    await page.getByRole("link", { name: /^(Close|Back to calendar)$/ }).click();
     await page.waitForURL(new RegExp(`/admin/calendar\\?date=${BOOKED.date}`));
     await expect(page.getByTestId("cal-block").filter({ hasText: "Marcus Webb" })).toBeVisible();
   });
@@ -146,7 +152,7 @@ test.describe("admin /admin/calendar", () => {
     await page.goto(`/admin/calendar/${demoReservationId(BOOKED_2.date, BOOKED_2.time)}`);
 
     const pane = page.getByTestId("reservation-detail");
-    await expect(page.getByRole("heading", { name: "Dana Cho", level: 1 })).toBeVisible();
+    await expect(pane.getByRole("heading", { name: "Dana Cho", level: 2 })).toBeVisible();
     await expect(pane).toContainText(monthDay(BOOKED_2.date));
     await expect(pane).toContainText("3:30 PM");
     // Dana's fare is 43900 → tax 3183 → 47083 due.
@@ -400,7 +406,9 @@ test.describe("admin reservation actions (#616)", () => {
     await confirm.getByRole("button", { name: "Cancel this booking" }).click();
     await page.waitForURL(/cancelled=/);
 
-    await expect(pane).toContainText("Cancelled");
+    await expect(pane.getByTestId("booking-state")).toHaveText("Cancelled");
+    // A cancelled booking owes nothing, and says why rather than "Settled".
+    await expect(pane.getByTestId("money-owes")).toHaveText("Not owed — cancelled");
     await expect(page.getByTestId("action-done")).toContainText("The boat is free again");
     // The balance link must be GONE. `createBalanceCheckout` refuses a cancelled booking
     // (`not_active`), so leaving the button up is a control whose only outcome is an error.

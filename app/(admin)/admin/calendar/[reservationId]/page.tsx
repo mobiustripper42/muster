@@ -1,7 +1,11 @@
 import { notFound } from "next/navigation";
 import type { Event, Gratuity, Payment, Reservation, Seat, Shift } from "@core/domain/entities.js";
 import { asId } from "@core/domain/ids.js";
-import { buildReservationDetail, shiftForEvent } from "@core/reservations/calendar-detail.js";
+import {
+  buildReservationDetail,
+  buildUnpaidBookingDetail,
+  shiftForEvent,
+} from "@core/reservations/calendar-detail.js";
 import {
   loadReservationTrail,
   type TrailEntry,
@@ -10,10 +14,10 @@ import { TrailEntryRow } from "../../../../../components/admin/trail-row";
 import { quoteCancelRefund, type CancelledBy } from "@core/reservations/cancel-reservation.js";
 import { refundableTotalFor, refundedTotalFor } from "@core/reservations/refund-payment.js";
 import { zonedWallClockToInstant } from "@core/config/tenant.js";
-import { BackLink } from "../../../../../components/ui/back-link";
 import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../../components/admin/admin-signed-out";
+import { MasterDetail } from "../../../../../components/admin/master-detail";
 import { VersionTag } from "../../../../../components/ui/version-tag";
 import { readSubject } from "../../../../lib/auth";
 import { readFormDraft } from "../../../../lib/form-draft";
@@ -28,6 +32,7 @@ import {
   CalendarLegend,
   calendarHref,
   loadCalendarData,
+  type CalendarData,
   type Search,
 } from "../calendar-view";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
@@ -36,7 +41,6 @@ import {
   actionMessage,
   type PaneActionState,
 } from "./reservation-detail-pane";
-import { PhoneBookingPane } from "./phone-booking-pane";
 
 /**
  * /admin/calendar/[reservationId] (task 12.11 continued, #464) — the reservation detail.
@@ -45,12 +49,13 @@ import { PhoneBookingPane } from "./phone-booking-pane";
  * action is a `<form>` post, and the cancel confirm step is a query param rather than a
  * dialog, so the whole thing works on a phone with no script running.
  *
- * One route, two native layouts, zero client JS: **desktop** renders the day grid beside a
- * sticky pane (the mockup's two-pane calendar, with the open reservation ringed in the grid);
- * **mobile** hides the grid and shows the pane as a full-screen page whose Back link returns
- * to the grid. A server-rendered `href` can't vary by viewport, so the split has to happen
- * here in layout rather than in the link — which is also why the grid links to a route at all
- * instead of a `?r=` pane (DEC-123 dual-form-factor posture).
+ * One route, two native layouts, zero client JS, in the calendar's `MasterDetail` frame (issue
+ * #1104): **desktop** renders the day grid beside a sticky pane with Close ✕ (the open reservation
+ * ringed in the grid); **mobile** hides the grid and shows the pane full screen, with Back to
+ * calendar. A server-rendered `href` can't vary by viewport, so the split has to happen here in
+ * layout rather than in the link — which is also why the grid links to a route at all instead of
+ * a `?r=` pane (DEC-123 dual-form-factor posture). Every booking, paid or not, renders through the
+ * one `ReservationDetailPane` (issue #1104 part 2).
  *
  * `date`/`filter` ride the query string so the grid behind the pane stays on the day you came
  * from, and Back returns you there.
@@ -210,8 +215,6 @@ export default async function ReservationDetailPage({
     taxRateBps,
     ...(shift ? { shift: { shift, seats } } : {}),
   });
-
-  const backHref = calendarHref(data, {});
 
   // ── This booking's own history (issue #1049) ───────────────────────────────
   //
@@ -390,39 +393,61 @@ export default async function ReservationDetailPage({
   }
 
   return (
-    <Shell width="6xl">
-      {/* Labelled distinctly from the admin nav's "Calendar" — on mobile this Back link IS the
-          way out of the pane, so it must never be confused with a nav entry that drops the day. */}
-      <BackLink href={backHref}>Back to calendar</BackLink>
+    <BookingFrame data={data} reservationId={String(reservation.id)}>
+      <ReservationDetailPane
+        v={view}
+        balance={{
+          ...(sp.balanceUrl !== undefined ? { url: sp.balanceUrl } : {}),
+          ...(sp.balanceErr !== undefined ? { err: sp.balanceErr } : {}),
+          date: sp.date ?? "",
+          filter: sp.filter ?? "",
+        }}
+        {...(actions ? { actions } : {})}
+      />
+      <BookingHistory trail={trail} />
+    </BookingFrame>
+  );
+}
 
+/**
+ * The page around the pane: the heading stays "Calendar" as you click around (issue #1104), the
+ * grid on the left with this booking ringed, the pane on the right — the same frame an open or
+ * blocked slot opens in. Close ✕ and Back to calendar both return to the day you came from.
+ */
+function BookingFrame({
+  data,
+  reservationId,
+  children,
+}: {
+  data: CalendarData;
+  reservationId: string;
+  children: React.ReactNode;
+}) {
+  const home = calendarHref(data, {});
+  return (
+    <Shell width="6xl">
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-muted">Calendar / Reservation</p>
-        <h1 className="text-[22px] font-semibold leading-tight text-ink">{view.customerName}</h1>
+        <p className="text-xs text-muted">Calendar</p>
+        <h1 className="text-[22px] font-semibold leading-tight text-ink">Calendar</h1>
       </header>
 
-      {/* Desktop: grid + sticky pane. Mobile: pane only, Back returns to the grid. */}
-      <div className="mt-1 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-4">
-        <div className="hidden lg:block">
-          <CalendarControls data={data} />
-          <CalendarLegend data={data} />
-          <CalendarGrid data={data} selectedReservationId={String(reservation.id)} />
-        </div>
-
-        <aside className="mt-3 lg:sticky lg:top-4 lg:mt-0" data-testid="reservation-detail">
-          <ReservationDetailPane
-            v={view}
-            balance={{
-              ...(sp.balanceUrl !== undefined ? { url: sp.balanceUrl } : {}),
-              ...(sp.balanceErr !== undefined ? { err: sp.balanceErr } : {}),
-              date: sp.date ?? "",
-              filter: sp.filter ?? "",
-            }}
-            {...(actions ? { actions } : {})}
-          />
-
-          <BookingHistory trail={trail} />
-        </aside>
-      </div>
+      <MasterDetail
+        layout="calendar"
+        list={
+          <>
+            <CalendarControls data={data} />
+            <CalendarLegend data={data} />
+            <CalendarGrid data={data} selectedReservationId={reservationId} />
+          </>
+        }
+        pane={
+          <section data-testid="reservation-detail" className="flex flex-col gap-3">
+            {children}
+          </section>
+        }
+        closeHref={home}
+        back={{ href: home, label: "Back to calendar" }}
+      />
 
       <VersionTag />
     </Shell>
@@ -455,8 +480,9 @@ function isUnpaidPhoneBooking(r: Reservation): boolean {
 }
 
 /**
- * The route for an unpaid phone booking (16.1): the same two-layout frame as the booked pane —
- * grid beside it on desktop, the pane full-screen on mobile — around `PhoneBookingPane`.
+ * The route for an unpaid phone booking (16.1). It has no Event, so it can't take the paid path's
+ * reads — but it renders in the same frame, through the same pane (issue #1104 part 2), with its
+ * money read off the invoice frozen at booking.
  */
 async function PhoneBookingPage({
   reservation,
@@ -480,43 +506,28 @@ async function PhoneBookingPage({
     logSwallowed("admin/reservation:trail", e, `the history panel did not load for ${reservation.id}`);
   }
 
+  const view = buildUnpaidBookingDetail({
+    reservation,
+    vessel: data.vesselById.get(String(reservation.vesselId)),
+    offering: reservation.offeringId ? data.offeringById.get(String(reservation.offeringId)) : undefined,
+  });
+
   return (
-    <Shell width="6xl">
-      <BackLink href={calendarHref(data, {})}>Back to calendar</BackLink>
-
-      <header className="flex flex-col gap-1">
-        <p className="text-xs text-muted">Calendar / Reservation</p>
-        <h1 className="text-[22px] font-semibold leading-tight text-ink">{reservation.customerName}</h1>
-      </header>
-
-      <div className="mt-1 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-4">
-        <div className="hidden lg:block">
-          <CalendarControls data={data} />
-          <CalendarLegend data={data} />
-          <CalendarGrid data={data} selectedReservationId={String(reservation.id)} />
-        </div>
-
-        <aside className="mt-3 lg:sticky lg:top-4 lg:mt-0" data-testid="reservation-detail">
-          <PhoneBookingPane
-            reservation={reservation}
-            vesselName={
-              data.vesselById.get(String(reservation.vesselId))?.name ?? String(reservation.vesselId ?? "—")
-            }
-            offeringName={reservation.offeringId ? data.offeringById.get(String(reservation.offeringId))?.name : undefined}
-            date={sp.date ?? ""}
-            filter={sp.filter ?? ""}
-            justBooked={sp.booked !== undefined}
-            confirmingCancel={sp.cancel === "1"}
-            cancelHref={paneHref(reservation.id, sp, { cancel: "1" })}
-            backHref={paneHref(reservation.id, sp, {})}
-            cancelErr={sp.cancelErr}
-          />
-          <BookingHistory trail={trail} />
-        </aside>
-      </div>
-
-      <VersionTag />
-    </Shell>
+    <BookingFrame data={data} reservationId={String(reservation.id)}>
+      <ReservationDetailPane
+        v={view}
+        unpaid={{
+          date: sp.date ?? "",
+          filter: sp.filter ?? "",
+          justBooked: sp.booked !== undefined,
+          confirmingCancel: sp.cancel === "1",
+          cancelHref: paneHref(reservation.id, sp, { cancel: "1" }),
+          backHref: paneHref(reservation.id, sp, {}),
+          cancelErr: sp.cancelErr,
+        }}
+      />
+      <BookingHistory trail={trail} />
+    </BookingFrame>
   );
 }
 

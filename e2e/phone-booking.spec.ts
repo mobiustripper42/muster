@@ -66,13 +66,49 @@ test.describe("admin phone booking", () => {
     await page.getByTestId("book-phone").click();
 
     await page.waitForURL(/\/admin\/calendar\/resv-/);
-    await expect(page.getByTestId("phone-booking-state")).toHaveText(/Awaiting payment/);
+    // The same pane as a paid booking (#1104 part 2): the customer's name, the state beside it,
+    // and the frozen invoice with nothing paid — owing exactly what the operator read out. The trip
+    // back through Change reset the tip to the default, so that is public's default total.
+    const pane = page.getByTestId("reservation-detail");
+    await expect(pane.getByRole("heading", { name: "Phone Caller", level: 2 })).toBeVisible();
+    await expect(pane.getByTestId("booking-state")).toHaveText("Awaiting payment");
+    await expect(pane).toContainText(`${shortTime(OPEN_TIME)} PM · Brew 3`);
+    await expect(pane).toContainText("Booked by phone");
+    await expect(pane.getByTestId("money-paid")).toHaveText("$0.00");
+    await expect(pane.getByTestId("money-owes")).toHaveText(publicTotal);
 
     // On the grid it names the customer, like a booked card, and says it is unpaid (#1104).
     await page.goto(`/admin/calendar?date=${BOOKED.date}`);
     const card = page.locator('[data-testid="cal-block"][data-status="awaiting-payment"]');
     await expect(card).toContainText("Phone Caller");
     await expect(card).toContainText(`${shortTime(OPEN_TIME)} · 2 · Unpaid`);
+  });
+
+  /**
+   * Ending an unpaid phone booking from its pane. The abort comes first: Do Not Cancel must write
+   * nothing, and the booking must still be awaiting payment afterwards.
+   */
+  test("cancel an unpaid booking: Do Not Cancel keeps it, Cancel this booking ends it", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto(`${BOOK}&guests=2`);
+    await fillHydrated(page.getByPlaceholder("Guest’s full name"), "Phone Caller");
+    await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0199");
+    await page.getByTestId("book-phone").click();
+    await page.waitForURL(/\/admin\/calendar\/resv-/);
+    const pane = page.getByTestId("reservation-detail");
+
+    await pane.getByRole("link", { name: "Cancel booking…" }).click();
+    await expect(pane).toContainText("Nothing was paid, so nothing is refunded.");
+    await pane.getByRole("link", { name: "Do Not Cancel" }).click();
+    await expect(pane.getByTestId("booking-state")).toHaveText("Awaiting payment");
+    await expect(pane.getByRole("link", { name: "Cancel booking…" })).toBeVisible();
+
+    await pane.getByRole("link", { name: "Cancel booking…" }).click();
+    await pane.getByRole("button", { name: "Cancel this booking" }).click();
+    await expect(pane.getByTestId("booking-state")).toHaveText("Cancelled");
+    await expect(pane.getByTestId("money-owes")).toHaveText("Not owed — cancelled");
+    await expect(pane).toContainText("Was quoted");
+    await expect(pane.getByRole("link", { name: "Cancel booking…" })).toHaveCount(0);
   });
 
   test("a refused booking comes back on the form with what was typed", async ({ page }) => {

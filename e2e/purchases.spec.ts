@@ -99,6 +99,6 @@ test.describe("admin /admin/purchases", () => {
 
     await page.waitForURL(/\/admin\/calendar\/resv-demo/);
     await expect(page.getByTestId("reservation-detail")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Dana Cho", level: 1 })).toBeVisible();
+    await expect(page.getByTestId("reservation-detail").getByRole("heading", { name: "Dana Cho", level: 2 })).toBeVisible();
   });
 });

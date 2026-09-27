@@ -1,0 +1,105 @@
+import { AppLink } from "../../../../../components/ui/app-link";
+import { Notice } from "../../../../../components/ui/notice";
+import { SubmitButton } from "../../../../../components/ui/submit-button";
+import { errCopyFor } from "../../../../lib/err-copy";
+import { cancelPhoneBooking, type PhoneCancelErr } from "./actions";
+
+/**
+ * The actions for an operator's phone booking that has not been paid (16.1, §2.10.6, DEC-163).
+ *
+ * It used to be a whole pane of its own, styled nothing like the paid one, so a booking changed its
+ * layout the moment it was paid. Since issue #1104 part 2 every booking renders through
+ * `ReservationDetailPane`, and only these actions differ: an unpaid booking has no Event, no money
+ * received and nothing to refund, so the one thing DEC-163 leaves to a person is ending it. The
+ * payment link the customer pays through lands here next (16.1a).
+ *
+ * The confirm step uses the paid pane's two buttons — **Cancel this booking** and **Do Not Cancel**
+ * — so ending a booking reads the same whichever state it is in.
+ */
+
+/** The route's state for these actions, from the query string. */
+export interface UnpaidActionState {
+  /** The grid's day and filter, carried through the cancel so Back returns to the same view. */
+  date: string;
+  filter: string;
+  /** The render right after the operator booked this by phone. */
+  justBooked: boolean;
+  confirmingCancel: boolean;
+  cancelHref: string;
+  backHref: string;
+  cancelErr?: string | undefined;
+}
+
+const CANCEL_ERR_COPY: Record<PhoneCancelErr, string> = {
+  now_booked:
+    "The customer just paid — this is a booking now, so it wasn’t cancelled. Reload to see it; cancel it from there if you still mean to, with its refund.",
+  not_booked: "This booking can’t be cancelled from here.",
+  not_muster: "This booking can’t be cancelled from here.",
+  reservation_missing: "That booking no longer exists.",
+  unreachable: "Couldn’t cancel just now — nothing changed. Try again in a moment.",
+};
+
+export function PhoneBookingActions({
+  reservationId,
+  cancelled,
+  state,
+}: {
+  reservationId: string;
+  cancelled: boolean;
+  state: UnpaidActionState;
+}) {
+  const error = errCopyFor(CANCEL_ERR_COPY, state.cancelErr, "unreachable");
+  if (cancelled && !error) return null;
+
+  return (
+    // The anchor the cancel's redirect lands on, same as the paid pane's actions.
+    <div id="booking-actions" className="flex scroll-mt-4 flex-col gap-2" data-testid="reservation-actions">
+      {error ? <Notice tone="bad">{error}</Notice> : null}
+      {cancelled ? null : <CancelControl reservationId={reservationId} state={state} />}
+    </div>
+  );
+}
+
+function CancelControl({ reservationId, state }: { reservationId: string; state: UnpaidActionState }) {
+  if (!state.confirmingCancel) {
+    return (
+      <AppLink href={state.cancelHref} data-testid="cancel-start" className="btn-secondary flex min-h-[44px]">
+        Cancel booking…
+      </AppLink>
+    );
+  }
+  return (
+    <form action={cancelPhoneBooking} className="flex flex-col gap-2" data-testid="cancel-confirm">
+      <input type="hidden" name="reservationId" value={reservationId} />
+      <input type="hidden" name="date" value={state.date} />
+      <input type="hidden" name="filter" value={state.filter} />
+      <p className="text-sm font-medium text-ink">Cancel this booking and free the boat?</p>
+      <p className="text-xs text-muted">Nothing was paid, so nothing is refunded.</p>
+      <fieldset>
+        <legend className="sr-only">Why</legend>
+        {(
+          [
+            ["customer", "The customer didn’t pay, or changed their mind"],
+            ["operator", "We cancelled"],
+          ] as const
+        ).map(([value, label]) => (
+          <label
+            key={value}
+            className="flex min-h-[44px] items-center gap-2 border-b border-line py-1 text-sm text-ink last:border-0"
+          >
+            <input type="radio" name="by" value={value} defaultChecked={value === "customer"} />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      <div className="flex gap-2">
+        <SubmitButton data-commits="cancel" className="btn-danger min-h-[44px] flex-1">
+          Cancel this booking
+        </SubmitButton>
+        <AppLink href={state.backHref} className="btn-secondary min-h-[44px]">
+          Do Not Cancel
+        </AppLink>
+      </div>
+    </form>
+  );
+}

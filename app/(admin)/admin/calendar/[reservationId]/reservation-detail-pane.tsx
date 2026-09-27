@@ -1,8 +1,7 @@
 import { formatCents, type ReservationDetailView } from "@core/reservations/calendar-detail.js";
-import { offeringDotClass } from "@core/reservations/calendar-grid.js";
 import { AppLink } from "../../../../../components/ui/app-link";
+import { Notice } from "../../../../../components/ui/notice";
 import { UnsavedGuard } from "../../../../../components/ui/unsaved-guard";
-import { vesselHueClass } from "../../../../lib/vessel-hue";
 import { clockTime, formatShortDay } from "../calendar-view";
 import { CopyButton } from "../../../../../components/ui/copy-button";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
@@ -15,6 +14,7 @@ import {
   resendConfirmation,
   startRefund,
 } from "./actions";
+import { PhoneBookingActions, type UnpaidActionState } from "./phone-booking-actions";
 
 /**
  * Everything the actions block needs, resolved by the route (#616). Passed in rather than
@@ -310,39 +310,59 @@ export function actionMessage(
 }
 
 /**
- * The reservation detail pane (task 12.11 continued, #464; actions #616).
+ * The booking pane (task 12.11 continued, #464; actions #616; one pane for every booking, issue
+ * #1104 part 2).
  *
- * It shipped read-only, and its own comment listed what was deferred: "message / guests /
- * change time / resend / refund / cancel all defer, and refund waits on #472 besides". #616
- * lands three of those — cancel, refund, resend. Message, guests and change-time still defer.
+ * Every booking renders here — paid, awaiting payment, cancelled, Xola — in the approved mockup's
+ * shape (`calendar-pane-1104.html`): the customer's name with a status pill, a meta line, then Trip,
+ * Contact and Money cards, then the actions. The header is shaped like the slot pane's, so every
+ * card on the calendar opens the same kind of thing. An unpaid phone booking used to have a pane of
+ * its own, styled nothing like this one, so a booking changed its whole layout the moment it was
+ * paid; now only its actions differ (`PhoneBookingActions`).
  *
- * The pane is the same component in both form factors; the route decides whether it sits
- * beside the grid or replaces it.
+ * The pane is the same component in both form factors; the route's `MasterDetail` decides whether
+ * it sits beside the grid or replaces it.
  *
- * Three sections the mockup drew are deliberately shaped differently — see the module note in
- * `src/reservations/calendar-detail.ts`: add-ons are omitted (no per-reservation selection
- * exists), the waiver is one consent row rather than a per-attendee tally, and the date row is
- * "Updated" rather than "Booked". The mockup's 3% service fee isn't modelled at all.
+ * Add-ons are omitted (no per-reservation selection exists) and the waiver is one consent row
+ * rather than a per-attendee tally — see the module note in `src/reservations/calendar-detail.ts`.
  */
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({
+  label,
+  children,
+  testId,
+}: {
+  label: string;
+  children: React.ReactNode;
+  /** On the VALUE, so a test reads the figure and not the label beside it. */
+  testId?: string;
+}) {
   return (
-    <div className="flex items-baseline justify-between gap-3 py-1.5">
-      <span className="shrink-0 text-xs text-muted">{label}</span>
-      <span className="text-right text-sm text-ink">{children}</span>
+    <div className="flex items-baseline justify-between gap-3 py-1">
+      <span className="shrink-0 text-sm text-muted">{label}</span>
+      <span className="text-right text-sm text-ink" {...(testId ? { "data-testid": testId } : {})}>
+        {children}
+      </span>
     </div>
   );
 }
 
-function Section({ title, tag }: { title: string; tag?: string }) {
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mt-4 mb-1 flex items-center gap-2 border-b border-line pb-1">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">{title}</span>
-      {tag && (
-        <span className="rounded border border-line px-1.5 py-px text-[10px] text-muted">{tag}</span>
-      )}
-    </div>
+    <section aria-label={title} className="rounded-card border border-line bg-card px-4 py-3">
+      <h3 className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-muted">{title}</h3>
+      {children}
+    </section>
   );
+}
+
+function Cents({ cents }: { cents: number }) {
+  return <span className="font-mono">{formatCents(cents)}</span>;
+}
+
+/** Basis points → "7.25%". */
+function pct(bps: number): string {
+  return `${(bps / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
 }
 
 function waiverText(w: ReservationDetailView["waiver"]): string {
@@ -353,237 +373,297 @@ function waiverText(w: ReservationDetailView["waiver"]): string {
   return w.kind === "xola" ? "Held in Xola" : "Not on file";
 }
 
+/**
+ * The pill beside the name. `admin` is the unpaid source (DEC-163): once paid the row turns
+ * `muster`, so the source alone says "awaiting payment".
+ */
+function bookingState(v: ReservationDetailView): { label: string; tone: string } {
+  if (v.status === "cancelled") return { label: "Cancelled", tone: "border-line bg-card text-muted" };
+  if (v.source === "admin") return { label: "Awaiting payment", tone: "border-warn-line bg-warn-bg text-warn" };
+  return { label: "Booked", tone: "border-ok-line bg-ok-bg text-ok" };
+}
+
+const HOW_BOOKED: Record<ReservationDetailView["source"], string> = {
+  admin: "Booked by phone",
+  xola: "Booked on Xola",
+  muster: "Booked online",
+};
+
+/** "3:30 PM · Brew 3 · Sat, Oct 10 · Booked online". */
+function metaLine(v: ReservationDetailView): string {
+  return [
+    v.time ? clockTime(v.time) : "",
+    v.vesselName ?? "",
+    v.date ? formatShortDay(v.date) : "",
+    HOW_BOOKED[v.source],
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function ReservationDetailPane({
   v,
   balance,
   actions,
+  unpaid,
 }: {
   v: ReservationDetailView;
   /** Balance-link state from the query string (11.2b) — the minted URL, or why not. */
   balance?: { url?: string | undefined; err?: string | undefined; date: string; filter: string } | undefined;
-  /** Cancel / refund / resend state (#616). Absent ⇒ the pane stays read-only. */
+  /** Cancel / refund / resend state (#616) for a Muster booking. Absent ⇒ no such actions. */
   actions?: PaneActionState | undefined;
+  /** An unpaid phone booking's state (16.1): the just-booked notice and its cancel. */
+  unpaid?: UnpaidActionState | undefined;
 }) {
-  const money = v.money;
+  const cancelled = v.status === "cancelled";
+  const state = bookingState(v);
 
   return (
-    <div className="overflow-hidden rounded-card border border-line bg-card shadow-sm">
-      {/* No name heading here — the page's own <h1> already names the reservation, directly
-          above this pane in both layouts. Repeating it read as a stutter on mobile. */}
-      <div className="border-b border-line px-4 py-3">
-        {v.status === "cancelled" && (
-          <span className="mb-1.5 inline-block rounded border border-line px-1.5 py-px text-[10px] uppercase tracking-wide text-muted">
-            Cancelled
-          </span>
-        )}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-          <span>
-            {formatShortDay(v.date)} · {clockTime(v.time)}
-          </span>
-          {v.vesselName && (
-            <span className="inline-flex items-center gap-1.5">
-              <span
-                className={`inline-block h-2 w-2 rounded-full ${vesselHueClass(v.vesselId ?? "", v.vesselHue)}`}
-                aria-hidden
-              />
-              {v.vesselName}
-            </span>
-          )}
-          {v.offeringName && (
-            <span className="inline-flex items-center gap-1.5">
-              <span
-                className={`inline-block h-2 w-2 rounded-sm ${offeringDotClass(v.offeringId ?? "")}`}
-                aria-hidden
-              />
-              {v.offeringName}
-            </span>
-          )}
-          {/* Crew is the shift view's job — cross-link, never re-managed here (DEC-123). */}
-          {v.crew && (
-            <AppLink
-              href={`/admin/shift/${v.crew.shiftId}`}
-              className="inline-flex items-center gap-1 underline underline-offset-2"
-            >
-              Crewed{" "}
-              <b className="font-semibold text-ink">
-                {v.crew.filled}/{v.crew.required}
-              </b>{" "}
-              ↗
-            </AppLink>
-          )}
-        </div>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-xl font-semibold text-ink">{v.customerName}</h2>
+        <span
+          data-testid="booking-state"
+          className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${state.tone}`}
+        >
+          {state.label}
+        </span>
       </div>
+      <p className="-mt-2 text-sm text-muted">{metaLine(v)}</p>
 
-      <div className="px-4 pb-4">
-        <Section title="Contact" />
-        <Row label="Phone">
+      {unpaid?.justBooked && !cancelled ? (
+        <Notice tone="ok">
+          Booked. The boat is held for {v.customerName} until they pay or you cancel it — it doesn’t
+          expire on its own.
+        </Notice>
+      ) : null}
+
+      {/* A cancelled booking keeps only what is still useful: money, contact and history. */}
+      {cancelled ? null : <TripCard v={v} />}
+
+      <Card title="Contact">
+        <Row label="Mobile">
           {v.phone ? <span className="font-mono text-[13px]">{v.phone}</span> : <Faint>—</Faint>}
         </Row>
         <Row label="Email">
-          {v.email ? (
-            <span className="break-all font-mono text-[12px]">{v.email}</span>
-          ) : (
-            <Faint>—</Faint>
-          )}
+          {v.email ? <span className="break-all font-mono text-[12px]">{v.email}</span> : <Faint>—</Faint>}
         </Row>
-        {/* `updatedAt` is the last MATERIAL change (DEC-029), not a booking date — labelled so. */}
-        <Row label="Updated">
-          {v.updatedAt ? v.updatedAt.slice(0, 10) : <Faint>Not tracked</Faint>}
-        </Row>
-        <Row label="Source">{v.source === "xola" ? "Xola" : "Muster"}</Row>
+      </Card>
 
-        <Section title="Trip" />
-        <Row label="Guests">
-          {v.guestCount} <span className="font-normal text-muted">of {v.capacity}</span>
-        </Row>
-        {/* One consent record per reservation, not a per-attendee roster (DEC-012 / DEC-110). */}
-        <Row label="Waiver">{waiverText(v.waiver)}</Row>
+      <Card title="Money">
+        <MoneyRows v={v} />
+      </Card>
 
-        {v.gratuityRows.length > 0 && (
-          <>
-            <Section title="Gratuity" tag="crew · tax-exempt" />
-            {v.gratuityRows.map((g, i) => (
-              <Row
-                key={`${g.kind}-${i}`}
-                label={g.kind === "pre" ? "At checkout" : "After the trip"}
-              >
-                <span className="font-mono">{formatCents(g.amountCents)}</span>
-                {g.bps !== undefined && (
-                  <span className="ml-1.5 text-xs text-muted">{g.bps / 100}%</span>
-                )}
-              </Row>
-            ))}
-          </>
-        )}
+      {balance ? <BalanceLink v={v} balance={balance} /> : null}
 
-        <Section title="Money" />
-        {money.priceKnown ? (
-          <div className="rounded-lg border border-line px-3 py-2">
-            <Row label="Fare">
-              <span className="font-mono">{formatCents(money.fareCents)}</span>
-            </Row>
-            <Row label="Tax">
-              <span className="font-mono">{formatCents(money.taxCents)}</span>
-            </Row>
-            {money.gratuityCents > 0 && (
-              <Row label="Tip">
-                <span className="font-mono">{formatCents(money.gratuityCents)}</span>
-              </Row>
-            )}
-            <div className="mt-1 border-t border-line pt-1">
-              <Row label="Paid">
-                <span className="font-mono font-semibold">{formatCents(money.paidCents)}</span>
-              </Row>
-              {money.refundedCents > 0 && (
-                <Row label="Refunded">
-                  <span className="font-mono">{formatCents(money.refundedCents)}</span>
-                </Row>
-              )}
-              {/* **Say the word "chargeback" (issue #723).** Without this the dispute is
-                  arithmetically invisible on the surface an operator actually lands on from a
-                  bank or customer call: Paid drops, Balance rises, and it looks exactly like a
-                  deposit booking that hasn't settled. That misreading has an expensive next
-                  step — collect the balance — which is why the button above is hidden and this
-                  line takes its place. Detail (reason, deadline, evidence) lives in Stripe. */}
-              {money.disputed && (
-                <Row label="Chargeback">
-                  <span className="text-bad">Disputed — money pulled back by the bank</span>
-                </Row>
-              )}
-              {/* **A cancelled booking owes nothing.** `balanceOwedCents` is fare+tax minus what
-                  was paid, which is a live number for a live trip and meaningless once the trip
-                  is off — it kept reading "Balance due $445.36" in bold on a booking that had
-                  just been cancelled AND refunded. The balance LINK was already hidden for this
-                  case (#616); the figure it was hidden because of was still on screen.
-
-                  **The model enforces this now (issue #803)** — `balanceDueCents` returns 0 for a
-                  cancelled reservation, so `money.balanceCents` is already 0 here and the branch
-                  below would render "Settled" on its own. Kept anyway, because "Not owed —
-                  cancelled" says why and "Settled" implies a bill that got paid. This is copy,
-                  no longer the guard. The guard that was missing was on the GUEST page, which
-                  shares this money composer and had no such branch. */}
-              <Row label="Balance">
-                {v.status === "cancelled" ? (
-                  <span className="text-muted">Not owed — cancelled</span>
-                ) : (
-                  <span
-                    className={`font-mono ${money.balanceCents > 0 ? "font-semibold text-ink" : "text-muted"}`}
-                  >
-                    {money.balanceCents > 0 ? formatCents(money.balanceCents) : "Settled"}
-                  </span>
-                )}
-              </Row>
-            </div>
-          </div>
-        ) : (
-          <p className="text-xs text-muted">
-            This departure has no recorded price, so the fare and balance can’t be derived.
-          </p>
-        )}
-
-        {/* The balance link (11.2b, DEC-107). Shown only when money is actually owed — a
-            "collect balance" button on a settled booking is a trap. The operator sends the
-            link; the customer pays; the webhook writes the payment. Nothing is charged or
-            written here, so re-minting is free and needs no confirmation.
-
-            **Two more states must hide it (#616), both created or exposed by refunds:**
-
-            - CANCELLED. `createBalanceCheckout` has refused this since 11.2b (`not_active`) and
-              the copy for that refusal exists at the top of this file, but nothing could reach
-              it: the button rendered on a cancelled booking and errored on press. Now that
-              bookings can actually BE cancelled, that dead end is on the common path.
-            - REFUNDED. A refund reduces `paid`, so `balanceOwedCents` goes back UP
-              (`payment-config.ts:136`). Left alone, the pane would offer to re-bill a customer
-              for money the operator had just handed back — with `createBalanceCheckout` happy
-              to mint that charge, because from its side a balance is genuinely owed.
-            - DISPUTED (issue #723). The same trap, arrived at from the other direction and
-              WORSE: a chargeback sets no `refundedCents`, so the guard above does not catch it,
-              and `countsAsPaid` now excludes the disputed row — so the balance jumps back to
-              the full amount and this button offers to bill a customer whose bank is currently
-              clawing the money back. `createBalanceCheckout` refuses it server-side too
-              (`reason: "disputed"`); this only stops the operator being offered it. */}
-        {money.priceKnown &&
-          money.balanceCents > 0 &&
-          v.status === "booked" &&
-          money.refundedCents === 0 &&
-          !money.disputed &&
-          balance && (
-          <div className="mt-3 border-t border-line pt-3">
-            {balance.url ? (
-              <>
-                <p className="mb-1.5 text-xs text-muted">
-                  Balance link for {formatCents(money.balanceCents)} — send it to the customer.
-                  It expires with the Stripe session; mint a fresh one any time.
-                </p>
-                <div className="flex items-center gap-2">
-                  <span
-                    className="min-w-0 flex-1 select-all truncate rounded-lg border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-muted"
-                    data-testid="balance-link"
-                  >
-                    {balance.url}
-                  </span>
-                  <CopyButton value={balance.url} label="Copy link" />
-                </div>
-              </>
-            ) : (
-              <form action={createBalanceLink}>
-                <input type="hidden" name="reservationId" value={v.reservationId} />
-                <input type="hidden" name="date" value={balance.date} />
-                <input type="hidden" name="filter" value={balance.filter} />
-                <SubmitButton className="btn-primary min-h-[44px] w-full">
-                  Create balance link
-                </SubmitButton>
-                {balance.err && (
-                  <p className="mt-1.5 text-xs text-bad">{balanceErrorMessage(balance.err)}</p>
-                )}
-              </form>
-            )}
-          </div>
-        )}
-
-        {actions && <PaneActions v={v} actions={actions} />}
-      </div>
+      {actions && <PaneActions v={v} actions={actions} />}
+      {unpaid && <PhoneBookingActions reservationId={v.reservationId} cancelled={cancelled} state={unpaid} />}
     </div>
+  );
+}
+
+function TripCard({ v }: { v: ReservationDetailView }) {
+  const unpaid = v.source === "admin";
+  return (
+    <Card title="Trip">
+      {v.offeringName && <Row label="Cruise">{v.offeringName}</Row>}
+      <Row label="Guests">
+        {v.guestCount}
+        {v.capacity > 0 && <span className="font-normal text-muted"> of {v.capacity}</span>}
+      </Row>
+      {/* Crew is the shift view's job — cross-linked, never re-managed here (DEC-123). */}
+      {v.crew && (
+        <Row label="Crew">
+          <AppLink href={`/admin/shift/${v.crew.shiftId}`} className="btn-quiet">
+            {v.crew.filled}/{v.crew.required} crewed ↗
+          </AppLink>
+        </Row>
+      )}
+      {/* One consent record per reservation, not a per-attendee roster (DEC-012 / DEC-110). An
+          unpaid phone booking has none yet: the waiver is collected when they pay. */}
+      {unpaid ? null : <Row label="Waiver">{waiverText(v.waiver)}</Row>}
+    </Card>
+  );
+}
+
+/**
+ * Three shapes, one card. Awaiting payment itemises the invoice frozen at booking, in the checkout
+ * summary's order — the figure the operator read out. Booked shows the derived fare, tax and tips.
+ * Cancelled keeps only what was paid, what went back, and why nothing is owed.
+ */
+function MoneyRows({ v }: { v: ReservationDetailView }) {
+  const money = v.money;
+  if (!money.priceKnown) {
+    return (
+      <p className="text-xs text-muted">
+        This departure has no recorded price, so the fare and balance can’t be derived.
+      </p>
+    );
+  }
+  const cancelled = v.status === "cancelled";
+  return (
+    <>
+      {cancelled ? null : <ChargeRows v={v} />}
+      {cancelled && v.invoice ? (
+        <Row label="Was quoted">
+          <Cents cents={v.invoice.amountDueNowCents} />
+        </Row>
+      ) : null}
+      <div className={cancelled ? "" : "mt-1 border-t border-line pt-1"}>
+        <Row label="Paid" testId="money-paid">
+          <span className="font-mono font-semibold">{formatCents(money.paidCents)}</span>
+        </Row>
+        {money.refundedCents > 0 && (
+          <Row label="Refunded">
+            <Cents cents={money.refundedCents} />
+          </Row>
+        )}
+        {/* **Say the word "chargeback" (issue #723).** Without this the dispute is arithmetically
+            invisible on the surface an operator actually lands on from a bank or customer call:
+            Paid drops, Owes rises, and it looks exactly like a deposit booking that hasn't
+            settled. That misreading has an expensive next step — collect the balance — which is
+            why the balance button is hidden and this line takes its place. Detail (reason,
+            deadline, evidence) lives in Stripe. */}
+        {money.disputed && (
+          <Row label="Chargeback">
+            <span className="text-bad">Disputed — money pulled back by the bank</span>
+          </Row>
+        )}
+        <Row label="Owes" testId="money-owes">
+          <OwesValue v={v} />
+        </Row>
+      </div>
+    </>
+  );
+}
+
+/**
+ * **A cancelled booking owes nothing, and says why.** The model enforces it (issue #803 —
+ * `balanceDueCents` returns 0 for a cancelled reservation), so the plain branch would read
+ * "Settled" on its own; "Not owed — cancelled" says why, where "Settled" implies a bill that got
+ * paid.
+ */
+function OwesValue({ v }: { v: ReservationDetailView }) {
+  if (v.status === "cancelled") return <span className="text-muted">Not owed — cancelled</span>;
+  if (v.money.balanceCents > 0) {
+    return <span className="font-mono font-semibold">{formatCents(v.money.balanceCents)}</span>;
+  }
+  return <span className="font-semibold text-ok">Settled</span>;
+}
+
+function ChargeRows({ v }: { v: ReservationDetailView }) {
+  const inv = v.invoice;
+  if (inv) {
+    return (
+      <>
+        <Row label="Fare">
+          <Cents cents={inv.fareCents} />
+        </Row>
+        {inv.extrasCents > 0 && (
+          <Row label="Extra guests">
+            <Cents cents={inv.extrasCents} />
+          </Row>
+        )}
+        {inv.gratuityCents > 0 && (
+          <Row label={`Tip · ${pct(inv.gratuityBps)}`}>
+            <Cents cents={inv.gratuityCents} />
+          </Row>
+        )}
+        <Row label={`Tax · ${pct(inv.taxRateBps)}`}>
+          <Cents cents={inv.taxCents} />
+        </Row>
+        {inv.serviceFeeCents > 0 && (
+          <Row label={`Service fee · ${pct(inv.serviceFeeBps)}`}>
+            <Cents cents={inv.serviceFeeCents} />
+          </Row>
+        )}
+      </>
+    );
+  }
+  return (
+    <>
+      <Row label="Fare">
+        <Cents cents={v.money.fareCents} />
+      </Row>
+      <Row label="Tax">
+        <Cents cents={v.money.taxCents} />
+      </Row>
+      {/* Crew money (DEC-124), tax-exempt and outside the balance — one row per gratuity. */}
+      {v.gratuityRows.map((g, i) => (
+        <Row key={`${g.kind}-${i}`} label={tipLabel(g)}>
+          <Cents cents={g.amountCents} />
+        </Row>
+      ))}
+    </>
+  );
+}
+
+function tipLabel(g: ReservationDetailView["gratuityRows"][number]): string {
+  if (g.kind !== "pre") return "Tip after the trip";
+  return g.bps === undefined ? "Tip at checkout" : `Tip at checkout · ${pct(g.bps)}`;
+}
+
+/**
+ * The balance link (11.2b, DEC-107). Shown only when money is actually owed — a "collect balance"
+ * button on a settled booking is a trap. The operator sends the link; the customer pays; the
+ * webhook writes the payment. Nothing is charged or written here, so re-minting is free and needs
+ * no confirmation.
+ *
+ * **Three more states must hide it (#616, #723):**
+ *
+ * - CANCELLED. `createBalanceCheckout` refuses it (`not_active`); a button whose only outcome is
+ *   an error is a dead end on the common path.
+ * - REFUNDED. A refund reduces `paid`, so `balanceOwedCents` goes back UP (`payment-config.ts`).
+ *   Left alone, the pane would offer to re-bill a customer for money the operator had just handed
+ *   back — and `createBalanceCheckout` would happily mint that charge.
+ * - DISPUTED (issue #723). The same trap from the other direction, and worse: a chargeback sets no
+ *   `refundedCents` and `countsAsPaid` excludes the disputed row, so the balance jumps back to the
+ *   full amount. `createBalanceCheckout` refuses it server-side too (`reason: "disputed"`).
+ *
+ * `status === "booked"` also keeps it off an unpaid phone booking, whose payment link is 16.1a's.
+ */
+function BalanceLink({
+  v,
+  balance,
+}: {
+  v: ReservationDetailView;
+  balance: { url?: string | undefined; err?: string | undefined; date: string; filter: string };
+}) {
+  const money = v.money;
+  const offered =
+    money.priceKnown &&
+    money.balanceCents > 0 &&
+    v.status === "booked" &&
+    money.refundedCents === 0 &&
+    !money.disputed;
+  if (!offered) return null;
+  if (balance.url) {
+    return (
+      <div>
+        <p className="mb-1.5 text-xs text-muted">
+          Balance link for {formatCents(money.balanceCents)} — send it to the customer. It expires
+          with the Stripe session; mint a fresh one any time.
+        </p>
+        <div className="flex items-center gap-2">
+          <span
+            className="min-w-0 flex-1 select-all truncate rounded-lg border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-muted"
+            data-testid="balance-link"
+          >
+            {balance.url}
+          </span>
+          <CopyButton value={balance.url} label="Copy link" />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <form action={createBalanceLink}>
+      <input type="hidden" name="reservationId" value={v.reservationId} />
+      <input type="hidden" name="date" value={balance.date} />
+      <input type="hidden" name="filter" value={balance.filter} />
+      <SubmitButton className="btn-primary min-h-[44px] w-full">Create balance link</SubmitButton>
+      {balance.err && <p className="mt-1.5 text-xs text-bad">{balanceErrorMessage(balance.err)}</p>}
+    </form>
   );
 }
 
@@ -628,10 +708,9 @@ function PaneActions({
       // which is why `AppLink` carries `scroll={false}`. That prop cannot reach a form POST;
       // a fragment can, with no JS.
       id="booking-actions"
-      className="mt-4 scroll-mt-4 border-t border-line pt-3"
+      className="scroll-mt-4"
       data-testid="reservation-actions"
     >
-      <Section title="Actions" />
 
       {actions.done && (
         <p className="mb-2 rounded-lg border border-line bg-bg px-3 py-2 text-xs text-ink" data-testid="action-done">
@@ -839,7 +918,7 @@ function PaneActions({
             className="btn-secondary mb-2 flex min-h-[44px]"
             data-testid="cancel-start"
           >
-            Cancel booking
+            Cancel booking…
           </AppLink>
         ))}
 

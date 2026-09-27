@@ -16,6 +16,7 @@ import type {
 import { asId } from "../domain/ids.js";
 import {
   buildReservationDetail,
+  buildUnpaidBookingDetail,
   formatCents,
   shiftForEvent,
   type ReservationDetailInput,
@@ -303,6 +304,69 @@ describe("crew cross-link", () => {
     expect(shiftForEvent([afternoon, morning], String(EVENT_ID))?.id).toBe(SHIFT_ID);
     expect(shiftForEvent([afternoon, morning], "m-evt-2")?.id).toBe("shift-1-b");
     expect(shiftForEvent([afternoon, morning], "nope")).toBeUndefined();
+  });
+});
+
+/**
+ * An operator's phone booking before it is paid (issue #1104 part 2): no Event, so its money is
+ * the invoice frozen at booking, read back rather than recomputed from live config.
+ */
+describe("buildUnpaidBookingDetail", () => {
+  const invoice = {
+    fareCents: 49900,
+    extrasCents: 8000,
+    taxCents: 4198,
+    taxRateBps: 725,
+    serviceFeeCents: 1737,
+    serviceFeeBps: 300,
+    gratuityCents: 11580,
+    gratuityBps: 2000,
+    totalCents: 75415,
+    amountDueNowCents: 75415,
+  };
+  const unpaid = (over: Partial<Reservation> = {}): Reservation =>
+    reservation({
+      source: "admin",
+      status: "pending",
+      eventId: null, // no Event exists before it is paid (§2.8.2)
+      date: "2026-10-10",
+      time: "17:30",
+      vesselId: VESSEL_ID,
+      partySize: 12,
+      phone: "+12165550199",
+      invoice,
+      ...over,
+    });
+
+  it("reads the frozen invoice: nothing paid, the amount due now is owed", () => {
+    const v = buildUnpaidBookingDetail({ reservation: unpaid(), vessel: vessel({ coiMaxPax: 16 }), offering: offering() });
+    expect(v.invoice).toEqual(invoice);
+    expect(v.money.paidCents).toBe(0);
+    expect(v.money.balanceCents).toBe(75415);
+    expect(v.money.priceKnown).toBe(true);
+    expect(v).toMatchObject({
+      date: "2026-10-10",
+      time: "17:30",
+      vesselName: "Brew 4",
+      offeringName: "Public Cruise",
+      guestCount: 12,
+      capacity: 16,
+      source: "admin",
+      phone: "+12165550199",
+    });
+    expect(v.crew).toBeUndefined();
+  });
+
+  it("owes nothing once cancelled", () => {
+    const v = buildUnpaidBookingDetail({ reservation: unpaid({ status: "cancelled" }) });
+    expect(v.money.balanceCents).toBe(0);
+  });
+
+  it("is unpriced, not $0 owed, when the row carries no invoice", () => {
+    const { invoice: _none, ...noInvoice } = unpaid();
+    const v = buildUnpaidBookingDetail({ reservation: noInvoice });
+    expect(v.money.priceKnown).toBe(false);
+    expect(v.invoice).toBeUndefined();
   });
 });
 

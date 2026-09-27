@@ -17,8 +17,9 @@
  *   last *material* change (DEC-029). Surfaced as `updatedAt` and labelled "Updated" by the
  *   view; calling it "Booked" would misreport a changed reservation's date.
  *
- * The mockup's **3% service fee** is Xola's and is not modelled here (`PaymentConfig` has
- * tax + deposit only, DEC-107) — the money block is fare · tax · tip · paid · balance.
+ * A booked reservation's money block is fare · tax · tip · paid · balance; the service fee is not
+ * derived here. An unpaid phone booking (`buildUnpaidBookingDetail`) carries its frozen invoice
+ * instead, which does itemise the fee.
  *
  * Money follows the existing authorities, never a local recompute: fare is
  * `Event.price + Reservation.extrasCents` (#474, DEC-107 amend), tax is `taxCentsFor`, and
@@ -28,6 +29,7 @@
  */
 
 import type {
+  BookingInvoice,
   Event,
   Gratuity,
   Offering,
@@ -116,6 +118,62 @@ export interface ReservationDetailView {
   gratuityRows: { kind: Gratuity["kind"]; amountCents: number; bps?: number | undefined }[];
   money: DetailMoney;
   crew?: CrewLink | undefined;
+  /**
+   * The invoice frozen at booking — set ONLY on an operator's phone booking before it is paid
+   * (issue #1104 part 2). Its presence is what tells the pane to show the itemised quote and
+   * "Booked by phone"; a paid booking's money is the derivation above.
+   */
+  invoice?: BookingInvoice | undefined;
+}
+
+/**
+ * An operator's phone booking that has not been paid (16.1, DEC-163) — the same view as a booked
+ * one, so the pane renders both through one component (issue #1104 part 2).
+ *
+ * No Event exists before payment (§2.8.2), so the departure comes off the row itself and the money
+ * is the invoice frozen at booking, never recomputed from live config: the operator read that
+ * figure out on the phone, and a changed tax rate must not change it after the fact. Nothing is
+ * paid, so what is owed is the amount due now — nothing once cancelled (#803). No crew link (no
+ * shift covers a departure that does not exist yet) and no waiver (collected at payment).
+ */
+export function buildUnpaidBookingDetail(input: {
+  reservation: Reservation;
+  offering?: Offering | undefined;
+  vessel?: Vessel | undefined;
+}): ReservationDetailView {
+  const { reservation: r, offering, vessel } = input;
+  const inv = r.invoice;
+  return {
+    reservationId: String(r.id),
+    customerName: r.customerName,
+    date: r.date ?? "",
+    time: r.time ?? "",
+    vesselName: vessel?.name,
+    vesselId: vessel ? String(vessel.id) : undefined,
+    vesselHue: vessel?.hue,
+    offeringName: offering?.name,
+    offeringId: offering ? String(offering.id) : undefined,
+    status: r.status,
+    source: r.source,
+    phone: r.phone,
+    email: r.email,
+    updatedAt: r.updatedAt,
+    guestCount: r.partySize,
+    capacity: vessel?.coiMaxPax ?? 0,
+    waiver: { kind: "none" },
+    gratuityRows: [],
+    money: {
+      fareCents: inv ? inv.fareCents + inv.extrasCents : 0,
+      taxCents: inv?.taxCents ?? 0,
+      gratuityCents: inv?.gratuityCents ?? 0,
+      paidCents: 0,
+      balanceCents: inv && r.status !== "cancelled" ? inv.amountDueNowCents : 0,
+      refundedCents: 0,
+      disputed: false,
+      priceKnown: inv !== undefined,
+    },
+    invoice: inv,
+  };
 }
 
 /** Seat states that mean a person is actually on the seat. */

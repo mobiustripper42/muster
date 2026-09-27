@@ -265,6 +265,23 @@ test.describe("admin /admin/calendar", () => {
   });
 
   /**
+   * Opening a pane re-renders the page, which sent the window back to 8a and the grid back to its
+   * first boat — the card you had just clicked was off screen (operator, PR #1107 review). The
+   * late departure is below the fold on a desktop window, so without the reveal it is not in view.
+   */
+  test("the selected card stays in view when its pane opens", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "below lg the pane is the whole screen and the grid is hidden");
+    // A short laptop window, so the 5:30 card starts below the fold. At the project's 720px it
+    // happens to be on screen already, and the test passed with the reveal switched off.
+    await page.setViewportSize({ width: 1280, height: 480 });
+    await signInAsAdmin(page, "eric");
+    const late = DEMO.departureTimes[2]!; // 17:30
+    await page.goto(`/admin/calendar?date=${BOOKED.date}&hold=${encodeURIComponent(`${DEMO.vesselId}|${late}`)}`);
+    await expect(page.getByTestId("slot-pane")).toBeVisible();
+    await expect(openAt(page, shortLabel(late))).toBeInViewport();
+  });
+
+  /**
    * Every card opens a pane (#1104): an open slot's pane names the departure, what sells it, and
    * the two things you can do. Closing it is an answer too, and must write nothing.
    */

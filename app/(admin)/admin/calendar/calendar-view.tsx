@@ -26,6 +26,7 @@ import {
 import { Notice } from "../../../../components/ui/notice";
 import { AppLink } from "../../../../components/ui/app-link";
 import { SubmitButton } from "../../../../components/ui/submit-button";
+import { RevealSelectedCard } from "../../../../components/admin/reveal-selected-card";
 import { vesselHueClass } from "../../../lib/vessel-hue";
 import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
@@ -667,6 +668,10 @@ function SlotRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** `data-cal-selected` present on the selected card(s), absent elsewhere — what
+ *  `RevealSelectedCard` looks for. A helper so the grid's render stays under the complexity ceiling. */
+const selectedAttr = (on: boolean): "" | undefined => (on ? "" : undefined);
+
 /**
  * The grid itself: 52px time gutter + one column per fleet vessel, blocks absolutely
  * positioned over a fixed 8:00–21:30 axis. `selectedReservationId` rings the open block on
@@ -680,6 +685,11 @@ export function CalendarGrid({
   selectedReservationId?: string | undefined;
 }) {
   const gridCols = `52px repeat(${data.vessels.length}, minmax(120px, 1fr))`;
+  // What is selected, as one string: a reservation, or the slot whose pane is open. Changes on
+  // exactly the navigations that should re-reveal the selected card.
+  const p = data.pending;
+  const selectedKey =
+    selectedReservationId ?? (p ? `${p.action}:${p.vesselId}|${p.time}` : "");
   const matchesFilter = (s: VirtualSlot) => {
     if (data.filter === "all") return true;
     const want = FILTERS.find((f) => f.key === data.filter)?.status;
@@ -698,6 +708,8 @@ export function CalendarGrid({
 
   return (
     <div className="mt-2 overflow-hidden rounded-card border border-line bg-card shadow-sm">
+      {/* Opening a pane re-renders the page: bring the selected card back into view (#1104). */}
+      <RevealSelectedCard selectedKey={selectedKey} />
       <div className="overflow-x-auto">
         {/* Header row: corner + vessel names with hue dots. */}
         <div className="grid border-b border-line" style={{ gridTemplateColumns: gridCols }}>
@@ -823,6 +835,7 @@ export function CalendarGrid({
                         data-vessel={String(s.vesselId)}
                         data-status="booked"
                         aria-current={selected ? "page" : undefined}
+                        data-cal-selected={selectedAttr(selected)}
                         className={cls}
                         style={pos}
                       >
@@ -891,6 +904,7 @@ export function CalendarGrid({
                         // have it matching the wrong card the moment the copy converged, which
                         // is exactly what just happened to "Held" vs "Blackout".
                         data-blocked-by="slot"
+                        data-cal-selected={selectedAttr(askedRelease)}
                         className={cls}
                         style={style}
                       >
@@ -936,6 +950,7 @@ export function CalendarGrid({
                         data-testid="cal-block"
                         data-vessel={String(s.vesselId)}
                         data-status="awaiting-payment"
+                        data-cal-selected={selectedAttr(selectedReservationId === String(phoneBooking.id))}
                         className={`absolute flex flex-col justify-center overflow-hidden rounded-lg border border-dashed border-warn-line bg-warn-bg px-2 py-1 text-warn${
                           selectedReservationId === String(phoneBooking.id) ? " ring-2 ring-ink ring-offset-1" : ""
                         }`}
@@ -992,6 +1007,7 @@ export function CalendarGrid({
                       data-testid="cal-block"
                       data-vessel={String(s.vesselId)}
                       data-status="available"
+                      data-cal-selected={selectedAttr(asked)}
                       data-lane={laneCount > 1 ? `${lane + 1}/${laneCount}` : undefined}
                       // Which offering a sliver belongs to is the thing 1/n width takes away.
                       // The tint says it against the legend.

@@ -195,6 +195,9 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-184 — A phone booking does not cross a block — unblock it, then book
 - DEC-186 — RESERVATIONS is deleted — Stripe keys are the gate
 
+### Check-in & waivers
+- DEC-187 — Check-in & waivers is in scope, specced in its own files that SPEC.md indexes
+
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred
 - DEC-055 — Transient feedback params are stripped post-render by a contained client island (#121)

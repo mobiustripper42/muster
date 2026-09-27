@@ -325,6 +325,10 @@ export function actionMessage(
  *
  * Add-ons are omitted (no per-reservation selection exists) and the waiver is one consent row
  * rather than a per-attendee tally — see the module note in `src/reservations/calendar-detail.ts`.
+ * An unpaid booking's money reads "Fare" and "Extra guests", not the mockup's "Fare, up to 10
+ * guests" and "2 extra guests · $40.00": the frozen invoice keeps the extras' total but not how many
+ * guests the fare covers or the per-guest price, and reading those off live config could contradict
+ * the figure the customer was quoted.
  */
 
 function Row({
@@ -588,7 +592,7 @@ function ChargeRows({ v }: { v: ReservationDetailView }) {
       <Row label="Tax">
         <Cents cents={v.money.taxCents} />
       </Row>
-      {/* Crew money (DEC-124), tax-exempt and outside the balance — one row per gratuity. */}
+      {/* Crew money: untaxed and outside the balance (see `calendar-detail.ts`) — one row per gratuity. */}
       {v.gratuityRows.map((g, i) => (
         <Row key={`${g.kind}-${i}`} label={tipLabel(g)}>
           <Cents cents={g.amountCents} />

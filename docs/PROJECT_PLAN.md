@@ -910,6 +910,36 @@ unsold-slots-only slice is not the shape wanted. Not pokered. Not before Phase 1
 
 ---
 
+## Phase 18: Check-in & waivers
+
+The module in `docs/design/check-in-and-waivers.md` (model, rationale) and
+`docs/design/check-in-surfaces.md` (screens), scoped in by DEC-187. **Build, not buy** (spec §2a;
+issue #466 closed on it). Lane A, alongside lane B's Phase 16; **18.10 waits for Phase 16 to close**,
+because it edits lane B's confirmation and `/b/[code]`. **Goes live when Xola goes dark** — there is
+no coexistence period. Two rules bind every task: nothing recorded or shown exceeds the boat's COI
+passenger limit, and nothing blocks departure.
+
+**Not in this phase:** offline check-in (a future idea, spec §11); roster-mode UI (the model carries
+it, spec §6); renaming today's checkout checkbox off "waiver", which issue #1112 owns in lane B.
+
+| # | Task | Est | Closes | Status |
+|---|------|-----|--------|--------|
+| 18.0 | **Doc sweep.** Correct the SPEC lines that say crew don't need waivers (§0.4 *Manifest*, §2.2, §2.6, §2.8.12); convert frozen DEC-012 to schema v1 and supersede its no-waiver half; the booker's party page shows **every** name, no "… 10 more" (surfaces §B); stale waiver mentions in `docs/DEPLOY.md` and `env.example` | 2 | — | [ ] |
+| 18.1 | **Schema review, then the migration.** Review the draft (spec §6) before writing it: `waiver_templates`, `guests`, the three count columns on `events`, and `app_settings` rows for age of majority, reminder frequency and roster mode. Repository port, both adapters, contract tests — including that no `events` writer wipes the count | 5 | — | [ ] |
+| 18.2 | **Templates and settings admin.** Post a new agreement version (never an edit) and list the old ones; seed BrewBoat's current text as v1; the three settings | 3 | — | [ ] |
+| 18.3 | **Trip links + a general rate limiter.** An unguessable token per departure, stored hashed, resolved to its trip with the bad / departed / cancelled states. **The app's first rate limiter**, built general so issue #579's sign-in form reuses it; database-backed, because serverless instances share no memory. `@architect` before the limiter; `/security-review` on the link path | 8 | — | [ ] |
+| 18.4 | **The signing page.** Who → how many kids → details → the agreement, document last; minors and the DOB selects bounded both ways, the ten cap, `is_minor` derived and frozen in core; the party step for multi-booking departures; the success screen with the group count, **Share with your party** and **Sign for someone else**; every state. A shared phone or email never blocks a second signer. e2e at 375 for adult, adult + kids, child only | 8 | — | [ ] |
+| 18.5 | **Crew check-in.** From the shift card, per departure: the list that empties (tick, untick, the Checked-in group); a tap never waits on the network; the passenger-count stepper; **both capped at the COI max, the list going inert there, no warning**; the QR sheet; polling for new signers; Confirm and depart with its undo receipt, read-only after the trip ends. The QR likely needs a new dependency — `@architect` first | 8 | — | [ ] |
+| 18.6 | **The booker's party page.** Every signed name, the count, likely duplicates grouped, **Share the link** (18.4's piece). Behind the booking's own code, not the public trip link, since it shows names | 3 | — | [ ] |
+| 18.7 | **Reminders.** From the cron tick at the admin's frequency; stop once signers (guarded minors counted) reach the party size; never twice for one window, so a send record. **Text every time** (the booker's phone is required), email when on file; the message carries the booking's `/b/<code>` link | 5 | — | [ ] |
+| 18.8 | **Per-trip view and exceptions.** Count, signed, checked in, who counted and when, on the page the operator already opens for a departure. `/admin/integrity` rows for departures counted above their signed-and-checked-in guests — the #638 shape | 3 | — | [ ] |
+| 18.9 | **Rollup and export.** Counts by departure with the no-show delta; Summary / Roster / Waivers as **three CSV downloads** (a `.xlsx` would be a new dependency); ranges bounded in SQL. **May be deferred** when reached | 5 | — | [ ] |
+| 18.10 | **Signing links on lane B's pages.** "Sign the waiver" on the booking confirmation (email and text) and on `/b/[code]`, to the signing page and the party page. **After Phase 16 closes** | 2 | — | [ ] |
+
+**Phase 18 total: 11 tasks, 52 points.** Pokered task by task with the operator, 2026-09-28.
+
+---
+
 ## Phase Boundary Checklist
 
 At the end of every phase:

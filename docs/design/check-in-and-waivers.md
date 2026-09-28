@@ -408,8 +408,9 @@ The boat leaves. A system that can prevent that is worse than no system.
 
 - The count can be confirmed with unsigned guests aboard and with signed guests unticked.
 - **Exceptions surface after the fact** on `/admin/integrity` — named, linked, counted: a departure
-  whose count is higher than its checked-in signed guests had people aboard unsigned. Same shape as
-  13.5 (#638): warns, never blocks.
+  whose count is higher than its checked-in signed guests had people aboard unsigned. A new check
+  there (the page holds only structural checks today), in the shape 13.5 (#638) uses on
+  `/admin/payroll`: warns, never blocks.
 
 If a hard gate is ever wanted it belongs on a **report**, not on the gangway — 13.6's precedent
 (#645).

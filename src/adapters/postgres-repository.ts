@@ -105,7 +105,7 @@ import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { FailureWindow, Repository, ShiftChangeRow } from "../ports/repository.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
 import type { CheckInConfig, DepartureCount, Guest, WaiverTemplate } from "../checkin/entities.js";
-import { CHECK_IN_CONFIG_DEFAULTS } from "../checkin/entities.js";
+import { normalizeCheckInConfig } from "../checkin/entities.js";
 
 /** Add `key: value` only when value is non-null — keeps optional fields absent. */
 function opt<K extends string, V>(
@@ -2923,16 +2923,14 @@ export class PostgresRepository implements Repository {
       "select key, value from app_settings where key like 'checkin.%'",
     );
     const kv = new Map<string, string>(rows.map((r) => [r.key, r.value]));
-    const age = kv.has("checkin.age_of_majority") ? Number(kv.get("checkin.age_of_majority")) : NaN;
-    const days = parseDayList(kv.get("checkin.reminder_days_before"));
     const roster = kv.get("checkin.roster_mode");
-    // Absent or unparseable ⇒ the default, per field (DEC-054's absent-means-default idiom).
-    const rosterKnown = roster === "true" || roster === "false";
-    return {
-      ageOfMajority: Number.isInteger(age) && age > 0 ? age : CHECK_IN_CONFIG_DEFAULTS.ageOfMajority,
-      reminderDaysBefore: days ?? CHECK_IN_CONFIG_DEFAULTS.reminderDaysBefore,
-      rosterMode: rosterKnown ? roster === "true" : CHECK_IN_CONFIG_DEFAULTS.rosterMode,
-    };
+    // Decode the stored text only; what counts as valid is `normalizeCheckInConfig`'s, which the
+    // in-memory adapter reads through too, so a bad value reads back the same from both.
+    return normalizeCheckInConfig({
+      ageOfMajority: kv.has("checkin.age_of_majority") ? Number(kv.get("checkin.age_of_majority")) : undefined,
+      reminderDaysBefore: parseJsonSetting(kv.get("checkin.reminder_days_before")),
+      rosterMode: roster === "true" || roster === "false" ? roster === "true" : undefined,
+    });
   }
   async setCheckInConfig(patch: Partial<CheckInConfig>, at: string): Promise<void> {
     const entries: [string, string][] = [];
@@ -2982,18 +2980,15 @@ const toGuest = (r: any): Guest => ({
   createdAt: r.created_at,
 });
 
-/** `checkin.reminder_days_before` is a JSON array of positive integers; anything else reads as
- *  absent, so the default applies rather than a half-parsed schedule. */
-function parseDayList(raw: string | undefined): number[] | null {
-  if (raw === undefined) return null;
+/** A JSON-valued setting, decoded; unparseable text reads as absent so the default applies.
+ *  Whether the decoded value is VALID is `normalizeCheckInConfig`'s call, not this one's. */
+function parseJsonSetting(raw: string | undefined): unknown {
+  if (raw === undefined) return undefined;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
-    const days = parsed.filter((d): d is number => Number.isInteger(d) && d > 0);
-    return days.length === parsed.length ? days : null;
+    return JSON.parse(raw);
   } catch (e) {
-    logSwallowed("postgres:parseDayList", e, "checkin.reminder_days_before was unparseable — the default schedule applies");
-    return null;
+    logSwallowed("postgres:parseJsonSetting", e, "a checkin.* setting was unparseable JSON — its default applies");
+    return undefined;
   }
 }
 

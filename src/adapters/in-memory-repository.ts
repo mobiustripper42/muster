@@ -89,7 +89,7 @@ import type { FailureWindow, Repository } from "../ports/repository.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
 import type { CheckInConfig, DepartureCount, Guest, WaiverTemplate } from "../checkin/entities.js";
-import { CHECK_IN_CONFIG_DEFAULTS } from "../checkin/entities.js";
+import { normalizeCheckInConfig } from "../checkin/entities.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -1446,7 +1446,7 @@ export class InMemoryRepository implements Repository {
   }
 
   async getCheckInConfig(): Promise<CheckInConfig> {
-    return { ...CHECK_IN_CONFIG_DEFAULTS, ...this.#checkInConfig };
+    return normalizeCheckInConfig(this.#checkInConfig);
   }
   async setCheckInConfig(patch: Partial<CheckInConfig>, _at: string): Promise<void> {
     this.#checkInConfig = { ...this.#checkInConfig, ...patch };

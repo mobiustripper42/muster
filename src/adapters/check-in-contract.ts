@@ -275,6 +275,17 @@ export function runCheckInContract(
         await repo.setCheckInConfig({ ageOfMajority: 21, rosterMode: true }, "2026-09-29T12:05:00.000Z");
         expect(await repo.getCheckInConfig()).toEqual({ ageOfMajority: 21, reminderDaysBefore: [5, 2], rosterMode: true });
       });
+
+      it("read an invalid stored value back as the default, the same on both adapters", async () => {
+        // `@code-review`, this branch: Postgres coerced a bad value on read and in-memory did not,
+        // so a domain test run against the double would have passed on an answer production
+        // never gives. One normalizer in core now serves both.
+        await repo.setCheckInConfig(
+          { ageOfMajority: 0, reminderDaysBefore: [3, -1] },
+          "2026-09-29T12:10:00.000Z",
+        );
+        expect(await repo.getCheckInConfig()).toEqual(CHECK_IN_CONFIG_DEFAULTS);
+      });
     });
   });
 }

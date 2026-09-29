@@ -112,3 +112,30 @@ export const CHECK_IN_CONFIG_DEFAULTS: CheckInConfig = {
   reminderDaysBefore: [7, 3, 1],
   rosterMode: false,
 };
+
+/**
+ * Whatever was stored, as a usable config: each field that is absent or not valid falls to its
+ * default, per field (DEC-054's absent-means-default idiom). **Both adapters read through this**,
+ * so a bad value reads back the same from Postgres and from the in-memory double — they disagreed
+ * until `@code-review` caught it on 18.1.
+ *
+ * `reminderDaysBefore` is all-or-nothing: one bad entry drops the whole list to the default, never
+ * a half-kept schedule.
+ */
+export function normalizeCheckInConfig(stored: {
+  ageOfMajority?: unknown;
+  reminderDaysBefore?: unknown;
+  rosterMode?: unknown;
+}): CheckInConfig {
+  const positiveInt = (n: unknown): n is number => Number.isInteger(n) && (n as number) > 0;
+  const days = stored.reminderDaysBefore;
+  return {
+    ageOfMajority: positiveInt(stored.ageOfMajority)
+      ? stored.ageOfMajority
+      : CHECK_IN_CONFIG_DEFAULTS.ageOfMajority,
+    reminderDaysBefore:
+      Array.isArray(days) && days.every(positiveInt) ? [...days] : CHECK_IN_CONFIG_DEFAULTS.reminderDaysBefore,
+    rosterMode:
+      typeof stored.rosterMode === "boolean" ? stored.rosterMode : CHECK_IN_CONFIG_DEFAULTS.rosterMode,
+  };
+}

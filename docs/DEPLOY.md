@@ -81,11 +81,6 @@ invisible or unable to take money**.
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | **you set it** — Stripe dashboard, live mode | The inline Payment Element (DEC-134). **Build-inlined** — see the traps |
 | `OPERATOR_NOTIFY_EMAIL` | optional, but the feature is dark without it | Where a customer's change/cancel request is emailed (`app/b/[code]/actions.ts`). Unset ⇒ the request is logged and **nobody is told** |
 
-**These two are named "waiver" but configure the checkout's purchase-agreement box, not the waiver**
-(that is the check-in module, DEC-187); issue #1112 renames them. **Confirm both defaults before real
-customers consent to them.** They are live URLs and a
-version string that become part of a legal record at the moment someone ticks the box.
-
 > **`env.example` is the complete list, and it is the one that stays honest.** It now carries every
 > variable the code reads — swept from `process.env.*` across `app/`, `src/`, `db/` and `scripts/`,
 > which turned up twelve more than this file had, `APP_BASE_URL` and `CRON_SECRET` among them. The

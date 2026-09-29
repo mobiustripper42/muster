@@ -32,7 +32,8 @@ import { PhoneBookingForm } from "./phone-booking-form";
  * left to ask. A plain GET, so it works without JS like the rest of the calendar (DEC-026); the
  * checkout step is a client island only because tip tiles re-total live.
  *
- * **No card field, ever** (DEC-162). **No waiver box:** phone orders collect none (2026-09-23).
+ * **No card field, ever** (DEC-162). **No terms box:** the customer ticks it on the payment link
+ * (issue #1082, DEC-188), not the operator on the phone.
  */
 
 /** The booking steps' own params, on top of the calendar's. */

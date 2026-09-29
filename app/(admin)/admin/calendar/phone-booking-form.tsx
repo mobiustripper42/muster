@@ -16,7 +16,7 @@ import { bookPhoneReservation } from "./book-actions";
  * phone is the total the customer would be shown for that trip, party and tip.
  *
  * **What it leaves out, and why.** No card: the operator never types one (DEC-162; typing it is
- * 16.1c). No waiver: phone orders collect none (operator, 2026-09-23). No promo row and no
+ * 16.1c). No terms box: the customer ticks it on the payment link (issue #1082, DEC-188). No promo row and no
  * cancellation terms: this screen is read by the operator, not agreed to by the customer.
  *
  * **Submits as a plain server-action post**, not the customer's client `onSubmit` into Stripe:
@@ -69,7 +69,7 @@ export function PhoneBookingForm({
         <CheckoutSummary m={money} tipBps={tip.bps} tipCents={tip.tipCents} />
         <p className="pt-3 text-xs text-muted">
           This holds the boat until they pay or you cancel it — it never expires on its own. They
-          agree to the waiver when they pay.
+          agree to the cancellation terms when they pay.
         </p>
       </div>
 

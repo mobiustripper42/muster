@@ -45,7 +45,6 @@ async function seededRepo(): Promise<InMemoryRepository> {
 const req = (gratuityBps: number) => ({
   offeringId: OFF, date: DATE, time: TIME, guestCount: 12, gratuityBps,
   customerName: "Mary", email: "m@x.io",
-  waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1",
 });
 
 /** Wrap a synthesized `payment_intent.succeeded` for the fake port. */

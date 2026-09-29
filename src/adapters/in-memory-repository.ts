@@ -856,7 +856,6 @@ export class InMemoryRepository implements Repository {
     // of NULL. The two adapters must agree on the empty case as well as the changed one.
     assign(next, "email", attempt.email);
     assign(next, "phone", attempt.phone);
-    assign(next, "waiverConsentAt", attempt.waiverConsentAt);
     this.#reservations.set(attempt.id, clone(next));
   }
 

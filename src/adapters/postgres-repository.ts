@@ -321,8 +321,6 @@ const toReservation = (r: any): Reservation => ({
   ...opt("email", r.email),
   ...opt("phone", r.phone),
   ...opt("extrasCents", r.extras_cents),
-  ...opt("waiverConsentAt", r.waiver_consent_at),
-  ...opt("waiverVersion", r.waiver_version),
   ...opt("updatedAt", r.updated_at),
   ...opt<"customerId", CustomerId>("customerId", r.customer_id ?? null),
   ...opt("cancelledBy", r.cancelled_by),
@@ -361,8 +359,6 @@ const RESERVATION_COLUMNS = [
   "status",
   "updated_at",
   "source",
-  "waiver_consent_at",
-  "waiver_version",
   "extras_cents",
   "customer_id",
   "cancelled_by",
@@ -392,8 +388,6 @@ function reservationValues(r: Reservation, eventId: EventId | null = r.eventId):
     r.status,
     r.updatedAt ?? null,
     r.source,
-    r.waiverConsentAt ?? null,
-    r.waiverVersion ?? null,
     r.extrasCents ?? null,
     r.customerId ?? null,
     r.cancelledBy ?? null,
@@ -1861,8 +1855,7 @@ export class PostgresRepository implements Repository {
               customer_name = case when status = 'pending' then $5 else customer_name end,
               party_size = case when status = 'pending' then $6 else party_size end,
               email = case when status = 'pending' then $7 else email end,
-              phone = case when status = 'pending' then $8 else phone end,
-              waiver_consent_at = case when status = 'pending' then $9 else waiver_consent_at end
+              phone = case when status = 'pending' then $8 else phone end
         where id = $1`,
       [
         attempt.id,
@@ -1876,7 +1869,6 @@ export class PostgresRepository implements Repository {
         attempt.partySize,
         attempt.email ?? null,
         attempt.phone ?? null,
-        attempt.waiverConsentAt ?? null,
       ],
     );
   }

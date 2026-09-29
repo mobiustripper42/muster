@@ -80,13 +80,6 @@ invisible or unable to take money**.
 | `STRIPE_WEBHOOK_SECRET` | **you set it** — the signing secret of *this deployment's* endpoint | Verifying webhook signatures **and gating checkout** — see the traps |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | **you set it** — Stripe dashboard, live mode | The inline Payment Element (DEC-134). **Build-inlined** — see the traps |
 | `OPERATOR_NOTIFY_EMAIL` | optional, but the feature is dark without it | Where a customer's change/cancel request is emailed (`app/b/[code]/actions.ts`). Unset ⇒ the request is logged and **nobody is told** |
-| `WAIVER_TERMS_URL` | optional — defaults `https://www.brewcle.com/liability-waiver/` | The "I agree to the liability waiver" link on the booking form (`src/config/tenant.ts:50`) |
-| `WAIVER_TERMS_VERSION` | optional — defaults `v1` | Stamped onto the reservation as the terms version consented to (`src/config/tenant.ts:48`). Server-authoritative; **bump it whenever the waiver text changes**, or old consents claim to be for text nobody agreed to |
-
-**These two are named "waiver" but configure the checkout's purchase-agreement box, not the waiver**
-(that is the check-in module, DEC-187); issue #1112 renames them. **Confirm both defaults before real
-customers consent to them.** They are live URLs and a
-version string that become part of a legal record at the moment someone ticks the box.
 
 > **`env.example` is the complete list, and it is the one that stays honest.** It now carries every
 > variable the code reads — swept from `process.env.*` across `app/`, `src/`, `db/` and `scripts/`,

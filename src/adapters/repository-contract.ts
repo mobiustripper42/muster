@@ -700,15 +700,6 @@ export function runRepositoryContract(
       ).toBe("muster");
     });
 
-    it("reservations: waiver consent round-trips (11.5, DEC-110)", async () => {
-      await repo.saveReservation(
-        reservation({ source: "muster", waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1" }),
-      );
-      const got = (await repo.getReservation(asId<"ReservationId">("resv-1")))!;
-      expect(got.waiverConsentAt).toBe("2026-07-13T12:00:00.000Z");
-      expect(got.waiverVersion).toBe("v1");
-    });
-
     // §2.8.1 three states; §2.8.2 a pending row names a slot, not an Event, so its `eventId`
     // is null until it confirms. Written before the union and the column changed (14.2), and
     // seen failing on both — the type and the `not null` constraint.
@@ -860,8 +851,6 @@ export function runRepositoryContract(
         partySize: 4,
         email: "hooper@example.com",
         phone: "+15550001111",
-        waiverConsentAt: "2026-06-01T11:58:00.000Z",
-        waiverVersion: "v1",
         // Two minutes before `NOW`: the first attempt is in the past, so an assertion that
         // `reservedAt` did not move to `NOW` can actually fail. Left at the fixture's default it
         // was already `NOW` and the criterion-§2.8.7 case asserted nothing.
@@ -886,7 +875,6 @@ export function runRepositoryContract(
           // texted, so a mistype fixed on the retry must land or the manage link goes to a
           // stranger.
           phone: "+15550002222",
-          waiverConsentAt: "2026-06-01T12:00:00.000Z",
           invoice: INVOICE_2,
           updatedAt: NOW,
         }),
@@ -897,7 +885,6 @@ export function runRepositoryContract(
       expect(got.partySize).toBe(6);
       expect(got.email).toBe("matt@example.com");
       expect(got.phone).toBe("+15550002222");
-      expect(got.waiverConsentAt).toBe("2026-06-01T12:00:00.000Z");
       expect(got.invoice).toEqual(INVOICE_2);
       expect(got.updatedAt).toBe(NOW);
       // Additive, oldest first: the superseded intent still resolves to this row (§2.8.5).
@@ -921,18 +908,16 @@ export function runRepositoryContract(
       expect(got.phone).toBe("+15550001111"); // the one they DID resubmit is untouched
     });
 
-    it("recordCheckoutAttempt: leaves the WORLD's facts frozen — durations, waiver version, reserved time, slot (DEC-161, §2.8.7)", async () => {
+    it("recordCheckoutAttempt: leaves the WORLD's facts frozen — durations, reserved time, slot (DEC-161, §2.8.7)", async () => {
       await repo.saveReservation(firstAttempt());
       await repo.recordCheckoutAttempt(
         pendingRow({
           ...firstAttempt(),
           // Everything below is what an attempt built against a CHANGED world would carry. None of
-          // it may land: the durations decide what the hull owes this booking, the waiver version
-          // is server-authoritative, and moving `reservedAt` would let a resubmit park the boat
-          // forever.
+          // it may land: the durations decide what the hull owes this booking, and moving
+          // `reservedAt` would let a resubmit park the boat forever.
           holdMinutes: 240,
           tripMinutes: 200,
-          waiverVersion: "v2",
           reservedAt: NOW,
           updatedAt: NOW,
         }),
@@ -941,7 +926,6 @@ export function runRepositoryContract(
       const got = (await repo.getReservation(rid("pend-1")))!;
       expect(got.holdMinutes).toBe(120);
       expect(got.tripMinutes).toBe(100);
-      expect(got.waiverVersion).toBe("v1");
       expect(got.reservedAt).toBe("2026-06-01T11:58:00.000Z");
       expect(got.holderToken).toBe("tok-A");
       expect(String(got.vesselId)).toBe(String(VESSEL));

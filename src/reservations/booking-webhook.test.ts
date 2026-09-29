@@ -232,21 +232,6 @@ describe("processBookingWebhook", () => {
     expect((await repo.getReservation(PEND))!.extrasCents).toBe(6000);
   });
 
-  it("the waiver consent frozen on the pending row survives the flip (11.5, DEC-110)", async () => {
-    // Waiver is stamped at checkout-start onto the pending row (14.4), not read from the charge.
-    const repo = new InMemoryRepository();
-    await seedPending(repo, {
-      waiverConsentAt: "2026-07-13T12:00:00.000Z",
-      waiverVersion: "v1",
-    });
-    const { deps } = makeDeps(repo);
-
-    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
-    const res = (await repo.getReservation(PEND))!;
-    expect(res.waiverConsentAt).toBe("2026-07-13T12:00:00.000Z");
-    expect(res.waiverVersion).toBe("v1");
-  });
-
   /**
    * The residual race (DEC-109): a rival won the boat between checkout and confirm, so the flip
    * loses. Auto-refund keyed on the PI + a sold-out notice, no operator in the loop, and NO

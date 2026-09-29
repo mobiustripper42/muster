@@ -1,7 +1,7 @@
 /**
  * Create a departure PaymentIntent (Phase 12.5, DEC-134) — the live "Book & pay" path (the
  * hosted `createDepartureCheckout` twin was deleted at 14.5). Called at "Book & pay" submit from
- * the `/book/checkout` screen: waiver gate → gratuity-tier gate → CLAIM a fitting boat by writing
+ * the `/book/checkout` screen: gratuity-tier gate → CLAIM a fitting boat by writing
  * this checkout's pending row on it (fit-and-fallback) → mint a raw PaymentIntent carrying the
  * SLOT + the amount, and nothing else. The client confirms against the returned `clientSecret`; the
  * `payment_intent.succeeded` webhook FLIPS the pending row via `confirmPendingRow` (§2.8.6),
@@ -51,9 +51,6 @@ export interface DeparturePaymentIntentRequest {
   customerName: string;
   email?: string;
   phone?: string;
-  /** Liability-waiver consent (DEC-110) — REQUIRED: no consent, no hold, no charge. */
-  waiverConsentAt?: string;
-  waiverVersion?: string;
   /**
    * The checkout session's holder token (#575) — read from an httpOnly cookie at the edge and
    * passed down. Proof of possession, so a retry reuses ITS OWN hold rather than taking a second
@@ -78,7 +75,6 @@ export type DeparturePaymentIntentStart =
         | "vessel_not_offered"
         | "blocked"
         | "sold_out"
-        | "waiver_required"
         | "gratuity_required"
         /** The intent this checkout already minted has been PAID, in another tab, moments ago
          *  (15.8). Not a failure — the customer is booked or about to be, and the one thing that
@@ -92,15 +88,9 @@ export async function createDeparturePaymentIntent(
   req: DeparturePaymentIntentRequest,
   now: () => string,
 ): Promise<DeparturePaymentIntentStart> {
-  // Waiver is a hard gate (DEC-110) — check BEFORE acquiring a hold, so a consent-less
-  // attempt never parks a hold on a boat.
-  if (!req.waiverConsentAt || !req.waiverVersion) {
-    return { ok: false, reason: "waiver_required" };
-  }
-  // Bound here rather than read off `req` inside the builder closure: narrowing from the guard
-  // above does not survive into a closure, and `exactOptionalPropertyTypes` will not take a
-  // `string | undefined` for a required field.
-  const { waiverConsentAt, waiverVersion } = req;
+  // The cancellation-terms box is gated at the edge (`app/(public)/book/checkout/actions.ts`,
+  // issue #1112) and stored nowhere, so there is nothing for this layer to check or write. It used
+  // to be a "waiver" consent stamped on the row; it was never a waiver.
 
   // Gratuity is REQUIRED, no decline (DEC-124) — the chosen tier must be one the offering
   // offers. Check before the hold (a bad tip never parks a boat). An absent offering falls
@@ -163,7 +153,7 @@ export async function createDeparturePaymentIntent(
       time: req.time,
       offeringId: offering!.id,
       reservedAt: prior?.reservedAt ?? at,
-      // Both durations and the waiver version come from the PRIOR row on a retry, never re-read
+      // Both durations come from the PRIOR row on a retry, never re-read
       // from the offering (DEC-161, criterion 20): an operator lengthening a trip while a card is
       // being typed must not change what the hull owes this booking. `recordCheckoutAttempt` does
       // not write these columns either, so the freeze holds even if this line were wrong — but a
@@ -175,11 +165,6 @@ export async function createDeparturePaymentIntent(
       ...(req.holderToken !== undefined ? { holderToken: req.holderToken } : {}),
       ...(req.email !== undefined ? { email: req.email } : {}),
       ...(req.phone !== undefined ? { phone: req.phone } : {}),
-      // Consent is re-stated every attempt — the buyer ticked the box again, and that instant is
-      // the record of it. The VERSION is not: it is what they agreed to the first time, and
-      // re-reading it would silently re-date the agreement to a document they never saw.
-      waiverConsentAt,
-      waiverVersion: prior?.waiverVersion ?? waiverVersion,
       // **Carried forward, and 15.8 depends on it.** The reuse path reads the last id this row
       // minted to decide whether to raise that intent or start another; without this the returned
       // row has none and every retry mints, which is the behaviour 15.8 exists to remove. Note the

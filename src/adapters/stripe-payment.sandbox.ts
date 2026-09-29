@@ -192,7 +192,6 @@ if (!haveKeys) {
         {
           offeringId: OFF, date: DATE, time: TIME, guestCount: 4, gratuityBps: 2000,
           customerName: "Round Trip", phone: "+12165550148",
-          waiverConsentAt: NOW, waiverVersion: "v1",
           // A fresh holder per run: the idempotency key is derived from the row id, which is
           // random, so reruns never collide with an earlier run's intent.
           holderToken: randomUUID().replaceAll("-", ""),

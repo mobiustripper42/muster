@@ -1,7 +1,6 @@
 "use server";
 
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
-import { WAIVER_TERMS_VERSION } from "@core/config/tenant.js";
 import { asId } from "@core/domain/ids.js";
 import { createDeparturePaymentIntent } from "@core/reservations/create-departure-payment-intent.js";
 import { canonicalizePhone } from "@core/customers/identity.js";
@@ -33,7 +32,8 @@ export interface StartElementsCheckoutInput {
   customerName: string;
   email: string;
   phone: string;
-  waiverConsent: boolean;
+  /** The cancellation-terms box (issue #1112). Gates the submit; stored nowhere. */
+  agreedToTerms: boolean;
 }
 
 export type StartElementsCheckoutResult =
@@ -58,7 +58,6 @@ const REASON_MESSAGES: Record<string, string> = {
   // the confirmation rather than retrying.
   already_paid:
     "This booking has already been paid — check your texts and email for the confirmation. You have not been charged twice.",
-  waiver_required: "Please agree to the liability waiver to continue.",
   gratuity_required: "Please pick a crew tip to continue.",
 };
 
@@ -150,10 +149,12 @@ export async function startElementsCheckout(
   const customerName = input.customerName.trim();
   if (!customerName) return { ok: false, message: "Please enter the booking guest's full name." };
 
-  // Waiver consent is enforced HERE and again in the engine (DEC-110) — the checkbox can't
-  // be spoofed past the charge. Version is server-authoritative; the timestamp is now.
-  if (!input.waiverConsent) {
-    return { ok: false, message: REASON_MESSAGES.waiver_required! };
+  // The cancellation-terms box (issue #1112). The browser won't enable Book & pay without it; this
+  // is the same gate on the server, so a scripted request can't skip it. Nothing is recorded — the
+  // operator's call (2026-09-28): the box is the agreement, and a stored click or version label
+  // would be kept for a dispute nobody has had.
+  if (!input.agreedToTerms) {
+    return { ok: false, message: "Please agree to the cancellation terms to continue." };
   }
 
   // Phone is REQUIRED and must be canonicalizable (12.12b, DEC-132) — it's the customer
@@ -223,8 +224,6 @@ async function startCheckout(
       // Store the CANONICAL form so the reservation's phone and the customer's identity key
       // are the same string — no second normalization downstream to drift from this one.
       phone,
-      waiverConsentAt: new Date().toISOString(),
-      waiverVersion: WAIVER_TERMS_VERSION,
       ...(holderToken ? { holderToken } : {}),
     },
     () => new Date().toISOString(),

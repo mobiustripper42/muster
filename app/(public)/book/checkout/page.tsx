@@ -8,7 +8,7 @@
  *
  * Server-rendered shell + ONE client island (`CheckoutForm`, DEC-133 posture): the form is
  * intrinsically interactive (tip tiles re-total live, the card Element is client-only), so
- * the island owns contact/tip/waiver/card + the sticky pay bar; everything above it —
+ * the island owns contact/tip/card/the terms box + the sticky pay bar; everything above it —
  * gates, derivation, money — is computed here and passed as plain data (no functions cross
  * the RSC boundary).
  *
@@ -16,7 +16,7 @@
  * absent ⇒ a loud configuration-error state, never a silently-broken Element (DEC-134).
  */
 import type { Block, Event, Location, Offering, Reservation, Vessel } from "@core/domain/entities.js";
-import { WAIVER_TERMS_URL, vesselDateOf } from "@core/config/tenant.js";
+import { vesselDateOf } from "@core/config/tenant.js";
 import { deriveVirtualAvailability } from "@core/reservations/availability.js";
 import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
 import {
@@ -286,7 +286,6 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             money={money}
             tiers={tiers}
             defaultBps={defaultBps}
-            waiverUrl={WAIVER_TERMS_URL}
             cancellationTerms={CANCELLATION_TERMS}
           />
         </div>

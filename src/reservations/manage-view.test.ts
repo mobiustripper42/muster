@@ -19,8 +19,6 @@ const RES: Reservation = {
   customerName: "Jordan Ellis",
   partySize: 10,
   status: "booked",
-  waiverConsentAt: "2026-07-16T12:00:00Z",
-  waiverVersion: "v1",
 } as Reservation;
 
 const EVENT: Event = {

@@ -103,21 +103,27 @@ test.describe("public /book/checkout", () => {
     await expect(page).toHaveURL(/time=15/); // same server render — the island did the math
   });
 
-  test("the waiver gate blocks Book & pay until agreed", async ({ page }) => {
+  /**
+   * The one box at checkout is the cancellation terms (issue #1112) — not a waiver. The waiver is
+   * its own module, signed per guest (lane A); nothing here says "waiver" any more.
+   */
+  test("the cancellation-terms box gates Book & pay; nothing calls it a waiver", async ({ page }) => {
     await page.goto(CHECKOUT);
 
     const pay = page.getByTestId("book-pay");
     await expect(pay).toBeVisible();
-    await expect(pay).toBeDisabled(); // no waiver, no submit (DEC-110)
+    await expect(pay).toBeDisabled();
+    await expect(page.getByText("I agree to the cancellation terms:")).toBeVisible();
+    await expect(page.getByText(/waiver/i)).toHaveCount(0);
 
-    await setCheckedHydrated(page.getByTestId("waiver"), true);
+    await setCheckedHydrated(page.getByTestId("agree-terms"), true);
     await expect(pay).toBeEnabled();
 
-    await setCheckedHydrated(page.getByTestId("waiver"), false);
+    await setCheckedHydrated(page.getByTestId("agree-terms"), false);
     await expect(pay).toBeDisabled();
   });
 
-  test("the cancellation terms are stated above the pay button (#619)", async ({ page }) => {
+  test("the cancellation terms are stated above the pay button, in the box's own label (#619, #1112)", async ({ page }) => {
     await page.goto(CHECKOUT);
 
     // The literal expected sight — the operator's published policy. The unit suite
@@ -128,6 +134,8 @@ test.describe("public /book/checkout", () => {
     await expect(terms).toContainText(
       "Cancel 14 days or more before your cruise for a refund minus a $50 cancellation fee.",
     );
+    // The terms ARE the box's label (#1112): what is ticked is exactly what is read.
+    await expect(page.locator("label", { has: page.getByTestId("agree-terms") }).getByTestId("cancellation-terms")).toBeVisible();
     await expect(terms).toContainText("no-shows");
     await expect(terms).toContainText("full refund");
 

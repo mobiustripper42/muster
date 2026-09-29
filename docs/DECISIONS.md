@@ -194,6 +194,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-182 — A residual-race loser is charged and refunded — no authorize-then-capture
 - DEC-184 — A phone booking does not cross a block — unblock it, then book
 - DEC-186 — RESERVATIONS is deleted — Stripe keys are the gate
+- DEC-188 — The checkout box is the cancellation terms: it gates payment, records nothing
 
 ### Check-in & waivers
 - DEC-187 — Check-in & waivers is in scope, specced in its own files that SPEC.md indexes

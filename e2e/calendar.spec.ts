@@ -288,6 +288,40 @@ test.describe("admin /admin/calendar", () => {
   });
 
   /**
+   * One scroller per column, as on /admin/shifts (operator, PR #1110 review). With a pane open the
+   * WINDOW does not scroll: the grid scrolls in its column and the pane in its own. The pane used
+   * to scroll inside a page that also scrolled — two scrollbars, one inside the other.
+   */
+  test("desktop: with a pane open the window doesn't scroll; the grid and the pane each scroll on their own", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "below lg the pane is the whole screen and the page scrolls");
+    await signInAsAdmin(page, "eric");
+    const windowOverflow = () =>
+      page.evaluate(() => {
+        const s = document.scrollingElement!;
+        return s.scrollHeight - s.clientHeight;
+      });
+    const scrolls = (id: string) =>
+      page.getByTestId(id).evaluate((el) => el.scrollHeight > el.clientHeight + 4);
+
+    // A paid booking's pane (long: cards, actions, history), and the booking checkout step.
+    for (const url of [
+      `/admin/calendar/${encodeURIComponent(demoReservationId(BOOKED.date, BOOKED.time))}?date=${BOOKED.date}`,
+      `/admin/calendar?date=${BOOKED.date}&hold=${encodeURIComponent(`${DEMO.vesselId}|${OPEN_TIME}`)}&book=1&guests=2`,
+    ]) {
+      await page.goto(url);
+      await expect(page.getByTestId("cal-pane-col")).toBeVisible();
+      expect(await windowOverflow()).toBeLessThanOrEqual(1);
+      expect(await scrolls("cal-list-col")).toBe(true);
+      expect(await scrolls("cal-pane-col")).toBe(true);
+      // Independent: driving the grid column leaves the pane where it was.
+      await page.getByTestId("cal-list-col").evaluate((el) => (el.scrollTop = 200));
+      expect(await page.getByTestId("cal-pane-col").evaluate((el) => el.scrollTop)).toBe(0);
+    }
+  });
+
+  /**
    * Every card opens a pane (#1104): an open slot's pane names the departure, what sells it, and
    * the two things you can do. Closing it is an answer too, and must write nothing.
    */
@@ -303,7 +337,8 @@ test.describe("admin /admin/calendar", () => {
     await expect(pane.getByTestId("slot-state")).toHaveText("Open");
     await expect(pane).toContainText("Reservation Demo Cruise");
     await expect(pane).toContainText("12 guests");
-    await expect(pane.getByTestId("book-slot")).toHaveAttribute("href", /\/admin\/calendar\/book\?/);
+    // Book it stays on the calendar: the same slot's pane, in booking mode (#1104 part 3).
+    await expect(pane.getByTestId("book-slot")).toHaveAttribute("href", /^\/admin\/calendar\?.*hold=.*&book=1/);
     await expect(pane.getByRole("button", { name: "Block it" })).toBeVisible();
 
     // Desktop closes with "Close ✕"; at 375px the pane is the whole screen and "Back to calendar"

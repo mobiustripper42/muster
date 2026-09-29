@@ -1,6 +1,7 @@
 /**
  * The operator books by phone (16.1d, issue #1092) — calendar click → passengers → the checkout's
- * own summary and form, in operator mode.
+ * own summary and form, in operator mode. All of it inside the calendar's pane, with the grid still
+ * beside it (issue #1104 part 3); there is no separate booking page.
  *
  * The point of 16.1d is that this is not a second form. So the money is not pinned with literals
  * here: the first test reads the figure off PUBLIC checkout for the same trip, party and tip, and
@@ -21,7 +22,7 @@ import { BOOKED, DEMO, OPEN_TIME } from "./reservation-demo.js";
 const openAt = (page: Page, time: string) =>
   page.locator(`[data-testid="cal-block"][data-vessel="${DEMO.vesselId}"]`).filter({ hasText: `open · ${time}` });
 
-const BOOK = `/admin/calendar/book?date=${BOOKED.date}&vessel=${DEMO.vesselId}&time=${OPEN_TIME}`;
+const BOOK = `/admin/calendar?date=${BOOKED.date}&hold=${encodeURIComponent(`${DEMO.vesselId}|${OPEN_TIME}`)}&book=1`;
 const PUBLIC = `/book/checkout?offering=offering-reservation-demo&date=${BOOKED.date}&time=${OPEN_TIME}&guests=2`;
 
 test.describe("admin phone booking", () => {
@@ -41,13 +42,17 @@ test.describe("admin phone booking", () => {
     await openAt(page, shortTime(OPEN_TIME)).click();
     await page.getByTestId("slot-pane").getByTestId("book-slot").click();
 
-    // Passengers first — the money depends on it.
-    await expect(page.getByRole("heading", { name: new RegExp(`^${shortTime(OPEN_TIME)} PM on Brew 3$`) })).toBeVisible();
-    await page.getByLabel("Guests").fill("2");
+    // Passengers first — the money depends on it. In the pane, on the calendar, with the grid still
+    // beside it on desktop (issue #1104 part 3).
+    await expect(page).toHaveURL(/\/admin\/calendar\?.*book=1/);
+    const bookPane = page.getByTestId("book-pane");
+    await expect(bookPane.getByRole("heading", { name: `${shortTime(OPEN_TIME)} PM · Brew 3`, level: 2 })).toBeVisible();
+    if ((page.viewportSize()?.width ?? 0) >= 1024) await expect(openAt(page, "5:30")).toBeVisible();
+    await bookPane.getByLabel("Guests").fill("2");
     await page.getByRole("button", { name: "Continue" }).click();
 
-    // The checkout's own summary, same figures as public.
-    await expect(page.getByTestId("summary-total")).toContainText(publicTotal);
+    // The checkout's own summary, same figures as public — still in the pane.
+    await expect(bookPane.getByTestId("summary-total")).toContainText(publicTotal);
     await expect(page.getByTestId("tip-2000")).toHaveAttribute("aria-pressed", "true");
     // Tip tiles re-total live, as at /book/checkout.
     await clickHydrated(page.getByTestId("tip-1500"));
@@ -111,6 +116,22 @@ test.describe("admin phone booking", () => {
     await expect(pane.getByRole("link", { name: "Cancel booking…" })).toHaveCount(0);
   });
 
+  test("Cancel on the passengers step goes back to the slot pane and books nothing", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto(BOOK);
+    await page.getByTestId("book-pane").getByRole("link", { name: "Cancel" }).click();
+    await expect(page.getByTestId("slot-pane").getByTestId("book-slot")).toBeVisible();
+    await expect(page.getByTestId("book-pane")).toHaveCount(0);
+    // Still open on the grid: nothing was written.
+    await expect(page.getByTestId("slot-state")).toHaveText("Open");
+  });
+
+  test("the old booking page is gone", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    const res = await page.goto(`/admin/calendar/book?date=${BOOKED.date}&vessel=${DEMO.vesselId}&time=${OPEN_TIME}`);
+    expect(res?.status()).toBe(404);
+  });
+
   test("a refused booking comes back on the form with what was typed", async ({ page }) => {
     await signInAsAdmin(page, "eric");
     await page.goto(`${BOOK}&guests=2`);
@@ -118,10 +139,11 @@ test.describe("admin phone booking", () => {
     await fillHydrated(page.getByPlaceholder(/^Mobile/), "123");
     await page.getByTestId("book-phone").click();
 
-    await expect(page.getByText("That mobile number doesn’t look right")).toBeVisible();
-    await expect(page.getByPlaceholder("Guest’s full name")).toHaveValue("Kept Name");
-    // Still the checkout step, for the same party.
-    await expect(page.getByTestId("summary-total")).toBeVisible();
+    // Back in the pane, on the checkout step, for the same party.
+    const pane = page.getByTestId("book-pane");
+    await expect(pane.getByText("That mobile number doesn’t look right")).toBeVisible();
+    await expect(pane.getByPlaceholder("Guest’s full name")).toHaveValue("Kept Name");
+    await expect(pane.getByTestId("summary-total")).toBeVisible();
     await expect(page).toHaveURL(/guests=2/);
   });
 

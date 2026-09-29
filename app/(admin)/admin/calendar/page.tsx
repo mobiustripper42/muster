@@ -15,6 +15,7 @@ import {
   loadCalendarData,
   type Search,
 } from "./calendar-view";
+import { BookPane, type BookSearch } from "./book-pane";
 
 /**
  * /admin/calendar (task 12.11, #464) — the Day·Grid reservation calendar: one day as a grid of
@@ -24,8 +25,9 @@ import {
  *
  * **Every card opens a pane (#1104).** A booked block links to `/admin/calendar/[reservationId]`;
  * an OPEN or BLOCKED block opens its slot's pane beside the grid, in the same list-and-detail
- * frame (`MasterDetail`) — where Book it, Block it and Unblock it live. Nothing selected, the grid
- * has the page to itself. Everything the two calendar routes share lives in `calendar-view.tsx`.
+ * frame (`MasterDetail`) — where Book it, Block it and Unblock it live. Book it turns that pane into
+ * the phone booking's two steps (`BookPane`, `?book=1`, issue #1104 part 3), the grid still beside
+ * it. Nothing selected, the grid has the page to itself. Everything the two calendar routes share lives in `calendar-view.tsx`.
  */
 
 export const dynamic = "force-dynamic";
@@ -33,7 +35,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminCalendar({
   searchParams,
 }: {
-  searchParams: Promise<Search>;
+  searchParams: Promise<Search & BookSearch>;
 }) {
   const sp = await searchParams;
   const subject = await readSubject();
@@ -59,7 +61,9 @@ export default async function AdminCalendar({
   );
 
   return (
-    <Shell width="6xl">
+    // `fill` only with a pane open: then the grid and the pane each scroll on their own and the
+    // window doesn't (as /admin/shifts). With nothing selected the grid has the page and it scrolls.
+    <Shell width="6xl" fill={data.pending !== null}>
       <header className="flex flex-col gap-1">
         <p className="text-xs text-muted">Calendar</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Calendar</h1>
@@ -69,9 +73,17 @@ export default async function AdminCalendar({
         <MasterDetail
           layout="calendar"
           list={calendar}
-          pane={<SlotPane data={data} />}
+          pane={
+            data.pending.action === "hold" && sp.book === "1" ? (
+              <BookPane data={data} sp={sp} />
+            ) : (
+              <SlotPane data={data} />
+            )
+          }
           closeHref={calendarHref(data, {})}
           back={{ href: calendarHref(data, {}), label: "Back to calendar" }}
+          listTestId="cal-list-col"
+          paneTestId="cal-pane-col"
         />
       ) : (
         calendar

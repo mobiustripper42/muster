@@ -3,10 +3,10 @@
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
 import { bookForCustomer, type OperatorBookingResult } from "@core/reservations/operator-booking.js";
-import { readSubject } from "../../../../lib/auth";
-import { clearFormDraft, stashFormDraft } from "../../../../lib/form-draft";
-import { getRepo } from "../../../../lib/repo";
-import { logSwallowed } from "../../../../lib/swallowed";
+import { readSubject } from "../../../lib/auth";
+import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
+import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Every code this surface can put in `?err=` — the write's refusals plus the glue's own. Consumed
@@ -14,8 +14,12 @@ import { logSwallowed } from "../../../../lib/swallowed";
  */
 export type BookErr = Extract<OperatorBookingResult, { ok: false }>["reason"] | "unreachable";
 
-/** The form lives here, so its draft cookie is scoped here (`form-draft.ts`). */
-const SURFACE = "/admin/calendar/book";
+/**
+ * The form lives in the calendar's pane (issue #1104 part 3), so its draft cookie is scoped to the
+ * calendar (`form-draft.ts`). The reservation pane's refund draft shares that cookie; each reader
+ * checks the draft is its own (this one by boat, day and time; that one by reservation id).
+ */
+const SURFACE = "/admin/calendar";
 
 /**
  * The operator books (16.1, SPEC §2.10.6). Auth + FormData glue over `bookForCustomer`, which
@@ -62,10 +66,17 @@ export async function bookPhoneReservation(formData: FormData): Promise<void> {
   }
 
   // Nothing was written, so the form comes back with what the operator typed — a caller is on
-  // the line, and retyping their details is the thing not to make them wait through. `guests`
-  // rides the URL (16.1d): it selects the checkout step the refusal is shown on.
+  // the line, and retyping their details is the thing not to make them wait through. It comes back
+  // in the same pane: the slot (`hold`) and `book=1` reopen it, and `guests` (16.1d) selects the
+  // checkout step the refusal is shown on. `bookErr`, not `err`: the calendar's `err` is the
+  // block/unblock banner's.
   await stashFormDraft(SURFACE, formData);
-  const q = new URLSearchParams({ date, vessel: vesselId, time, err: result ? result.reason : "unreachable" });
+  const q = new URLSearchParams({
+    date,
+    hold: `${vesselId}|${time}`,
+    book: "1",
+    bookErr: result ? result.reason : "unreachable",
+  });
   if (offeringId) q.set("offering", offeringId);
   if (field("guests")) q.set("guests", field("guests"));
   redirect(`${SURFACE}?${q.toString()}`);

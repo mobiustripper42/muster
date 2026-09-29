@@ -83,7 +83,9 @@ invisible or unable to take money**.
 | `WAIVER_TERMS_URL` | optional — defaults `https://www.brewcle.com/liability-waiver/` | The "I agree to the liability waiver" link on the booking form (`src/config/tenant.ts:50`) |
 | `WAIVER_TERMS_VERSION` | optional — defaults `v1` | Stamped onto the reservation as the terms version consented to (`src/config/tenant.ts:48`). Server-authoritative; **bump it whenever the waiver text changes**, or old consents claim to be for text nobody agreed to |
 
-**Confirm the two waiver defaults before real customers consent to them.** They are live URLs and a
+**These two are named "waiver" but configure the checkout's purchase-agreement box, not the waiver**
+(that is the check-in module, DEC-187); issue #1112 renames them. **Confirm both defaults before real
+customers consent to them.** They are live URLs and a
 version string that become part of a legal record at the moment someone ticks the box.
 
 > **`env.example` is the complete list, and it is the one that stays honest.** It now carries every

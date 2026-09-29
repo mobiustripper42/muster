@@ -172,9 +172,13 @@ One read-only page. The single highest-leverage screen per hour spent building i
 
         14 of 16 signed
 
-  ✓ Robert Smith        ✓ Dana Smith
-  ✓ Kyle Smith (12)     ✓ Amy Nowak
-  … 10 more
+  ✓ Amy Nowak           ✓ Joe Dunn
+  ✓ Carla Vance         ✓ Kyle Smith (12)
+  ✓ Dana Smith          ✓ Lena Petrov
+  ✓ Dmitri Volkov       ✓ Marcus Hale
+  ✓ Fred Kowalski ×2    ✓ Nate Brooks
+  ✓ Grace Kim           ✓ Priya Raman
+  ✓ Robert Smith        ✓ Tom Reyes
 
   ─────────────────────────────
    2 people still need to sign
@@ -183,6 +187,8 @@ One read-only page. The single highest-leverage screen per hour spent building i
   ─────────────────────────────
 ```
 
+- **Every signed name is shown. Never a "… 10 more"** — the same rule as the crew list (§C1): the
+  booker is looking for who is missing, and a folded name is one she cannot see.
 - Reached from the confirmation and manage page, and from **reminders at the frequency the admin
   sets**.
 - **Reminders stop the moment everyone has signed.**

@@ -105,7 +105,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-115 — `FILL_DEADLINE_HOURS` is env-tunable (plumbing only — value stays 48h)
 
 ### Crew, vessels & manning model
-- DEC-012 — Manifest is grouped per event on the shift card; no waivers for crew
+- DEC-012 — The guest manifest is grouped per event on the shift card
 - DEC-ROLE-1 — Crew roles and vessel manning are tenant data, not a hardcoded enum
 - DEC-018 — Product string → vessel + manning map — auto-suggest, operator confirms
 - DEC-044 — Crew seed carries a placeholder MMC until BrewBoat tracks real credentials

@@ -33,6 +33,7 @@ import { ContactFields, type ContactValues } from "../../../../components/checko
 import { totalsWithTip, type CheckoutMoney, type TipTier } from "../../../../components/checkout/money";
 import { PayBar } from "../../../../components/checkout/pay-bar";
 import { TipTiles } from "../../../../components/checkout/tip-tiles";
+import { usePaymentLock } from "../../../../components/checkout/payment-lock";
 import { startElementsCheckout } from "./actions";
 
 /**
@@ -154,6 +155,10 @@ function InnerForm(p: InnerProps) {
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The rest of the screen (the header's ‹, the trip card's Change) locks with this form while a
+  // payment is in flight — issue #1082 part A. The page draws those, so they learn it from here.
+  const setScreenLocked = usePaymentLock();
+  useEffect(() => setScreenLocked(submitting), [submitting, setScreenLocked]);
 
   const { name, email, phone } = contact;
   const canSubmit = agreed && !submitting;

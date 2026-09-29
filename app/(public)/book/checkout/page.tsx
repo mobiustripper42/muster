@@ -19,6 +19,7 @@ import type { Block, Event, Location, Offering, Reservation, Vessel } from "@cor
 import { vesselDateOf } from "@core/config/tenant.js";
 import { deriveVirtualAvailability } from "@core/reservations/availability.js";
 import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
+import { LockedWhilePaying, PaymentLockProvider } from "../../../../components/checkout/payment-lock";
 import {
   bookHref,
   buildSlotRows,
@@ -237,9 +238,12 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
 
   return (
     <main className="min-h-screen bg-bg px-3 py-6 sm:px-4 sm:py-8">
+      {/* One lock for the whole screen while a payment is in flight (issue #1082 part A): the form
+          turns it on, and the header's ‹ and the trip card's Change go inert with the form body. */}
+      <PaymentLockProvider>
       <div className="mx-auto flex w-full max-w-[560px] flex-col overflow-hidden rounded-[18px] border border-line bg-card shadow-sm">
         {/* header — same shell as /book */}
-        <div className="flex flex-none items-center gap-2.5 border-b border-line px-4 py-3">
+        <LockedWhilePaying className="flex flex-none items-center gap-2.5 border-b border-line px-4 py-3">
           <AppLink
             href={backHref(sp, date, time, guests)}
             aria-label="Back to date & time"
@@ -252,7 +256,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             <span className="text-[11.5px] text-muted">Private charter</span>
           </div>
           <span className="ml-auto flex items-center gap-1.5 text-[11.5px] font-semibold text-ok">🔒 Secure</span>
-        </div>
+        </LockedWhilePaying>
 
         <div className="flex flex-col overflow-y-auto">
           {/* hero */}
@@ -265,8 +269,8 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             </div>
           </div>
 
-          {/* your trip — the picked slot, changeable */}
-          <div className="px-[18px] pt-4">
+          {/* your trip — the picked slot, changeable (locked while paying, with the header) */}
+          <LockedWhilePaying className="px-[18px] pt-4">
             <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Your trip</div>
             <div className="flex items-center gap-2.5 rounded-xl border border-line px-3.5 py-3">
               <span className="flex-1 text-sm">
@@ -277,7 +281,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
                 Change
               </AppLink>
             </div>
-          </div>
+          </LockedWhilePaying>
 
           <CheckoutForm
             publishableKey={publishableKey}
@@ -290,6 +294,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           />
         </div>
       </div>
+      </PaymentLockProvider>
     </main>
   );
 }

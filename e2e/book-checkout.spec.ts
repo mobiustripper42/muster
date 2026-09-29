@@ -30,6 +30,7 @@ import {
   resetAndSeed,
   clickHydrated,
   setCheckedHydrated,
+  fillHydrated,
   plantVesselBlock,
 } from "./fixtures.js";
 import { BOOKED, DEMO, OPEN_TIME, formatShortDay } from "./reservation-demo.js";
@@ -45,6 +46,37 @@ const INCLUDED = 10;
 
 const CHECKOUT =
   `/book/checkout?offering=offering-reservation-demo&date=${BOOKED.date}&time=${OPEN_TIME}&guests=2`;
+
+/**
+ * A stand-in for Stripe.js whose payment never settles (issue #1082 part A). The e2e has no Stripe
+ * network, so without this the form never reaches "paying" and the in-flight lock is untestable.
+ * Just enough for `@stripe/react-stripe-js` to accept it (`isStripe`: `elements`, `createToken`,
+ * `createPaymentMethod`, `confirmCardPayment`) and for the Payment Element to mount; `submit()`
+ * returns a promise that never resolves, which holds the checkout in flight.
+ */
+const HANGING_STRIPE_JS = `
+  (function () {
+    function element() {
+      var el = { mount: function () {}, unmount: function () {}, destroy: function () {}, update: function () {},
+        focus: function () {}, blur: function () {}, clear: function () {}, collapse: function () {} };
+      el.on = el.off = el.once = function () { return el; };
+      return el;
+    }
+    window.Stripe = function () {
+      return {
+        elements: function () {
+          return { create: element, getElement: function () { return null; },
+            update: function () { return Promise.resolve(); },
+            fetchUpdates: function () { return Promise.resolve({}); },
+            submit: function () { return new Promise(function () {}); } };
+        },
+        createToken: function () {}, createPaymentMethod: function () {}, confirmCardPayment: function () {},
+        confirmPayment: function () { return new Promise(function () {}); },
+        registerAppInfo: function () {}, _registerWrapper: function () {},
+      };
+    };
+  })();
+`;
 
 test.describe("public /book/checkout", () => {
   test.beforeEach(async () => {
@@ -121,6 +153,35 @@ test.describe("public /book/checkout", () => {
 
     await setCheckedHydrated(page.getByTestId("agree-terms"), false);
     await expect(pay).toBeDisabled();
+  });
+
+  /**
+   * Once Book & pay is pressed, nothing on the page can be used until the payment settles (issue
+   * #1082 part A). The form body went inert at #997, but the header's ‹ and the trip card's Change
+   * are drawn by the page, outside it — a guest could leave mid-charge and land on the date picker
+   * as if they had not paid.
+   */
+  test("while a payment is in flight, ‹ and Change are locked with the rest of the form", async ({ page }) => {
+    await page.route("https://js.stripe.com/**", (route) =>
+      route.fulfill({ contentType: "application/javascript", body: HANGING_STRIPE_JS }),
+    );
+    await page.goto(CHECKOUT);
+
+    const back = page.getByRole("link", { name: "Back to date & time" });
+    const change = page.getByRole("link", { name: "Change" });
+    const locked = (l: typeof back) => l.evaluate((el) => el.closest("[inert]") !== null);
+    // Usable before paying — the guard is the payment, not the page.
+    expect(await locked(back)).toBe(false);
+    expect(await locked(change)).toBe(false);
+
+    await fillHydrated(page.getByPlaceholder("Full name"), "Mid Charge");
+    await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0100");
+    await setCheckedHydrated(page.getByTestId("agree-terms"), true);
+    await page.getByTestId("book-pay").click();
+    await expect(page.getByTestId("checkout-busy")).toBeVisible();
+
+    expect(await locked(back)).toBe(true);
+    expect(await locked(change)).toBe(true);
   });
 
   test("the cancellation terms are stated above the pay button, in the box's own label (#619, #1112)", async ({ page }) => {

@@ -33,6 +33,7 @@ import { ContactFields, type ContactValues } from "../../../../components/checko
 import { totalsWithTip, type CheckoutMoney, type TipTier } from "../../../../components/checkout/money";
 import { PayBar } from "../../../../components/checkout/pay-bar";
 import { TipTiles } from "../../../../components/checkout/tip-tiles";
+import { usePaymentLock } from "../../../../components/checkout/payment-lock";
 import { startElementsCheckout } from "./actions";
 
 /**
@@ -152,7 +153,9 @@ function InnerForm(p: InnerProps) {
   const [contact, setContact] = useState<ContactValues>({ name: "", phone: "", email: "" });
   // The cancellation-terms box (issue #1112) — not a waiver, which is its own module.
   const [agreed, setAgreed] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  // "A payment is in flight" is the SCREEN's, not only this form's (issue #1082 part A): the page
+  // draws the header's ‹ and the trip card's Change, and they lock in the same render as this body.
+  const { locked: submitting, setLocked: setSubmitting } = usePaymentLock();
   const [error, setError] = useState<string | null>(null);
 
   const { name, email, phone } = contact;

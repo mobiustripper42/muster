@@ -46,7 +46,7 @@ export type ParticipantId = Brand<string, "ParticipantId">;
 export type MessageId = Brand<string, "MessageId">;
 /** A version of the waiver text (check-in & waivers, DEC-187). */
 export type WaiverTemplateId = Brand<string, "WaiverTemplateId">;
-/** One signing, or one person in roster mode (`docs/design/check-in-and-waivers.md` §6). */
+/** One signing (`docs/design/check-in-and-waivers.md` §6). */
 export type GuestId = Brand<string, "GuestId">;
 
 /**

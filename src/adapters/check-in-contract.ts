@@ -163,6 +163,37 @@ export function runCheckInContract(
         );
         expect((await repo.listWaiverTemplates()).map((t) => t.id)).toEqual(["wt-2", "wt-1"]);
       });
+
+      it("updates a version that has not taken effect yet — every field but the id", async () => {
+        const scheduled = template({
+          id: asId<"WaiverTemplateId">("wt-2"),
+          effectiveFrom: "2026-10-05T04:00:00.000Z",
+          postedAt: "2026-09-20T00:00:00.000Z",
+        });
+        await repo.postWaiverTemplate(scheduled);
+        const edited = {
+          ...scheduled,
+          version: "brewboat-2026-v2",
+          body: "Fixed words.",
+          effectiveFrom: "2026-10-07T04:00:00.000Z",
+          postedAt: "2026-09-29T18:14:00.000Z",
+        };
+        expect(await repo.updateWaiverTemplate(edited, "2026-09-29T18:14:00.000Z")).toBe(true);
+        expect(await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-2"))).toEqual(edited);
+      });
+
+      it("refuses to update a version that has taken effect, from its first moment on", async () => {
+        // wt-1 took effect 2026-09-01T00:00Z; an update stamped that exact instant is already late.
+        const attempt = template({ body: "rewritten", effectiveFrom: "2026-12-01T00:00:00.000Z" });
+        expect(await repo.updateWaiverTemplate(attempt, "2026-09-01T00:00:00.000Z")).toBe(false);
+        expect(await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-1"))).toEqual(template());
+      });
+
+      it("reports an unknown version as not updated", async () => {
+        const ghost = template({ id: asId<"WaiverTemplateId">("wt-ghost") });
+        expect(await repo.updateWaiverTemplate(ghost, "2026-08-01T00:00:00.000Z")).toBe(false);
+        expect(await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-ghost"))).toBeNull();
+      });
     });
 
     describe("guests", () => {
@@ -265,15 +296,15 @@ export function runCheckInContract(
     describe("settings", () => {
       it("fall back to the defaults when nothing is stored: 18, and 7 / 3 / 1 days", async () => {
         expect(await repo.getCheckInConfig()).toEqual(CHECK_IN_CONFIG_DEFAULTS);
-        expect(CHECK_IN_CONFIG_DEFAULTS).toEqual({ ageOfMajority: 18, reminderDaysBefore: [7, 3, 1], rosterMode: false });
+        expect(CHECK_IN_CONFIG_DEFAULTS).toEqual({ ageOfMajority: 18, reminderDaysBefore: [7, 3, 1] });
       });
 
       it("store a partial change and keep the rest at their defaults", async () => {
         await repo.setCheckInConfig({ reminderDaysBefore: [5, 2] }, "2026-09-29T12:00:00.000Z");
         expect(await repo.getCheckInConfig()).toEqual({ ...CHECK_IN_CONFIG_DEFAULTS, reminderDaysBefore: [5, 2] });
 
-        await repo.setCheckInConfig({ ageOfMajority: 21, rosterMode: true }, "2026-09-29T12:05:00.000Z");
-        expect(await repo.getCheckInConfig()).toEqual({ ageOfMajority: 21, reminderDaysBefore: [5, 2], rosterMode: true });
+        await repo.setCheckInConfig({ ageOfMajority: 21 }, "2026-09-29T12:05:00.000Z");
+        expect(await repo.getCheckInConfig()).toEqual({ ageOfMajority: 21, reminderDaysBefore: [5, 2] });
       });
 
       it("read an invalid stored value back as the default, the same on both adapters", async () => {
@@ -285,6 +316,11 @@ export function runCheckInContract(
           "2026-09-29T12:10:00.000Z",
         );
         expect(await repo.getCheckInConfig()).toEqual(CHECK_IN_CONFIG_DEFAULTS);
+      });
+
+      it("store an empty reminder list as no reminders, not as the default", async () => {
+        await repo.setCheckInConfig({ reminderDaysBefore: [] }, "2026-09-29T12:15:00.000Z");
+        expect((await repo.getCheckInConfig()).reminderDaysBefore).toEqual([]);
       });
     });
   });

@@ -128,6 +128,7 @@ export const GROUPS: readonly AdminGroup[] = [
       { href: "/admin/add-ons", label: "Add-ons" },
       { href: "/admin/vessels", label: "Vessels" },
       { href: "/admin/locations", label: "Locations" },
+      { href: "/admin/waivers", label: "Waivers" },
     ],
   },
   {

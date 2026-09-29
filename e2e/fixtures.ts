@@ -173,6 +173,31 @@ export async function plantVesselBlock(b: {
 }
 
 /**
+ * Plant a waiver version (Phase 18.2) — for the states the page cannot reach by posting, like a
+ * version that took effect in the past. Posted by the admin every `resetAndSeed` creates.
+ */
+export async function plantWaiverTemplate(t: {
+  id: string;
+  version: string;
+  body: string;
+  effectiveFrom: string;
+}): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    await repo.postWaiverTemplate({
+      id: t.id as never,
+      version: t.version,
+      body: t.body,
+      effectiveFrom: t.effectiveFrom,
+      postedAt: t.effectiveFrom,
+      postedBy: "crew-eric-stoffer",
+    });
+  } finally {
+    await repo.close();
+  }
+}
+
+/**
  * Plant a recorded payment against a seeded booking (#616) — the money a refund gives back.
  *
  * The `reservation` seed writes bookings with NO payments (every money assertion in

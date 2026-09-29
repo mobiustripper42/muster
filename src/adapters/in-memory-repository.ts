@@ -87,6 +87,9 @@ import {
 } from "../reservations/hull-busy.js";
 import type { FailureWindow, Repository } from "../ports/repository.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
+import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
+import type { CheckInConfig, DepartureCount, Guest, WaiverTemplate } from "../checkin/entities.js";
+import { CHECK_IN_CONFIG_DEFAULTS } from "../checkin/entities.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -1383,5 +1386,69 @@ export class InMemoryRepository implements Repository {
     const key = `${String(shiftId)} ${String(crewMemberId)}`;
     const prior = this.#shiftChangeReads.get(key);
     if (prior === undefined || at > prior) this.#shiftChangeReads.set(key, at);
+  }
+
+  // ── Check-in & waivers (Phase 18.1) ────────────────────────────────────────
+  #waiverTemplates = new Map<string, WaiverTemplate>();
+  #guests = new Map<string, Guest>();
+  /** Kept apart from `#events` on purpose: the count lives on the `events` row in Postgres but
+   *  is never part of the `Event` a normal read returns, and `saveEvent` never touches it. */
+  #departureCounts = new Map<string, DepartureCount>();
+  #checkInConfig: Partial<CheckInConfig> = {};
+
+  async postWaiverTemplate(template: WaiverTemplate): Promise<void> {
+    // Insert-only, mirroring the Postgres `on conflict do nothing`.
+    if (!this.#waiverTemplates.has(template.id)) this.#waiverTemplates.set(template.id, clone(template));
+  }
+  async getWaiverTemplate(id: WaiverTemplateId): Promise<WaiverTemplate | null> {
+    const t = this.#waiverTemplates.get(id);
+    return t ? clone(t) : null;
+  }
+  async listWaiverTemplates(): Promise<WaiverTemplate[]> {
+    return [...this.#waiverTemplates.values()]
+      .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))
+      .map(clone);
+  }
+  async getCurrentWaiverTemplate(at: string): Promise<WaiverTemplate | null> {
+    const inForce = [...this.#waiverTemplates.values()]
+      .filter((t) => t.effectiveFrom <= at)
+      .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+    return inForce[0] ? clone(inForce[0]) : null;
+  }
+
+  async saveGuests(guests: readonly Guest[]): Promise<void> {
+    for (const g of guests) if (!this.#guests.has(g.id)) this.#guests.set(g.id, clone(g));
+  }
+  async listGuestsForEvent(eventId: EventId): Promise<Guest[]> {
+    return [...this.#guests.values()].filter((g) => g.eventId === eventId).map(clone);
+  }
+  async listGuestsForReservation(reservationId: ReservationId): Promise<Guest[]> {
+    return [...this.#guests.values()].filter((g) => g.reservationId === reservationId).map(clone);
+  }
+  async setGuestCheckIn(
+    guestId: GuestId,
+    checkIn: { at: string; by: CrewMemberId } | null,
+  ): Promise<void> {
+    const g = this.#guests.get(guestId);
+    if (!g) return;
+    const next: Guest = { ...g };
+    if (checkIn) next.checkedIn = { ...checkIn };
+    else delete next.checkedIn;
+    this.#guests.set(guestId, next);
+  }
+
+  async setDepartureCount(eventId: EventId, count: DepartureCount): Promise<void> {
+    this.#departureCounts.set(eventId, { ...count });
+  }
+  async getDepartureCount(eventId: EventId): Promise<DepartureCount | null> {
+    const c = this.#departureCounts.get(eventId);
+    return c ? { ...c } : null;
+  }
+
+  async getCheckInConfig(): Promise<CheckInConfig> {
+    return { ...CHECK_IN_CONFIG_DEFAULTS, ...this.#checkInConfig };
+  }
+  async setCheckInConfig(patch: Partial<CheckInConfig>, _at: string): Promise<void> {
+    this.#checkInConfig = { ...this.#checkInConfig, ...patch };
   }
 }

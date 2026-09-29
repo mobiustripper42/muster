@@ -73,6 +73,8 @@ import type { Message, Participant, Thread } from "../messaging/entities.js";
 import type { PaymentConfig } from "../reservations/payment-config.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { ThreadId } from "../domain/ids.js";
+import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
+import type { CheckInConfig, DepartureCount, Guest, WaiverTemplate } from "../checkin/entities.js";
 
 /**
  * The rolling per-subject failure bound applied on top of the per-code attempt cap
@@ -971,6 +973,35 @@ export interface Repository {
    *  so nothing here needs to clear the change rows — and deliberately does not, since a later
    *  change must still be able to describe the window it belongs to. */
   markShiftChangesSeen(shiftId: ShiftId, crewMemberId: CrewMemberId, at: string): Promise<void>;
+
+  // ── Check-in & waivers (Phase 18.1, issue #1115 — docs/design/check-in-and-waivers.md §6) ──
+  /** Insert-only: a second post of the same id is a no-op, never an edit to the text. */
+  postWaiverTemplate(template: WaiverTemplate): Promise<void>;
+  getWaiverTemplate(id: WaiverTemplateId): Promise<WaiverTemplate | null>;
+  /** Every version, newest `effectiveFrom` first. */
+  listWaiverTemplates(): Promise<WaiverTemplate[]>;
+  /** The version in force at `at`: the latest `effectiveFrom <= at`. Null before the first. */
+  getCurrentWaiverTemplate(at: string): Promise<WaiverTemplate | null>;
+
+  /** One signing's rows, written together (a guardian before the minors pointing at them).
+   *  Insert-only per row: an existing id is left as it is — a signature is never rewritten, and
+   *  nothing merges on a shared phone or email. */
+  saveGuests(guests: readonly Guest[]): Promise<void>;
+  listGuestsForEvent(eventId: EventId): Promise<Guest[]>;
+  listGuestsForReservation(reservationId: ReservationId): Promise<Guest[]>;
+  /** Tick a guest aboard (`{at, by}`) or clear the tick (`null`). States the outcome, so a
+   *  repeated call lands in the same place. Touches nothing else on the row. */
+  setGuestCheckIn(guestId: GuestId, checkIn: { at: string; by: CrewMemberId } | null): Promise<void>;
+
+  /** Set the departure's passenger count — the current value only; a new set replaces it.
+   *  Stored on the `events` row but written only here: `saveEvent` never touches it. */
+  setDepartureCount(eventId: EventId, count: DepartureCount): Promise<void>;
+  getDepartureCount(eventId: EventId): Promise<DepartureCount | null>;
+
+  /** The module's settings, backed by `checkin.*` keys in `app_settings`; an absent key falls
+   *  to `CHECK_IN_CONFIG_DEFAULTS` per field (the `getPaymentConfig` pattern). */
+  getCheckInConfig(): Promise<CheckInConfig>;
+  setCheckInConfig(patch: Partial<CheckInConfig>, at: string): Promise<void>;
 }
 
 /** A persisted `shift_changes` row. Mirrors `FormResult.changedCrew` plus the observation time. */

@@ -10,6 +10,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { migrate } from "../../db/migrate.js";
 import { PostgresRepository } from "./postgres-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
+import { runCheckInContract } from "./check-in-contract.js";
 import { clockIn } from "../crew/time-clock.js";
 import { FAKE_SIGNATURE, FakePaymentPort } from "./fake-payment.js";
 import {
@@ -178,6 +179,47 @@ if (!dbUp) {
   runRepositoryContract("postgres", async () => {
     await truncateAll(pool);
     return new PostgresRepository(pool);
+  });
+  runCheckInContract("postgres", async () => {
+    await truncateAll(pool);
+    return new PostgresRepository(pool);
+  });
+
+  /**
+   * The check-in tables' foreign keys (Phase 18.1). Postgres-only because the in-memory double
+   * does not model references — the shared contract saves the referenced rows so both suites
+   * stay identical, and this is the half only a real database can answer. One signing's rows are
+   * written in a transaction, so a refusal leaves NONE of them behind, not the ones before it.
+   */
+  describe("check-in foreign keys (18.1)", () => {
+    it("refuses a signing for a departure that does not exist, and writes none of its rows", async () => {
+      await truncateAll(pool);
+      const repo = new PostgresRepository(pool);
+      const row = (id: string, eventId: string) => ({
+        id: asId<"GuestId">(id),
+        eventId: asId<"EventId">(eventId),
+        name: "Fred Kowalski",
+        email: "fred@example.com",
+        isMinor: false,
+        source: "self" as const,
+        createdAt: "2026-10-10T18:55:00.000Z",
+      });
+      await repo.saveVessel({ id: asId<"VesselId">("v-fk"), name: "Hops", coiMaxPax: 16, manning: [] });
+      await repo.saveEvent({
+        id: asId<"EventId">("evt-fk"),
+        vesselId: asId<"VesselId">("v-fk"),
+        date: "2026-10-10",
+        time: "15:00",
+        capacity: 16,
+        status: "scheduled",
+        source: "muster",
+      });
+
+      await expect(
+        repo.saveGuests([row("guest-ok", "evt-fk"), row("guest-bad", "evt-never-created")]),
+      ).rejects.toThrow(/foreign key/);
+      expect(await repo.listGuestsForEvent(asId<"EventId">("evt-fk"))).toEqual([]);
+    });
   });
 
   /**

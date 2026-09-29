@@ -35,7 +35,7 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   role_types: { kind: "checked", refs: [] },
   vessels: { kind: "checked", refs: ["manning[].roleTypeId", "homeLocationId"] },
   crew_members: { kind: "checked", refs: ["ratings[]"] },
-  events: { kind: "checked", refs: ["vessel_id"] },
+  events: { kind: "checked", refs: ["vessel_id", "counted_by (fk-enforced)"] },
   // Both nets: the diagnostic walks event_id, Postgres enforces customer_id
   // (`reservations_customer_id_fkey`). Classified by the net that needs maintaining.
   reservations: { kind: "checked", refs: ["event_id", "customer_id (fk-enforced)"] },
@@ -97,6 +97,12 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   blocks: { kind: "fk", refs: ["vessel_id", "location_id"] },
   customers: { kind: "exempt", reason: "parent table — no outgoing references. It is the target of reservations_customer_id_fkey, not the holder of one." },
   booking_codes: { kind: "fk", refs: ["reservation_id"] },
+  // Check-in & waivers (Phase 18.1): every reference is an inline foreign key (DEC-131).
+  waiver_templates: { kind: "fk", refs: ["posted_by"] },
+  guests: {
+    kind: "fk",
+    refs: ["event_id", "reservation_id", "guardian_guest_id", "waiver_template_id", "checked_in_by"],
+  },
   recovery_throttle: {
     kind: "exempt",
     reason:

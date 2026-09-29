@@ -15,7 +15,7 @@ entry is an unclassified file, which is the state this workflow keeps finding de
 | `/kill-this` | Per task | Build check, commit, `@code-review`, open the PR with `closes #<issue>`, append a `## Task <N>` block. Step 3.5 reads Blast-Radius Triggers and runs `/security-review` when the diff hits one |
 | `/its-dead` | Session end, once | Stamp `ended:`, tally points, display wall clock, close the session file. No time math, no version bump |
 | `/start-phase` | Phase start | Materialize the phase as GitHub Issues with `phase:N` and `points:X` labels |
-| `/retro` | Phase end | Throughput + estimate calibration from issue dates and labels. Marks `[x]`, writes `RETROSPECTIVES.md`, runs version bumps |
+| `/retro` | Phase end | A one-screen retro: points, days and drift from issue labels, what happened, the operator's take, a one-paragraph @pm read. Marks `[x]`, writes `RETROSPECTIVES.md`, runs version bumps |
 | `/bump-major` | Breaking change | Major bump with a supplied rationale, CHANGELOG entry, tag on `main` |
 | `/promote-production` | Ship | ff-merge `main` → `production`, push. Projects with that branch only |
 
@@ -32,7 +32,7 @@ entry is an unclassified file, which is the state this workflow keeps finding de
 
 | Agent | Model | When | Purpose |
 |-------|-------|------|---------|
-| `@architect` | Opus 5 | Before design decisions, new dependencies, scope creep | Coherence against SPEC and the decision record |
+| `@architect` | Opus | Before design decisions, new dependencies, scope creep | Coherence against SPEC and the decision record |
 | `@code-review` | Sonnet | After every commit, wired into `/kill-this` | Catch issues early. Advisory — flags, does not block |
 | `@pm` | Sonnet | Session start and end, via skills | Progress, timeline risk, scope cuts |
 | `@ui-reviewer` | Sonnet | After UI work, phase boundaries | Design quality against the project's design system, read from `.claude/ui-context.md` |
@@ -91,6 +91,7 @@ silently. It is written down because the gate cannot.
 
 ## Model selection
 
-Agents pin their model in frontmatter. `@architect` is Opus 5; the reviewers stay Sonnet. New
-agents default to Sonnet and pin `model: opus` only when the standing job needs it — the alias
-resolves forward on its own, so no per-release edit is needed.
+Agents pin model and effort in frontmatter. `@architect` is `model: opus`; the reviewers are
+`model: sonnet`; all four run `effort: high`, so they hold their level when the session default is
+`medium`. New agents start at `sonnet` and `high`. Aliases only, never a version: an alias resolves
+forward on its own, so no per-release edit is needed (DEC-J009).

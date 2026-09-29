@@ -23,7 +23,7 @@ This is the metric *after* three failed attempts (DEC-S013 → S015 → S024) to
 There is no tracker to maintain and no "log your hours" step — same promise as before, now actually kept, because the inputs are data GitHub holds whether you think about it or not:
 
 - Every task is a GitHub Issue with a `points:N` label (added by `/start-phase`) and a `closedAt` date (stamped when its PR merges). That's the entire dataset.
-- `/retro` does the math at phase close: it groups closed issues by phase, sums points, and divides by the calendar span — no session file, no transcript, no `started`/`ended` arithmetic.
+- `/retro` records the inputs at phase close — points, days and drift — and computes no rate. The extractor below does the division when you want it.
 - The **source of truth is GitHub itself.** RETROSPECTIVES.md and the PROJECT_PLAN.md table are now *mirrors* of a number that's always recomputable from issue dates + labels — they can't drift the headline, because the headline isn't stored in them.
 
 The one thing that makes a project invisible: no `points:N` labels. Throughput reaches back exactly as far as the labelling ritual and no further — a project from before you labelled issues returns nothing (same blind spot the old metric had).
@@ -126,7 +126,7 @@ Claude: "Agreed — 8. I'll note the merge complexity in the task description."
 
 **Per phase start:** run `/start-phase`. It turns the phase's tasks into GitHub Issues with `points:N` labels — which *is* the throughput dataset. No labels, no velocity, so this is the step that matters.
 
-**Per phase boundary:** run `/retro`. It computes the phase throughput + the pointing-stability tally off GitHub issue dates and labels, writes RETROSPECTIVES.md, and updates the PROJECT_PLAN.md velocity table. If you're starting a new phase, do estimation poker (Part 2) on its tasks.
+**Per phase boundary:** run `/retro`. It writes a one-screen retro to RETROSPECTIVES.md and a phase row to PROJECT_PLAN.md — points, days and drift, with no rate computed. If you're starting a new phase, do estimation poker (Part 2) on its tasks.
 
 **When you want the big picture:** run the throughput extractor (Part 1) for your lifetime or cross-repo number. Check remaining points against *your* available calendar time — throughput is a clearance rate, not a date, so you supply the availability. If the work won't fit before a deadline, cut scope (PROJECT_PLAN.md has a cuttable-tasks list).
 

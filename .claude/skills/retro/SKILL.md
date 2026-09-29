@@ -1,12 +1,14 @@
 ---
 name: retro
-description: Phase-end retrospective. Closes the current phase. Retro owns the phase velocity math; that math is throughput (points per calendar week) computed from GitHub issue `closedAt` dates + `points:N` labels, plus an estimate-calibration tally — no session transcript is read. Marks PROJECT_PLAN.md `[x]`, reconciles drift, writes RETROSPECTIVES.md, runs version bumps (patch per merged PR + minor at phase close on dev projects), prompts retro notes. Optionally chains into `/start-phase`.
+description: Phase-end retrospective. Closes the current phase and writes a retro that fits on one screen — one line of numbers, a short account of what happened, the operator's own take, and a one-paragraph PM read. Marks PROJECT_PLAN.md `[x]`, reconciles drift, writes RETROSPECTIVES.md, runs version bumps (patch per merged PR + minor at phase close on dev projects). Optionally chains into `/start-phase`.
 tools: Read, Edit, Write, Bash, Glob, Grep, Agent
 ---
 
 You are running the phase-end retrospective. Work for this phase is complete (or you've decided to call it done and move scope).
 
-This skill **owns the phase velocity math** that used to live in `/its-dead` and **all version bumps** (patch per merge + minor at close). Under That velocity math is **throughput + estimate calibration**, computed from GitHub issue dates + `points:N` labels — the transcript-based `active = wall − breaks` model is retired. Session files are atomic event logs; GitHub is the velocity data source.
+This skill owns the phase retro and **all version bumps** (patch per merge + minor at close). Session files are atomic event logs; GitHub issues and their `points:N` labels are the record of what shipped.
+
+**The retro is short on purpose.** The operator works across several projects and does not reread these, so a retro that takes a page to say what happened loses the one insight worth keeping in the prose around it. Every section below has a length, and the length is the point. The numbers are still written down, because they cost one line and nobody can reconstruct them later.
 
 ## Step 0 — Identify the current phase
 
@@ -32,70 +34,32 @@ For each open issue, ask the user: "Move to next phase, leave open, or close as 
 - **Leave open:** record in retro.
 - **Close as won't-do:** `gh issue close <N> --reason "not planned" --comment "Closed at Phase N retro — descoped."`
 
-## Step 2 — Phase throughput + estimate calibration (replaces transcript-based time math)
+## Step 2 — The numbers
 
-The `active = wall_clock − breaks` model is retired. **No session transcript is read in this step.** Two numbers come out of it, both from data GitHub already holds: the phase's **throughput** (points per calendar week) and an **estimate-calibration tally** (did the points hold their value). Fleet validation showed solo phases are burst-shaped — most clear inside a single calendar week — so throughput is a coarse capacity signal, not a precise rate; the calibration tally is what keeps the point unit honest.
-
-Phase window: `phase_first_created` = first issue's `createdAt`, `phase_last_closed` = last issue's `closedAt`.
-
-### Step 2.1 — Phase points + dates (GitHub only)
+Everything here comes from data GitHub and PROJECT_PLAN.md already hold. **No session transcript is read.**
 
 ```
 gh issue list --label "phase:<N>" --state closed --json number,createdAt,closedAt,labels --limit 200
 ```
 
-- `phase_points` = Σ of each closed issue's `points:M` label value. Issues with **no** `points:` label are skipped — list them in the retro so they're visible; never guess a value.
-- `phase_first_created` = min `createdAt`; `phase_last_closed` = max `closedAt`; `phase_span_days = (phase_last_closed − phase_first_created)` in days.
+- `points` = Σ of each closed issue's `points:M` label. An issue with **no** `points:` label is skipped and listed in the retro so it is visible — never guess a value.
+- `planned` = Σ of the phase's original estimates in PROJECT_PLAN.md.
+- `phase_start_iso` = the first `createdAt`; `phase_end_iso` = the last `closedAt`. `days` = the gap between them, in days.
+- `re_estimated` = tasks whose points changed between original estimate and final. `net_drift` = Σ final − Σ original; positive means tasks ran bigger than pointed.
+- `prs` = PRs merged between those two dates. Count them here, since the numbers line needs them before the version bumps run; Step 9.1 reuses this list:
+  ```
+  gh pr list --state merged --search "merged:>=<phase_start_iso> merged:<=<phase_end_iso>" --json number,title,mergedAt --limit 100
+  ```
 
-This keys the phase to issues, not PRs — robust to merging PRs in any order. **Never re-pair PR-open → PR-merge to recover "effort"** — that window math is the exact bug that pairing died on. Dates are not windows.
+**No rate is computed.** Points, days and drift are enough to derive one later if it is ever wanted, and a per-week number was the thing the old retro led with while nobody used it. Never re-pair PR-open → PR-merge to recover "effort" — that window math is the bug an earlier velocity model died on.
 
-### Step 2.2 — Throughput (the headline)
-
-```
-phase_calendar_weeks = phase_span_days / 7
-throughput           = phase_points / phase_calendar_weeks    # points per calendar week
-```
-
-- **If `phase_span_days < 7`** (phase opened and closed inside one week — a *burst* phase): do **not** quote a per-week rate. A sub-week denominator explodes it into nonsense (a phase done in an afternoon reads as hundreds of pts/wk). Record `throughput: burst (<7d) — <phase_points> pts over <phase_span_days>d` instead. Most solo phases land here; the point total + span is the honest record.
-- **Companion (optional):** `active_weeks` = ISO weeks in the span containing ≥1 close; `active_throughput = phase_points / active_weeks` = intensity when actually shipping (strips idle/off weeks).
-
-Throughput is capacity **including availability** — a slow week and an off week look identical. Correct for "when does the *next* phase ship," wrong for "at-keyboard speed." Never quote it as the latter. It is an active-time rate; a calendar forecast = throughput ÷ your real availability, which only you know.
-
-### Step 2.3 — wall_clock (gut-check only — NOT a velocity)
-
-`/its-dead` already displayed each session's `wall_clock = ended − started` on-screen as a sanity gut-check. That is its only role. **It is not aggregated, not divided by points, and not quoted as a velocity** — `wall_clock / point` is the number the guide forbids (it carries overnight gaps and idle). No transcript is read; no breaks are inferred; there is no `active_time`. (This is the the old model being retired.)
-
-### Step 2.4 — Estimate-calibration tally
-
-Throughput alone rots: if points quietly shrink, "throughput" rises while nothing actually got faster. This tally is the guard, and it replaces the old per-session h/pt spread as the estimate-health signal.
-
-From PROJECT_PLAN.md's estimate column + this phase's session notes:
-- `re_estimated` = count of tasks whose points changed between original estimate and final (re-pointed mid-flight).
-- `net_drift` = Σ(final points) − Σ(original points). Positive = tasks ran bigger than pointed (under-estimating); negative = smaller.
-
-Record `re-estimated: <K> tasks, net drift: <±D> pts`. A stable point unit shows few re-estimates and near-zero net drift. Persistent positive drift = under-pointing; persistent **shrink alongside rising throughput** = point inflation — the failure mode throughput can't see on its own.
-
-### Step 2.5 — Per-phase line for the retro
-
-One phase row (there is no longer a per-session time table — the transcript that fed it is gone):
+The numbers line, used in Steps 6, 7 and 10:
 
 ```
-| Phase N | <phase_last_closed date> | <points> | <span_days>d | <throughput or "burst"> | <re_estimated> | <net_drift> | <sessions> | <PRs> |
+**Numbers:** <points> / <planned> pts · <days> days · <re_estimated> re-estimated, drift <±net_drift> · <prs> PRs
 ```
 
-`sessions` = count of session files in the window (reference only); `PRs` = merged PRs in the window. Hold these for Step 3.
-
-## Step 3 — Phase metrics
-
-From Step 2:
-- `phase_points` — Σ `points:N` on closed phase issues (cross-check against PROJECT_PLAN's estimate column; flag mismatch).
-- `throughput` — points per calendar week (or `burst` for sub-week phases). **The headline** — but never reported without the calibration tally beside it.
-- `re_estimated` + `net_drift` — the estimate-calibration tally.
-- `phase_sessions` = session-file count in the window; `phase_prs` = merged PRs in the window.
-
-There is no `active`, no `breaks`, no `dev_time`/`review_time`, and no `h/pt` — all retired.
-
-## Step 4 — Update PROJECT_PLAN.md
+## Step 3 — Update PROJECT_PLAN.md
 
 Mark all closed phase tasks `[x]`. For each row:
 ```
@@ -104,29 +68,36 @@ Mark all closed phase tasks `[x]`. For each row:
 
 Reconcile drift: issues with `phase:<N>` labels that don't appear in PROJECT_PLAN.md (added mid-phase). Add rows with status `[x] [#N](url)` and inline note `Added during P<N> retro`.
 
-Update the throughput table at the top:
+Append one row to the phase table:
 ```
-| Phase | Points | Span (d) | Throughput | Re-est'd | Net drift | Sessions |
-|-------|--------|----------|------------|----------|-----------|----------|
-| N     | <pts>  | <days>   | <pts/wk or burst> | <K> | <±D> | <count> |
+| Phase | Closed | Points | Days | Re-estimated | Net drift |
+|-------|--------|--------|------|--------------|-----------|
+| N     | <date> | <points> / <planned> | <days> | <K> | <±D> |
 ```
 
-Append one row per phase as they complete. **Don't rewrite history:** phases closed before the throughput model carry the retired `Wall / Breaks / Active / h-pt` columns — leave those rows as written and note the metric change inline (the full table migration is a separate deferred task).
+**Don't rewrite history.** A table written under an older model keeps its header and its rows; put `—` in any column this skill no longer computes (Throughput, Wall, h/pt) and fill the rest.
 
-## Step 5 — Prompt retro notes
+## Step 4 — What happened
 
-Ask three questions, one at a time, capture verbatim:
-1. **What worked?**
-2. **What didn't?**
-3. **What changes for next phase?**
+Write **two or three sentences, 60 words at most**, from the closed issues, the Step 1 moves and descopes, and the phase's session files (their `## Task` blocks and Next Steps). Say what shipped, what was added or cut, and what got in the way. A roadblock is named if there was one; "none" is not written if there wasn't.
 
-## Step 5.5 — PM retro commentary
+Show it to the operator before asking anything. It is there to remind them what happened — they are working across several projects and should not have to remember.
 
-Invoke `@pm` (Sonnet) with the full retro context: phase number + name, metrics from Step 3 (throughput + calibration tally), user's verbatim answers, the phase line from Step 2.5, closed-issue list with descoped/moved notes, and `docs/RETROSPECTIVES.md` for cross-phase comparison. Let `@pm` read the session files themselves for in-the-trenches detail.
+## Step 5 — The operator's take
 
-`@pm` returns 3–5 short paragraphs on pace, scope, patterns, a reaction to the user's answers (not a paraphrase), and a forward-looking note.
+Ask one question and record the answer verbatim:
 
-Show the commentary verbatim:
+> **How did it go, and what would you change?**
+
+One or two sentences is the expected answer. Do not follow up, and do not ask the old three questions separately.
+
+## Step 6 — PM read
+
+Invoke `@pm` with the numbers line, the Step 4 account, the operator's verbatim take, the closed-issue list with moves and descopes, and `docs/RETROSPECTIVES.md` for comparison. Let `@pm` read the session files for detail.
+
+**`@pm` returns one paragraph, 120 words at most.** It reacts to the operator's take rather than paraphrasing it, compares against earlier phases only when a pattern is actually there, and ends on one thing to do differently. Count the words before showing it; over the cap goes back to `@pm` to cut, not to the operator to read.
+
+Show it verbatim:
 > **PM read on Phase N:**
 >
 > <commentary>
@@ -135,54 +106,37 @@ Show the commentary verbatim:
 
 - **Use:** carry forward.
 - **Edit:** ask "What would you change?" — apply edits, carry forward.
-- **Skip:** omit the section from RETROSPECTIVES.md.
+- **Skip:** omit the line from RETROSPECTIVES.md.
 
-## Step 6 — Append to RETROSPECTIVES.md
+## Step 7 — Append to RETROSPECTIVES.md
 
-Read `docs/RETROSPECTIVES.md` first (Edit requires a prior Read). If it doesn't exist, create it with Write and the header `# Retrospectives\n\n`. Otherwise Edit the file by replacing the `# Retrospectives\n\n` header with `# Retrospectives\n\n## Phase <N> — <YYYY-MM-DD>\n\n...full block...\n\n` so the new phase lands at the top. Block template:
+Read `docs/RETROSPECTIVES.md` first (Edit requires a prior Read). If it doesn't exist, create it with Write and the header `# Retrospectives\n\n`. Otherwise Edit the file by replacing the `# Retrospectives\n\n` header with `# Retrospectives\n\n## Phase <N> — <YYYY-MM-DD>\n\n...block...\n\n` so the new phase lands at the top. The block:
 
 ```
 ## Phase <N> — <YYYY-MM-DD>
 
-**Points:** <points completed> / <planned> (<%>)
-**Span:** <span_days> days (<first_created> → <last_closed>)
-**Throughput:** <pts/wk> pts/calendar-week  ← headline (or: `burst — <pts> pts in <days>d` for sub-week phases)
-**Estimate calibration:** <K> tasks re-estimated, net drift <±D> pts  ← keeps the point unit honest
-**Sessions:** <count>   **PRs merged:** <count>
-**Issues:** <created> created, <closed> closed, <moved> moved to Phase <N+1>
+**Numbers:** <the Step 2 line>
 
-### Phase throughput line
-| Phase | Date | Points | Span(d) | Throughput | Re-est'd | Net drift | Sessions | PRs |
-|-------|------|--------|---------|------------|----------|-----------|----------|-----|
-| <row> | ...  | ...    | ...     | ...        | ...      | ...       | ...      | ... |
+**What happened:** <Step 4>
 
-### What worked
-- <verbatim>
+**Operator:** <Step 5, verbatim>
 
-### What didn't
-- <verbatim>
-
-### Changes for next phase
-- <verbatim>
-
-### Scope changes
-- [Tasks added mid-phase, moved out, descoped]
-
-### PM read
-<commentary from Step 5.5, verbatim or edited — omit section if skipped>
+**PM read:** <Step 6 — omit this line if skipped>
 ```
 
-## Step 7 — Commit (sessions branch updates are read-only here)
+Add `**Unpointed:** #<N>, #<N>` only when Step 2 found closed issues with no `points:` label.
 
-Session files were already finalized by `/its-dead` and are not modified by this skill atomicity.
+## Step 8 — Commit (sessions branch updates are read-only here)
+
+Session files were already finalized by `/its-dead` and are not modified by this skill.
 
 ```
 git add docs/PROJECT_PLAN.md docs/RETROSPECTIVES.md
-git commit -m "Phase <N> retro — <points> pts, throughput <pts/wk or burst>, drift <±D>"
+git commit -m "Phase <N> retro — <points>/<planned> pts, drift <±D>"
 git push origin <BRANCH>
 ```
 
-## Step 8 — Version bumps (versioned projects only moved patch bumps from `/its-dead` here)
+## Step 9 — Version bumps (versioned projects only)
 
 Run only if the repo root has a `package.json` **with a `version` field** (versioned-project signal):
 
@@ -190,7 +144,7 @@ Run only if the repo root has a `package.json` **with a `version` field** (versi
 node -e "process.exit(require('./package.json').version ? 0 : 1)" 2>/dev/null || echo "not versioned"
 ```
 
-If it prints `not versioned`, skip Step 8 entirely. The gate is the field, not the file: a repo can carry a `private`, version-less manifest purely to get a test runner, and bumping it would be inventing a version for something that has none.
+If it prints `not versioned`, skip Step 9 entirely. The gate is the field, not the file: a repo can carry a `private`, version-less manifest purely to get a test runner, and bumping it would be inventing a version for something that has none.
 
 **`2>/dev/null` is deliberate and it does swallow one real error.** A `package.json` that is malformed JSON makes `require()` throw, which exits non-zero and reads here as "not versioned" — indistinguishable from a repo that simply has no version. That is the right default for a gate whose job is to decide whether to proceed, and a broken manifest will announce itself the moment anything else npm-shaped runs. Stated so the redirect isn't mistaken for carelessness.
 
@@ -202,21 +156,17 @@ Bumps and tags land on `main` directly; `production` (if any) only moves at `/pr
 
 If `BRANCH != $WORKING_BRANCH`: STOP. Tell the user "Switch to `$WORKING_BRANCH` and re-run /retro." Wait.
 
-### Step 8.1 — Enumerate merged PRs in the phase window
+### Step 9.1 — The merged PRs in the phase window
 
-```
-gh pr list --state merged --search "merged:>=<phase_start_iso> merged:<=<phase_end_iso>" --json number,title,mergedAt --limit 100
-```
+Use the list Step 2 fetched. Sort by `mergedAt` ascending. On **deploy-off-main** projects each PR earns one patch bump + CHANGELOG entry (Step 9.2). On **production-branch** projects patches already landed at `/promote-production` (one release = one patch), so Step 9.2 is skipped and this list feeds only the phase CHANGELOG summary.
 
-Sort by `mergedAt` ascending. On **deploy-off-main** projects each PR earns one patch bump + CHANGELOG entry (Step 8.2). On **production-branch** projects patches already landed at `/promote-production` (one release = one patch), so Step 8.2 is skipped and this list feeds only the phase CHANGELOG summary.
-
-### Step 8.2 — Patch-bump per PR (deploy-off-main projects only)
+### Step 9.2 — Patch-bump per PR (deploy-off-main projects only)
 
 **Skip this entire step if a `production` branch exists** — those projects patch-bump at `/promote-production` on each ship, so per-PR patches here would double-count:
 ```
-git show-ref --verify --quiet refs/remotes/origin/production && echo "has production — skip to 8.3"
+git show-ref --verify --quiet refs/remotes/origin/production && echo "has production — skip to 9.3"
 ```
-If `origin/production` exists, go straight to Step 8.3 (minor bump). Only projects that deploy straight off `main` patch-bump per PR below.
+If `origin/production` exists, go straight to Step 9.3 (minor bump). Only projects that deploy straight off `main` patch-bump per PR below.
 
 For each PR in order, sequentially:
 
@@ -237,7 +187,7 @@ c. **Commit + tag (main only):**
    ```
    Tags land on the trunk at bump time. (This step runs only for deploy-off-main projects — there's no `production` branch to promote to.)
 
-### Step 8.3 — Minor-bump at phase close
+### Step 9.3 — Minor-bump at phase close
 
 After all PR patches:
 
@@ -246,8 +196,8 @@ a. `NEW_VERSION=$(npm version minor --no-git-tag-version | tr -d 'v')` — zeros
 b. CHANGELOG entry:
    ```
    ## [<NEW_VERSION>] - <YYYY-MM-DD> — Phase <N>
-   - <points> pts shipped across <session count> sessions (throughput <pts/wk or burst>)
-   - See `docs/RETROSPECTIVES.md` for the full retro
+   - <points> pts shipped across <prs> PRs
+   - See `docs/RETROSPECTIVES.md` for the retro
    ```
 
 c. Commit + tag (main only):
@@ -258,34 +208,29 @@ c. Commit + tag (main only):
    git tag "v<NEW_VERSION>"
    ```
 
-### Step 8.4 — Push
+### Step 9.4 — Push
 
 ```
 git push origin "$WORKING_BRANCH"
 ```
-If any tags were created in 8.2 or 8.3: `git push origin --tags`.
+If any tags were created in 9.2 or 9.3: `git push origin --tags`.
 
 Echo: `Phase <N> closed at v<NEW_VERSION>` (and `tagged` if main).
-
-## Step 9 — Offer next phase
-
-"Phase <N+1> is next. Run `/start-phase <N+1>` now or stop here?" Let the user invoke `/start-phase` themselves — don't auto-chain.
 
 ## Step 10 — Summary
 
 ```
 Phase <N> closed.
-Points: <P> | Throughput: <pts/wk or burst> | Calibration: <K> re-est'd, <±D> drift
-Span: <days>d | Sessions: <count> | PRs merged: <count>
+<the Step 2 numbers line, without the bold label>
 Issues: <closed>/<created> closed; <moved> moved to Phase <N+1>
 Retro: docs/RETROSPECTIVES.md
-Version: v<NEW_VERSION>  (versioned projects only; skipped per Step 8's gate)
+Version: v<NEW_VERSION>  (versioned projects only; skipped per Step 9's gate)
 ```
+
+Then: "Phase <N+1> is next. Run `/start-phase <N+1>` now or stop here?" Let the user invoke `/start-phase` themselves — don't auto-chain.
 
 ## Notes
 
 - **Session files are read-only here.** Retro reads them; never writes — a session file is atomic once `/its-dead` closes it.
-- **No transcript is read anywhere.** Break inference is retired, along with and `active = wall − breaks` — the model whose `breaks = 0 → active = wall_clock` fallback was the bug that triggered the change.
-- **GitHub IS the velocity data source now.** Step 2 reads issue `createdAt`/`closedAt` + `points:N` labels — that's the throughput input. `gh` is also used for issue accounting (Step 1), the points cross-check (Step 3), and version bumps (Step 8). If `gh` is down, Step 2 can't compute throughput; note it and let the user rerun. Don't guess.
-- **The headline is throughput (points / calendar week), never reported without the calibration tally.** There is no `active`, `wall/pt`, `dev_time`, or `review_time` — all retired. `wall_clock` survives only as the `/its-dead` on-screen gut-check.
-- **Old retros carry retired columns.** Phases closed before the throughput model carry `Wall / Breaks / Active / h-pt` (or older `Dev / Review`) columns and an h/pt velocity — all retired, all on a different denominator. **Don't blend them with throughput.** History stays as written (the same precedent); the standalone extractor the standalone extractor, which jig does not carry — it stays in the archived seeds checkout recomputes throughput straight from GitHub and is independent of any old retro prose.
+- **No transcript is read anywhere.** `gh` is the data source for the numbers (Step 2), issue accounting (Step 1) and version bumps (Step 9). If `gh` is down, the numbers cannot be computed; say so and let the user rerun. Don't guess.
+- **Old retros stay as written.** Phases closed under an earlier model carry throughput tables, three-question sections and multi-paragraph PM reads. Don't rewrite them and don't blend their numbers with these.

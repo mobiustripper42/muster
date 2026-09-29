@@ -22,22 +22,21 @@ Project-specific docs are listed in `.claude/CLAUDE-context.md` under `## Additi
 
 ## Micro Workflow (every task, no exceptions)
 
-1. **Spec it** — poker estimate + acceptance criteria. Pin what "done" looks like before writing code: enumerate the concrete set from source and confirm it. Live words override prior docs. **Get the whole spec down before step 4** — the model does its best work on a complete brief in one turn, not one assembled across a dozen exchanges.
+1. **Spec it** — poker estimate + acceptance criteria. Pin what "done" looks like before writing code: enumerate the concrete set from source and confirm it. Live words override prior docs. **Get the whole spec down before any code is written** — the model does its best work on a complete brief in one turn, not one assembled across a dozen exchanges.
 2. **Plan it** — summarize what you're going to do. Wait for explicit approval.
 3. **Cut the branch** — `git checkout -b task/X.Y-short-description`.
 4. **Prove it first** — when behaviour changes, the check comes before the change: write it, run it, watch it fail *for the reason you expect*. That failure is what proves the check bites; one written afterwards has never been observed failing, so it may assert nothing. The check must exercise the thing in its own title — a test named for one thing that calls another turns an unverified claim into an apparently-verified one. **What counts as a check: the `Proof` slot in `.claude/CLAUDE-context.md` § Workflow Mechanisms.**
-5. **Build it** — until it passes. Writing code first and then reconstructing the proof by deleting it to watch the test fail is step 4 the long way round.
+5. **Build it** — until it passes. Writing code first and then reconstructing the proof by deleting it to watch the test fail is the prove-it step the long way round.
 6. **Run the proof** — the checks covering what you touched, not the whole suite. **The test is coverage, not confidence:** if the checks you ran exercise the files you changed, that is the whole proof. Running everything again *because you are about to hand back* is the banned case, and the one that actually happens — "I'm finishing" feels like a reason and isn't. If a change plausibly reaches code you can't name, say so and ask. **Command: the `Proof command` slot.**
-7. **Check the surface** — confirm the change is right where a person meets it, which a passing check does not tell you. **How: the `Surface check` slot.**
-8. **Stop. The task is built, not shipped.** Report what changed and what passes, then **stop and wait**. Do not commit, push, open a pull request, or start the next task. This is where the work gets looked at. Waiting is the correct end of a build turn — including when everything is green and the next task is obvious. Handing back *is* the finished state.
-9. **`/kill-this` — the user invokes it, you don't.** It commits, pushes, runs `@code-review`, opens the pull request with `closes #<issue>`, and appends a `## Task <N>` block to the session file. **Reaching the same end state by hand is never acceptable** — a hand-typed `git push` + `gh pr create` produces a pull request that looks identical and has never been read by `@code-review`, and that absence announces itself to nobody. If you believe a task is ready, say so and stop.
-10. **Pick up another task or close out** — step 1 with a new branch, or `/its-dead` once at the end of the window. Merge pull requests whenever.
+7. **Stop. The task is built, not shipped.** Report what changed and what passes, then **stop and wait**. Do not commit, push, open a pull request, or start the next task. This is where the work gets looked at. Waiting is the correct end of a build turn — including when everything is green and the next task is obvious. Handing back *is* the finished state. **If the change made something a person looks at — a screen, a report, a command's output — put it in front of them here**, rendered rather than described. That is part of handing back, not a gate before it.
+8. **`/kill-this` — the user invokes it, you don't.** It commits, pushes, runs `@code-review`, opens the pull request with `closes #<issue>`, and appends a `## Task <N>` block to the session file. **Reaching the same end state by hand is never acceptable** — a hand-typed `git push` + `gh pr create` produces a pull request that looks identical and has never been read by `@code-review`, and that absence announces itself to nobody. If you believe a task is ready, say so and stop.
+9. **Pick up another task or close out** — a new branch and a fresh spec, or `/its-dead` once at the end of the window. Merge pull requests whenever.
 
 **No proof, no push.**
 
-**Steps 4, 6 and 7 name a slot, not a tool.** The shell says what the step must achieve; the context file says how it's done here. Slots are filled, not overridden. Nothing cites a step *number* — numbers move, and a stale cross-reference in an always-loaded file fails silently.
+**The proof steps name a slot, not a tool.** The shell says what the step must achieve; the context file says how it's done here. Slots are filled, not overridden. Nothing cites a step *number* — numbers move, and a stale cross-reference in an always-loaded file fails silently.
 
-**An unfilled slot is a real answer and must be written as one.** `Surface check: none — no human-facing surface` is checkable. Blank is not.
+**An unfilled slot is a real answer and must be written as one.** `Proof: none — this repo has no test runner yet` is checkable. Blank is not.
 
 ## Migration Protocol
 
@@ -74,7 +73,7 @@ Two things the gate cannot check, which is why they are here:
 | `/kill-this` | **Per task** | Build check, commit, open a pull request, append `## Task <N>`. Run once per task |
 | `/its-dead` | Session end (once) | Stamp `ended:`, tally points, close the session file |
 | `/start-phase` | Phase start | Materialize the phase as Issues with `phase:N`, `points:X` |
-| `/retro` | Phase end | Throughput (points per calendar week) + estimate calibration from GitHub issue dates and `points:N` labels. No transcript is read. Marks `[x]`, writes the retro, runs version bumps |
+| `/retro` | Phase end | A one-screen retro: points, days and drift from GitHub `points:N` labels, what happened, your take in a sentence or two, a one-paragraph PM read. Marks `[x]`, runs version bumps |
 | `/bump-major` | Breaking change | Major bump, CHANGELOG entry, tag on `main` |
 | `/promote-production` | Ship | ff-merge `main` → `production`, push. Projects with that branch only |
 
@@ -86,25 +85,17 @@ Two things the gate cannot check, which is why they are here:
 
 | Agent | Model | When | Purpose |
 |-------|-------|------|---------|
-| @architect | Opus 5 | Before design decisions, new dependencies, scope creep | Coherence vs SPEC + decisions |
+| @architect | Opus | Before design decisions, new dependencies, scope creep | Coherence vs SPEC + decisions |
 | @code-review | Sonnet | After every commit (wired into `/kill-this`) | Catch issues early |
 | @pm | Sonnet | Session start/end via skills | Progress, risks |
 | @ui-reviewer | Sonnet | After interface work, phase boundaries | Design quality |
 
 ## Model Selection
 
-Default to the cheapest model that does the job. **Opus 5 is the standing model** for development and architecture; **Sonnet** handles cheap, scoped work. **Fable is rarely worth it** — on agentic coding at `max` effort Opus 5 lands within half a percent of Fable's peak at half the cost, so the frontier tier is a narrow exception, not an escalation path.
+**Opus runs sessions; Sonnet runs agents.** Write the aliases, `opus` and `sonnet`, never a version. An alias follows each new release on its own; a version number in a file loaded every session is stale the day the next one ships, which is how this section came to name a retired default (DEC-J009).
 
-| Tier | Model | $/MTok (in/out) | Use for |
-|------|-------|-----------------|---------|
-| Cheap | `claude-sonnet-5` | $3 / $15 | Trivial or scoped agents and reviews |
-| Default | `claude-opus-5` | $5 / $25 | Development and architecture. Most work |
-| Frontier (rare) | `claude-fable-5` | $10 / $50 | Only after Opus 5 at `max` has actually failed |
-
-- **Spec it fully, then let it run.** Opus 5's edge is largest on long, coherent, multi-file work handed the complete specification in one turn. Assembling it across turns costs quality and tokens both. This is what makes step 1 load-bearing rather than ceremonial.
-- **`effort` is the primary lever, and it sweeps down.** It buys quality more cheaply than a model jump. Start at `xhigh` for coding and `high` elsewhere, then **try lower** — `low` and `medium` are unusually strong on Opus 5, and effort is what spends the allowance. `max` only when correctness must beat cost.
-- **Fast mode** runs ~2.5× faster at 2× the price. A deliberate choice for a specific impatience, never a default.
-- **Agents:** model in frontmatter. `@architect` is Opus 5; reviewers stay Sonnet. New agents default to Sonnet.
+- **Effort is `medium` by default**, set by `effortLevel` in the settings master. `xhigh` for an 8-point task. `max` occasionally, when correctness has to beat cost.
+- **Agents pin model and effort in frontmatter.** `@architect` is `opus`, the other three are `sonnet`, and all four run at `effort: high` so they do not drop with the session default. A new agent starts at `sonnet` and `high`.
 
 ## Pull Request Workflow
 
@@ -163,7 +154,7 @@ For every task — bug, feature, or question — explain the plan and wait befor
 2. For a bug or question: explain the cause and your proposed fix first.
 3. Wait for "go", "do it", or equivalent.
 
-**Answering a question you asked is not approval.** This is where "or equivalent" gets abused, and it is the observed failure — twice in one session, twice again in another. A scoping answer, a preference between options you offered, and a refusal to decide all say *what the thing should be*. None says *start building it*. Approval is a reply to the plan in step 1, so if no plan was written, nothing said since can have approved one. When the register is collaborative and fast and you're clearly agreeing, that is exactly when this goes wrong.
+**Answering a question you asked is not approval.** This is where "or equivalent" gets abused, and it is the observed failure — twice in one session, twice again in another. A scoping answer, a preference between options you offered, and a refusal to decide all say *what the thing should be*. None says *start building it*. Approval is a reply to the written plan, so if no plan was written, nothing said since can have approved one. When the register is collaborative and fast and you're clearly agreeing, that is exactly when this goes wrong.
 
 **Working through a numbered document is not the ordinary task loop.** A runbook, migration plan or checklist: each step is its own cycle — present, wait, do, wait again before commit or push. Don't fold investigate → edit → commit → push into one turn because the step is numbered and looks atomic.
 
@@ -203,13 +194,13 @@ Occasional dry humor and sarcasm welcome. One good line beats three forced ones.
 
 **No repo carries either.** Jig's `.claude/settings.json` master defines no `outputStyle`, so `settings-policy.mjs` neither checks nor writes one, and `.claude/output-styles/**` is `jig-only`, so drift reports a project copy as NOT YOURS. The fix for a copy is deletion, never a sync. Edit the style in jig; the symlink means the edit is live at the next session start with nothing to copy.
 
-**Both are one-time hand steps per machine, and nothing checks the symlink.** A fresh machine has neither until someone does this, with `<jig>` as that machine's jig checkout:
+**Both are one-time hand steps per machine.** A fresh machine has neither until someone does this, with `<jig>` as that machine's jig checkout:
 
 ```
 mkdir -p ~/.claude/output-styles && ln -sfn <jig>/.claude/output-styles/one-piece.md ~/.claude/output-styles/one-piece.md
 ```
 
-`settings-policy.mjs` does not verify the link exists or points here. A regular file at that path, or a link to a stale checkout, silently runs something other than jig's copy, and the only symptom is a session that does not behave like the style says.
+**`settings-policy.mjs` checks the link, and only when the setting names a style jig ships.** Absent, a regular file, a link into another checkout, a link whose target is gone — each is a separate finding carrying the `ln -sfn` that fixes it. Reported, never repaired: `--write` edits `permissions` and the machine keys, and making a symlink in a home directory is not that. An unset `outputStyle` is silent, because nothing is reading the file. What it still cannot see is **which** style is on — that setting is deliberately unmanaged, so a link that is correct says the file is current, not that it is in use.
 
 **Precedence, lowest to highest.** For the setting: `~/.claude/settings.json`, then `<repo>/.claude/settings.json`, then `<repo>/.claude/settings.local.json`. For the file: `~/.claude/output-styles/` loses to `<repo>/.claude/output-styles/` — observed 2026-09-18, a repo holding a stale copy ran it over the machine's newer one. Both run the same way: the more specific location silently beats the machine. That is the trap. Jig shipped the key and the file until 2026-09-18, so setting either "at the machine level" did nothing, in any repo. A repo copy of the style file is therefore not untidy, it is the style that repo runs — delete it. If a style ever fails to take effect, look for the key or the file somewhere more specific than you looked.
 

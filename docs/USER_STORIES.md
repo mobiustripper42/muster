@@ -69,8 +69,8 @@ features (SPEC §2.6).
 - CR-2: I land on the right shift via the **link in the text** — no password to forget; if I'm signed out, a 6-digit code gets me in.
 - CR-3: I see my **confirmed upcoming shifts**, one card each, past stuff hidden.
 - CR-4: On the shift card I see **call time distinct from departure time**, a tappable dock pin, who
-  else is crewing with one-tap contact, and the **per-event guest manifest** (1/3/5pm lists) — no
-  waivers.
+  else is crewing with one-tap contact, and the **per-event guest manifest** (1/3/5pm lists), with no
+  waiver field — who has signed is on the check-in screen, reached from the card (DEC-012).
 - CR-5: I **bail** as easily as I accepted, and the seat immediately re-asks the next person, so I
   never ghost.
 - CR-6: I get a quiet **nudge before my MMC/medical expires** so I renew before dropping from the

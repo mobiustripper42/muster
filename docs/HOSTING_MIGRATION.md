@@ -114,7 +114,6 @@ dashboard scroll. Tick each one off against its source.
 | `TENANT_ID` / `TENANT_NAME` | `app/lib/tenant.ts` | Not secret |
 | `TENANT_TZ` | `src/config/tenant.ts` | Not secret. Getting this wrong moves every departure time |
 | `PICKUP_LOCATION` / `PICKUP_MAP_URL` | `src/config/tenant.ts` | Not secret |
-| `WAIVER_TERMS_URL` / `WAIVER_TERMS_VERSION` | `src/config/tenant.ts` | Not secret. The version is recorded on signed waivers — carry it over, don't invent one |
 | `PAY_PERIOD_ANCHOR` | `src/config/tenant.ts` | Not secret |
 | `CHECKOUT_HOLD_MINUTES` | `src/reservations/claim.ts` | Not secret |
 | `OPERATOR_NOTIFY_EMAIL` | `app/b/[code]/actions.ts` | Not secret |
@@ -156,7 +155,7 @@ tuning vars above that are set.
 **Read by code, NOT set in production** — all currently running on their code defaults:
 `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `TWILIO_FROM`, `TENANT_ID`, `TENANT_NAME`, `TENANT_TZ`,
-`PICKUP_LOCATION`, `PICKUP_MAP_URL`, `WAIVER_TERMS_URL`, `WAIVER_TERMS_VERSION`,
+`PICKUP_LOCATION`, `PICKUP_MAP_URL`,
 `PAY_PERIOD_ANCHOR`, `CHECKOUT_HOLD_MINUTES`, `OPERATOR_NOTIFY_EMAIL`,
 `MESSAGING`. (`RESERVATIONS` was also unset; the flag was deleted in issue #1093.)
 

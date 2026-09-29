@@ -4,15 +4,15 @@
  * returns everything the pane renders, so the money math and the "what do we actually
  * know" decisions are unit-testable without a page.
  *
- * Three rows in the mockup (`docs/design/mockups/reservation-calendar.html`) have no source
- * in the model, and this module encodes that rather than faking them:
+ * Rows in the mockup (`docs/design/mockups/reservation-calendar.html`) that have no source in the
+ * model, and this module encodes that rather than faking them:
  *
  * - **Add-ons.** `addOnIds` is an OFFERING-level attachment (#491); there is no per-reservation
  *   add-on selection yet, so the section is omitted entirely — a hard-coded "No" on every
  *   reservation would be a lie the operator can't tell from data.
- * - **"Waivers 7 of 7".** No per-attendee roster exists (DEC-012); the model carries ONE
- *   consent record per reservation (`waiverConsentAt`/`waiverVersion`), Muster-sold only. So
- *   the pane shows one waiver row with a three-way state (`consented` | `none` | `xola`).
+ * - **"Waivers 7 of 7".** No waiver row at all (issue #1112). It read the checkout's consent
+ *   stamp, and that box was never a waiver and is no longer stored. The real waiver is its own
+ *   module, signed per guest.
  * - **"Booked Jun 14".** `Reservation` has no `createdAt` — only `updatedAt`, which is the
  *   last *material* change (DEC-029). Surfaced as `updatedAt` and labelled "Updated" by the
  *   view; calling it "Booked" would misreport a changed reservation's date.
@@ -54,12 +54,6 @@ export interface ReservationDetailInput {
   /** The crew shift covering this event, with its seats — for the cross-link. */
   shift?: { shift: Shift; seats: readonly Seat[] } | undefined;
 }
-
-/** One waiver state. `xola` = Xola owns the waiver for imported reservations (DEC-110). */
-export type WaiverState =
-  | { kind: "consented"; at: string; version?: string }
-  | { kind: "none" }
-  | { kind: "xola" };
 
 export interface DetailMoney {
   /** `Event.price` base + frozen `extrasCents` — the taxable, tip-free party fare. */
@@ -114,7 +108,6 @@ export interface ReservationDetailView {
   guestCount: number;
   /** Whole-boat capacity for the departure (COI cap) — the "of 12". */
   capacity: number;
-  waiver: WaiverState;
   gratuityRows: { kind: Gratuity["kind"]; amountCents: number; bps?: number | undefined }[];
   money: DetailMoney;
   crew?: CrewLink | undefined;
@@ -134,7 +127,7 @@ export interface ReservationDetailView {
  * is the invoice frozen at booking, never recomputed from live config: the operator read that
  * figure out on the phone, and a changed tax rate must not change it after the fact. Nothing is
  * paid, so what is owed is the amount due now — nothing once cancelled (#803). No crew link (no
- * shift covers a departure that does not exist yet) and no waiver (collected at payment).
+ * shift covers a departure that does not exist yet).
  */
 export function buildUnpaidBookingDetail(input: {
   reservation: Reservation;
@@ -160,7 +153,6 @@ export function buildUnpaidBookingDetail(input: {
     updatedAt: r.updatedAt,
     guestCount: r.partySize,
     capacity: vessel?.coiMaxPax ?? 0,
-    waiver: { kind: "none" },
     gratuityRows: [],
     money: {
       fareCents: inv ? inv.fareCents + inv.extrasCents : 0,
@@ -210,7 +202,6 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
     updatedAt: r.updatedAt,
     guestCount: r.partySize,
     capacity: vessel?.coiMaxPax ?? event.capacity,
-    waiver: waiverStateOf(r),
     gratuityRows: gratuities
       .slice()
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
@@ -230,17 +221,6 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
     },
     crew: crewLinkOf(input.shift),
   };
-}
-
-/** Three-way waiver state — see the module note on why this isn't "7 of 7". */
-function waiverStateOf(r: Reservation): WaiverState {
-  if (r.waiverConsentAt) {
-    return r.waiverVersion
-      ? { kind: "consented", at: r.waiverConsentAt, version: r.waiverVersion }
-      : { kind: "consented", at: r.waiverConsentAt };
-  }
-  // Xola owns its own waiver; an imported reservation without consent isn't a gap.
-  return r.source === "xola" ? { kind: "xola" } : { kind: "none" };
 }
 
 function crewLinkOf(s: ReservationDetailInput["shift"]): CrewLink | undefined {

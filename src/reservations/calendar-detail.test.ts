@@ -212,19 +212,6 @@ describe("gratuity rows", () => {
 });
 
 describe("the rows the model can't source the way the mockup drew them", () => {
-  it("reports ONE waiver consent state, not a per-attendee tally (DEC-012)", () => {
-    expect(build().waiver).toEqual({ kind: "none" });
-    expect(
-      build({
-        reservation: reservation({ waiverConsentAt: "2026-07-01T12:00:00Z", waiverVersion: "v2" }),
-      }).waiver,
-    ).toEqual({ kind: "consented", at: "2026-07-01T12:00:00Z", version: "v2" });
-  });
-
-  it("treats a Xola reservation's missing consent as Xola-owned, not a gap (DEC-110)", () => {
-    expect(build({ reservation: reservation({ source: "xola" }) }).waiver).toEqual({ kind: "xola" });
-  });
-
   it("carries updatedAt (last material change), never a booking date (DEC-029)", () => {
     const v = build({ reservation: reservation({ updatedAt: "2026-07-14T09:00:00Z" }) });
     expect(v.updatedAt).toBe("2026-07-14T09:00:00Z");

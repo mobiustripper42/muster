@@ -58,7 +58,8 @@ test.describe("admin phone booking", () => {
     await clickHydrated(page.getByTestId("tip-1500"));
     await expect(page.getByTestId("due-now")).toHaveText(publicAt15);
     // Nothing the phone order does not collect.
-    await expect(page.getByTestId("waiver")).toHaveCount(0);
+    // No terms box on the operator's side: the customer ticks it on the payment link (#1082, #1112).
+    await expect(page.getByTestId("agree-terms")).toHaveCount(0);
     await expect(page.getByTestId("stripe-loading")).toHaveCount(0);
 
     // Change goes back to passengers with the count kept.

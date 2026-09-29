@@ -415,7 +415,7 @@ export interface Repository {
    * **The rule: the customer's answers get re-stated; the world's facts stay frozen.**
    *
    * Written from `attempt` while pending: `customerName`, `partySize`, `email`, `phone`,
-   * `waiverConsentAt`, `invoice`, `updatedAt`. Every one of them is something the buyer can change
+   * `invoice`, `updatedAt`. Every one of them is something the buyer can change
    * between a declined card and the next submit, and before #946 none of them landed — the invoice
    * and the Stripe charge repriced for the new answers while the row kept the first attempt's.
    * Six people arrived against a manifest for four; a corrected phone number left the booking link
@@ -424,7 +424,7 @@ export interface Repository {
    * NOT written, and each for its own reason: `id` and `reservedAt` (§2.8.7 — a resubmit must not
    * park the hull by pushing its window forward); `vesselId`, `date`, `time`, `offeringId` (the
    * reuse is matched on the slot, so they cannot differ); `holderToken` (the match key);
-   * `holdMinutes`, `tripMinutes` and `waiverVersion` (DEC-161 / criterion 20 — frozen at the first
+   * `holdMinutes` and `tripMinutes` (DEC-161 / criterion 20 — frozen at the first
    * write so an operator edit landing mid-checkout cannot change what this booking meant).
    *
    * **Never writes `status` or `eventId`.** A retry's read can land before a concurrent confirm

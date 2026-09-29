@@ -4,7 +4,7 @@
  * **This is the last screen before money moves**, and it is where the project's own convention
  * was broken: `.claude/CLAUDE-context.md` § Conventions → Error Handling says *"Never `throw` in
  * server actions — return errors for inline feedback."* Every ANTICIPATED failure already
- * returned a message — flag off, unconfigured keys, missing name, bad phone, ungated waiver. The
+ * returned a message — flag off, unconfigured keys, missing name, bad phone, terms box unticked. The
  * unanticipated ones — a Stripe outage, a dropped connection, a cold database — rejected, and the
  * island's `onSubmit` had no `catch`: the Pay button re-enabled, nothing was said, and the
  * rational response to that is to tap it again.
@@ -105,7 +105,7 @@ describe("startElementsCheckout — the gates still answer for themselves", () =
     customerName: "Mary Brody",
     email: "m@x.io",
     phone: "+12165550148",
-    waiverConsent: true,
+    agreedToTerms: true,
   };
 
   it("keeps the SPECIFIC message for a bad phone", async () => {
@@ -121,10 +121,11 @@ describe("startElementsCheckout — the gates still answer for themselves", () =
     expect(res.ok === false && res.message).toMatch(/full name/i);
   });
 
-  it("refuses an ungated waiver, before anything is charged", async () => {
-    // DEC-110. Enforced here AND in the engine, so the checkbox cannot be spoofed past the charge.
-    const res = await startElementsCheckout({ ...VALID, waiverConsent: false });
-    expect(res.ok).toBe(false);
+  it("refuses when the cancellation-terms box isn't ticked, before anything is charged", async () => {
+    // Issue #1112. The box gates Book & pay in the browser; this is the same gate on the server,
+    // so a scripted request can't skip it. Nothing is stored either way.
+    const res = await startElementsCheckout({ ...VALID, agreedToTerms: false });
+    expect(res.ok === false && res.message).toBe("Please agree to the cancellation terms to continue.");
   });
 
   it("says so when the deployment has no Stripe keys, rather than throwing on undefined", async () => {

@@ -54,7 +54,6 @@ const TOKEN_C = "dGhpcmRzZXNzaW9udG9rZW4wMTIzNDU2Nzg5YWJjZGU";
 const req = {
   offeringId: OFF, date: DATE, time: TIME, guestCount: 4, gratuityBps: 2000,
   customerName: "Mary", email: "m@x.io", phone: "+12165550148", holderToken: TOKEN_A,
-  waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1",
 };
 
 /**
@@ -148,14 +147,6 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
       amountDueNowCents: 27570,
     });
     expect(row!.eventId).toBeNull(); // no Event yet — the row names the slot
-  });
-
-  it("waiver consent is a hard gate — no hold parked without it", async () => {
-    const repo = await seededRepo();
-    const { waiverConsentAt: _a, waiverVersion: _b, ...noWaiver } = req;
-    const r = await createDeparturePaymentIntent(repo, new FakePaymentPort(), noWaiver, now);
-    expect(r).toEqual({ ok: false, reason: "waiver_required" });
-    expect(await repo.listAllReservations()).toHaveLength(0); // nothing claimed the hull
   });
 
   it("gratuity tier must be one the offering offers (DEC-124, no decline)", async () => {
@@ -606,8 +597,6 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
       partySize: 4,
       email: "m@x.io",
       phone: "+12165550148",
-      waiverConsentAt: "2026-07-13T12:00:00.000Z",
-      waiverVersion: "v1",
       paymentIntentIds: ["pi_fake_1"],
     });
     expect(await repo.listEvents()).toHaveLength(0);

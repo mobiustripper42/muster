@@ -3,7 +3,7 @@
 /**
  * The one client island on the checkout screen (12.5, #458, DEC-133/134). The form is
  * intrinsically interactive — tip tiles re-total live, and the Stripe Payment Element is
- * client-only — so contact, tip, waiver, card, and the sticky pay bar all live here. The
+ * client-only — so contact, tip, card, the terms box and the sticky pay bar all live here. The
  * server page computes every money number with the pure functions and passes PLAIN DATA
  * (no functions cross the RSC boundary).
  *
@@ -21,7 +21,7 @@
  * **Built from `components/checkout/` since 16.1d** (issue #1092): the contact fields, tip tiles,
  * money summary and pay bar are shared with the operator's phone booking, so the two surfaces
  * cannot drift into quoting a trip differently. What stays HERE is everything only a paying
- * customer has — the card, the waiver, the promo row, the in-flight lock — and the one submit
+ * customer has — the card, the terms box, the promo row, the in-flight lock — and the one submit
  * path into Stripe. The operator's form lives under `app/(admin)/` and nothing here can reach it.
  */
 
@@ -55,8 +55,7 @@ export interface CheckoutFormProps {
   money: CheckoutMoney;
   tiers: TipTier[];
   defaultBps: number;
-  waiverUrl: string;
-  /** The published cancellation terms (#619) — passed as plain data, waiverUrl idiom. */
+  /** The published cancellation terms (#619) — plain data; the terms box's own label (#1112). */
   cancellationTerms: string;
 }
 
@@ -151,16 +150,17 @@ type InnerProps = CheckoutFormProps & {
 
 function InnerForm(p: InnerProps) {
   const [contact, setContact] = useState<ContactValues>({ name: "", phone: "", email: "" });
-  const [waiver, setWaiver] = useState(false);
+  // The cancellation-terms box (issue #1112) — not a waiver, which is its own module.
+  const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { name, email, phone } = contact;
-  const canSubmit = waiver && !submitting;
+  const canSubmit = agreed && !submitting;
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!waiver) return; // button is disabled; belt for a raw submit
+    if (!agreed) return; // button is disabled; belt for a raw submit
     if (!p.inElements || !p.stripe || !p.elements) {
       setError("The payment form hasn't finished loading — give it a second and try again.");
       return;
@@ -169,7 +169,7 @@ function InnerForm(p: InnerProps) {
     setError(null);
     try {
       // Deferred-intent flow: validate the Element FIRST (card details), THEN create the
-      // PaymentIntent server-side (waiver gate → hold → freeze money), THEN confirm.
+      // PaymentIntent server-side (terms gate → hold → freeze money), THEN confirm.
       const sub = await p.elements.submit();
       if (sub.error) {
         setError(sub.error.message ?? "Please check your card details.");
@@ -184,7 +184,7 @@ function InnerForm(p: InnerProps) {
         customerName: name.trim(),
         email: email.trim(),
         phone: phone.trim(),
-        waiverConsent: waiver,
+        agreedToTerms: agreed,
       });
       if (!res.ok) {
         setError(res.message);
@@ -307,38 +307,31 @@ function InnerForm(p: InnerProps) {
           </div>
         </div>
 
-        {/* WAIVER */}
-        <div className="pt-4">
+        <CheckoutSummary m={p.money} tipBps={p.tipBps} tipCents={p.tipCents} />
+
+        {/* THE TERMS BOX (issue #1112, cancellation terms #619). The published policy is the box's
+            own label, so what the customer ticks is exactly what they read — quoted from the
+            constants in `refund-terms.ts`, never retyped here. It sits after the summary and
+            before the pay bar: the last thing agreed before paying. Not a waiver, and nothing is
+            stored — the box gates Book & pay, here and on the server.
+
+            Flex insurance is deliberately absent: it is a published term nothing can sell yet
+            (#683). */}
+        <div className="pb-4 pt-4">
           <label className="flex items-start gap-2.5 text-[13px] text-muted">
             <input
               type="checkbox"
-              data-testid="waiver"
+              data-testid="agree-terms"
               className="mt-0.5 h-[18px] w-[18px] flex-none"
-              checked={waiver}
-              onChange={(e) => setWaiver(e.target.checked)}
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
             />
             <span>
-              I&rsquo;ve read and agree to the{" "}
-              <a href={p.waiverUrl} target="_blank" rel="noreferrer" className="font-semibold text-accent underline">
-                liability waiver
-              </a>{" "}
-              and terms. Your other guests sign their own before the trip — you&rsquo;ll get a
-              link to share.
+              <b className="font-semibold text-ink">I agree to the cancellation terms:</b>{" "}
+              <span data-testid="cancellation-terms">{p.cancellationTerms}</span>
             </span>
           </label>
-        </div>
-
-        <CheckoutSummary m={p.money} tipBps={p.tipBps} tipCents={p.tipCents} />
-
-        {/* cancellation terms + manage note (#619). The terms are the operator's published
-            policy, quoted from the constants in `refund-terms.ts` — never retyped here.
-            Flex insurance is deliberately absent: it is a published term nothing can sell
-            yet (#683). Copy only. */}
-        <div className="pb-4 pt-3 text-xs">
-          {/* text-muted, not text-faint: this is the term the customer is agreeing to by
-              paying, and it should not be the quietest thing on the screen. */}
-          <p className="text-muted" data-testid="cancellation-terms">{p.cancellationTerms}</p>
-          <p className="pt-2 text-muted">
+          <p className="pt-3 text-xs text-muted">
             After you book, your confirmation includes a private booking link to view or manage
             your reservation. Questions? Message us from that link any time.
           </p>

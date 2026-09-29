@@ -81,9 +81,8 @@ describe("bookForCustomer — the operator's phone booking (16.1)", () => {
     });
     // DEC-163: no window. `reservedAt` is what a lapse is computed from, so an admin row has none.
     expect(stored.reservedAt).toBeUndefined();
-    // Checkout's cookie token and the customer's own waiver consent are not the operator's to give.
+    // Checkout's cookie token is not the operator's to give.
     expect(stored.holderToken).toBeUndefined();
-    expect(stored.waiverConsentAt).toBeUndefined();
     expect(await repo.listEvents()).toHaveLength(0);
   });
 

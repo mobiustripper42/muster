@@ -323,8 +323,8 @@ export function actionMessage(
  * The pane is the same component in both form factors; the route's `MasterDetail` decides whether
  * it sits beside the grid or replaces it.
  *
- * Add-ons are omitted (no per-reservation selection exists) and the waiver is one consent row
- * rather than a per-attendee tally — see the module note in `src/reservations/calendar-detail.ts`.
+ * Add-ons are omitted (no per-reservation selection exists), and there is no waiver row: the real
+ * waiver is its own module (issue #1112) — see the module note in `src/reservations/calendar-detail.ts`.
  * An unpaid booking's money reads "Fare" and "Extra guests", not the mockup's "Fare, up to 10
  * guests" and "2 extra guests · $40.00": the frozen invoice keeps the extras' total but not how many
  * guests the fare covers or the per-guest price, and reading those off live config could contradict
@@ -367,14 +367,6 @@ function Cents({ cents }: { cents: number }) {
 /** Basis points → "7.25%". */
 function pct(bps: number): string {
   return `${(bps / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
-}
-
-function waiverText(w: ReservationDetailView["waiver"]): string {
-  if (w.kind === "consented") {
-    const day = w.at.slice(0, 10);
-    return w.version ? `Signed ${day} · ${w.version}` : `Signed ${day}`;
-  }
-  return w.kind === "xola" ? "Held in Xola" : "Not on file";
 }
 
 /**
@@ -467,7 +459,6 @@ export function ReservationDetailPane({
 }
 
 function TripCard({ v }: { v: ReservationDetailView }) {
-  const unpaid = v.source === "admin";
   return (
     <Card title="Trip">
       {v.offeringName && <Row label="Cruise">{v.offeringName}</Row>}
@@ -483,9 +474,6 @@ function TripCard({ v }: { v: ReservationDetailView }) {
           </AppLink>
         </Row>
       )}
-      {/* One consent record per reservation, not a per-attendee roster (DEC-012 / DEC-110). An
-          unpaid phone booking has none yet: the waiver is collected when they pay. */}
-      {unpaid ? null : <Row label="Waiver">{waiverText(v.waiver)}</Row>}
     </Card>
   );
 }

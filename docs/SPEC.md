@@ -1528,6 +1528,7 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > **Amended by DEC-164 — 2.8.4 names `booking_invoice` as the frozen money and keeps anything with a time in it a column**
 > **Amended by DEC-165 — the acceptance criterion 'an imported Xola reservation … still occupies its hull' is restated as a payment-independence rule that outlives the importer**
 > **Amended by DEC-169 — 2.8.6's steps after the flip are ordered — formation and the confirmation precede the payment record — and are idempotent, not transactional**
+> **Amended by DEC-188 — 2.8.4's checkout step: the box is the cancellation terms, not waiver consent, and it is not recorded**
 <!-- /amended-by-dec -->
 
 > **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
@@ -1613,7 +1614,8 @@ A time that is not one of the offering's published departures is **off-grid**; t
    schedule allows, minus what is occupied: `booked` reservations, live `pending` ones, and **blocks**
    (an operator's own hold on a boat — maintenance, a private charter, a day off — reserving the hull
    with no customer behind it).
-2. **`/book/checkout`** — name, phone, optional email, waiver consent, gratuity tier. One button.
+2. **`/book/checkout`** — name, phone, optional email, gratuity tier, and the cancellation-terms box
+   (not a waiver, and not recorded — DEC-188). One button.
 3. **On submit, holding the hull-day lock:** refuse anything off-grid, outside the offering's season,
    or **already departed**; refuse anything that overlaps (2.8.3); choose the boat — the smallest hull
    that fits the party, the customer never picks; write the `pending` reservation with its reserved time;

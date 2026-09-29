@@ -184,55 +184,31 @@ same page works — it is per reservation either way.
 
 ## 6. Data model
 
-**A draft.** A full schema review precedes the build.
+**Built in 18.1.** The DDL is `db/migrations/20260929183642_check_in_and_waivers.sql`, and its
+header carries the reasons; the types are `src/checkin/entities.ts`. The schema was reviewed item by
+item with the operator (2026-09-29) and differs from the earlier draft in five ways:
 
-### `waiver_templates` — immutable, versioned
+- **The count is three columns on `events`, holding the current value only** — no history, editable
+  at any time. Written only by `setDepartureCount`; `saveEvent` never touches it.
+- **`waiver_templates` has no `retired_at`.** The current version is the latest `effective_from`
+  that is not in the future, so posting new text is an insert and nothing else. It gains
+  **`posted_at`** and **`posted_by`** (→ `admins`).
+- **`signature_meta` is two plain columns**, `signed_ip` and `signed_user_agent`.
+- **Every reference is a real foreign key**, `on delete restrict` (DEC-131), including
+  `checked_in_by` and `counted_by` → `crew_members`.
+- **Business rules stay in code** — an adult's email, the ten-kid cap, `is_minor`, the COI limit.
 
-```sql
-create table if not exists waiver_templates (
-  id             text primary key,
-  version        text not null,          -- 'brewboat-2026-v1'
-  body           text not null,          -- the exact text presented
-  effective_from text not null,          -- ISO-8601 UTC
-  retired_at     text                    -- null = current
-);
-```
+### `waiver_templates` — insert-only, versioned
 
 Rows are **never updated**. New text is a new row. A guest stores the template id, so five years
 later the exact words that person accepted can be produced — the only thing a signed record has to
-do. Same snapshot posture as `Event.price` and `reservations.extras_cents`.
+do. Same snapshot posture as `Event.price` and `reservations.extras_cents`. The body may be markdown;
+whether it renders formatted is the signing page's call.
 
 ### `guests` — one row per signing, per event
 
-```sql
-create table if not exists guests (
-  id                 text primary key,
-  event_id           text not null references events (id),
-  reservation_id     text references reservations (id),   -- null = walk-up
-  name               text not null,
-  email              text,                                -- required on an adult's row (below)
-  phone              text,                                -- optional; E.164
-  dob                text,                                -- ISO-8601 date; drives is_minor
-  is_minor           boolean not null default false,      -- derived at signing, then frozen
-  guardian_guest_id  text references guests (id),         -- minors: who signed for them
-  guardian_relation  text,                                -- 'parent' | 'guardian' | 'custodian'
-
-  -- signature (null = unsigned; only possible in roster mode, or on a guarded minor)
-  signed_at          text,
-  waiver_template_id text references waiver_templates (id),
-  signature_name     text,                                -- as typed
-  signature_meta     text,                                -- ip / ua, json
-
-  -- presence (a tick)
-  checked_in_at      text,
-  checked_in_by      text,                                -- crew subject id
-
-  source             text not null,                       -- 'booker' | 'self' | 'crew'
-  created_at         text not null
-);
-create index if not exists guests_event_idx on guests (event_id);
-create index if not exists guests_reservation_idx on guests (reservation_id);
-```
+Not `guest_contacts` (migration 0020), which records that crew texted a booking's contact — only the
+names are close.
 
 **Grain is per-event** — the manifest is per-event, not per-shift, because the Saturday 1/3/5 is
 three boats' worth of different people. Walk-ups have no reservation, which is why `event_id` is the
@@ -282,24 +258,19 @@ The flag lives in `app_settings` (0006). **Build the model for both now, the UI 
 
 ### The departure count
 
-```sql
-alter table events add column if not exists counted_at  text;
-alter table events add column if not exists counted_by  text;
-alter table events add column if not exists pax_counted integer;   -- never > the vessel's coi_max_pax (§4a)
-```
+`events.pax_counted`, `counted_at`, `counted_by`: one number per departure, **the current value
+only**, and the mate can change it at any time (operator, 2026-09-29 — the regulation asks for the
+count, not a history of it). Never above the boat's COI limit (§4a); the domain enforces that. The
+captain's log, when it is designed, reads this field rather than re-asking the mate.
 
-On the event, not a side table: one number per departure, asserted once. The captain's log, when it
-is designed, reads this field rather than re-asking the mate.
+**Nothing else that writes `events` may wipe it.** `saveEvent`'s upsert names its columns and leaves
+these three alone; a contract test pins it.
 
-**Nothing else that writes `events` may wipe it.** Any writer of the `events` row — `saveEvent`'s
-upsert today — must leave the three count columns alone.
+### The checkout checkbox is not this module's
 
-### The checkout checkbox is renamed in this work
-
-Today's checkout checkbox is stored as `reservations.waiver_consent_at` / `waiver_version` and
-labelled a waiver in code (`src/config/tenant.ts`, `WAIVER_TERMS_URL`). **It is agreement to the
-payment terms, not a waiver.** This work renames it — columns, config and copy — so the word "waiver"
-means only the thing in this doc. The booker still signs the real waiver, like every other guest.
+Today's checkout checkbox is agreement to the purchase terms, not a waiver. Issue #1112 (lane B)
+owns it, including retiring its "waiver" naming. The booker signs the real waiver like every other
+guest.
 
 ---
 

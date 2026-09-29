@@ -266,21 +266,22 @@ there. Behind the sheet, `SIGNED` climbs and their name appears in the list, unt
 | Some never show | Rows just stay. The mate departs with them unticked; they are no-shows or duplicates. |
 | Checked in reaches the COI max | Remaining rows go inert; the header reads *"Full · 16 of 16."* No warning text. Unticking frees a spot. The stepper also stops at the max. |
 | A tap fails (no connection) | The row shows it didn't save, with a retry. A tap never silently vanishes. |
-| Already departed | §C4. |
+| After confirming | §C4. |
 
 ### C4 — Confirm and depart
 
-One tap, and it is the only heavy action. No confirmation dialog — the button already says the
-number.
+One tap. No confirmation dialog — the button already says the number.
 
 ```
   ✓ 16 aboard · counted 2:58 PM by Mike R.
 
-  [ Undo ]   (available until the trip ends)
+  PASSENGERS [–] 16 [+]   [ Update count ]
 ```
 
-Undo, not edit. A count is an attestation about a moment; correcting it is a new attestation, and
-the old one stays in the record. After the event's end time the screen is read-only.
+**The count is just the current number, and the mate can change it at any time** — before lines
+off, or after (operator, 2026-09-29). Changing it replaces the number, the time and who counted;
+no history is kept, and there is no undo because there is nothing to undo. Still capped at the COI
+max.
 
 ---
 

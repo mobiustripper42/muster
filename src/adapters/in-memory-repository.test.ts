@@ -5,5 +5,7 @@
  */
 import { InMemoryRepository } from "./in-memory-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
+import { runCheckInContract } from "./check-in-contract.js";
 
 runRepositoryContract("in-memory", async () => new InMemoryRepository());
+runCheckInContract("in-memory", async () => new InMemoryRepository());

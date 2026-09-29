@@ -103,6 +103,9 @@ import {
 import { XOLA_TRIP_MINUTES, minutesOfDay } from "../reservations/hull-busy.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { FailureWindow, Repository, ShiftChangeRow } from "../ports/repository.js";
+import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
+import type { CheckInConfig, DepartureCount, Guest, WaiverTemplate } from "../checkin/entities.js";
+import { normalizeCheckInConfig } from "../checkin/entities.js";
 
 /** Add `key: value` only when value is non-null — keeps optional fields absent. */
 function opt<K extends string, V>(
@@ -2799,6 +2802,193 @@ export class PostgresRepository implements Repository {
        do update set last_seen_at = greatest(shift_change_reads.last_seen_at, excluded.last_seen_at)`,
       [String(shiftId), String(crewMemberId), at],
     );
+  }
+
+  // ── Check-in & waivers (Phase 18.1, migration 20260929183642) ──────────────
+  async postWaiverTemplate(t: WaiverTemplate): Promise<void> {
+    // Insert-only: a template is never edited — new text is a new row.
+    await this.#pool.query(
+      `insert into waiver_templates(id, version, body, effective_from, posted_at, posted_by)
+       values ($1,$2,$3,$4,$5,$6) on conflict (id) do nothing`,
+      [t.id, t.version, t.body, t.effectiveFrom, t.postedAt, t.postedBy],
+    );
+  }
+  async getWaiverTemplate(id: WaiverTemplateId): Promise<WaiverTemplate | null> {
+    const { rows } = await this.#pool.query("select * from waiver_templates where id=$1", [id]);
+    return rows[0] ? toWaiverTemplate(rows[0]) : null;
+  }
+  async listWaiverTemplates(): Promise<WaiverTemplate[]> {
+    const { rows } = await this.#pool.query(
+      "select * from waiver_templates order by effective_from desc",
+    );
+    return rows.map(toWaiverTemplate);
+  }
+  async getCurrentWaiverTemplate(at: string): Promise<WaiverTemplate | null> {
+    // ISO-8601 UTC text compares correctly as text — the house convention for instants.
+    const { rows } = await this.#pool.query(
+      "select * from waiver_templates where effective_from <= $1 order by effective_from desc limit 1",
+      [at],
+    );
+    return rows[0] ? toWaiverTemplate(rows[0]) : null;
+  }
+
+  async saveGuests(guests: readonly Guest[]): Promise<void> {
+    // One signing's rows land together or not at all; the guardian is first in the list, so the
+    // minors' guardian_guest_id reference resolves inside the same transaction.
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      for (const g of guests) {
+        await client.query(
+          `insert into guests(id, event_id, reservation_id, name, email, phone, dob, is_minor,
+             guardian_guest_id, guardian_relation, signed_at, waiver_template_id, signature_name,
+             signed_ip, signed_user_agent, checked_in_at, checked_in_by, source, created_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+           on conflict (id) do nothing`,
+          [
+            g.id,
+            g.eventId,
+            g.reservationId ?? null,
+            g.name,
+            g.email ?? null,
+            g.phone ?? null,
+            g.dob ?? null,
+            g.isMinor,
+            g.guardianGuestId ?? null,
+            g.guardianRelation ?? null,
+            g.signedAt ?? null,
+            g.waiverTemplateId ?? null,
+            g.signatureName ?? null,
+            g.signedIp ?? null,
+            g.signedUserAgent ?? null,
+            g.checkedIn?.at ?? null,
+            g.checkedIn?.by ?? null,
+            g.source,
+            g.createdAt,
+          ],
+        );
+      }
+      await client.query("commit");
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+  async listGuestsForEvent(eventId: EventId): Promise<Guest[]> {
+    const { rows } = await this.#pool.query("select * from guests where event_id=$1", [eventId]);
+    return rows.map(toGuest);
+  }
+  async listGuestsForReservation(reservationId: ReservationId): Promise<Guest[]> {
+    const { rows } = await this.#pool.query("select * from guests where reservation_id=$1", [
+      reservationId,
+    ]);
+    return rows.map(toGuest);
+  }
+  async setGuestCheckIn(
+    guestId: GuestId,
+    checkIn: { at: string; by: CrewMemberId } | null,
+  ): Promise<void> {
+    // Only the two tick columns: a signature is never rewritten by a check-in.
+    await this.#pool.query(
+      "update guests set checked_in_at=$2, checked_in_by=$3 where id=$1",
+      [guestId, checkIn?.at ?? null, checkIn?.by ?? null],
+    );
+  }
+
+  async setDepartureCount(eventId: EventId, count: DepartureCount): Promise<void> {
+    // Only the three count columns. saveEvent names its columns and never touches these.
+    await this.#pool.query(
+      "update events set pax_counted=$2, counted_at=$3, counted_by=$4 where id=$1",
+      [eventId, count.pax, count.countedAt, count.countedBy],
+    );
+  }
+  async getDepartureCount(eventId: EventId): Promise<DepartureCount | null> {
+    const { rows } = await this.#pool.query(
+      "select pax_counted, counted_at, counted_by from events where id=$1",
+      [eventId],
+    );
+    const r = rows[0];
+    if (!r || r.pax_counted === null) return null;
+    return {
+      pax: r.pax_counted,
+      countedAt: r.counted_at,
+      countedBy: asId<"CrewMemberId">(r.counted_by),
+    };
+  }
+
+  async getCheckInConfig(): Promise<CheckInConfig> {
+    const { rows } = await this.#pool.query(
+      "select key, value from app_settings where key like 'checkin.%'",
+    );
+    const kv = new Map<string, string>(rows.map((r) => [r.key, r.value]));
+    const roster = kv.get("checkin.roster_mode");
+    // Decode the stored text only; what counts as valid is `normalizeCheckInConfig`'s, which the
+    // in-memory adapter reads through too, so a bad value reads back the same from both.
+    return normalizeCheckInConfig({
+      ageOfMajority: kv.has("checkin.age_of_majority") ? Number(kv.get("checkin.age_of_majority")) : undefined,
+      reminderDaysBefore: parseJsonSetting(kv.get("checkin.reminder_days_before")),
+      rosterMode: roster === "true" || roster === "false" ? roster === "true" : undefined,
+    });
+  }
+  async setCheckInConfig(patch: Partial<CheckInConfig>, at: string): Promise<void> {
+    const entries: [string, string][] = [];
+    if (patch.ageOfMajority !== undefined) entries.push(["checkin.age_of_majority", String(patch.ageOfMajority)]);
+    if (patch.reminderDaysBefore !== undefined)
+      entries.push(["checkin.reminder_days_before", JSON.stringify(patch.reminderDaysBefore)]);
+    if (patch.rosterMode !== undefined) entries.push(["checkin.roster_mode", String(patch.rosterMode)]);
+    for (const [key, value] of entries) {
+      await this.#pool.query(
+        `insert into app_settings(key, value, updated_at) values ($1,$2,$3)
+         on conflict (key) do update set value=excluded.value, updated_at=excluded.updated_at`,
+        [key, value, at],
+      );
+    }
+  }
+}
+
+const toWaiverTemplate = (r: any): WaiverTemplate => ({
+  id: asId<"WaiverTemplateId">(r.id),
+  version: r.version,
+  body: r.body,
+  effectiveFrom: r.effective_from,
+  postedAt: r.posted_at,
+  postedBy: r.posted_by,
+});
+
+const toGuest = (r: any): Guest => ({
+  id: asId<"GuestId">(r.id),
+  eventId: asId<"EventId">(r.event_id),
+  ...(r.reservation_id ? { reservationId: asId<"ReservationId">(r.reservation_id) } : {}),
+  name: r.name,
+  ...opt("email", r.email),
+  ...opt("phone", r.phone),
+  ...opt("dob", r.dob),
+  isMinor: r.is_minor,
+  ...(r.guardian_guest_id ? { guardianGuestId: asId<"GuestId">(r.guardian_guest_id) } : {}),
+  ...opt("guardianRelation", r.guardian_relation),
+  ...opt("signedAt", r.signed_at),
+  ...(r.waiver_template_id ? { waiverTemplateId: asId<"WaiverTemplateId">(r.waiver_template_id) } : {}),
+  ...opt("signatureName", r.signature_name),
+  ...opt("signedIp", r.signed_ip),
+  ...opt("signedUserAgent", r.signed_user_agent),
+  ...(r.checked_in_at
+    ? { checkedIn: { at: r.checked_in_at, by: asId<"CrewMemberId">(r.checked_in_by) } }
+    : {}),
+  source: r.source,
+  createdAt: r.created_at,
+});
+
+/** A JSON-valued setting, decoded; unparseable text reads as absent so the default applies.
+ *  Whether the decoded value is VALID is `normalizeCheckInConfig`'s call, not this one's. */
+function parseJsonSetting(raw: string | undefined): unknown {
+  if (raw === undefined) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    logSwallowed("postgres:parseJsonSetting", e, "a checkin.* setting was unparseable JSON — its default applies");
+    return undefined;
   }
 }
 

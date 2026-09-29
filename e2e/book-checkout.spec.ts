@@ -177,7 +177,7 @@ test.describe("public /book/checkout", () => {
     await fillHydrated(page.getByPlaceholder("Full name"), "Mid Charge");
     await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0100");
     await setCheckedHydrated(page.getByTestId("agree-terms"), true);
-    await page.getByTestId("book-pay").click();
+    await clickHydrated(page.getByTestId("book-pay"));
     await expect(page.getByTestId("checkout-busy")).toBeVisible();
 
     expect(await locked(back)).toBe(true);

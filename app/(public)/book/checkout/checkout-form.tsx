@@ -153,12 +153,10 @@ function InnerForm(p: InnerProps) {
   const [contact, setContact] = useState<ContactValues>({ name: "", phone: "", email: "" });
   // The cancellation-terms box (issue #1112) — not a waiver, which is its own module.
   const [agreed, setAgreed] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  // "A payment is in flight" is the SCREEN's, not only this form's (issue #1082 part A): the page
+  // draws the header's ‹ and the trip card's Change, and they lock in the same render as this body.
+  const { locked: submitting, setLocked: setSubmitting } = usePaymentLock();
   const [error, setError] = useState<string | null>(null);
-  // The rest of the screen (the header's ‹, the trip card's Change) locks with this form while a
-  // payment is in flight — issue #1082 part A. The page draws those, so they learn it from here.
-  const setScreenLocked = usePaymentLock();
-  useEffect(() => setScreenLocked(submitting), [submitting, setScreenLocked]);
 
   const { name, email, phone } = contact;
   const canSubmit = agreed && !submitting;

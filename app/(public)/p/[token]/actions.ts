@@ -78,7 +78,7 @@ export async function cancelFromPaymentLink(formData: FormData): Promise<void> {
   const token = String(formData.get("token") ?? "");
   // Encoded: the token is whatever was posted, and it goes into a redirect. A real one is all
   // unreserved characters and comes through unchanged.
-  const here = `/pay/${encodeURIComponent(token)}`;
+  const here = `/p/${encodeURIComponent(token)}`;
   const link = checkPaymentLink(token);
   // The page renders the expired state; nothing is cancelled on a link that no longer works.
   if (!link.ok) redirect(here);
@@ -108,9 +108,8 @@ export async function cancelFromPaymentLink(formData: FormData): Promise<void> {
       },
     );
     await emailOperator(link.reservationId);
-    redirect(`${here}?cancelled=1`);
   }
-  // Already cancelled, or paid in between: the page says which.
+  // Cancelled now or already, or paid in between: the page says which.
   redirect(here);
 }
 

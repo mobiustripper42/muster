@@ -1,5 +1,5 @@
 /**
- * The payment link, `/pay/<link>` (issue #1082 part B, SPEC §2.10.6) — where a customer pays for a
+ * The payment link, `/p/<link>` (issue #1082 part B, SPEC §2.10.6) — where a customer pays for a
  * trip the operator booked by phone.
  *
  * **Built from the checkout's own pieces** (`/book/checkout`): the same card shell and header, the
@@ -16,8 +16,8 @@
  * 72-hour address that may have been forwarded; the booking link is the durable credential. So a
  * paid trip names where the booking link went and offers `/b/find` for a lost one.
  *
- * The cancel is a no-JS two-step like the operator's pane: `?cancel=1` opens the confirm, a form
- * post ends the booking, and `?cancelled=1` is the render right after.
+ * The cancel is a no-JS two-step like the operator's pane: `?cancel=1` opens the confirm, and a form
+ * post ends the booking. The cancelled card is the same right after and on any later visit.
  */
 import type { Location, Offering, Reservation } from "@core/domain/entities.js";
 import { formatPhoneForDisplay, type CanonicalPhone } from "@core/customers/identity.js";
@@ -38,7 +38,7 @@ import { cancelFromPaymentLink } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-type Search = { cancel?: string; cancelled?: string; cancelErr?: string };
+type Search = { cancel?: string; cancelErr?: string };
 
 /** Decode the path segment, tolerating a malformed `%` — it is a URL a person can type. */
 function safeDecode(segment: string): string {
@@ -84,19 +84,7 @@ export default async function PayPage({
 
   const state = payLinkState(reservation);
   if (state.kind === "missing") return <Expired />;
-  if (state.kind === "cancelled") {
-    return (
-      <Shell>
-        <div data-testid="pay-state">
-          {sp.cancelled !== undefined ? (
-            <Notice tone="ok">Cancelled — nothing was charged.</Notice>
-          ) : (
-            <Notice>This booking was cancelled, so there&rsquo;s nothing to pay.</Notice>
-          )}
-        </div>
-      </Shell>
-    );
-  }
+  if (state.kind === "cancelled") return <Cancelled reservation={state.reservation} />;
   if (state.kind === "paid") return <Paid reservation={state.reservation} />;
 
   const r = state.reservation;
@@ -199,7 +187,7 @@ function CancelBooking({
   confirming: boolean;
   failed: boolean;
 }) {
-  const here = `/pay/${encodeURIComponent(token)}`;
+  const here = `/p/${encodeURIComponent(token)}`;
   if (!confirming) {
     return (
       <div className="flex flex-col gap-2">
@@ -223,6 +211,41 @@ function CancelBooking({
         </AppLink>
       </div>
     </form>
+  );
+}
+
+/**
+ * Cancelled, by the customer here or by the operator: the "You're booked!" card from `/book/success`,
+ * same shape and sizes, in a plain band with ✕ — ending a trip isn't a celebration and isn't an
+ * error either (operator, 2026-09-29). The same card whenever the link is opened after.
+ */
+function Cancelled({ reservation: r }: { reservation: Reservation }) {
+  const when = r.date && r.time ? `Your ${formatClock(r.time)} trip on ${formatShortDay(r.date)}` : "Your trip";
+  return (
+    <Shell>
+      <div data-testid="pay-state" className="overflow-hidden rounded-[18px] border border-line bg-card shadow-sm">
+        <div className="border-b border-line px-6 py-7 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-bg text-2xl text-muted">
+            ✕
+          </div>
+          <h1 className="text-[22px] font-semibold">Booking cancelled</h1>
+          <p className="mt-1.5 text-[13px] text-muted">{when} has been cancelled.</p>
+        </div>
+        <div className="px-6 py-6 text-[13.5px] text-muted">
+          <p>
+            <b className="text-ink">Nothing was charged.</b>{" "}
+            Your card was never charged for this trip, so there&rsquo;s nothing to refund and nothing
+            you need to do.
+          </p>
+          <p className="mt-4 text-[12px] text-muted">Changed your mind? You&rsquo;re welcome to book again any time.</p>
+          <div className="mt-5">
+            <AppLink href="/book" className="btn-quiet text-[13px]">
+              Book a trip →
+            </AppLink>
+          </div>
+        </div>
+      </div>
+    </Shell>
   );
 }
 

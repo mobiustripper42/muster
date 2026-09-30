@@ -35,9 +35,8 @@ export interface UnpaidActionState {
   /** The last payment-link send, per channel (`payment-link-message.ts`). At booking it rides in the
    *  just-booked note; after Send payment link it shows here. */
   linkSent?: string | undefined;
-  /** A freshly signed link, present only on the render Copy payment link asked for. */
+  /** A freshly signed link for Copy payment link, or absent when this deploy can't build one. */
   payLinkUrl?: string | undefined;
-  copyLinkHref: string;
   /** The contact the link goes to, for naming it in the send outcome. */
   phone?: string | undefined;
   email?: string | undefined;
@@ -81,9 +80,11 @@ export function PhoneBookingActions({
 }
 
 /**
- * Send payment link (filled) texts and emails a fresh one; Copy payment link (outlined) shows one to
- * paste anywhere, with Copy link. Both mint a new link — signing stores nothing, so there is no
- * "the" link to show, only one good for the next 72 hours.
+ * Send payment link (filled) texts and emails a fresh one; Copy payment link (outlined) puts one on
+ * the clipboard in the one press — a button with those words must copy, not reveal (operator,
+ * 2026-09-29). The link also shows on a line under it, to read out on the phone. The pane signs a
+ * fresh one each render: signing stores nothing, so there is no "the" link, only one good for the
+ * next 72 hours.
  */
 function PaymentLinkControls({ reservationId, state }: { reservationId: string; state: UnpaidActionState }) {
   return (
@@ -95,20 +96,13 @@ function PaymentLinkControls({ reservationId, state }: { reservationId: string; 
         <SubmitButton className="btn-primary min-h-[44px] w-full">Send payment link</SubmitButton>
       </form>
       {state.payLinkUrl ? (
-        <div className="flex items-center gap-2">
-          <span
-            className="min-w-0 flex-1 select-all truncate rounded-lg border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-muted"
-            data-testid="pay-link"
-          >
+        <>
+          <CopyButton value={state.payLinkUrl} label="Copy payment link" className="btn-secondary min-h-[44px] w-full" />
+          <span className="select-all break-all font-mono text-[11px] text-muted" data-testid="pay-link">
             {state.payLinkUrl}
           </span>
-          <CopyButton value={state.payLinkUrl} label="Copy link" />
-        </div>
-      ) : (
-        <AppLink href={state.copyLinkHref} className="btn-secondary flex min-h-[44px]">
-          Copy payment link
-        </AppLink>
-      )}
+        </>
+      ) : null}
       <p className="text-xs text-muted">The link works for {PAYMENT_LINK_HOURS} hours.</p>
     </div>
   );

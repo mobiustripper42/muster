@@ -1,6 +1,6 @@
 /**
  * The payment link (issue #1082 part B) — the operator books by phone, the link goes to the customer,
- * and the customer pays (or cancels) on `/pay/<link>`.
+ * and the customer pays (or cancels) on `/p/<link>`.
  *
  * The e2e has no Stripe network and no live text or email, so this drives everything up to the card
  * and stops there, as `book-checkout.spec.ts` does: the page, its order and wording, the terms gate,
@@ -24,7 +24,9 @@ import {
   setCheckedHydrated,
   signInAsAdmin,
 } from "./fixtures.js";
-import { BOOKED, DEMO, OPEN_TIME, demoReservationId, formatShortDay } from "./reservation-demo.js";
+import { TEST_DATABASE_URL } from "../db/reset-test.js";
+import { PostgresRepository } from "../src/adapters/postgres-repository.js";
+import { BOOKED, DEMO, OPEN_TIME, formatShortDay } from "./reservation-demo.js";
 
 /** The secret the e2e server signs with (`playwright.config.ts` pins the same expression). */
 const SECRET = process.env.SESSION_SECRET ?? "e2e-test-secret";
@@ -68,13 +70,32 @@ async function bookByPhone(page: Page): Promise<{ owes: string }> {
   return { owes };
 }
 
-/** The link the pane's Copy payment link shows. */
+/**
+ * Press Copy payment link and read what landed on the clipboard — the press IS the copy (operator,
+ * 2026-09-29: a button with those words must put the link on the clipboard, not reveal it).
+ */
 async function copiedLink(page: Page): Promise<string> {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const pane = page.getByTestId("reservation-detail");
-  await pane.getByRole("link", { name: "Copy payment link" }).click();
-  const url = (await pane.getByTestId("pay-link").textContent())!.trim();
+  await clickHydrated(pane.getByRole("button", { name: "Copy payment link" }));
+  await expect(pane.getByRole("button", { name: "Copied ✓" })).toBeVisible();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  // The same link is on the line under the button, for reading out on the phone.
+  await expect(pane.getByTestId("pay-link")).toHaveText(copied);
   // Only the path: the host is the configured origin, and the test visits the server it runs.
-  return new URL(url).pathname;
+  return new URL(copied).pathname;
+}
+
+/** The booking as the confirm leaves it once paid — written straight to the test DB, because the
+ *  e2e has no Stripe to pay through (the confirm itself is `pay-by-link.test.ts`). */
+async function markPaid(reservationId: string): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const r = await repo.getReservation(reservationId as never);
+    await repo.saveReservation({ ...r!, source: "muster", status: "booked" });
+  } finally {
+    await repo.close();
+  }
 }
 
 /** The customer's own browser: no admin session behind them, at the viewport this project runs. */
@@ -101,8 +122,7 @@ test.describe("the payment link", () => {
     await expect(pane.getByRole("button", { name: "Send payment link" })).toBeVisible();
     await expect(pane).toContainText("The link works for 72 hours.");
     const path = await copiedLink(page);
-    expect(path).toMatch(/^\/pay\/resv-[0-9a-f]+\.\d+\.[\w-]+$/);
-    await expect(pane.getByRole("button", { name: "Copy link" })).toBeVisible();
+    expect(path).toMatch(/^\/p\/[\w-]{22}\.[0-9a-z]{6}\.[\w-]{22}$/);
 
     // Send payment link again: same honesty.
     await pane.getByRole("button", { name: "Send payment link" }).click();
@@ -190,12 +210,25 @@ test.describe("the payment link", () => {
 
     await customer.getByRole("link", { name: "Can’t make it? Cancel this booking" }).click();
     await customer.getByTestId("pay-cancel-confirm").getByRole("button", { name: "Cancel booking" }).click();
-    await expect(customer.getByTestId("pay-state")).toHaveText("Cancelled — nothing was charged.");
-    await expect(customer.getByTestId("pay-now")).toHaveCount(0);
+    // The cancelled card, shaped like "You're booked!" (operator, 2026-09-29).
+    const cancelled = async () => {
+      const card = customer.getByTestId("pay-state");
+      await expect(card.getByRole("heading", { name: "Booking cancelled", level: 1 })).toBeVisible();
+      await expect(card).toContainText(
+        `Your ${shortTime(OPEN_TIME)} PM trip on ${formatShortDay(BOOKED.date)} has been cancelled.`,
+      );
+      await expect(card).toContainText(
+        "Nothing was charged. Your card was never charged for this trip, so there’s nothing to refund and nothing you need to do.",
+      );
+      await expect(card).toContainText("Changed your mind? You’re welcome to book again any time.");
+      await expect(card.getByRole("link", { name: "Book a trip →" })).toHaveAttribute("href", "/book");
+      await expect(customer.getByTestId("pay-now")).toHaveCount(0);
+    };
+    await cancelled();
 
-    // Opened again later: it says so, and still offers nothing to pay.
+    // Opened again later: the same card, and still nothing to pay.
     await customer.goto(customer.url().split("?")[0]!);
-    await expect(customer.getByTestId("pay-state")).toHaveText("This booking was cancelled, so there’s nothing to pay.");
+    await cancelled();
 
     await page.goto(paneUrl.split("?")[0]!);
     await expect(page.getByTestId("booking-state")).toHaveText("Cancelled");
@@ -205,24 +238,27 @@ test.describe("the payment link", () => {
   test("an expired or tampered link says so, and offers no form", async ({ page }) => {
     const id = "resv-0123456789abcdef0123456789abcdef";
     const expired = signPaymentLink(id, new Date(Date.now() - 73 * 3_600_000), SECRET);
-    await page.goto(`/pay/${expired}`);
+    await page.goto(`/p/${expired}`);
     await expect(page.getByTestId("pay-state")).toHaveText("This payment link has expired. Ask BrewBoat for a new one.");
     await expect(page.getByTestId("pay-now")).toHaveCount(0);
 
     const live = signPaymentLink(id, new Date(), SECRET);
-    await page.goto(`/pay/${live.slice(0, -2)}xx`);
+    await page.goto(`/p/${live.slice(0, -2)}xx`);
     await expect(page.getByTestId("pay-state")).toHaveText("This payment link has expired. Ask BrewBoat for a new one.");
   });
 
-  test("a paid trip says so and points at Find your booking — never at the booking link itself", async ({ page }) => {
-    const token = signPaymentLink(demoReservationId(BOOKED.date, BOOKED.time), new Date(), SECRET);
-    await page.goto(`/pay/${token}`);
-    const state = page.getByTestId("pay-state");
+  test("a paid trip says so and points at Find your booking — never at the booking link itself", async ({ page, browser, baseURL }) => {
+    await bookByPhone(page);
+    const path = await copiedLink(page);
+    // Paid, as the confirm leaves it: the operator's row turned `muster` and booked.
+    await markPaid(decodeURIComponent(page.url().split("/admin/calendar/")[1]!.split("?")[0]!));
+    const customer = await asCustomer(browser, page, baseURL, path);
+    const state = customer.getByTestId("pay-state");
     await expect(state).toContainText("This trip is already paid. Your booking link is in the text");
-    await expect(state).toContainText("we sent to (216) 555-…48.");
+    await expect(state).toContainText("we sent to (216) 555-…99.");
     await expect(state.getByRole("link", { name: "Lost it? Find your booking" })).toHaveAttribute("href", "/b/find");
-    await expect(page.locator('a[href^="/b/"]:not([href="/b/find"])')).toHaveCount(0);
-    await expect(page.getByTestId("pay-now")).toHaveCount(0);
+    await expect(customer.locator('a[href^="/b/"]:not([href="/b/find"])')).toHaveCount(0);
+    await expect(customer.getByTestId("pay-now")).toHaveCount(0);
   });
 
   test("no horizontal overflow (375px layout holds)", async ({ page, browser, baseURL }) => {

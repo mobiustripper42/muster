@@ -2,7 +2,7 @@
  * The customer pays an operator's phone booking (issue #1082 part B, SPEC §2.10.6).
  *
  * The operator's `admin` row already holds the boat and carries the invoice frozen when they booked
- * (`operator-booking.ts`), so there is nothing to claim and nothing to price: each attempt at `/pay`
+ * (`operator-booking.ts`), so there is nothing to claim and nothing to price: each attempt at `/p`
  * puts a payable intent on that row through `attachPaymentIntent`, the checkout's own reuse rules,
  * and the ordinary confirm books it (§2.8.6) — turning it `muster` in the same write.
  *
@@ -17,7 +17,7 @@ import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { attachPaymentIntent } from "./create-departure-payment-intent.js";
 
-/** What a payment link opens onto. The `/pay` page renders one state per kind. */
+/** What a payment link opens onto. The `/p` page renders one state per kind. */
 export type PayLinkState =
   | { kind: "payable"; reservation: Reservation }
   | { kind: "paid"; reservation: Reservation }

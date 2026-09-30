@@ -116,8 +116,6 @@ export default async function ReservationDetailPage({
       booked?: string;
       /** The last payment-link send's per-channel outcome (issue #1082 part B). */
       linkSent?: string;
-      /** Present ⇒ Copy payment link was pressed: sign a fresh link for this render. */
-      payLink?: string;
     }
   >;
 }) {
@@ -498,7 +496,7 @@ async function PhoneBookingPage({
   sp,
 }: {
   reservation: Reservation;
-  sp: Search & { cancel?: string; cancelErr?: string; booked?: string; linkSent?: string; payLink?: string };
+  sp: Search & { cancel?: string; cancelErr?: string; booked?: string; linkSent?: string };
 }) {
   const data = await loadCalendarData({ ...sp, date: sp.date ?? reservation.date });
   if (!data) {
@@ -534,8 +532,7 @@ async function PhoneBookingPage({
           backHref: paneHref(reservation.id, sp, {}),
           cancelErr: sp.cancelErr,
           linkSent: sp.linkSent,
-          copyLinkHref: paneHref(reservation.id, sp, { payLink: "1" }),
-          payLinkUrl: payLinkUrl(reservation, sp.payLink !== undefined),
+          payLinkUrl: payLinkUrl(reservation),
           phone: reservation.phone,
           email: reservation.email,
         }}
@@ -546,12 +543,12 @@ async function PhoneBookingPage({
 }
 
 /**
- * A freshly signed payment link, only on the render Copy payment link asked for, and only while the
- * booking is still awaiting payment. Signing stores nothing (`payment-link.ts`), so a render may do
- * it; a deploy that can't build a link shows none rather than failing the pane.
+ * A freshly signed payment link for Copy payment link, while the booking is still awaiting payment.
+ * Signing stores nothing (`payment-link.ts`), so every render may do it; a deploy that can't build a
+ * link shows none rather than failing the pane.
  */
-function payLinkUrl(reservation: Reservation, asked: boolean): string | undefined {
-  if (!asked || reservation.status !== "pending") return undefined;
+function payLinkUrl(reservation: Reservation): string | undefined {
+  if (reservation.status !== "pending") return undefined;
   try {
     return mintPaymentLinkUrl(String(reservation.id));
   } catch (e) {

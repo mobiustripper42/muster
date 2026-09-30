@@ -54,9 +54,13 @@ async function copyText(value: string): Promise<boolean> {
 export function CopyButton({
   value,
   label = "Copy",
+  className = "btn-secondary btn-sm min-h-[44px] shrink-0",
 }: {
   value: string;
   label?: string;
+  /** The button's classes, for a surface where the copy is the main action rather than a
+   *  small control beside a value (the payment link's Copy payment link, issue #1082). */
+  className?: string;
 }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -68,7 +72,7 @@ export function CopyButton({
           setTimeout(() => setCopied(false), 1500);
         }
       }}
-      className="btn-secondary btn-sm min-h-[44px] shrink-0"
+      className={className}
     >
       {copied ? "Copied ✓" : label}
     </button>

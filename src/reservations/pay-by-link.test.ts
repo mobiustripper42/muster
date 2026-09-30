@@ -2,7 +2,7 @@
  * The customer pays an operator's phone booking through the payment link (issue #1082 part B,
  * SPEC §2.10.6) — and the races the issue asks to be tested rather than assumed.
  *
- * The row is the operator's `admin` pending row (`operator-booking.ts`). Each attempt at `/pay`
+ * The row is the operator's `admin` pending row (`operator-booking.ts`). Each attempt at `/p`
  * attaches an intent to that row with the checkout's own reuse rules (15.8, 15.10, 15.11), and the
  * ordinary confirm books it (§2.8.6) — so these drive the real confirm, not a stand-in.
  */
@@ -182,7 +182,7 @@ describe("startPayByLink — the customer pays the operator's booking", () => {
   });
 });
 
-describe("payLinkState — what the /pay page shows", () => {
+describe("payLinkState — what the /p page shows", () => {
   it("payable, paid, cancelled or missing", async () => {
     const { repo, row } = await phoneBooked();
     expect(payLinkState(row).kind).toBe("payable");

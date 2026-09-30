@@ -24,7 +24,7 @@
  * customer has — the card, the terms box, the promo row, the in-flight lock — and the one submit
  * path into Stripe. The operator's form lives under `app/(admin)/` and nothing here can reach it.
  *
- * **Pay mode (issue #1082 part B)** is the same form on the payment link, `/pay/<link>`, for a
+ * **Pay mode (issue #1082 part B)** is the same form on the payment link, `/p/<link>`, for a
  * booking the operator already took: who it's for is shown, not asked; the tip is the one the
  * operator asked on the phone; the money is the invoice frozen at booking; and the submit attaches
  * an intent to that booking's row instead of claiming a boat. The card, the terms box, the lock and
@@ -41,7 +41,7 @@ import { PayBar } from "../../../../components/checkout/pay-bar";
 import { TipTiles } from "../../../../components/checkout/tip-tiles";
 import { usePaymentLock } from "../../../../components/checkout/payment-lock";
 import { startElementsCheckout } from "./actions";
-import { startPaymentLinkCheckout } from "../../pay/[token]/actions";
+import { startPaymentLinkCheckout } from "../../p/[token]/actions";
 
 /**
  * The gift-card / discount row, rendered inert until that feature exists. Hoisted so the

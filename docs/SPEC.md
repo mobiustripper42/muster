@@ -2632,9 +2632,9 @@ boat immediately; a payment link goes to the customer; the booking confirms when
 the same confirm path as any other sale (§2.8.6). The link is minted fresh each time it is asked
 for and carries no durable token of its own, so it always reflects what is currently owed.
 
-**The link works for 72 hours.** It is signed rather than stored — `/pay/<booking>.<expiry>.<sig>`
-over the session secret — so nothing is kept to revoke, and a new one does not kill an old one; each
-simply runs out. The number is a code constant (`PAYMENT_LINK_HOURS`), not a deploy setting, because
+**The link works for 72 hours.** It is signed rather than stored — `/p/<booking>.<expiry>.<sig>`
+over the session secret, packed short because it is texted — so nothing is kept to revoke, and a
+new one does not kill an old one; each simply runs out. The number is a code constant (`PAYMENT_LINK_HOURS`), not a deploy setting, because
 the customer is told it. It goes out by text and email the moment the operator books, and the
 operator can send it again or copy it from the booking. On the link the customer sees the trip, who
 it is booked for, the invoice frozen at booking with the operator's tip, the cancellation terms and

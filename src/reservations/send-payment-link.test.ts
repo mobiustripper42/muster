@@ -9,7 +9,7 @@ import type { ChannelPort, OutboundMessage } from "../ports/channel.js";
 import { paymentLinkBody, sendPaymentLink } from "./send-payment-link.js";
 import { nonGsm7Chars } from "./sms-alphabet.js";
 
-const URL = "https://muster.example/pay/resv-0123.1759320000.c2ln";
+const URL = "https://muster.example/p/ASNFZ4mrze8BI0VniavN7w.tzq8xy.Qf5LdfzEPc-7QD1VqiMPmo";
 
 function reservation(over: Record<string, unknown> = {}): Reservation {
   return {

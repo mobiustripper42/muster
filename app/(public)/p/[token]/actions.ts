@@ -85,8 +85,15 @@ export async function cancelFromPaymentLink(formData: FormData): Promise<void> {
 
   let cancelled = false;
   try {
+    const secretKey = process.env.STRIPE_SECRET_KEY;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     const res = await cancelUnpaidPhoneBooking(
-      { repo: getRepo(), now: () => new Date().toISOString() },
+      {
+        repo: getRepo(),
+        now: () => new Date().toISOString(),
+        // So a payment already started in another tab can't still go through (issue #1082 part C).
+        ...(secretKey && webhookSecret ? { payments: new StripePaymentPort(secretKey, webhookSecret) } : {}),
+      },
       link.reservationId,
       "customer",
     );

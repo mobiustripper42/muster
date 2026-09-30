@@ -284,3 +284,68 @@ describe("filters and search", () => {
     expect(searchPurchases(rows(), "zzz")).toHaveLength(0);
   });
 });
+
+describe("an operator's phone booking (issue #1082 part C)", () => {
+  /** The operator's unpaid row: no Event, its trip and money on the row itself. */
+  const phone = (id: string, over: Partial<Reservation> = {}): Reservation =>
+    reservation(id, {
+      eventId: null,
+      source: "admin",
+      status: "pending",
+      customerName: "Phone Caller",
+      phone: "+12165550199",
+      partySize: 2,
+      vesselId: asId<"VesselId">("v1"),
+      date: "2026-10-21",
+      time: "15:30",
+      invoice: {
+        fareCents: 49900,
+        extrasCents: 4000,
+        taxCents: 3908,
+        taxRateBps: TAX,
+        serviceFeeCents: 1617,
+        serviceFeeBps: 300,
+        gratuityCents: 10780,
+        gratuityBps: 2000,
+        totalCents: 70205,
+        amountDueNowCents: 70205,
+      },
+      ...over,
+    });
+
+  it("awaiting payment is listed, with its own state", () => {
+    const [row] = build({ reservations: [phone("p1")], eventsById: new Map() });
+    expect(row).toMatchObject({ reservationId: "p1", customerName: "Phone Caller", state: "awaiting" });
+  });
+
+  it("with no Event yet, the trip comes from the booking itself", () => {
+    const [row] = build({
+      reservations: [phone("p1")],
+      eventsById: new Map(),
+      vesselNameById: new Map([["v1", "Brew 3"]]),
+    });
+    expect(row).toMatchObject({ date: "2026-10-21", time: "15:30", vesselName: "Brew 3", guestCount: 2 });
+  });
+
+  it("the total is fare + extras + tax off the frozen invoice — no tip, as every row", () => {
+    const [row] = build({ reservations: [phone("p1")], eventsById: new Map() });
+    expect(row).toMatchObject({ totalCents: 49900 + 4000 + 3908, paidCents: 0, priceKnown: true });
+  });
+
+  it("cancelled before it was paid: listed under cancelled, owing nothing", () => {
+    const [row] = build({ reservations: [phone("p1", { status: "cancelled" })], eventsById: new Map() });
+    expect(row).toMatchObject({ state: "cancelled", balanceCents: 0 });
+  });
+
+  it("a web checkout in flight gets its trip from the row too, instead of a dash", () => {
+    const { invoice: _none, ...web } = phone("w1", { source: "muster" });
+    const [row] = build({ reservations: [web], eventsById: new Map() });
+    expect(row).toMatchObject({ state: "pending", date: "2026-10-21", time: "15:30" });
+  });
+
+  it("counts awaiting payment for its chip", () => {
+    const rows = build({ reservations: [phone("p1"), phone("p2"), reservation("r1")] });
+    expect(stateCounts(rows)).toMatchObject({ all: 3, awaiting: 2, unpaid: 1 });
+    expect(filterByState(rows, "awaiting").map((r) => r.reservationId).sort()).toEqual(["p1", "p2"]);
+  });
+});

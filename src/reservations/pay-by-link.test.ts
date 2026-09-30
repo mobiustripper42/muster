@@ -229,6 +229,44 @@ describe("maskedPhone — the already-paid page names the number without printin
   });
 });
 
+describe("cancelling retires the open payment (issue #1082 part C)", () => {
+  it("cancelling an unpaid phone booking cancels its open Stripe payment, and says so on its history", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    await start(repo, payments, row.id);
+
+    const res = await cancelUnpaidPhoneBooking({ repo, now, payments }, row.id, "operator");
+    expect(res).toEqual({ ok: true, alreadyCancelled: false });
+    expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+    // Nobody can pay it now — a customer sitting on their bank's approval screen gets a failure.
+    expect(payments.liveAmountCents.has("pi_fake_1")).toBe(false);
+    const trail = await repo.listTrailEventsFor(row.id, ["pi_fake_1"]);
+    expect(trail.map((e) => e.type)).toContain("payment_superseded");
+  });
+
+  it("Stripe refusing the cancel doesn't stop the booking being cancelled, and records nothing false", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    await start(repo, payments, row.id);
+    payments.cancelError = new Error("already succeeded");
+
+    expect(await cancelUnpaidPhoneBooking({ repo, now, payments }, row.id, "customer")).toEqual({
+      ok: true,
+      alreadyCancelled: false,
+    });
+    expect(await repo.getReservation(row.id)).toMatchObject({ status: "cancelled" });
+    const trail = await repo.listTrailEventsFor(row.id, ["pi_fake_1"]);
+    expect(trail.map((e) => e.type)).not.toContain("payment_superseded");
+  });
+
+  it("a booking that never reached the card screen has nothing to cancel", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    await cancelUnpaidPhoneBooking({ repo, now, payments }, row.id, "operator");
+    expect(payments.cancelled).toEqual([]);
+  });
+});
+
 describe("the races (issue #1082)", () => {
   it("the operator cancels while the customer pays: the charge alerts as paid-but-unbookable and nothing books", async () => {
     const { repo, row } = await phoneBooked();

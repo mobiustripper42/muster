@@ -13,8 +13,8 @@
  *
  * Runs desktop + 375px.
  */
-import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
-import { DEMO } from "./reservation-demo.js";
+import { test, expect, fillHydrated, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import { BOOKED, DEMO, OPEN_TIME, formatShortDay } from "./reservation-demo.js";
 
 /** Every seeded booking becomes one Muster order. */
 const ORDERS = DEMO.bookings.length;
@@ -100,5 +100,38 @@ test.describe("admin /admin/purchases", () => {
     await page.waitForURL(/\/admin\/calendar\/resv-demo/);
     await expect(page.getByTestId("reservation-detail")).toBeVisible();
     await expect(page.getByTestId("reservation-detail").getByRole("heading", { name: "Dana Cho", level: 2 })).toBeVisible();
+  });
+
+  /**
+   * A phone booking waiting on its payment link is on the list, with its own chip (issue #1082
+   * part C). Before, an unpaid phone booking didn't appear here at all.
+   */
+  test("a phone booking awaiting payment has its own chip and row, and opens its pane", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    const BOOK = `/admin/calendar?date=${BOOKED.date}&hold=${encodeURIComponent(`${DEMO.vesselId}|${OPEN_TIME}`)}&book=1&guests=2`;
+    await page.goto(BOOK);
+    await fillHydrated(page.getByPlaceholder("Guest’s full name"), "Phone Caller");
+    await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0199");
+    await page.getByTestId("book-phone").click();
+    await page.waitForURL(/\/admin\/calendar\/resv-/);
+
+    await page.goto("/admin/purchases");
+    await expect(page.getByTestId("state-awaiting")).toHaveText("Awaiting payment 1");
+    await page.getByTestId("state-awaiting").click();
+    const row = page.getByRole("row").filter({ hasText: "Phone Caller" });
+    await expect(page.locator('[data-testid^="row-state-"]')).toHaveCount(1);
+    await expect(row.locator('[data-testid^="row-state-"]')).toHaveText("awaiting payment");
+    // The trip is the booking's own — it has no Event until paid.
+    await expect(row).toContainText(formatShortDay(BOOKED.date));
+    await expect(row).toContainText(OPEN_TIME);
+    await expect(row).toContainText("Brew 3 · 2 guests");
+    await expect(row).toContainText("(216) 555-0199");
+    // Fare + tax off the frozen invoice, tips and the service fee left out as on every row: $499.00
+    // + $36.18 (the same 2-guest 15:30 figures `book-checkout.spec.ts` pins).
+    await expect(row).toContainText("$535.18");
+
+    await row.getByRole("link", { name: "Phone Caller" }).click();
+    await page.waitForURL(/\/admin\/calendar\/resv-/);
+    await expect(page.getByTestId("booking-state")).toHaveText("Awaiting payment");
   });
 });

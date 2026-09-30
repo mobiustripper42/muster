@@ -8,6 +8,7 @@ import {
 } from "@core/reservations/calendar-detail.js";
 import {
   loadReservationTrail,
+  soldByPhone,
   type TrailEntry,
 } from "@core/reservations/reservation-trail-view.js";
 import { TrailEntryRow } from "../../../../../components/admin/trail-row";
@@ -398,7 +399,8 @@ export default async function ReservationDetailPage({
   return (
     <BookingFrame data={data} reservationId={String(reservation.id)}>
       <ReservationDetailPane
-        v={view}
+        // A history that didn't load can't say who sold it; it falls back to the row's source.
+        v={{ ...view, soldByPhone: trail ? soldByPhone(trail) : false }}
         balance={{
           ...(sp.balanceUrl !== undefined ? { url: sp.balanceUrl } : {}),
           ...(sp.balanceErr !== undefined ? { err: sp.balanceErr } : {}),

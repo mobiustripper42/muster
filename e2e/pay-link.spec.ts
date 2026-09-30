@@ -86,13 +86,35 @@ async function copiedLink(page: Page): Promise<string> {
   return new URL(copied).pathname;
 }
 
-/** The booking as the confirm leaves it once paid — written straight to the test DB, because the
- *  e2e has no Stripe to pay through (the confirm itself is `pay-by-link.test.ts`). */
+/**
+ * The booking as the confirm leaves it once paid — written straight to the test DB, because the
+ * e2e has no Stripe to pay through (the confirm itself is `pay-by-link.test.ts`): turned `muster`
+ * and booked, its Event materialized, and the `booked` history row naming the operator as seller.
+ */
 async function markPaid(reservationId: string): Promise<void> {
   const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
   try {
-    const r = await repo.getReservation(reservationId as never);
-    await repo.saveReservation({ ...r!, source: "muster", status: "booked" });
+    const r = (await repo.getReservation(reservationId as never))!;
+    const eventId = `evt-e2e-paid-${reservationId}` as never;
+    await repo.saveEvent({
+      id: eventId,
+      vesselId: r.vesselId!,
+      date: r.date!,
+      time: r.time!,
+      capacity: 12,
+      status: "scheduled",
+      source: "muster",
+      price: r.invoice!.fareCents,
+    });
+    await repo.saveReservation({ ...r, source: "muster", status: "booked", eventId });
+    await repo.appendTrailEvent({
+      id: `booked:${reservationId}` as never,
+      reservationId: reservationId as never,
+      actorKind: "admin",
+      type: "booked",
+      timestamp: new Date().toISOString(),
+      metadata: { via: "webhook" },
+    });
   } finally {
     await repo.close();
   }
@@ -251,7 +273,16 @@ test.describe("the payment link", () => {
     await bookByPhone(page);
     const path = await copiedLink(page);
     // Paid, as the confirm leaves it: the operator's row turned `muster` and booked.
-    await markPaid(decodeURIComponent(page.url().split("/admin/calendar/")[1]!.split("?")[0]!));
+    const paneUrl = page.url().split("?")[0]!;
+    await markPaid(decodeURIComponent(paneUrl.split("/admin/calendar/")[1]!));
+
+    // The operator's pane still says who sold it, once paid (issue #1082 part C) — the row's
+    // source now reads `muster` like any web booking.
+    await page.goto(paneUrl);
+    await expect(page.getByTestId("booking-state")).toHaveText("Booked");
+    await expect(page.getByTestId("reservation-detail")).toContainText("Booked by phone");
+    await expect(page.getByTestId("reservation-detail")).not.toContainText("Booked online");
+
     const customer = await asCustomer(browser, page, baseURL, path);
     const state = customer.getByTestId("pay-state");
     await expect(state).toContainText("This trip is already paid. Your booking link is in the text");

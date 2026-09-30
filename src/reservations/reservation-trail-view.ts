@@ -377,3 +377,16 @@ export async function loadReservationTrail(
   ]);
   return reservationTrail({ reservation, payments, gratuities, imports, emitted, asOf: now() });
 }
+
+/**
+ * Did the operator sell this booking — by phone (issue #1082 part C)?
+ *
+ * The row's `admin` source says so only until it is paid: the confirm turns it `muster` in the same
+ * write (SPEC §2.10.6), so every other reader treats a paid phone booking as ordinary. Who sold it
+ * survives on one row, the `booked` entry's actor (`booking-webhook.ts`), and this reads it there —
+ * no column. Anything an operator does to a customer's own booking later (a resend, a refund) is
+ * not a sale and doesn't count.
+ */
+export function soldByPhone(trail: readonly Pick<TrailEntry, "type" | "actorKind">[]): boolean {
+  return trail.some((e) => e.type === "booked" && e.actorKind === "admin");
+}

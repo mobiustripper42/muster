@@ -2678,7 +2678,9 @@ happening daily.
 **Which forces one change to the purchases list.** §2.8.10 already names the obstacle: the
 purchases view returns "cancelled" for any status that is not `booked`, so an unpaid booking would
 render to the operator as **Cancelled** — on the one screen this whole arrangement depends on them
-reading.
+reading. So an unpaid phone booking reads **Awaiting payment**, with its own filter, its trip read
+off the booking itself (it has no Event yet) and its total off the frozen invoice. The name is for
+"boat held, money owed", so deposit balances can join it when deposits return.
 
 **A reservation the operator wrote carries `admin` as its source.** Third value beside `muster` and
 `xola`. It is there because behaviour branches on it, not for reporting: every other pending row is
@@ -2688,7 +2690,9 @@ tested with its reserved time against the payment window, and this one has no wi
 write, so a paid phone booking is an ordinary booking to every reader — the whole-boat mutex,
 availability, cancel — and none of them has to learn a third value. Who sold it is recorded once,
 on the trail's `booked` row (`actorKind: admin`), which is where "how many bookings came by phone"
-is answered. Until then its Event does not exist, so no shift forms for it: crew are scheduled when
+is answered — and where the booking's pane reads "Booked by phone" once it is paid. Cancelling an
+unpaid phone booking, by the operator or by the customer on the link, also cancels any payment the
+link had started, so a customer mid-approval with their bank can't pay a cancelled trip. Until then its Event does not exist, so no shift forms for it: crew are scheduled when
 the customer pays, the same as for a web booking.
 
 **2.10.7 Whole-boat is a rule, not a shape.**

@@ -2806,12 +2806,22 @@ export class PostgresRepository implements Repository {
 
   // ── Check-in & waivers (Phase 18.1, migration 20260929183642) ──────────────
   async postWaiverTemplate(t: WaiverTemplate): Promise<void> {
-    // Insert-only: a template is never edited — new text is a new row.
+    // An insert never overwrites: rewriting a scheduled version is `updateWaiverTemplate`'s job.
     await this.#pool.query(
       `insert into waiver_templates(id, version, body, effective_from, posted_at, posted_by)
        values ($1,$2,$3,$4,$5,$6) on conflict (id) do nothing`,
       [t.id, t.version, t.body, t.effectiveFrom, t.postedAt, t.postedBy],
     );
+  }
+  async updateWaiverTemplate(t: WaiverTemplate, now: string): Promise<boolean> {
+    // The lock is part of the write: a version whose stored effective_from has arrived is not
+    // matched, so an edit racing midnight is refused rather than rewriting signed words.
+    const { rowCount } = await this.#pool.query(
+      `update waiver_templates set version=$2, body=$3, effective_from=$4, posted_at=$5, posted_by=$6
+       where id=$1 and effective_from > $7`,
+      [t.id, t.version, t.body, t.effectiveFrom, t.postedAt, t.postedBy, now],
+    );
+    return rowCount === 1;
   }
   async getWaiverTemplate(id: WaiverTemplateId): Promise<WaiverTemplate | null> {
     const { rows } = await this.#pool.query("select * from waiver_templates where id=$1", [id]);
@@ -2923,13 +2933,11 @@ export class PostgresRepository implements Repository {
       "select key, value from app_settings where key like 'checkin.%'",
     );
     const kv = new Map<string, string>(rows.map((r) => [r.key, r.value]));
-    const roster = kv.get("checkin.roster_mode");
     // Decode the stored text only; what counts as valid is `normalizeCheckInConfig`'s, which the
     // in-memory adapter reads through too, so a bad value reads back the same from both.
     return normalizeCheckInConfig({
       ageOfMajority: kv.has("checkin.age_of_majority") ? Number(kv.get("checkin.age_of_majority")) : undefined,
       reminderDaysBefore: parseJsonSetting(kv.get("checkin.reminder_days_before")),
-      rosterMode: roster === "true" || roster === "false" ? roster === "true" : undefined,
     });
   }
   async setCheckInConfig(patch: Partial<CheckInConfig>, at: string): Promise<void> {
@@ -2937,7 +2945,6 @@ export class PostgresRepository implements Repository {
     if (patch.ageOfMajority !== undefined) entries.push(["checkin.age_of_majority", String(patch.ageOfMajority)]);
     if (patch.reminderDaysBefore !== undefined)
       entries.push(["checkin.reminder_days_before", JSON.stringify(patch.reminderDaysBefore)]);
-    if (patch.rosterMode !== undefined) entries.push(["checkin.roster_mode", String(patch.rosterMode)]);
     for (const [key, value] of entries) {
       await this.#pool.query(
         `insert into app_settings(key, value, updated_at) values ($1,$2,$3)

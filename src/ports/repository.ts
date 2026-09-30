@@ -975,8 +975,15 @@ export interface Repository {
   markShiftChangesSeen(shiftId: ShiftId, crewMemberId: CrewMemberId, at: string): Promise<void>;
 
   // ── Check-in & waivers (Phase 18.1, issue #1115 — docs/design/check-in-and-waivers.md §6) ──
-  /** Insert-only: a second post of the same id is a no-op, never an edit to the text. */
+  /** Insert: a second post of the same id is a no-op, never an edit to the text. */
   postWaiverTemplate(template: WaiverTemplate): Promise<void>;
+  /**
+   * Rewrite a version that has not taken effect yet — every field but the id. True when it was
+   * updated; false when the id is unknown or the STORED version has taken effect by `now`
+   * (`effectiveFrom <= now`), because from then on someone may have signed it. The check is part
+   * of the write, so an edit that arrives a second after midnight is refused, not saved.
+   */
+  updateWaiverTemplate(template: WaiverTemplate, now: string): Promise<boolean>;
   getWaiverTemplate(id: WaiverTemplateId): Promise<WaiverTemplate | null>;
   /** Every version, newest `effectiveFrom` first. */
   listWaiverTemplates(): Promise<WaiverTemplate[]>;

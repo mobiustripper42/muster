@@ -1,11 +1,15 @@
 # Check-In & Waivers — Xola Replacement
 
-Status: draft v0.6 · Thirteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
+Status: draft v0.7 · Thirteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
 Screens live in the sibling `check-in-surfaces.md`. Patterns copied from shipping products are sourced
 in `waiver-checkin-market-scan.md` (written in the design chat; not in this repo). The captain's log
 and sea-time work are **separate, not yet designed**; where this doc mentions them it is naming a
 future reader of a field, not a built dependency.
 
+> **v0.7 changes — 2026-09-29, operator, while building 18.2.** **A waiver version locks when it
+> takes effect** (§6, §10): before then nobody can have signed it, so a scheduled version is edited
+> in place, and a future day holds one version. **Roster mode is a future idea** (§6), not a setting.
+>
 > **v0.6 changes — 2026-09-27, operator review.** Reconciles the doc with the codebase and with the
 > operator's answers. **The COI rule** (§4a): nothing Muster records or displays ever exceeds the
 > boat's legal passenger limit. **Ticks and the count are independent** (§3, §7): the mate taps names
@@ -198,11 +202,19 @@ item with the operator (2026-09-29) and differs from the earlier draft in five w
   `checked_in_by` and `counted_by` → `crew_members`.
 - **Business rules stay in code** — an adult's email, the ten-kid cap, `is_minor`, the COI limit.
 
-### `waiver_templates` — insert-only, versioned
+### `waiver_templates` — versioned, locked once in effect
 
-Rows are **never updated**. New text is a new row. A guest stores the template id, so five years
-later the exact words that person accepted can be produced — the only thing a signed record has to
-do. Same snapshot posture as `Event.price` and `reservations.extras_cents`. The body may be markdown;
+A version **locks the moment it takes effect**: from then on someone may have signed it, so it is
+never updated, and new words for a version in force are a new row. A guest stores the template id,
+so five years later the exact words that person accepted can be produced — the only thing a signed
+record has to do.
+
+**Until it takes effect, a version can be edited in place** (operator, 2026-09-29): nobody can have
+signed it yet. The operator picks a date, never a time. Dated today, a version takes effect the
+moment it is posted, so a typo fix replaces the morning's version at once. Dated later, it takes
+effect at midnight at the start of that day, boat time. A past date is refused. Because every future
+version is midnight, **a future day holds one version**; a second for the same day is refused in
+favour of editing the first, so two versions never take effect at the same instant. Same snapshot posture as `Event.price` and `reservations.extras_cents`. The body may be markdown;
 whether it renders formatted is the signing page's call.
 
 ### `guests` — one row per signing, per event
@@ -243,18 +255,11 @@ on it. **Nothing verifies either** — no confirm-your-email step.
 
 **No `waivers` table.** The signature is four columns on the guest.
 
-### Roster mode — one setting, not two designs
+### A guest row exists only once someone signs
 
-The only structural difference between BrewBoat and a names-wanting operator is: **does a guest row
-exist before it signs?**
-
-| Mode | Guest rows created by | An unsigned person looks like |
-|---|---|---|
-| **Off** (BrewBoat default) | Signing | Nothing — they are in the count and have no row |
-| **On** | The booker or the booking, in advance | A greyed name: *"Fred Kowalski hasn't signed"* |
-
-Same table, same screen, same queries — `source` already distinguishes `'booker' | 'self' | 'crew'`.
-The flag lives in `app_settings` (0006). **Build the model for both now, the UI for BrewBoat only.**
+An unsigned person is in the count and has no row. Creating rows in advance from the booker's list,
+so crew see who is expected before anyone signs ("roster mode"), is **a future idea**
+(`docs/FUTURE_IDEAS.md`, 2026-09-29), not a setting (operator, 2026-09-29).
 
 ### The departure count
 
@@ -403,8 +408,9 @@ Thin, because most of the value is on the crew screen.
 - Per-event: count, signed coverage, exceptions, who counted and when.
 - Per-day / per-week rollup of counts by departure, with the no-show delta (`pax_counted` vs
   `party_size`).
-- **Template management:** post new text → new immutable row. Never an edit.
-- **Settings:** reminder frequency (§5), age of majority (§6), roster mode (§6).
+- **Template management:** post new text → a new version. A scheduled version can be edited until it
+  takes effect; one in effect never can (§6).
+- **Settings:** reminder frequency (§5), age of majority (§6).
 - **CSV export** of a date range for insurance or a claim, in **three tabs, copying Xola's roster
   export**: *Summary* (capacity, booked, counted, waivers signed), *Roster* (guest · signed at ·
   template version · checked in), *Waivers* (name · email). Range pushed into SQL, not filtered in

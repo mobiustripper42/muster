@@ -1,10 +1,14 @@
 # Check-In & Waiver — Surfaces
 
-Status: draft v0.4 · Fourteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
+Status: draft v0.5 · Fourteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
 The **screens only**. Data model, build/buy and rationale live in `check-in-and-waivers.md`;
 patterns copied from shipping products are sourced in `waiver-checkin-market-scan.md` (design chat,
 not in this repo).
 
+> **v0.5 changes — 2026-09-29, operator, while building 18.2.** **Templates** (D): a scheduled
+> version can be edited until it takes effect. **Roster mode is gone** from the settings (D) — a
+> future idea.
+>
 > **v0.4 changes — 2026-09-27, operator review.** Screen C gains a **passenger-count stepper**,
 > independent of the ticks, and loses **"+ Not on the list"** — an unsigned walk-on is in the count
 > and has no row. **The COI rule** replaces C3's over-capacity warning: nothing above the boat's legal
@@ -192,7 +196,7 @@ One read-only page. The single highest-leverage screen per hour spent building i
 - Reached from the confirmation and manage page, and from **reminders at the frequency the admin
   sets**.
 - **Reminders stop the moment everyone has signed.**
-- In roster-off mode the unsigned two are a **number, never a guess at a name**.
+- The unsigned two are a **number, never a guess at a name**.
 - Duplicates may show grouped (*"Fred Kowalski ×2"*) so the booker can see who signed twice.
 - No editing here. The booker chases people; she does not administer records.
 
@@ -291,8 +295,9 @@ Thin.
 
 - **Per-event** — count, signed coverage, who counted and when, exceptions. Reached from the event.
 - **Day / week rollup** — counts by departure, and the no-show delta (`pax_counted` < booked).
-- **Templates** — post new agreement text, which creates a new immutable version. No edit button.
-- **Settings** — reminder frequency, age of majority, roster mode.
+- **Templates** — post new agreement text as a new version. A scheduled version has an Edit button
+  until it takes effect; a version in effect has none.
+- **Settings** — reminder frequency, age of majority.
 
 Export is a date range → CSV, three tabs, per `check-in-and-waivers.md` §10.
 

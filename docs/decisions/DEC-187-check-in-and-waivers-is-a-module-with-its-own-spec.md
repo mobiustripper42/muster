@@ -9,10 +9,10 @@ ruling: "Check-in and waivers are built. Their spec is docs/design/check-in-and-
 claims:
   - kind: "file"
     target: "docs/design/check-in-and-waivers.md"
-    note: "model and rationale, v0.6"
+    note: "model and rationale"
   - kind: "file"
     target: "docs/design/check-in-surfaces.md"
-    note: "screens, v0.4"
+    note: "screens"
   - kind: "spec"
     target: "0.2"
 revisit_if: "A module spec and SPEC.md disagree about the same behaviour, and the index entry is not enough to say which one wins"

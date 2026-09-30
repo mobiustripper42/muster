@@ -289,6 +289,8 @@ they are built in Muster's existing look and feel.
 One page, reached three ways. **Every link carries an unguessable token for the trip, never the raw
 `event_id`**: the page lists booker surnames on a multi-reservation event, so a guessable link would
 let anyone enumerate departures, read names and add junk signatures. The page is also rate-limited.
+The token is an 8-character code, `/w/<code>`, one per departure, stored as it is and never revoked
+(DEC-190); the limit is per client address (DEC-189).
 
 1. **After checkout.** The confirmation (and the booker's manage page, `/b/[code]`) offers "sign the
    waiver," and after signing, the link for the rest of the party. The checkout checkbox stays

@@ -199,6 +199,7 @@ cross-reference left, and it points at the spec, never at another decision.
 
 ### Check-in & waivers
 - DEC-187 — Check-in & waivers is in scope, specced in its own files that SPEC.md indexes
+- DEC-190 — Trip links are 8-character codes, one per departure, stored plain, not revocable
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred

@@ -10,7 +10,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { asId } from "../domain/ids.js";
 import type { Admin, CrewMember, Event, Reservation, Vessel } from "../domain/entities.js";
-import type { Guest, WaiverTemplate } from "../checkin/entities.js";
+import type { Guest, TripLink, WaiverTemplate } from "../checkin/entities.js";
 import { CHECK_IN_CONFIG_DEFAULTS } from "../checkin/entities.js";
 import type { Repository } from "../ports/repository.js";
 
@@ -193,6 +193,35 @@ export function runCheckInContract(
         const ghost = template({ id: asId<"WaiverTemplateId">("wt-ghost") });
         expect(await repo.updateWaiverTemplate(ghost, "2026-08-01T00:00:00.000Z")).toBe(false);
         expect(await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-ghost"))).toBeNull();
+      });
+    });
+
+    describe("trip links (18.3b)", () => {
+      const link = (over: Partial<TripLink> = {}): TripLink => ({
+        code: "K3F9QZ2M",
+        eventId: EVENT,
+        createdAt: "2026-09-30T12:00:00.000Z",
+        ...over,
+      });
+
+      it("finds a trip link by its code and by its departure", async () => {
+        await repo.insertTripLink(link());
+        expect(await repo.getTripLinkByCode("K3F9QZ2M")).toEqual(link());
+        expect(await repo.getTripLinkForEvent(EVENT)).toEqual(link());
+        expect(await repo.getTripLinkByCode("ZZZZZZZZ")).toBeNull();
+        expect(await repo.getTripLinkForEvent(EVENT_2)).toBeNull();
+      });
+
+      it("refuses a code already in use, rather than handing one trip's link to another", async () => {
+        await repo.insertTripLink(link());
+        await expect(repo.insertTripLink(link({ eventId: EVENT_2 }))).rejects.toThrow(/duplicate key/);
+        expect(await repo.getTripLinkForEvent(EVENT_2)).toBeNull();
+      });
+
+      it("refuses a second code for the same departure — one link per trip", async () => {
+        await repo.insertTripLink(link());
+        await expect(repo.insertTripLink(link({ code: "BBBBBBBB" }))).rejects.toThrow(/duplicate key/);
+        expect(await repo.getTripLinkByCode("BBBBBBBB")).toBeNull();
       });
     });
 

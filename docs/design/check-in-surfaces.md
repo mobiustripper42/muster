@@ -7,7 +7,8 @@ not in this repo).
 
 > **v0.5 changes — 2026-09-29, operator, while building 18.2.** **Templates** (D): a scheduled
 > version can be edited until it takes effect. **Roster mode is gone** from the settings (D) — a
-> future idea.
+> future idea. **A5 gains a throttled state** (2026-09-30, 18.3b). The operator phone the A5 states
+> name does not exist yet (issue #1140).
 >
 > **v0.4 changes — 2026-09-27, operator review.** Screen C gains a **passenger-count stepper**,
 > independent of the ticks, and loses **"+ Not on the list"** — an unsigned walk-on is in the count
@@ -162,6 +163,7 @@ passing one phone down the line at the dock.
 | Event departed | *"This trip has already sailed."* + operator phone. No form. |
 | Event cancelled | Same shape, cancellation wording. |
 | Bad or expired link | *"We can't find that trip."* + operator phone. Never a stack trace, never a login. |
+| Too many opens from one connection | *"Lots of people are signing from this connection right now. Try again in a minute."* + **Try again**. Never "can't find that trip", and the trip is not looked up while throttled (DEC-189, 18.3b). |
 | Connection drops mid-sign | Keep the typed values and retry. Never lose the input. |
 
 ---

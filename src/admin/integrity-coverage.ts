@@ -99,6 +99,7 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   booking_codes: { kind: "fk", refs: ["reservation_id"] },
   // Check-in & waivers (Phase 18.1): every reference is an inline foreign key (DEC-131).
   waiver_templates: { kind: "fk", refs: ["posted_by"] },
+  trip_links: { kind: "fk", refs: ["event_id"] },
   guests: {
     kind: "fk",
     refs: ["event_id", "reservation_id", "guardian_guest_id", "waiver_template_id", "checked_in_by"],

@@ -88,7 +88,7 @@ import {
 import type { FailureWindow, Repository } from "../ports/repository.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
-import type { CheckInConfig, DepartureCount, Guest, WaiverTemplate } from "../checkin/entities.js";
+import type { CheckInConfig, DepartureCount, Guest, TripLink, WaiverTemplate } from "../checkin/entities.js";
 import { normalizeCheckInConfig } from "../checkin/entities.js";
 import type { RateLimitRefusal } from "../rate-limit/entities.js";
 
@@ -1422,6 +1422,28 @@ export class InMemoryRepository implements Repository {
       .filter((t) => t.effectiveFrom <= at)
       .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
     return inForce[0] ? clone(inForce[0]) : null;
+  }
+
+  // ── Trip links (Phase 18.3b) ──────────────────────────────────────────────
+  #tripLinks = new Map<string, TripLink>();
+
+  async insertTripLink(link: TripLink): Promise<void> {
+    // Postgres-shaped messages on purpose: the caller's duplicate check is one predicate.
+    if (this.#tripLinks.has(link.code)) {
+      throw new Error('duplicate key value violates unique constraint "trip_links_pkey"');
+    }
+    if ([...this.#tripLinks.values()].some((l) => l.eventId === link.eventId)) {
+      throw new Error('duplicate key value violates unique constraint "trip_links_event_id_key"');
+    }
+    this.#tripLinks.set(link.code, { ...link });
+  }
+  async getTripLinkByCode(code: string): Promise<TripLink | null> {
+    const l = this.#tripLinks.get(code);
+    return l ? { ...l } : null;
+  }
+  async getTripLinkForEvent(eventId: EventId): Promise<TripLink | null> {
+    const l = [...this.#tripLinks.values()].find((x) => x.eventId === eventId);
+    return l ? { ...l } : null;
   }
 
   async saveGuests(guests: readonly Guest[]): Promise<void> {

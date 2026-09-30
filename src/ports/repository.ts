@@ -75,6 +75,7 @@ import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { ThreadId } from "../domain/ids.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
 import type { CheckInConfig, DepartureCount, Guest, WaiverTemplate } from "../checkin/entities.js";
+import type { RateLimitRefusal } from "../rate-limit/entities.js";
 
 /**
  * The rolling per-subject failure bound applied on top of the per-code attempt cap
@@ -1009,6 +1010,24 @@ export interface Repository {
    *  to `CHECK_IN_CONFIG_DEFAULTS` per field (the `getPaymentConfig` pattern). */
   getCheckInConfig(): Promise<CheckInConfig>;
   setCheckInConfig(patch: Partial<CheckInConfig>, at: string): Promise<void>;
+
+  // ── Rate limiting (Phase 18.3a, issue #1117, DEC-189) ─────────────────────
+  /**
+   * Count one hit against (bucket, key, window) and return the count AFTER it. One atomic
+   * upsert, so simultaneous hits each get their own number. Sweeps every row whose window has
+   * ended (`expiresAt <= now`) on the way in — a key that never returns cannot grow the table.
+   * Only counts: whether the count is over a limit is the caller's call (DEC-131).
+   */
+  incrementRateLimit(bucket: string, key: string, windowStart: string, expiresAt: string, now: string): Promise<number>;
+  /**
+   * Log a refused window — one row per (bucket, key, window). A later write for the same window
+   * only ever RAISES `hits`, `refused`, `lastRefusedAt` and `expiresAt`, and only ever lowers
+   * `firstRefusedAt`, so an out-of-order write cannot undo a newer one. Sweeps rows past their
+   * `expiresAt` on the way in.
+   */
+  recordRateLimitRefusal(refusal: RateLimitRefusal, now: string): Promise<void>;
+  /** The refusal log, for tests and SQL-free reads. Oldest window first. */
+  listRateLimitRefusals(): Promise<RateLimitRefusal[]>;
 }
 
 /** A persisted `shift_changes` row. Mirrors `FormResult.changedCrew` plus the observation time. */

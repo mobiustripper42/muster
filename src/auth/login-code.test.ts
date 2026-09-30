@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import {
+  CREW_SIGN_IN_LIMIT,
   FAILURE_WINDOW_MS,
   MAX_ATTEMPTS,
   MAX_FAILURES_PER_WINDOW,
@@ -113,6 +114,36 @@ describe("requestLoginCode", () => {
       { now: at(120_000), mintCode: fixedCode("333333") },
     );
     expect(after.outcome).toBe("deliver");
+  });
+
+  describe("rate limit per address (Phase 18.3a, issue #579's sample budget)", () => {
+    const ask = (repo: InMemoryRepository, email: string, clientKey: string | null, ms = 0) =>
+      requestLoginCode(repo, { email, clientKey }, { now: at(ms), mintCode: fixedCode("123456") });
+
+    it(`refuses the request after ${CREW_SIGN_IN_LIMIT.limit} in an hour from one address, before any roster lookup`, async () => {
+      const repo = await repoWithCrew();
+      for (let i = 0; i < CREW_SIGN_IN_LIMIT.limit; i++) {
+        expect((await ask(repo, `stranger${i}@nope.test`, "203.0.113.9", i * 1000)).outcome).toBe("skip");
+      }
+      // A roster email is refused the same way a stranger's is: the answer says nothing about
+      // the roster, only about the address.
+      const r = await ask(repo, EMAIL, "203.0.113.9", 60_000);
+      expect(r).toEqual({ outcome: "throttled", retryAfterMs: 60 * 60_000 - 60_000 });
+      expect(await ask(repo, "stranger@nope.test", "203.0.113.9", 61_000)).toMatchObject({ outcome: "throttled" });
+      expect(await repo.getLoginCode("crew", "crew-quint")).toBeNull();
+    });
+
+    it("another address is unaffected", async () => {
+      const repo = await repoWithCrew();
+      for (let i = 0; i <= CREW_SIGN_IN_LIMIT.limit; i++) await ask(repo, "stranger@nope.test", "203.0.113.9", i);
+      expect((await ask(repo, EMAIL, "198.51.100.4", 100)).outcome).toBe("deliver");
+    });
+
+    it("with no address known, nothing is limited", async () => {
+      const repo = await repoWithCrew();
+      for (let i = 0; i <= CREW_SIGN_IN_LIMIT.limit; i++) await ask(repo, "stranger@nope.test", null, i);
+      expect((await ask(repo, EMAIL, null, 100)).outcome).toBe("deliver");
+    });
   });
 });
 

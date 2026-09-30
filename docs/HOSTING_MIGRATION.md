@@ -544,6 +544,17 @@ Vercel's function limit today so it should fit Cloudflare's. If it bites, run th
 request (an authenticated `127.0.0.1` call, same shape as the timers) rather than chasing a
 timeout setting.
 
+## Client IP (added 2026-09-30, after Phase A)
+
+Phase A found nothing reading a client IP (`docs/audit/2026-08-07-cutover-phase-a.md`). Since
+Phase 18.3a (DEC-189), `app/lib/client-ip.ts` does. It keys the rate limiter, and 18.4 stamps the
+address on signed waivers. It takes the **first `x-forwarded-for` entry** as the hop that reached
+the app, and trusts `CF-Connecting-IP` only when that hop is in Cloudflare's ranges
+(`app/lib/cloudflare-ips.ts`). On Vercel that is safe because Vercel overwrites the header.
+**Before cutover, confirm Caddy's behaviour matches:** its `X-Forwarded-For` to the app must be the
+connecting (Cloudflare) address, not a value the client sent. If it appends or passes one through,
+configure Caddy so it doesn't, or change the helper. Otherwise a visitor could choose their own key.
+
 ## Standing risk
 
 The box holds a **copy** of `DATABASE_URL`, not a live binding — nothing re-injects it the way

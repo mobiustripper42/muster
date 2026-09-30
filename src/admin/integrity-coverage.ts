@@ -108,6 +108,16 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
     reason:
       "holds no references — a canonicalized contact string and two timestamps, keyed on nothing in the schema. Rows are transient (a 15-minute window) and deliberately NOT linked to a customer or reservation: the throttle is claimed before any match, including for contacts that belong to nobody (issue #460).",
   },
+  rate_limit_hits: {
+    kind: "exempt",
+    reason:
+      "holds no references — a bucket name, a client address and a window. Rows are transient (swept when their window ends) and a client address belongs to nobody in the schema (DEC-189).",
+  },
+  rate_limit_refusals: {
+    kind: "exempt",
+    reason:
+      "holds no references — the refusal log keyed on bucket, client address and window, kept 90 days. Nothing in the schema owns a client address (DEC-189).",
+  },
 
   // ── Waiting on a Repository port method (#584 follow-up) ─────────────────
   // These carry real references and nothing watches them. They need a `listAll*` on the

@@ -16,6 +16,7 @@ import { resetTestDb, TEST_DATABASE_URL } from "../db/reset-test.js";
 import { SLOW_PATH } from "./slow-path.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { pgConnectionConfig } from "../src/config/db-ssl.js";
+import { takeRateLimit, type RateLimitPolicy } from "../src/rate-limit/rate-limit.js";
 import { TODAY } from "./reservation-demo.js";
 
 /** Local tsx binary — resolved explicitly so we don't depend on PATH/npx. */
@@ -167,6 +168,23 @@ export async function plantVesselBlock(b: {
       startDate: b.startDate,
       endDate: b.endDate,
     });
+  } finally {
+    await repo.close();
+  }
+}
+
+/**
+ * Use up a rate limit for one address (Phase 18.3a) — the same `takeRateLimit` the app calls, so
+ * the window arithmetic cannot drift from production's. Pair with a request carrying that address
+ * in `x-forwarded-for` (`page.setExtraHTTPHeaders`): local runs have no Vercel in front, so without
+ * the header there is no address and nothing is limited.
+ */
+export async function exhaustRateLimit(policy: RateLimitPolicy, key: string): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    for (let i = 0; i < policy.limit; i++) {
+      await takeRateLimit({ repo, now: () => new Date().toISOString() }, policy, key);
+    }
   } finally {
     await repo.close();
   }

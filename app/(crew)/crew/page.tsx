@@ -48,6 +48,8 @@ type Search = {
   answered?: string;
   stage?: string;
   err?: string;
+  /** Minutes to wait after a rate-limited sign-in request (Phase 18.3a). */
+  limited?: string;
 };
 
 export default async function CrewHome({
@@ -66,6 +68,7 @@ export default async function CrewHome({
       <SignedOut
         stage={sp.stage}
         err={sp.err}
+        limited={sp.limited}
         pendingEmail={pendingEmail}
       />
     );
@@ -132,6 +135,7 @@ export default async function CrewHome({
         sessionEnded
         stage={sp.stage}
         err={sp.err}
+        limited={sp.limited}
         pendingEmail={(await cookies()).get(LOGIN_EMAIL_COOKIE)?.value ?? null}
       />
     );
@@ -205,11 +209,13 @@ function ShiftWhenWhat({ s }: { s: CrewAppView["shifts"][number] }) {
 function SignedOut({
   stage,
   err,
+  limited,
   pendingEmail,
   sessionEnded,
 }: {
   stage?: string;
   err?: string;
+  limited?: string;
   pendingEmail: string | null;
   /** Derived here, NEVER read from the URL — see the notice below. */
   sessionEnded?: boolean;
@@ -225,6 +231,12 @@ function SignedOut({
   // largely because this screen looked identical to a first visit. Both notices
   // are codes mapped to copy server-side, never prose in the URL (DEC-147 rule 3).
   const expired = stage === "code" && !pendingEmail;
+  // Rate limited (Phase 18.3a, DEC-189). The minutes ride the URL, so they are settable by the
+  // visitor — harmless (it only changes a number on their own screen), but kept to the range the
+  // action can mint so a crafted URL cannot print nonsense. Says "network", never anything about
+  // the email: the limit is per address and must not hint at the roster (issue #579).
+  const waitMinutes = /^\d{1,2}$/.test(limited ?? "") ? Number(limited) : null;
+  const throttled = waitMinutes !== null && waitMinutes >= 1 && waitMinutes <= 60;
   return (
     <Shell>
       <h1 className="text-lg font-semibold text-ink">Muster</h1>
@@ -241,6 +253,12 @@ function SignedOut({
       {sessionEnded ? <Notice>Your session ended.</Notice> : null}
       {expired ? (
         <Notice>That sign-in step expired. Enter your email to get a new code.</Notice>
+      ) : null}
+      {throttled && !onCodeStep ? (
+        <Notice tone="warn">
+          Too many sign-in requests from this network. Try again in {waitMinutes}{" "}
+          {waitMinutes === 1 ? "minute" : "minutes"}.
+        </Notice>
       ) : null}
       {onCodeStep ? (
         <CodeStep email={pendingEmail!} err={err} />

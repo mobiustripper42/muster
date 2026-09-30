@@ -191,6 +191,35 @@ export async function exhaustRateLimit(policy: RateLimitPolicy, key: string): Pr
 }
 
 /**
+ * Plant a departure with a trip link (Phase 18.3b) — one call per `/w/<code>` state. The event is a
+ * Muster departure on the crew seed's `vessel-hops`; the link is inserted directly, as
+ * `ensureTripLink` would, so the test controls the code.
+ */
+export async function plantTripLink(t: {
+  code: string;
+  date: string;
+  time: string;
+  status?: "scheduled" | "cancelled";
+}): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const eventId = `evt-trip-${t.code}`;
+    await repo.saveEvent({
+      id: eventId as never,
+      vesselId: "vessel-hops" as never,
+      date: t.date,
+      time: t.time,
+      capacity: 16,
+      status: t.status ?? "scheduled",
+      source: "muster",
+    });
+    await repo.insertTripLink({ code: t.code, eventId: eventId as never, createdAt: new Date().toISOString() });
+  } finally {
+    await repo.close();
+  }
+}
+
+/**
  * Plant a waiver version (Phase 18.2) — for the states the page cannot reach by posting, like a
  * version that took effect in the past. Posted by the admin every `resetAndSeed` creates.
  */

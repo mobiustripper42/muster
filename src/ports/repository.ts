@@ -74,7 +74,7 @@ import type { PaymentConfig } from "../reservations/payment-config.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { ThreadId } from "../domain/ids.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
-import type { CheckInConfig, DepartureCount, Guest, WaiverTemplate } from "../checkin/entities.js";
+import type { CheckInConfig, DepartureCount, Guest, TripLink, WaiverTemplate } from "../checkin/entities.js";
 import type { RateLimitRefusal } from "../rate-limit/entities.js";
 
 /**
@@ -990,6 +990,16 @@ export interface Repository {
   listWaiverTemplates(): Promise<WaiverTemplate[]>;
   /** The version in force at `at`: the latest `effectiveFrom <= at`. Null before the first. */
   getCurrentWaiverTemplate(at: string): Promise<WaiverTemplate | null>;
+
+  /**
+   * Store a trip link (18.3b). **Throws on a duplicate** — a `code` already in use, or a second
+   * link for the same departure — with a Postgres-shaped "duplicate key" message on both adapters.
+   * The caller (`ensureTripLink`) re-reads or re-mints; an upsert would hand one trip's link to
+   * another (DEC-131: the database arbitrates uniqueness).
+   */
+  insertTripLink(link: TripLink): Promise<void>;
+  getTripLinkByCode(code: string): Promise<TripLink | null>;
+  getTripLinkForEvent(eventId: EventId): Promise<TripLink | null>;
 
   /** One signing's rows, written together (a guardian before the minors pointing at them).
    *  Insert-only per row: an existing id is left as it is — a signature is never rewritten, and

@@ -38,6 +38,19 @@ export interface WaiverTemplate {
   postedBy: string;
 }
 
+/**
+ * A departure's trip link (Phase 18.3b, DEC-190): the one URL the booker shares with the party and
+ * the dock QR opens. `code` is 8 characters of the booking-code alphabet. It is public within the
+ * party — it exists so strangers cannot find trips by trying ids — so it is stored as it is, and
+ * there is one per departure, made the first time it is needed and never revoked.
+ */
+export interface TripLink {
+  code: string;
+  eventId: EventId;
+  /** ISO-8601 UTC. */
+  createdAt: string;
+}
+
 /** Who a guarded minor's signer is to them. */
 export type GuardianRelation = "parent" | "guardian" | "custodian";
 

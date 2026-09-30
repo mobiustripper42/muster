@@ -104,7 +104,7 @@ import { XOLA_TRIP_MINUTES, minutesOfDay } from "../reservations/hull-busy.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { FailureWindow, Repository, ShiftChangeRow } from "../ports/repository.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
-import type { CheckInConfig, DepartureCount, Guest, WaiverTemplate } from "../checkin/entities.js";
+import type { CheckInConfig, DepartureCount, Guest, TripLink, WaiverTemplate } from "../checkin/entities.js";
 import { normalizeCheckInConfig } from "../checkin/entities.js";
 import type { RateLimitRefusal } from "../rate-limit/entities.js";
 
@@ -2843,6 +2843,25 @@ export class PostgresRepository implements Repository {
     return rows[0] ? toWaiverTemplate(rows[0]) : null;
   }
 
+  // ── Trip links (Phase 18.3b, migration 20260930204732) ─────────────────────
+  async insertTripLink(link: TripLink): Promise<void> {
+    // A plain insert: a duplicate code or a second link for the event raises, and the caller
+    // decides (DEC-131). Never an upsert — that would hand one trip's link to another.
+    await this.#pool.query("insert into trip_links (code, event_id, created_at) values ($1,$2,$3)", [
+      link.code,
+      link.eventId,
+      link.createdAt,
+    ]);
+  }
+  async getTripLinkByCode(code: string): Promise<TripLink | null> {
+    const { rows } = await this.#pool.query("select * from trip_links where code=$1", [code]);
+    return rows[0] ? toTripLink(rows[0]) : null;
+  }
+  async getTripLinkForEvent(eventId: EventId): Promise<TripLink | null> {
+    const { rows } = await this.#pool.query("select * from trip_links where event_id=$1", [eventId]);
+    return rows[0] ? toTripLink(rows[0]) : null;
+  }
+
   async saveGuests(guests: readonly Guest[]): Promise<void> {
     // One signing's rows land together or not at all; the guardian is first in the list, so the
     // minors' guardian_guest_id reference resolves inside the same transaction.
@@ -3011,6 +3030,12 @@ export class PostgresRepository implements Repository {
     }));
   }
 }
+
+const toTripLink = (r: any): TripLink => ({
+  code: r.code,
+  eventId: asId<"EventId">(r.event_id),
+  createdAt: r.created_at,
+});
 
 const toWaiverTemplate = (r: any): WaiverTemplate => ({
   id: asId<"WaiverTemplateId">(r.id),

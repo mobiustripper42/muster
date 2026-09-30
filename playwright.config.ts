@@ -100,7 +100,7 @@ export default defineConfig({
       // packs two <input type="time"> plus Save on one row, the tightest row in §2.9).
       name: "mobile",
       dependencies: ["setup"],
-      testMatch: /(auth-crew|admin-nav|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|time-off|payroll|payroll-reconcile|shifts-view|calendar-feed|other-shifts-today|vessel-location-admin|offering-catalog|add-ons|blocks|calendar|customers|purchases|book-availability|book-checkout|book-manage|phone-booking|pay-link|crew-time|admin-time-clock|waiver-admin)\.spec\.ts/,
+      testMatch: /(auth-crew|admin-nav|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|time-off|payroll|payroll-reconcile|shifts-view|calendar-feed|other-shifts-today|vessel-location-admin|offering-catalog|add-ons|blocks|calendar|customers|purchases|book-availability|book-checkout|book-manage|phone-booking|pay-link|crew-time|admin-time-clock|waiver-admin|trip-link)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
     {

@@ -148,7 +148,7 @@ export default async function AdminWaivers({ searchParams }: { searchParams: Pro
                     </p>
                   </div>
                   <AppLink
-                    href={`/admin/waivers?edit=${encodeURIComponent(t.id)}`}
+                    href={`/admin/waivers?edit=${encodeURIComponent(t.id)}#waiver-form`}
                     className="btn-secondary inline-flex min-h-[44px] items-center"
                   >
                     Edit
@@ -171,10 +171,21 @@ export default async function AdminWaivers({ searchParams }: { searchParams: Pro
             <ul className="flex flex-col divide-y divide-line">
               {past.map((t) => (
                 <li key={t.id} className="py-2">
-                  <details>
-                    <summary className="flex min-h-[44px] items-center text-sm text-ink">
-                      {t.version}
-                      <span className="ml-2 text-xs text-muted">from {fmtRunWhen(t.effectiveFrom)}</span>
+                  {/* The summary is a flex row, which drops the browser's own ▸ marker — so it says
+                      what a tap does ("Show text") and carries the house caret (`/crew/open`). */}
+                  <details className="group">
+                    <summary className="flex min-h-[44px] items-center gap-3 text-sm text-ink [&::-webkit-details-marker]:hidden">
+                      <span className="min-w-0 flex-1">
+                        {t.version}
+                        <span className="ml-2 text-xs text-muted">from {fmtRunWhen(t.effectiveFrom)}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1.5 text-accent">
+                        <span className="group-open:hidden">Show text</span>
+                        <span className="hidden group-open:inline">Hide text</span>
+                        <span aria-hidden className="transition-transform group-open:rotate-90">
+                          ›
+                        </span>
+                      </span>
                     </summary>
                     <VersionDetail version={t} meta={`Posted by ${posterOf(t)}, ${fmtRunWhen(t.postedAt)}`} />
                   </details>
@@ -233,7 +244,7 @@ function VersionForm({
 }) {
   const source = editing ?? current;
   return (
-    <section className="rounded-card border border-line bg-card shadow-sm">
+    <section id="waiver-form" className="rounded-card border border-line bg-card shadow-sm">
       <form key={editing?.id ?? "new"} action={saveWaiverVersion}>
         <UnsavedGuard restored={draft !== null} />
         <input type="hidden" name="form" value="version" />
@@ -271,6 +282,9 @@ function VersionForm({
               name="body"
               required
               rows={14}
+              // Edit lands in the words, not at the top of the page (operator, 2026-09-29) — a
+              // typo fix is why you edit. Also scrolls it into view; `#waiver-form` is the fallback.
+              autoFocus={editing !== null}
               defaultValue={draft?.get("body") ?? source?.body ?? ""}
               className={`${settingsInputClass} w-full py-2`}
             />

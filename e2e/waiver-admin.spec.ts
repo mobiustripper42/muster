@@ -46,6 +46,8 @@ test.describe("admin /admin/waivers", () => {
 
     await page.getByRole("link", { name: "Edit", exact: true }).click();
     await page.waitForURL(/edit=/);
+    // Lands in the text, not at the top of the page (operator, 2026-09-29).
+    await expect(page.locator('textarea[name="body"]')).toBeFocused();
     await expect(page.locator('textarea[name="body"]')).toHaveValue("Words with a tpyo.");
     await page.fill('textarea[name="body"]', "Words with a typo fixed.");
     await page.fill('input[name="version"]', "brewboat-2030-v1b");
@@ -88,6 +90,20 @@ test.describe("admin /admin/waivers", () => {
     await expect(page.getByText(/can’t be edited/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Post version" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+  });
+
+  test("a past version says it opens, and opens to its text", async ({ page }) => {
+    await plantWaiverTemplate({ id: "wt-old", version: "v-old", body: "Old words.", effectiveFrom: "2026-01-01T05:00:00.000Z" });
+    await plantWaiverTemplate({ id: "wt-new", version: "v-new", body: "New words.", effectiveFrom: "2026-02-01T05:00:00.000Z" });
+    await signInAsAdmin(page, "eric");
+    await page.goto("/admin/waivers");
+
+    const past = page.locator("section", { has: page.getByRole("heading", { name: "Past versions" }) });
+    await expect(past.getByText("Show text")).toBeVisible();
+    await expect(past.getByText("Old words.")).toBeHidden();
+    await past.getByText("Show text").click();
+    await expect(past.getByText("Old words.")).toBeVisible();
+    await expect(past.getByText("Hide text")).toBeVisible();
   });
 
   test("save the settings; a bad reminder list is refused", async ({ page }) => {

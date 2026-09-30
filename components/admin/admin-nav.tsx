@@ -143,13 +143,16 @@ export function AdminNav({
   }, [open]);
 
   return (
-    <nav ref={navRef} aria-label="Admin" className="sticky top-0 z-20 border-b border-line bg-card">
+    // Exactly `Shell fill`'s 3.25rem on desktop, border included (issue #1128): the fill height is
+    // the window less this bar, and a bar that came out a pixel or two taller — the border, or font
+    // rendering — left the window scrolling by that much under the two-column pages.
+    <nav ref={navRef} aria-label="Admin" className="sticky top-0 z-20 border-b border-line bg-card lg:h-[3.25rem]">
       {/* Wider than the `max-w-3xl` page shell on purpose (#586). The nav is chrome, not reading
           copy: borrowing the body-copy width capped nav content at 768px no matter how wide the
           monitor was, so a 1440px screen had ~830px of empty white bar on either side while the
           links fought for room in the middle. That manufactured the collision, and no bigger
           display could ever relieve it. */}
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5 lg:h-full lg:py-0">
         <div data-testid="nav-brand" className="flex min-w-0 items-baseline gap-2">
           <AppLink href="/admin" className="shrink-0 font-semibold text-ink">
             Muster

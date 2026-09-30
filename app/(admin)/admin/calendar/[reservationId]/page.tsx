@@ -408,8 +408,9 @@ export default async function ReservationDetailPage({
           filter: sp.filter ?? "",
         }}
         {...(actions ? { actions } : {})}
-      />
-      <BookingHistory trail={trail} />
+      >
+        <BookingHistory trail={trail} />
+      </ReservationDetailPane>
     </BookingFrame>
   );
 }
@@ -444,7 +445,7 @@ function BookingFrame({
           <>
             <CalendarControls data={data} />
             <CalendarLegend data={data} />
-            <CalendarGrid data={data} selectedReservationId={reservationId} />
+            <CalendarGrid data={data} selectedReservationId={reservationId} fill />
           </>
         }
         pane={
@@ -538,8 +539,9 @@ async function PhoneBookingPage({
           phone: reservation.phone,
           email: reservation.email,
         }}
-      />
-      <BookingHistory trail={trail} />
+      >
+        <BookingHistory trail={trail} />
+      </ReservationDetailPane>
     </BookingFrame>
   );
 }

@@ -50,13 +50,14 @@ export default async function AdminCalendar({
     );
   }
 
-  const calendar = (
+  // `fill` with a pane open: the grid's box scrolls under pinned controls (issue #1128).
+  const calendar = (fill: boolean) => (
     <>
       <CalendarError err={data.err} />
       <CalendarControls data={data} />
       <CalendarLegend data={data} />
       {data.slots.length === 0 && <CalendarEmptyNotice day={data.day} />}
-      <CalendarGrid data={data} />
+      <CalendarGrid data={data} fill={fill} />
     </>
   );
 
@@ -72,7 +73,7 @@ export default async function AdminCalendar({
       {data.pending ? (
         <MasterDetail
           layout="calendar"
-          list={calendar}
+          list={calendar(true)}
           pane={
             data.pending.action === "hold" && sp.book === "1" ? (
               <BookPane data={data} sp={sp} />
@@ -86,7 +87,7 @@ export default async function AdminCalendar({
           paneTestId="cal-pane-col"
         />
       ) : (
-        calendar
+        calendar(false)
       )}
 
       <VersionTag />

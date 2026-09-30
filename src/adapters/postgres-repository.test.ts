@@ -11,6 +11,7 @@ import { migrate } from "../../db/migrate.js";
 import { PostgresRepository } from "./postgres-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
 import { runCheckInContract } from "./check-in-contract.js";
+import { runRateLimitContract } from "./rate-limit-contract.js";
 import { clockIn } from "../crew/time-clock.js";
 import { FAKE_SIGNATURE, FakePaymentPort } from "./fake-payment.js";
 import {
@@ -183,6 +184,36 @@ if (!dbUp) {
   runCheckInContract("postgres", async () => {
     await truncateAll(pool);
     return new PostgresRepository(pool);
+  });
+  runRateLimitContract("postgres", async () => {
+    await truncateAll(pool);
+    return new PostgresRepository(pool);
+  });
+
+  /**
+   * The limiter's one real race (Phase 18.3a, DEC-189): simultaneous requests from one address.
+   * Postgres-only — the in-memory double is single-threaded and would pass by construction. A
+   * read-then-write counter hands several callers the same number and lets a burst through; the
+   * atomic upsert must hand out 1…N exactly once each.
+   */
+  describe("rate limit counter under concurrency (18.3a)", () => {
+    it("N parallel increments of one window return 1…N, each exactly once", async () => {
+      await truncateAll(pool);
+      const repo = new PostgresRepository(pool);
+      const n = 25;
+      const counts = await Promise.all(
+        Array.from({ length: n }, () =>
+          repo.incrementRateLimit(
+            "crew-sign-in",
+            "203.0.113.9",
+            "2026-09-30T15:00:00.000Z",
+            "2026-09-30T16:00:00.000Z",
+            "2026-09-30T15:00:10.000Z",
+          ),
+        ),
+      );
+      expect([...counts].sort((a, b) => a - b)).toEqual(Array.from({ length: n }, (_, i) => i + 1));
+    });
   });
 
   /**

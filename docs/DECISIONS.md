@@ -51,6 +51,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-144 — Doc consistency is a ratchet in `verify`, not an audit
 - DEC-159 — Lint encodes invariants, at error, inside the one gate — and every rule is measured before it is admitted (#757)
 - DEC-166 — A measured preset is admissible; the upgrade risk is accepted
+- DEC-189 — Rate limits are a per-IP fixed-window counter in our own Postgres
 
 ### Availability & commitment rules
 - DEC-009 — Availability is suppression-only — never a positive-availability calendar

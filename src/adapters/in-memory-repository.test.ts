@@ -6,6 +6,8 @@
 import { InMemoryRepository } from "./in-memory-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
 import { runCheckInContract } from "./check-in-contract.js";
+import { runRateLimitContract } from "./rate-limit-contract.js";
 
 runRepositoryContract("in-memory", async () => new InMemoryRepository());
 runCheckInContract("in-memory", async () => new InMemoryRepository());
+runRateLimitContract("in-memory", async () => new InMemoryRepository());

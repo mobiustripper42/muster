@@ -106,6 +106,7 @@ import type { FailureWindow, Repository, ShiftChangeRow } from "../ports/reposit
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
 import type { CheckInConfig, DepartureCount, Guest, WaiverTemplate } from "../checkin/entities.js";
 import { normalizeCheckInConfig } from "../checkin/entities.js";
+import type { RateLimitRefusal } from "../rate-limit/entities.js";
 
 /** Add `key: value` only when value is non-null — keeps optional fields absent. */
 function opt<K extends string, V>(
@@ -2952,6 +2953,62 @@ export class PostgresRepository implements Repository {
         [key, value, at],
       );
     }
+  }
+
+  // ── Rate limiting (Phase 18.3a, migration 20260930150902, DEC-189) ─────────
+  async incrementRateLimit(
+    bucket: string,
+    key: string,
+    windowStart: string,
+    expiresAt: string,
+    now: string,
+  ): Promise<number> {
+    // The sweep is its own statement: it can never touch the current window's row (that row's
+    // expires_at is in the future), so the upsert below needs no transaction around the pair.
+    // It sweeps EVERY ended window, not just this key's, for the recovery throttle's reason — a
+    // key that never returns would otherwise leave its row forever.
+    await this.#pool.query("delete from rate_limit_hits where expires_at <= $1", [now]);
+    // One atomic statement: simultaneous hits each get their own count (the concurrency test).
+    const { rows } = await this.#pool.query(
+      `insert into rate_limit_hits (bucket, key, window_start, expires_at, hits)
+       values ($1,$2,$3,$4,1)
+       on conflict (bucket, key, window_start) do update set hits = rate_limit_hits.hits + 1
+       returning hits`,
+      [bucket, key, windowStart, expiresAt],
+    );
+    return Number(rows[0].hits);
+  }
+  async recordRateLimitRefusal(r: RateLimitRefusal, now: string): Promise<void> {
+    await this.#pool.query("delete from rate_limit_refusals where expires_at <= $1", [now]);
+    // Only ever raises the counts and the last time, only ever lowers the first time — so a slow
+    // request finishing after a newer one cannot write the log backwards.
+    await this.#pool.query(
+      `insert into rate_limit_refusals
+         (bucket, key, window_start, hits, refused, first_refused_at, last_refused_at, expires_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (bucket, key, window_start) do update set
+         hits             = greatest(rate_limit_refusals.hits, excluded.hits),
+         refused          = greatest(rate_limit_refusals.refused, excluded.refused),
+         first_refused_at = least(rate_limit_refusals.first_refused_at, excluded.first_refused_at),
+         last_refused_at  = greatest(rate_limit_refusals.last_refused_at, excluded.last_refused_at),
+         expires_at       = greatest(rate_limit_refusals.expires_at, excluded.expires_at)`,
+      [r.bucket, r.key, r.windowStart, r.hits, r.refused, r.firstRefusedAt, r.lastRefusedAt, r.expiresAt],
+    );
+  }
+  async listRateLimitRefusals(): Promise<RateLimitRefusal[]> {
+    const { rows } = await this.#pool.query(
+      "select * from rate_limit_refusals order by window_start, key",
+    );
+    return rows.map((r) => ({
+      bucket: r.bucket,
+      key: r.key,
+      windowStart: r.window_start,
+      hits: Number(r.hits),
+      refused: Number(r.refused),
+      firstRefusedAt: r.first_refused_at,
+      lastRefusedAt: r.last_refused_at,
+      expiresAt: r.expires_at,
+    }));
   }
 }
 

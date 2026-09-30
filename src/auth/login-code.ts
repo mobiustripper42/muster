@@ -33,6 +33,7 @@ import { createHash, randomInt } from "node:crypto";
 import type { CrewMember, LoginCode, Subject } from "../domain/entities.js";
 import { assertIsoDateTime } from "../domain/iso-date.js";
 import type { Repository } from "../ports/repository.js";
+import { takeRateLimit, type RateLimitPolicy } from "../rate-limit/rate-limit.js";
 
 /** How long a code stays redeemable. Short by design. */
 export const CODE_TTL_MS = 10 * 60_000;
@@ -97,12 +98,35 @@ function matchCrewByEmail(
 
 export interface RequestParams {
   email: string;
+  /**
+   * The requester's address as a limiter key (`limitKeyFor`), or null when it is not known — then
+   * nothing is limited. Omitted by callers that have no request (tests, scripts).
+   */
+  clientKey?: string | null;
 }
+
+/**
+ * Sign-in requests per client address per hour (Phase 18.3a, DEC-189). Bounds issue #579's sample
+ * budget — a few hundred timed requests separate an on-roster email from an off-roster one, and
+ * this allows one or two candidates per address per day — while leaving room for a whole crew
+ * signing in over one Wi-Fi. It does NOT close #579: the timing gap is still there, just starved.
+ *
+ * Fails open: the request stage grants nothing by itself, and DEC-142's per-subject window still
+ * guards the verify stage. A broken counter must not lock the operator out.
+ */
+export const CREW_SIGN_IN_LIMIT: RateLimitPolicy = {
+  bucket: "crew-sign-in",
+  limit: 20,
+  windowMs: 60 * 60_000,
+  failOpen: true,
+};
 
 export interface RequestDeps {
   now: Date;
   /** Returns a fresh 6-digit code. Inject crypto-random in production. */
   mintCode: () => string;
+  /** Told when the rate limiter itself fails (the request still proceeds — fail open). */
+  onLimiterFailure?: (message: string) => void;
 }
 
 /**
@@ -118,7 +142,9 @@ export type RequestResult =
       recipientName: string;
       code: string;
     }
-  | { outcome: "skip" };
+  | { outcome: "skip" }
+  /** Too many requests from this address. Says nothing about the roster — only the address. */
+  | { outcome: "throttled"; retryAfterMs: number };
 
 /**
  * Mint a login code for a matching email and tell the caller to deliver it.
@@ -140,6 +166,20 @@ export async function requestLoginCode(
   params: RequestParams,
   deps: RequestDeps,
 ): Promise<RequestResult> {
+  // Limited FIRST, before the roster is read: a refusal must look the same for a crew email and a
+  // stranger's, and it adds one round trip that is identical on both paths — so it does not widen
+  // issue #579's gap, only bounds how many samples of it an address gets.
+  const limit = await takeRateLimit(
+    {
+      repo,
+      now: () => deps.now.toISOString(),
+      ...(deps.onLimiterFailure ? { onFailure: deps.onLimiterFailure } : {}),
+    },
+    CREW_SIGN_IN_LIMIT,
+    params.clientKey ?? null,
+  );
+  if (!limit.allowed) return { outcome: "throttled", retryAfterMs: limit.retryAfterMs };
+
   const crew = matchCrewByEmail(await repo.listCrewMembers(), params.email);
 
   // Run the mint+hash regardless — equal CPU work on match and non-match.

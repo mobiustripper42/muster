@@ -90,6 +90,7 @@ import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
 import type { CheckInConfig, DepartureCount, Guest, WaiverTemplate } from "../checkin/entities.js";
 import { normalizeCheckInConfig } from "../checkin/entities.js";
+import type { RateLimitRefusal } from "../rate-limit/entities.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -1457,5 +1458,48 @@ export class InMemoryRepository implements Repository {
   }
   async setCheckInConfig(patch: Partial<CheckInConfig>, _at: string): Promise<void> {
     this.#checkInConfig = { ...this.#checkInConfig, ...patch };
+  }
+
+  // ── Rate limiting (Phase 18.3a, DEC-189) ──────────────────────────────────
+  #rateLimitHits = new Map<string, { expiresAt: string; hits: number }>();
+  #rateLimitRefusals = new Map<string, RateLimitRefusal>();
+
+  async incrementRateLimit(
+    bucket: string,
+    key: string,
+    windowStart: string,
+    expiresAt: string,
+    now: string,
+  ): Promise<number> {
+    // Mirrors the Postgres sweep-then-upsert: every ended window goes, then this one counts.
+    for (const [k, row] of this.#rateLimitHits) if (row.expiresAt <= now) this.#rateLimitHits.delete(k);
+    const id = JSON.stringify([bucket, key, windowStart]);
+    const hits = (this.#rateLimitHits.get(id)?.hits ?? 0) + 1;
+    this.#rateLimitHits.set(id, { expiresAt, hits });
+    return hits;
+  }
+  async recordRateLimitRefusal(r: RateLimitRefusal, now: string): Promise<void> {
+    for (const [k, row] of this.#rateLimitRefusals) if (row.expiresAt <= now) this.#rateLimitRefusals.delete(k);
+    const id = JSON.stringify([r.bucket, r.key, r.windowStart]);
+    const prior = this.#rateLimitRefusals.get(id);
+    const max = (a: string, b: string) => (a > b ? a : b);
+    this.#rateLimitRefusals.set(
+      id,
+      prior
+        ? {
+            ...prior,
+            hits: Math.max(prior.hits, r.hits),
+            refused: Math.max(prior.refused, r.refused),
+            firstRefusedAt: prior.firstRefusedAt < r.firstRefusedAt ? prior.firstRefusedAt : r.firstRefusedAt,
+            lastRefusedAt: max(prior.lastRefusedAt, r.lastRefusedAt),
+            expiresAt: max(prior.expiresAt, r.expiresAt),
+          }
+        : { ...r },
+    );
+  }
+  async listRateLimitRefusals(): Promise<RateLimitRefusal[]> {
+    return [...this.#rateLimitRefusals.values()]
+      .sort((a, b) => a.windowStart.localeCompare(b.windowStart) || a.key.localeCompare(b.key))
+      .map((r) => ({ ...r }));
   }
 }

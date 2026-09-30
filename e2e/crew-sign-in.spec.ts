@@ -14,7 +14,9 @@ import {
   signInAsCrew,
   seedCrewMember,
   removeCrewRow,
+  exhaustRateLimit,
 } from "./fixtures.js";
+import { CREW_SIGN_IN_LIMIT } from "../src/auth/login-code.js";
 import type { Page } from "@playwright/test";
 
 const QUINT_EMAIL = "quint@bb.test";
@@ -44,6 +46,25 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
     await page.getByRole("button", { name: /email me a code/i }).click();
     await expect(page.getByText(CODE_SENT)).toBeVisible();
     await expect(page.getByLabel(/enter your code/i)).toBeVisible();
+  });
+
+  test("past the per-network limit, a crew email and a stranger's get the same wait message (18.3a)", async ({
+    page,
+  }) => {
+    // Local runs have no Vercel in front, so the address is set by hand (fixtures § exhaustRateLimit).
+    await page.setExtraHTTPHeaders({ "x-forwarded-for": "203.0.113.77" });
+    await exhaustRateLimit(CREW_SIGN_IN_LIMIT, "203.0.113.77");
+
+    for (const email of [QUINT_EMAIL, "nobody@nowhere.test"]) {
+      await page.goto("/crew");
+      await page.getByLabel(/sign in with your crew email/i).fill(email);
+      await page.getByRole("button", { name: /email me a code/i }).click();
+      await page.waitForURL(/limited=\d+/);
+      await expect(page.getByText(/too many sign-in requests from this network\. try again in \d+ minutes?\./i)).toBeVisible();
+      // Still on the email step, with no code sent: nothing about the roster either way.
+      await expect(page.getByText(CODE_SENT)).toHaveCount(0);
+      await expect(page.getByLabel(/sign in with your crew email/i)).toBeVisible();
+    }
   });
 
   test("an unknown email yields the IDENTICAL screen (no enumeration)", async ({

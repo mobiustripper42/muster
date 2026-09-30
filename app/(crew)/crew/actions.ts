@@ -1,6 +1,6 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { recordResponseAndConfirm } from "@core/asks/ask-loop.js";
@@ -10,8 +10,10 @@ import {
   verifyLoginCode as checkLoginCode,
 } from "@core/auth/login-code.js";
 import { answeredNoticeCode } from "@core/crewapp/answered-code.js";
+import { limitKeyFor } from "@core/rate-limit/rate-limit.js";
 import { asId } from "@core/domain/ids.js";
 import { endSession, readSubject, startSession } from "../../lib/auth";
+import { clientIpFrom } from "../../lib/client-ip";
 import { echoLoginCodeForDev, sendLoginCodeEmail } from "../../lib/auth-delivery";
 import {
   LOGIN_EMAIL_COOKIE,
@@ -102,13 +104,22 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
   // A blank submit isn't an enumeration probe — just re-show the email step.
   if (!email) redirect("/crew");
 
+  // Rate limited per address (Phase 18.3a, DEC-189), inside `mintLoginCode` before any roster read.
+  const clientKey = limitKeyFor(clientIpFrom(await headers()));
+  let throttledMinutes: number | null = null;
   try {
     const result = await mintLoginCode(
       getRepo(),
-      { email },
-      { now: new Date(), mintCode: randomCode },
+      { email, clientKey },
+      {
+        now: new Date(),
+        mintCode: randomCode,
+        onLimiterFailure: (m) => console.error(`requestLoginCode: ${m}`),
+      },
     );
-    if (result.outcome === "deliver") {
+    if (result.outcome === "throttled") {
+      throttledMinutes = Math.max(1, Math.ceil(result.retryAfterMs / 60_000));
+    } else if (result.outcome === "deliver") {
       const d = {
         crewMemberId: result.subject.id,
         email: result.recipientEmail,
@@ -132,6 +143,10 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
     // fall through to the same code screen (a wrong/absent code just won't verify).
     console.error("requestLoginCode failed", e);
   }
+
+  // Back to the email step with how long to wait. The answer is about the ADDRESS, never the
+  // email — the same for a roster email and a stranger's — so it leaks nothing about the crew.
+  if (throttledMinutes !== null) redirect(`/crew?limited=${throttledMinutes}`);
 
   (await cookies()).set(
     LOGIN_EMAIL_COOKIE,

@@ -392,7 +392,8 @@ function metaLine(v: ReservationDetailView): string {
     v.time ? clockTime(v.time) : "",
     v.vesselName ?? "",
     v.date ? formatShortDay(v.date) : "",
-    HOW_BOOKED[v.source],
+    // Paid, a phone booking is `muster` like any other; who sold it is on its history (#1082).
+    v.soldByPhone ? HOW_BOOKED.admin : HOW_BOOKED[v.source],
   ]
     .filter(Boolean)
     .join(" · ");

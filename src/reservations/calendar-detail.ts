@@ -101,6 +101,9 @@ export interface ReservationDetailView {
   offeringId?: string | undefined;
   status: Reservation["status"];
   source: Reservation["source"];
+  /** A paid booking the operator sold by phone (issue #1082 part C). `source` turns `muster` at
+   *  payment, so the pane reads this — set by the route from the history (`soldByPhone`). */
+  soldByPhone?: boolean | undefined;
   phone?: string | undefined;
   email?: string | undefined;
   /** Last MATERIAL change (DEC-029) — not a booking date; render it as "Updated". */

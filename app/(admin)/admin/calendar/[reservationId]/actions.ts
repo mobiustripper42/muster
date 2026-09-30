@@ -147,6 +147,14 @@ export async function createBalanceLink(formData: FormData): Promise<void> {
   redirect(back({ balanceUrl: result.url }));
 }
 
+/** The payment port when this deploy has Stripe keys, else none — for the best-effort intent
+ *  cancel when an unpaid phone booking ends. */
+function stripeIfConfigured(): StripePaymentPort | undefined {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  return secretKey && webhookSecret ? new StripePaymentPort(secretKey, webhookSecret) : undefined;
+}
+
 /** Every code `cancelPhoneBooking` can put in `?cancelErr=` — the pane's copy table is keyed on it. */
 export type PhoneCancelErr =
   | Extract<Awaited<ReturnType<typeof cancelUnpaidPhoneBooking>>, { ok: false }>["reason"]
@@ -176,7 +184,9 @@ export async function cancelPhoneBooking(formData: FormData): Promise<void> {
   let result: Awaited<ReturnType<typeof cancelUnpaidPhoneBooking>> | null = null;
   try {
     result = await cancelUnpaidPhoneBooking(
-      { repo: getRepo(), now: () => new Date().toISOString() },
+      // With Stripe, so a payment the customer already started on the link is cancelled too
+      // (issue #1082 part C). Without keys there is no intent to cancel.
+      { repo: getRepo(), now: () => new Date().toISOString(), payments: stripeIfConfigured() },
       asId<"ReservationId">(reservationId),
       by,
     );
@@ -266,6 +276,8 @@ export async function cancelBooking(formData: FormData): Promise<void> {
         // This is the notice that matters most in the whole product: without it a confirmed
         // crew member drives to a boat that is not sailing.
         relayFormNotices: forwardFormNotices,
+        // Only used if this is an unpaid phone booking, which `cancelReservation` hands on.
+        payments: stripeIfConfigured(),
       },
       asId<"ReservationId">(reservationId),
       by,

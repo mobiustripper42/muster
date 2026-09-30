@@ -38,6 +38,9 @@ type Search = { q?: string; state?: string };
 
 const STATES: { key: PaymentState | "all"; label: string }[] = [
   { key: "all", label: "All" },
+  // Phone bookings holding a boat until the customer pays the link (issue #1082 part C, SPEC
+  // §2.10.6). Second, after All: it is the operator's chase list, the one they work daily.
+  { key: "awaiting", label: "Awaiting payment" },
   { key: "unpaid", label: "Unpaid" },
   { key: "deposit", label: "Deposit" },
   { key: "paid", label: "Paid" },
@@ -54,6 +57,8 @@ const STATES: { key: PaymentState | "all"; label: string }[] = [
 
 /** Badge styling per state — existing palette tokens only (DEC-021/042, no new colors). */
 const BADGE: Record<PaymentState, string> = {
+  // Same tokens as deposit and pending — money is owed and expected, not missing.
+  awaiting: "border-warn-line bg-warn-bg text-warn",
   paid: "border-ok-line bg-ok-bg text-ok",
   deposit: "border-warn-line bg-warn-bg text-warn",
   unpaid: "border-line bg-bg text-muted",
@@ -66,6 +71,10 @@ const BADGE: Record<PaymentState, string> = {
   pending: "border-warn-line bg-warn-bg text-warn",
   cancelled: "border-line bg-bg text-muted",
 };
+
+/** What the badge says. The state's own word, except where one word would mislead: "awaiting" on
+ *  its own doesn't say what for. */
+const BADGE_TEXT: Partial<Record<PaymentState, string>> = { awaiting: "awaiting payment" };
 
 /**
  * One phone format in the column. The reservation stores the phone as the customer typed it
@@ -273,7 +282,7 @@ export default async function AdminPurchases({
                         data-testid={`row-state-${r.reservationId}`}
                         className={`inline-block rounded border px-1.5 py-px text-[10px] uppercase tracking-wide ${BADGE[r.state]}`}
                       >
-                        {r.state}
+                        {BADGE_TEXT[r.state] ?? r.state}
                       </span>
                     </td>
                   </tr>

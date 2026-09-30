@@ -27,8 +27,10 @@ import { logFormAudit } from "../oracle/audit-log.js";
 import { logSwallowed } from "../log.js";
 import { eventIdOfBooked, isBooked } from "../domain/entities.js";
 import type { CancelledBy, Payment } from "../domain/entities.js";
-import type { EventId, ReservationId } from "../domain/ids.js";
+import { asId, type EventId, type ReservationId } from "../domain/ids.js";
+import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
+import { recordTrail } from "./trail.js";
 import { refundableTotalFor } from "./refund-payment.js";
 import { operatorCancelRefundCents, refundOwedCents } from "./refund-terms.js";
 
@@ -94,6 +96,13 @@ export interface CancelDeps {
   repo: Repository;
   now: () => string;
   /**
+   * Stripe, when this deploy has it — so cancelling an operator's unpaid phone booking also retires
+   * the payment its link started (issue #1082 part C). Carried here, not only on the phone-booking
+   * entry, so `cancelReservation`'s delegation keeps the guarantee (`@code-review`). Absent ⇒ no
+   * intent is cancelled; nothing else in a cancel needs it.
+   */
+  payments?: PaymentPort | undefined;
+  /**
    * Relay a re-form's crew notices — "you're off" (`cancelledCrew`), DEC-084/#244. Injected
    * because the channel wiring lives in `app/`, the same seam the booking webhook uses.
    *
@@ -140,9 +149,16 @@ export type CancelOutcome =
  *
  * The write is guarded too: the customer can pay between the read and the write. The confirm flip
  * and `cancelPendingIfUnpaid` both require `status='pending'`, so exactly one lands.
+ *
+ * **And the payment link's open intent is retired with it (issue #1082 part C), given `payments`.**
+ * The pay action refuses a cancelled booking, but a customer who pressed Pay before the cancel may
+ * still be mid-payment — typically on their bank's 3-D Secure screen — and approving there would
+ * charge a cancelled booking. Cancelling the intent makes that approval fail instead. Best-effort,
+ * after the cancel has committed: Stripe refuses to cancel an intent that is already charging, and
+ * that seconds-wide case still lands on the paid-but-unbookable alert (`booking-webhook.ts`).
  */
 export async function cancelUnpaidPhoneBooking(
-  deps: Pick<CancelDeps, "repo" | "now">,
+  deps: Pick<CancelDeps, "repo" | "now" | "payments">,
   reservationId: ReservationId,
   by: CancelledBy,
 ): Promise<CancelOutcome> {
@@ -154,11 +170,47 @@ export async function cancelUnpaidPhoneBooking(
   if (reservation.status === "cancelled") return { ok: true, alreadyCancelled: true };
   if (reservation.status !== "pending") return { ok: false, reason: "not_booked" };
   if (await deps.repo.cancelPendingIfUnpaid(reservationId, by, deps.now())) {
+    if (deps.payments) await retireOpenIntents({ ...deps, payments: deps.payments }, reservationId);
     return { ok: true, alreadyCancelled: false };
   }
   const now = await deps.repo.getReservation(reservationId);
   if (now?.status === "cancelled") return { ok: true, alreadyCancelled: true };
   return { ok: false, reason: now?.status === "booked" ? "now_booked" : "not_booked" };
+}
+
+/**
+ * Cancel every intent a cancelled phone booking carries, so none can still be paid. Re-read after
+ * the cancel so an intent minted between the caller's read and the write is included. Never throws:
+ * the booking is already cancelled, and a refusal is ordinary (an intent already cancelled, or one
+ * mid-charge) — logged, and recorded only when the cancel took, like checkout's (15.10).
+ */
+async function retireOpenIntents(
+  deps: { repo: Repository; now: () => string; payments: PaymentPort },
+  reservationId: ReservationId,
+): Promise<void> {
+  const row = await deps.repo.getReservation(reservationId).catch((e: unknown) => {
+    logSwallowed("reservations:retireOpenIntents", e, `could not re-read ${reservationId} to retire its intents`);
+    return null;
+  });
+  for (const id of row?.paymentIntentIds ?? []) {
+    const retired = await deps.payments
+      .cancelPaymentIntent(id, "abandoned")
+      .then(() => true)
+      .catch((e: unknown) => {
+        logSwallowed("reservations:retireOpenIntents", e, `could not cancel intent ${id} on cancelled ${reservationId}`);
+        return false;
+      });
+    if (retired) {
+      await recordTrail(deps, {
+        id: asId<"TrailEventId">(`payment_superseded:${id}`),
+        reservationId,
+        paymentIntentId: asId<"PaymentIntentId">(id),
+        actorKind: "engine",
+        type: "payment_superseded",
+        metadata: { reason: "the booking was cancelled before it was paid" },
+      });
+    }
+  }
 }
 
 /**

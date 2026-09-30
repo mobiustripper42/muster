@@ -12,7 +12,7 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { Offering, Reservation, Vessel } from "../domain/entities.js";
 import { asId, type ReservationId } from "../domain/ids.js";
 import type { WebhookDeps } from "./booking-webhook.js";
-import { cancelUnpaidPhoneBooking } from "./cancel-reservation.js";
+import { cancelReservation, cancelUnpaidPhoneBooking } from "./cancel-reservation.js";
 import { confirmBookingFromIntent } from "./confirm-booking.js";
 import { bookForCustomer } from "./operator-booking.js";
 import { maskedPhone, payLinkMoney, payLinkState, startPayByLink } from "./pay-by-link.js";
@@ -226,6 +226,56 @@ describe("maskedPhone — the already-paid page names the number without printin
   it("reads a number stored as it was typed, not only canonical (older and imported rows)", () => {
     expect(maskedPhone("216-555-0148")).toBe("(216) 555-…48");
     expect(maskedPhone("+1 216 555 0148")).toBe("(216) 555-…48");
+  });
+});
+
+describe("cancelling retires the open payment (issue #1082 part C)", () => {
+  it("cancelling an unpaid phone booking cancels its open Stripe payment, and says so on its history", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    await start(repo, payments, row.id);
+
+    const res = await cancelUnpaidPhoneBooking({ repo, now, payments }, row.id, "operator");
+    expect(res).toEqual({ ok: true, alreadyCancelled: false });
+    expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+    // Nobody can pay it now — a customer sitting on their bank's approval screen gets a failure.
+    expect(payments.liveAmountCents.has("pi_fake_1")).toBe(false);
+    const trail = await repo.listTrailEventsFor(row.id, ["pi_fake_1"]);
+    expect(trail.map((e) => e.type)).toContain("payment_superseded");
+  });
+
+  it("Stripe refusing the cancel doesn't stop the booking being cancelled, and records nothing false", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    await start(repo, payments, row.id);
+    payments.cancelError = new Error("already succeeded");
+
+    expect(await cancelUnpaidPhoneBooking({ repo, now, payments }, row.id, "customer")).toEqual({
+      ok: true,
+      alreadyCancelled: false,
+    });
+    expect(await repo.getReservation(row.id)).toMatchObject({ status: "cancelled" });
+    const trail = await repo.listTrailEventsFor(row.id, ["pi_fake_1"]);
+    expect(trail.map((e) => e.type)).not.toContain("payment_superseded");
+  });
+
+  it("the general cancel, handed a phone booking, retires its payment too", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    await start(repo, payments, row.id);
+
+    expect(await cancelReservation({ repo, now, payments }, row.id, "operator")).toEqual({
+      ok: true,
+      alreadyCancelled: false,
+    });
+    expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+  });
+
+  it("a booking that never reached the card screen has nothing to cancel", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    await cancelUnpaidPhoneBooking({ repo, now, payments }, row.id, "operator");
+    expect(payments.cancelled).toEqual([]);
   });
 });
 

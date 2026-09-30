@@ -12,7 +12,7 @@ import type { Gratuity, Payment, Reservation } from "../domain/entities.js";
 import type { ImportItemAtRun } from "../import/import-audit.js";
 import type { TrailEvent } from "../domain/reservation-trail.js";
 import { asId } from "../domain/ids.js";
-import { reservationTrail, type TrailInputs } from "./reservation-trail-view.js";
+import { reservationTrail, soldByPhone, type TrailEntry, type TrailInputs } from "./reservation-trail-view.js";
 
 const RES = asId<"ReservationId">("resv-1");
 const ASOF = "2026-07-04T18:00:00.000Z";
@@ -382,5 +382,24 @@ describe("reservationTrail — ordering is deterministic", () => {
       imports: [...base.imports].reverse(),
     }).map((r) => r.id);
     expect(reversed).toEqual(forward);
+  });
+});
+
+describe("soldByPhone — who sold a booking survives its payment (issue #1082 part C)", () => {
+  const entry = (type: TrailEntry["type"], actorKind: TrailEntry["actorKind"]): TrailEntry => ({
+    id: `${type}:x`,
+    type,
+    when: { kind: "recorded", at: "2026-10-01T12:00:00.000Z" },
+    actorKind,
+    metadata: {},
+  });
+
+  it("a booking the operator sold reads as sold by phone once paid", () => {
+    expect(soldByPhone([entry("payment_link_sent", "admin"), entry("booked", "admin")])).toBe(true);
+  });
+
+  it("a customer's own booking does not, whoever else touched it", () => {
+    expect(soldByPhone([entry("booked", "customer"), entry("link_resent", "admin")])).toBe(false);
+    expect(soldByPhone([])).toBe(false);
   });
 });

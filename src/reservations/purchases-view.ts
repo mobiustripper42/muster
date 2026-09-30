@@ -32,8 +32,20 @@ import { balanceDueCents, countsAsPaid, taxCentsFor } from "./payment-config.js"
  *   it is not `cancelled` (nobody cancelled anything) and not `unpaid` (that is a BOOKED row
  *   whose payment never landed — a defect, where this is a state). Lapsed is not distinguishable
  *   here until the row carries a reserved time (14.4).
+ * - `awaiting` (issue #1082 part C, SPEC §2.10.6) — an operator's phone booking, holding the boat
+ *   until the customer pays the link. Not `pending`: that is a web checkout that lapses in minutes,
+ *   where this holds until a person acts, and the operator works this list to chase it. Named for
+ *   "boat held, money owed" so deposit balances can join it when deposits return.
  */
-export type PaymentState = "pending" | "cancelled" | "disputed" | "refunded" | "paid" | "deposit" | "unpaid";
+export type PaymentState =
+  | "awaiting"
+  | "pending"
+  | "cancelled"
+  | "disputed"
+  | "refunded"
+  | "paid"
+  | "deposit"
+  | "unpaid";
 
 export interface PurchaseRow {
   reservationId: string;
@@ -107,7 +119,7 @@ function stateOf(
   // Reservation status outranks money, and each status is named (§2.8.1 — no deny-list):
   // a cancelled booking is not a live order; a pending one is not an order yet.
   if (reservation.status === "cancelled") return "cancelled";
-  if (reservation.status === "pending") return "pending";
+  if (reservation.status === "pending") return reservation.source === "admin" ? "awaiting" : "pending";
   // Above `refunded` and `unpaid` both. Without this a chargeback renders as "Unpaid" — true,
   // since `countsAsPaid` excludes it, but indistinguishable from a booking whose webhook never
   // landed, which is a different problem with a different fix. A dispute is the more specific
@@ -118,16 +130,40 @@ function stateOf(
   return balanceCents > 0 ? "deposit" : "paid";
 }
 
-/** Build one row per reservation. Muster-side only — Xola owns its own money (DEC-105). */
+/**
+ * Fare + tax, and whether it can be trusted. A booked row prices off its Event (as since 12.12a);
+ * a row with no Event yet — a phone booking awaiting payment, a checkout in flight, one cancelled
+ * before it was paid — carries the invoice frozen when it was written (DEC-164), which is what the
+ * customer was quoted and what they will be charged.
+ */
+function orderTotal(
+  r: Reservation,
+  event: Event | undefined,
+  taxRateBps: number,
+): { fareCents: number; totalCents: number; priceKnown: boolean } {
+  if (!event && r.invoice) {
+    const fareCents = r.invoice.fareCents + r.invoice.extrasCents;
+    return { fareCents, totalCents: fareCents + r.invoice.taxCents, priceKnown: true };
+  }
+  const fareCents = (event?.price ?? 0) + (r.extrasCents ?? 0);
+  return {
+    fareCents,
+    totalCents: fareCents + taxCentsFor(fareCents, taxRateBps),
+    priceKnown: typeof event?.price === "number",
+  };
+}
+
+/**
+ * Build one row per reservation. Muster's own sales and the operator's phone bookings (`admin`,
+ * until paid — then they are `muster`); Xola owns its own money (DEC-105).
+ */
 export function buildPurchaseRows(input: PurchasesInput): PurchaseRow[] {
   const rows: PurchaseRow[] = [];
   for (const r of input.reservations) {
-    if (r.source !== "muster") continue;
+    if (r.source !== "muster" && r.source !== "admin") continue;
 
     const event = input.eventsById.get(String(r.eventId));
-    const priceKnown = typeof event?.price === "number";
-    const fareCents = (event?.price ?? 0) + (r.extrasCents ?? 0);
-    const totalCents = fareCents + taxCentsFor(fareCents, input.taxRateBps);
+    const { fareCents, totalCents, priceKnown } = orderTotal(r, event, input.taxRateBps);
     const payments = input.paymentsByReservation.get(String(r.id)) ?? [];
     // `countsAsPaid`, shared with `balanceOwedCents` — a partially refunded row is still
     // money the customer paid, shown gross here with `refundedCents` on its own line (#522).
@@ -144,10 +180,12 @@ export function buildPurchaseRows(input: PurchasesInput): PurchaseRow[] {
       customerName: r.customerName,
       phone: r.phone,
       email: r.email,
-      date: event?.date,
-      time: event?.time,
+      // A row with no Event yet names its slot itself (§2.8.2), so it reads as a trip rather than
+      // a dash.
+      date: event?.date ?? r.date,
+      time: event?.time ?? r.time,
       offeringName: input.offeringNameByEventId?.get(String(r.eventId)),
-      vesselName: event ? input.vesselNameById?.get(String(event.vesselId)) : undefined,
+      vesselName: input.vesselNameById?.get(String(event?.vesselId ?? r.vesselId)),
       guestCount: r.partySize,
       totalCents,
       paidCents,
@@ -203,6 +241,7 @@ export function searchPurchases(rows: readonly PurchaseRow[], query: string): Pu
 export function stateCounts(rows: readonly PurchaseRow[]): Record<PaymentState | "all", number> {
   const counts: Record<PaymentState | "all", number> = {
     all: rows.length,
+    awaiting: 0,
     pending: 0,
     cancelled: 0,
     disputed: 0,

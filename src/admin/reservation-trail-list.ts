@@ -99,6 +99,7 @@ export const TRAIL_TYPE_LABEL: Record<TrailEventType, string> = {
   link_reissued: "Link reissued, old one killed",
   link_recovery_requested: "Link recovery requested",
   change_requested: "Change requested",
+  payment_link_sent: "Payment link sent",
   sold_out_notice_sent: "Sold-out notice sent",
   sold_out_notice_failed: "Sold-out notice failed",
 

@@ -263,7 +263,52 @@ export async function createDeparturePaymentIntent(
     );
   };
 
-  const invoice = pending.invoice!; // the builder above always sets it
+  return attachPaymentIntent(
+    { repo, payments, now },
+    pending,
+    {
+      // What a HUMAN reads on the charge (#679) — without it the dashboard's payments list is a
+      // column of bare dollar amounts. Offering, departure, party size, who booked: enough to
+      // answer a phone call without opening anything.
+      description: `${offering!.name} — ${req.date} ${req.time} · ${req.guestCount} guest${
+        req.guestCount === 1 ? "" : "s"
+      } · ${req.customerName}`,
+      // Email is OPTIONAL at `/book` (phone is the identity, DEC-132), so this is absent on a
+      // real and ordinary booking. Absent ⇒ Stripe sends no receipt; present ⇒ it does, in live
+      // mode regardless of the account's email settings. Passing it is the decision to send one.
+      ...(req.email !== undefined && req.email !== "" ? { receiptEmail: req.email } : {}),
+    },
+    noteDetailsChanged,
+  );
+}
+
+/** What the charge says to a person: the dashboard line, and whether Stripe emails a receipt. */
+export interface IntentCharge {
+  description: string;
+  receiptEmail?: string;
+}
+
+/**
+ * Put a payable intent on a pending row: reuse the one it already has, or retire it and mint a
+ * fresh one (15.8, 15.10, 15.11) — the rules below, for every surface that takes a booking's money.
+ *
+ * Split out of `createDeparturePaymentIntent` for the payment link (issue #1082 part B): an
+ * operator's phone booking is paid through the same kind of row, and a second copy of this block
+ * would be a second place a stale tab could pay the wrong amount. The row is the caller's —
+ * claimed here, or the operator's `admin` row there — and `amountDueNowCents` on its frozen invoice
+ * is what is charged.
+ *
+ * `afterAttempt` runs once the attempt is written, on both paths that write one; checkout uses it
+ * to record what a retry overwrote.
+ */
+export async function attachPaymentIntent(
+  deps: { repo: Repository; payments: PaymentPort; now: () => string },
+  pending: Reservation,
+  charge: IntentCharge,
+  afterAttempt: () => Promise<void> = async () => {},
+): Promise<{ ok: true; clientSecret: string; paymentIntentId: string } | { ok: false; reason: "already_paid" }> {
+  const { repo, payments, now } = deps;
+  const invoice = pending.invoice!; // every pending row carries one (DEC-164)
   // The charge is READ from the frozen invoice rather than recomputed, so what Stripe is asked
   // for and what the row says cannot drift. Until 15.4 this line recomputed it from live
   // `config` — the comment claimed the freeze and the code did not have it, and an operator
@@ -349,7 +394,7 @@ export async function createDeparturePaymentIntent(
       // Nothing new to append — this attempt minted no id. The invoice and the customer's answers
       // still re-freeze, which is what `null` means here.
       await repo.recordCheckoutAttempt(pending, null);
-      await noteDetailsChanged();
+      await afterAttempt();
       return { ok: true, clientSecret: raised.clientSecret, paymentIntentId: priorIntentId };
     }
   }
@@ -433,22 +478,13 @@ export async function createDeparturePaymentIntent(
     // completed, and this one is in flight. Moving the increment earlier would count an attempt
     // Stripe then refused.
     idempotencyKey: `booking_${pending.id}_${(pending.checkoutAttempts ?? 0) + 1}`,
-    // What a HUMAN reads on the charge (#679) — without it the dashboard's payments list is a
-    // column of bare dollar amounts. Offering, departure, party size, who booked: enough to
-    // answer a phone call without opening anything.
-    //
     // **No metadata, at all (15.6).** Eighteen keys used to ride along, and the webhook booked
     // from them. Four were the customer's name, email, phone and consent timestamp — personal
     // data handed to a third party with no reader. The rest were money the reservation already
     // holds, frozen, in `booking_invoice`. `description` and `receiptEmail` are not metadata:
     // one is for a person reading the dashboard, the other tells Stripe to send a receipt.
-    description: `${offering!.name} — ${req.date} ${req.time} · ${req.guestCount} guest${
-      req.guestCount === 1 ? "" : "s"
-    } · ${req.customerName}`,
-    // Email is OPTIONAL at `/book` (phone is the identity, DEC-132), so this is absent on a
-    // real and ordinary booking. Absent ⇒ Stripe sends no receipt; present ⇒ it does, in live
-    // mode regardless of the account's email settings. Passing it is the decision to send one.
-    ...(req.email !== undefined && req.email !== "" ? { receiptEmail: req.email } : {}),
+    description: charge.description,
+    ...(charge.receiptEmail !== undefined ? { receiptEmail: charge.receiptEmail } : {}),
     metadata: {},
   });
   // Stripe answered: APPEND its id to the row so confirm can find it (issue #916). Every id this
@@ -458,7 +494,7 @@ export async function createDeparturePaymentIntent(
   // a concurrent confirm cannot revert the just-booked, paid row to pending (@code-review).
   // `updatedAt` is the claim's clock, the same instant the row was written or re-priced under.
   await repo.recordCheckoutAttempt(pending, intent.paymentIntentId);
-  await noteDetailsChanged();
+  await afterAttempt();
   return { ok: true, clientSecret: intent.clientSecret, paymentIntentId: intent.paymentIntentId };
 }
 

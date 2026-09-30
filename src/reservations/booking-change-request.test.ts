@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookingChangeRequestEmail } from "./booking-change-request.js";
+import { bookingChangeRequestEmail, customerCancelledUnpaidEmail } from "./booking-change-request.js";
 
 describe("bookingChangeRequestEmail", () => {
   const base = {
@@ -42,5 +42,23 @@ describe("bookingChangeRequestEmail", () => {
       manageUrl: "https://x/y",
     });
     expect(mail.text).toContain("no contact on file");
+  });
+});
+
+describe("customerCancelledUnpaidEmail — the customer cancelled from the payment link (issue #1082)", () => {
+  it("says it is done, not requested, that nothing was charged, and links the operator's pane", () => {
+    const mail = customerCancelledUnpaidEmail({
+      reservationId: "resv-1",
+      customerName: "Phone Caller",
+      tripLabel: "Wed, Oct 21 · 3:30 PM · Reservation Demo Cruise",
+      phone: "+12165550199",
+      paneUrl: "https://app.example.com/admin/calendar/resv-1",
+    });
+    expect(mail.subject).toBe("Cancelled by the customer — Phone Caller (Wed, Oct 21 · 3:30 PM · Reservation Demo Cruise)");
+    expect(mail.text).toContain("Phone Caller cancelled their unpaid phone booking from the payment link.");
+    expect(mail.text).toContain("Nothing was charged, and the boat is free again.");
+    expect(mail.text).toContain("Contact: +12165550199");
+    expect(mail.text).toContain("Open the booking: https://app.example.com/admin/calendar/resv-1");
+    expect(mail.text).not.toContain("requested");
   });
 });

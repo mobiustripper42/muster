@@ -84,16 +84,21 @@ export async function resendBookingLink(
 
   // Sequential rather than Promise.all: two sends to one customer, and the ordering keeps the
   // failure messages deterministic. Neither side can prevent the other from being attempted.
-  const email = await tryChannel(deps.email, reservation.email, "email", { body, deps, reservation });
-  const sms = await tryChannel(deps.sms, reservation.phone, "SMS", { body, deps, reservation });
+  const ctx = { body, what: "booking-link resend", onFailure: deps.onFailure, reservation };
+  const email = await tryChannel(deps.email, reservation.email, "email", ctx);
+  const sms = await tryChannel(deps.sms, reservation.phone, "SMS", ctx);
   return { email, sms };
 }
 
-async function tryChannel(
+/**
+ * One message to one of the customer's contacts, reported as a {@link ChannelOutcome}. Shared with
+ * the payment link (`send-payment-link.ts`), which reports per channel for the same reason.
+ */
+export async function tryChannel(
   channel: ChannelPort | undefined,
   contact: string | undefined | null,
-  label: string,
-  ctx: { body: string; deps: ResendDeps; reservation: Reservation },
+  label: "email" | "SMS",
+  ctx: { body: string; what: string; onFailure?: ((detail: string) => void) | undefined; reservation: Reservation },
 ): Promise<ChannelOutcome> {
   if (!channel || !contact) return "absent";
   try {
@@ -106,8 +111,8 @@ async function tryChannel(
     // while an unconfigured channel was absent rather than logging.
     return result?.loggedOnly ? "logged" : "sent";
   } catch (e) {
-    ctx.deps.onFailure?.(
-      `${label} booking-link resend to reservation ${ctx.reservation.id} failed: ${
+    ctx.onFailure?.(
+      `${label} ${ctx.what} to reservation ${ctx.reservation.id} failed: ${
         e instanceof Error ? e.message : String(e)
       }`,
     );

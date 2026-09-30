@@ -15,6 +15,7 @@ import {
   startRefund,
 } from "./actions";
 import { PhoneBookingActions, type UnpaidActionState } from "./phone-booking-actions";
+import { paymentLinkSentMessage } from "./payment-link-message";
 
 /**
  * Everything the actions block needs, resolved by the route (#616). Passed in rather than
@@ -427,12 +428,7 @@ export function ReservationDetailPane({
       </div>
       <p className="-mt-2 text-sm text-muted">{metaLine(v)}</p>
 
-      {unpaid?.justBooked && !cancelled ? (
-        <Notice tone="ok">
-          Booked. The boat is held for {v.customerName} until they pay or you cancel it — it doesn’t
-          expire on its own.
-        </Notice>
-      ) : null}
+      {unpaid?.justBooked && !cancelled ? <JustBooked v={v} linkSent={unpaid.linkSent} /> : null}
 
       {/* A cancelled booking keeps only what is still useful: money, contact and history. */}
       {cancelled ? null : <TripCard v={v} />}
@@ -455,6 +451,24 @@ export function ReservationDetailPane({
       {actions && <PaneActions v={v} actions={actions} />}
       {unpaid && <PhoneBookingActions reservationId={v.reservationId} cancelled={cancelled} state={unpaid} />}
     </div>
+  );
+}
+
+/**
+ * The note right after the operator books by phone, with where the payment link went (issue #1082
+ * part B). A link that reached nobody gets its own warning rather than riding under "Booked" in
+ * green, because the operator may still have the customer on the line to read it out.
+ */
+function JustBooked({ v, linkSent }: { v: ReservationDetailView; linkSent: string | undefined }) {
+  const sent = linkSent !== undefined ? paymentLinkSentMessage(linkSent, { phone: v.phone, email: v.email }) : null;
+  return (
+    <>
+      <Notice tone="ok">
+        Booked. The boat is held for {v.customerName} until they pay or you cancel it — it doesn’t
+        expire on its own.{sent?.tone === "ok" ? ` ${sent.text}` : ""}
+      </Notice>
+      {sent?.tone === "bad" ? <Notice tone="bad">{sent.text}</Notice> : null}
+    </>
   );
 }
 

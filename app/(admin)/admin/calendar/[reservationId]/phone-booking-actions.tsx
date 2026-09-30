@@ -1,8 +1,11 @@
+import { PAYMENT_LINK_HOURS } from "@core/reservations/payment-link.js";
 import { AppLink } from "../../../../../components/ui/app-link";
+import { CopyButton } from "../../../../../components/ui/copy-button";
 import { Notice } from "../../../../../components/ui/notice";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { errCopyFor } from "../../../../lib/err-copy";
-import { cancelPhoneBooking, type PhoneCancelErr } from "./actions";
+import { cancelPhoneBooking, sendPaymentLinkAgain, type PhoneCancelErr } from "./actions";
+import { paymentLinkSentMessage } from "./payment-link-message";
 
 /**
  * The actions for an operator's phone booking that has not been paid (16.1, §2.10.6, DEC-163).
@@ -10,8 +13,9 @@ import { cancelPhoneBooking, type PhoneCancelErr } from "./actions";
  * It used to be a whole pane of its own, styled nothing like the paid one, so a booking changed its
  * layout the moment it was paid. Since issue #1104 part 2 every booking renders through
  * `ReservationDetailPane`, and only these actions differ: an unpaid booking has no Event, no money
- * received and nothing to refund, so the one thing DEC-163 leaves to a person is ending it. The
- * payment link the customer pays through lands here next (16.1a).
+ * received and nothing to refund. What is left is the payment link the customer pays through
+ * (issue #1082 part B) — sent automatically at booking, resent or copied from here — and ending it,
+ * which DEC-163 leaves to a person.
  *
  * The confirm step uses the paid pane's two buttons — **Cancel this booking** and **Do Not Cancel**
  * — so ending a booking reads the same whichever state it is in.
@@ -28,6 +32,15 @@ export interface UnpaidActionState {
   cancelHref: string;
   backHref: string;
   cancelErr?: string | undefined;
+  /** The last payment-link send, per channel (`payment-link-message.ts`). At booking it rides in the
+   *  just-booked note; after Send payment link it shows here. */
+  linkSent?: string | undefined;
+  /** A freshly signed link, present only on the render Copy payment link asked for. */
+  payLinkUrl?: string | undefined;
+  copyLinkHref: string;
+  /** The contact the link goes to, for naming it in the send outcome. */
+  phone?: string | undefined;
+  email?: string | undefined;
 }
 
 const CANCEL_ERR_COPY: Record<PhoneCancelErr, string> = {
@@ -50,12 +63,53 @@ export function PhoneBookingActions({
 }) {
   const error = errCopyFor(CANCEL_ERR_COPY, state.cancelErr, "unreachable");
   if (cancelled && !error) return null;
+  // At booking the outcome is in the just-booked note; here it answers a Send payment link press.
+  const sent =
+    state.linkSent !== undefined && !state.justBooked
+      ? paymentLinkSentMessage(state.linkSent, { phone: state.phone, email: state.email })
+      : null;
 
   return (
     // The anchor the cancel's redirect lands on, same as the paid pane's actions.
     <div id="booking-actions" className="flex scroll-mt-4 flex-col gap-2" data-testid="reservation-actions">
       {error ? <Notice tone="bad">{error}</Notice> : null}
+      {sent ? <Notice tone={sent.tone}>{sent.text}</Notice> : null}
+      {cancelled ? null : <PaymentLinkControls reservationId={reservationId} state={state} />}
       {cancelled ? null : <CancelControl reservationId={reservationId} state={state} />}
+    </div>
+  );
+}
+
+/**
+ * Send payment link (filled) texts and emails a fresh one; Copy payment link (outlined) shows one to
+ * paste anywhere, with Copy link. Both mint a new link — signing stores nothing, so there is no
+ * "the" link to show, only one good for the next 72 hours.
+ */
+function PaymentLinkControls({ reservationId, state }: { reservationId: string; state: UnpaidActionState }) {
+  return (
+    <div className="flex flex-col gap-2" data-testid="payment-link-controls">
+      <form action={sendPaymentLinkAgain}>
+        <input type="hidden" name="reservationId" value={reservationId} />
+        <input type="hidden" name="date" value={state.date} />
+        <input type="hidden" name="filter" value={state.filter} />
+        <SubmitButton className="btn-primary min-h-[44px] w-full">Send payment link</SubmitButton>
+      </form>
+      {state.payLinkUrl ? (
+        <div className="flex items-center gap-2">
+          <span
+            className="min-w-0 flex-1 select-all truncate rounded-lg border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-muted"
+            data-testid="pay-link"
+          >
+            {state.payLinkUrl}
+          </span>
+          <CopyButton value={state.payLinkUrl} label="Copy link" />
+        </div>
+      ) : (
+        <AppLink href={state.copyLinkHref} className="btn-secondary flex min-h-[44px]">
+          Copy payment link
+        </AppLink>
+      )}
+      <p className="text-xs text-muted">The link works for {PAYMENT_LINK_HOURS} hours.</p>
     </div>
   );
 }

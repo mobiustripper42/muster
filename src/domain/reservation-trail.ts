@@ -130,6 +130,10 @@ export const EMITTED_TRAIL_TYPES = [
    *  only place the truth gets written down. */
   "link_recovery_requested",
   "change_requested",
+  /** A payment link went to the customer of an unpaid phone booking (issue #1082 part B) — at
+   *  booking and on each resend. The link itself is stored nowhere (it is signed, not saved), so
+   *  this is the only record that one was sent and how each channel fared. */
+  "payment_link_sent",
   /** Best-effort and never throws, so a customer charged, auto-refunded and never
    *  told is silent by construction. */
   "sold_out_notice_sent",

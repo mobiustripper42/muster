@@ -182,6 +182,9 @@ test.describe("public /book/checkout", () => {
 
     expect(await locked(back)).toBe(true);
     expect(await locked(change)).toBe(true);
+    // And they grey out with the form, not only stop working (operator, 2026-09-29): the header and
+    // the trip card each carry the form's wash.
+    await expect(page.getByTestId("locked-wash")).toHaveCount(2);
   });
 
   test("the cancellation terms are stated above the pay button, in the box's own label (#619, #1112)", async ({ page }) => {

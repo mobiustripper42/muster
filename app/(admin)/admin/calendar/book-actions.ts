@@ -5,6 +5,7 @@ import { asId } from "@core/domain/ids.js";
 import { bookForCustomer, type OperatorBookingResult } from "@core/reservations/operator-booking.js";
 import { readSubject } from "../../../lib/auth";
 import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
+import { deliverPaymentLink } from "../../../lib/payment-link";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 
@@ -25,8 +26,9 @@ const SURFACE = "/admin/calendar";
  * The operator books (16.1, SPEC §2.10.6). Auth + FormData glue over `bookForCustomer`, which
  * owns every rule. `redirect()` throws, so it lives outside the try (house convention).
  *
- * On success the operator lands on the booking's own pane, which is where 16.1a's payment link
- * lives and where the unpaid booking is cancelled from.
+ * On success the payment link is texted and emailed to the customer, and the operator lands on the
+ * booking's own pane — which says where the link went, resends or copies it, and cancels the unpaid
+ * booking.
  */
 export async function bookPhoneReservation(formData: FormData): Promise<void> {
   const subject = await readSubject();
@@ -61,7 +63,17 @@ export async function bookPhoneReservation(formData: FormData): Promise<void> {
 
   if (result?.ok) {
     await clearFormDraft(SURFACE);
-    const q = new URLSearchParams({ date, booked: "1" });
+    // The payment link goes out as soon as the booking exists (issue #1082 part B) — the customer
+    // is usually still on the phone, so the pane says which channels reached them. Best-effort: the
+    // booking is written either way, and a send that threw reads as `error`, never as sent.
+    let linkSent = "error";
+    try {
+      const outcome = await deliverPaymentLink(result.reservation, { kind: "admin", id: subject.id });
+      linkSent = outcome.kind === "skipped" ? "skipped" : `${outcome.result.email}-${outcome.result.sms}`;
+    } catch (e) {
+      logSwallowed("admin/calendar:bookPhoneReservation", e, "the payment link was not sent — the booking stands");
+    }
+    const q = new URLSearchParams({ date, booked: "1", linkSent });
     redirect(`/admin/calendar/${encodeURIComponent(String(result.reservation.id))}?${q.toString()}`);
   }
 

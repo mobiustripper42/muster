@@ -130,7 +130,11 @@ export type PaymentIntentState = "reusable" | "settled" | "unknown";
  * describe a judgment nobody here is making: we do not decide a charge was fraudulent, and a
  * customer who walked away from a card form did not request anything.
  *
- * - `abandoned` — a checkout minted a replacement and this one was left behind.
+ * - `abandoned` — this sale is no longer being pursued on this intent: a checkout minted a
+ *   replacement and this one was left behind, or (issue #1082 part C) the phone booking it was for
+ *   was cancelled before it was paid. Stripe's set is closed, and of its four this is the one that
+ *   says "not going ahead" without claiming who asked — the operator cancels as often as the
+ *   customer does.
  * - `duplicate` — the row is booked by a different intent, so this one is a second charge for one
  *   sale waiting to happen.
  */

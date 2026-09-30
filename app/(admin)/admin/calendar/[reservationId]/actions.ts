@@ -276,6 +276,8 @@ export async function cancelBooking(formData: FormData): Promise<void> {
         // This is the notice that matters most in the whole product: without it a confirmed
         // crew member drives to a boat that is not sailing.
         relayFormNotices: forwardFormNotices,
+        // Only used if this is an unpaid phone booking, which `cancelReservation` hands on.
+        payments: stripeIfConfigured(),
       },
       asId<"ReservationId">(reservationId),
       by,

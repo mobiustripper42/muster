@@ -12,7 +12,7 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { Offering, Reservation, Vessel } from "../domain/entities.js";
 import { asId, type ReservationId } from "../domain/ids.js";
 import type { WebhookDeps } from "./booking-webhook.js";
-import { cancelUnpaidPhoneBooking } from "./cancel-reservation.js";
+import { cancelReservation, cancelUnpaidPhoneBooking } from "./cancel-reservation.js";
 import { confirmBookingFromIntent } from "./confirm-booking.js";
 import { bookForCustomer } from "./operator-booking.js";
 import { maskedPhone, payLinkMoney, payLinkState, startPayByLink } from "./pay-by-link.js";
@@ -257,6 +257,18 @@ describe("cancelling retires the open payment (issue #1082 part C)", () => {
     expect(await repo.getReservation(row.id)).toMatchObject({ status: "cancelled" });
     const trail = await repo.listTrailEventsFor(row.id, ["pi_fake_1"]);
     expect(trail.map((e) => e.type)).not.toContain("payment_superseded");
+  });
+
+  it("the general cancel, handed a phone booking, retires its payment too", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    await start(repo, payments, row.id);
+
+    expect(await cancelReservation({ repo, now, payments }, row.id, "operator")).toEqual({
+      ok: true,
+      alreadyCancelled: false,
+    });
+    expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
   });
 
   it("a booking that never reached the card screen has nothing to cancel", async () => {

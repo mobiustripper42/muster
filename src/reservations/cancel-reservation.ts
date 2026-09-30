@@ -96,6 +96,13 @@ export interface CancelDeps {
   repo: Repository;
   now: () => string;
   /**
+   * Stripe, when this deploy has it — so cancelling an operator's unpaid phone booking also retires
+   * the payment its link started (issue #1082 part C). Carried here, not only on the phone-booking
+   * entry, so `cancelReservation`'s delegation keeps the guarantee (`@code-review`). Absent ⇒ no
+   * intent is cancelled; nothing else in a cancel needs it.
+   */
+  payments?: PaymentPort | undefined;
+  /**
    * Relay a re-form's crew notices — "you're off" (`cancelledCrew`), DEC-084/#244. Injected
    * because the channel wiring lives in `app/`, the same seam the booking webhook uses.
    *
@@ -151,7 +158,7 @@ export type CancelOutcome =
  * that seconds-wide case still lands on the paid-but-unbookable alert (`booking-webhook.ts`).
  */
 export async function cancelUnpaidPhoneBooking(
-  deps: Pick<CancelDeps, "repo" | "now"> & { payments?: PaymentPort | undefined },
+  deps: Pick<CancelDeps, "repo" | "now" | "payments">,
   reservationId: ReservationId,
   by: CancelledBy,
 ): Promise<CancelOutcome> {

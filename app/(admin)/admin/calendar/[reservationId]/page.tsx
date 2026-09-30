@@ -23,6 +23,7 @@ import { readSubject } from "../../../../lib/auth";
 import { readFormDraft } from "../../../../lib/form-draft";
 import { isProdDeploy } from "../../../../lib/flags";
 import { operatorManageLink } from "../../../../lib/manage-link";
+import { mintPaymentLinkUrl } from "../../../../lib/payment-link";
 import { liveBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { getRepo } from "../../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../../lib/swallowed";
@@ -113,6 +114,8 @@ export default async function ReservationDetailPage({
       reissueErr?: string;
       /** Present ⇒ the render right after the operator booked this by phone (16.1). */
       booked?: string;
+      /** The last payment-link send's per-channel outcome (issue #1082 part B). */
+      linkSent?: string;
     }
   >;
 }) {
@@ -493,7 +496,7 @@ async function PhoneBookingPage({
   sp,
 }: {
   reservation: Reservation;
-  sp: Search & { cancel?: string; cancelErr?: string; booked?: string };
+  sp: Search & { cancel?: string; cancelErr?: string; booked?: string; linkSent?: string };
 }) {
   const data = await loadCalendarData({ ...sp, date: sp.date ?? reservation.date });
   if (!data) {
@@ -528,11 +531,30 @@ async function PhoneBookingPage({
           cancelHref: paneHref(reservation.id, sp, { cancel: "1" }),
           backHref: paneHref(reservation.id, sp, {}),
           cancelErr: sp.cancelErr,
+          linkSent: sp.linkSent,
+          payLinkUrl: payLinkUrl(reservation),
+          phone: reservation.phone,
+          email: reservation.email,
         }}
       />
       <BookingHistory trail={trail} />
     </BookingFrame>
   );
+}
+
+/**
+ * A freshly signed payment link for Copy payment link, while the booking is still awaiting payment.
+ * Signing stores nothing (`payment-link.ts`), so every render may do it; a deploy that can't build a
+ * link shows none rather than failing the pane.
+ */
+function payLinkUrl(reservation: Reservation): string | undefined {
+  if (reservation.status !== "pending") return undefined;
+  try {
+    return mintPaymentLinkUrl(String(reservation.id));
+  } catch (e) {
+    logSwallowed("admin/reservation:payLink", e, `no payment link could be built for ${reservation.id}`);
+    return undefined;
+  }
 }
 
 /**

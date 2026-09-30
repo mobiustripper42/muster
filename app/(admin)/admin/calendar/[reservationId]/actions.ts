@@ -22,6 +22,7 @@ import { isBooked, type Reservation } from "@core/domain/entities.js";
 import { forwardFormNotices } from "../../../../lib/channel";
 import { reissueBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { resendReservationLink } from "../../../../lib/booking-confirmation";
+import { deliverPaymentLink } from "../../../../lib/payment-link";
 import { readSubject } from "../../../../lib/auth";
 import { clearFormDraft, stashFormDraft } from "../../../../lib/form-draft";
 import { getRepo } from "../../../../lib/repo";
@@ -201,6 +202,38 @@ export async function cancelPhoneBooking(formData: FormData): Promise<void> {
     );
   }
   redirect(back({}));
+}
+
+/**
+ * Send the payment link again (issue #1082 part B) — to an unpaid phone booking's text and email.
+ *
+ * A fresh link each press, good for 72 hours from now; the ones sent before keep working until
+ * theirs run out (nothing is stored to revoke). Refused on anything that is no longer awaiting
+ * payment: a paid booking must not be sent a link to pay again, and a cancelled one has nothing
+ * owed. The outcome rides back per channel as `linkSent`, the same codes the booking's own
+ * redirect carries.
+ */
+export async function sendPaymentLinkAgain(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "admin") redirect("/admin");
+
+  const { reservationId, back } = readContext(formData);
+  let reservation: Reservation | null = null;
+  let linkSent = "error";
+  try {
+    reservation = await getRepo().getReservation(asId<"ReservationId">(reservationId));
+    if (reservation?.source === "admin" && reservation.status === "pending") {
+      const outcome = await deliverPaymentLink(reservation, { kind: "admin", id: subject.id });
+      linkSent = outcome.kind === "skipped" ? "skipped" : `${outcome.result.email}-${outcome.result.sms}`;
+    }
+  } catch (e) {
+    logSwallowed("admin/reservation:sendPaymentLinkAgain", e, "the payment link was not sent");
+  }
+  // `redirect()` throws, so it stays outside the try (house convention).
+  if (reservation && !(reservation.source === "admin" && reservation.status === "pending")) {
+    redirect(back({ linkSent: "not_payable" }));
+  }
+  redirect(back({ linkSent }));
 }
 
 /**

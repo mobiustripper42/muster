@@ -34,6 +34,12 @@ function secret(): string {
   return "dev-insecure-session-secret";
 }
 
+/**
+ * The same secret, for the one other thing signed with it: the payment link (issue #1082 part B,
+ * `app/lib/payment-link.ts`). Its message is prefixed, so neither token can stand in for the other.
+ */
+export const signingSecret = secret;
+
 function makeSession(subject: AuthSubject, now: Date): Session {
   return {
     subjectKind: subject.kind,

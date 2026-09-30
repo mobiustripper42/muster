@@ -123,6 +123,8 @@ export function buildSeededTrail(input: {
       metadata: { reason: "email=sent sms=sent" } },
     { type: "change_requested", minutesAgo: 4 * DAY, actorKind: "customer",
       metadata: { reason: "asked to move from 5:30 to 7:30" } },
+    { type: "payment_link_sent", minutesAgo: 4 * DAY - 90, actorKind: "admin", actorId: "crew-demo-admin",
+      metadata: { reason: "email=absent sms=sent" } },
     { type: "link_recovery_requested", minutesAgo: 4 * DAY - 60, actorKind: "customer",
       metadata: { reason: "sent" } },
     { type: "link_reissued", minutesAgo: 4 * DAY - 90, actorKind: "admin", actorId: "crew-demo-admin",

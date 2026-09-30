@@ -23,6 +23,12 @@
  * cannot drift into quoting a trip differently. What stays HERE is everything only a paying
  * customer has — the card, the terms box, the promo row, the in-flight lock — and the one submit
  * path into Stripe. The operator's form lives under `app/(admin)/` and nothing here can reach it.
+ *
+ * **Pay mode (issue #1082 part B)** is the same form on the payment link, `/p/<link>`, for a
+ * booking the operator already took: who it's for is shown, not asked; the tip is the one the
+ * operator asked on the phone; the money is the invoice frozen at booking; and the submit attaches
+ * an intent to that booking's row instead of claiming a boat. The card, the terms box, the lock and
+ * the Stripe confirm are this form's own, unchanged.
  */
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
@@ -35,6 +41,7 @@ import { PayBar } from "../../../../components/checkout/pay-bar";
 import { TipTiles } from "../../../../components/checkout/tip-tiles";
 import { usePaymentLock } from "../../../../components/checkout/payment-lock";
 import { startElementsCheckout } from "./actions";
+import { startPaymentLinkCheckout } from "../../p/[token]/actions";
 
 /**
  * The gift-card / discount row, rendered inert until that feature exists. Hoisted so the
@@ -52,12 +59,23 @@ const INERT_PROMO_ROW =
 export interface CheckoutFormProps {
   publishableKey: string;
   returnUrl: string;
-  slot: { offeringId: string; date: string; time: string; guests: number };
+  /** The departure a customer is booking. Absent in pay mode, where the booking already exists. */
+  slot?: { offeringId: string; date: string; time: string; guests: number };
   money: CheckoutMoney;
+  /** Pay mode passes one: the tier the operator already chose. */
   tiers: TipTier[];
   defaultBps: number;
   /** The published cancellation terms (#619) — plain data; the terms box's own label (#1112). */
   cancellationTerms: string;
+  /** Present ⇒ pay mode: the payment link for a booking the operator took (issue #1082 part B). */
+  pay?: PayMode;
+}
+
+export interface PayMode {
+  /** The signed link, re-verified by the action on submit. */
+  token: string;
+  /** The booking's own contact, shown read-only and passed to Stripe as the billing details. */
+  bookedFor: { name: string; phone: string; phoneLabel: string; email?: string | undefined };
 }
 
 export function CheckoutForm(props: CheckoutFormProps) {
@@ -149,8 +167,31 @@ type InnerProps = CheckoutFormProps & {
   stripeFailed: boolean;
 };
 
+/** The pay-bar button: "Book & pay" at checkout, "Pay" on the payment link, each with its working state. */
+function submitLabel(pay: boolean, submitting: boolean): string {
+  if (pay) return submitting ? "Paying…" : "🔒 Pay";
+  return submitting ? "Booking…" : "🔒 Book & pay";
+}
+
+/** Who the payment link's booking is for — the operator took it, so it's shown, not asked. */
+function BookedFor({ name, phoneLabel }: { name: string; phoneLabel: string }) {
+  return (
+    <div className="pt-4">
+      <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Booked for</div>
+      <div className="rounded-xl border border-line px-3.5 py-3 text-sm" data-testid="booked-for">
+        <b className="font-semibold">{name}</b>
+        <span className="text-muted"> · {phoneLabel}</span>
+      </div>
+    </div>
+  );
+}
+
 function InnerForm(p: InnerProps) {
-  const [contact, setContact] = useState<ContactValues>({ name: "", phone: "", email: "" });
+  const [contact, setContact] = useState<ContactValues>(
+    p.pay
+      ? { name: p.pay.bookedFor.name, phone: p.pay.bookedFor.phone, email: p.pay.bookedFor.email ?? "" }
+      : { name: "", phone: "", email: "" },
+  );
   // The cancellation-terms box (issue #1112) — not a waiver, which is its own module.
   const [agreed, setAgreed] = useState(false);
   // "A payment is in flight" is the SCREEN's, not only this form's (issue #1082 part A): the page
@@ -178,17 +219,19 @@ function InnerForm(p: InnerProps) {
         setError(sub.error.message ?? "Please check your card details.");
         return;
       }
-      const res = await startElementsCheckout({
-        offeringId: p.slot.offeringId,
-        date: p.slot.date,
-        time: p.slot.time,
-        guests: p.slot.guests,
-        gratuityBps: p.tipBps,
-        customerName: name.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        agreedToTerms: agreed,
-      });
+      const res = p.pay
+        ? await startPaymentLinkCheckout({ token: p.pay.token, agreedToTerms: agreed })
+        : await startElementsCheckout({
+            offeringId: p.slot!.offeringId,
+            date: p.slot!.date,
+            time: p.slot!.time,
+            guests: p.slot!.guests,
+            gratuityBps: p.tipBps,
+            customerName: name.trim(),
+            email: email.trim(),
+            phone: phone.trim(),
+            agreedToTerms: agreed,
+          });
       if (!res.ok) {
         setError(res.message);
         return;
@@ -260,13 +303,18 @@ function InnerForm(p: InnerProps) {
       */}
       <div inert={submitting}>
       <div className="px-[18px]">
-        <ContactFields
-          voice="self"
-          values={contact}
-          onChange={(field, value) => setContact((c) => ({ ...c, [field]: value }))}
-        />
-
-        <TipTiles tiers={p.tiers} selectedBps={p.tipBps} onSelect={p.setTipBps} />
+        {p.pay ? (
+          <BookedFor name={p.pay.bookedFor.name} phoneLabel={p.pay.bookedFor.phoneLabel} />
+        ) : (
+          <>
+            <ContactFields
+              voice="self"
+              values={contact}
+              onChange={(field, value) => setContact((c) => ({ ...c, [field]: value }))}
+            />
+            <TipTiles tiers={p.tiers} selectedBps={p.tipBps} onSelect={p.setTipBps} />
+          </>
+        )}
 
         {/* CARD */}
         <div className="pt-5">
@@ -302,15 +350,18 @@ function InnerForm(p: InnerProps) {
           )}
         </div>
 
-        {/* gift card / discount — future, rendered inert */}
-        <div className="pt-4">
-          <div aria-disabled="true" className={INERT_PROMO_ROW}>
-            <span>Apply gift card or discount code</span>
-            <span className="text-[11px] uppercase tracking-wide">Coming soon</span>
+        {/* gift card / discount — future, rendered inert. Not on the payment link: its total is
+            the operator's, already quoted on the phone. */}
+        {p.pay ? null : (
+          <div className="pt-4">
+            <div aria-disabled="true" className={INERT_PROMO_ROW}>
+              <span>Apply gift card or discount code</span>
+              <span className="text-[11px] uppercase tracking-wide">Coming soon</span>
+            </div>
           </div>
-        </div>
+        )}
 
-        <CheckoutSummary m={p.money} tipBps={p.tipBps} tipCents={p.tipCents} />
+        <CheckoutSummary m={p.money} tipBps={p.tipBps} tipCents={p.tipCents} frozen={Boolean(p.pay)} />
 
         {/* THE TERMS BOX (issue #1112, cancellation terms #619). The published policy is the box's
             own label, so what the customer ticks is exactly what they read — quoted from the
@@ -334,10 +385,12 @@ function InnerForm(p: InnerProps) {
               <span data-testid="cancellation-terms">{p.cancellationTerms}</span>
             </span>
           </label>
-          <p className="pt-3 text-xs text-muted">
-            After you book, your confirmation includes a private booking link to view or manage
-            your reservation. Questions? Message us from that link any time.
-          </p>
+          {p.pay ? null : (
+            <p className="pt-3 text-xs text-muted">
+              After you book, your confirmation includes a private booking link to view or manage
+              your reservation. Questions? Message us from that link any time.
+            </p>
+          )}
         </div>
       </div>
 
@@ -385,13 +438,13 @@ function InnerForm(p: InnerProps) {
             and the operator's Book it — the same control on three screens. */}
         {/* eslint-disable-next-line no-restricted-syntax -- client onSubmit flow, see above */}
         <button type="submit"
-          data-testid="book-pay"
+          data-testid={p.pay ? "pay-now" : "book-pay"}
           disabled={!canSubmit}
           // Working, not refused: the shared disabled fade skips a busy button (#1103).
           aria-busy={submitting}
           className="btn-primary btn-lg ml-auto"
         >
-          {submitting ? "Booking…" : "🔒 Book & pay"}
+          {submitLabel(Boolean(p.pay), submitting)}
         </button>
       </PayBar>
     </form>

@@ -40,12 +40,23 @@ export function usePaymentLock(): PaymentLock {
   return usePaymentLockContext();
 }
 
-/** A part of the screen outside the form that must not be usable mid-payment. */
+/**
+ * A part of the screen outside the form that must not be usable mid-payment.
+ *
+ * **It greys out with the form, not only locks.** Part A made ‹ and Change inert, and the operator
+ * found them still looking live beside a greyed form (2026-09-29). The form's grey is its busy
+ * overlay, a `bg-card/70` wash over the body (`checkout-form.tsx`); this lays the same wash over
+ * what it wraps, so the whole screen reads as one locked thing. `pointer-events-none`, like the
+ * form's: `inert` is what locks, the wash only shows it.
+ */
 export function LockedWhilePaying({ className, children }: { className?: string; children: ReactNode }) {
   const { locked } = usePaymentLockContext();
   return (
-    <div inert={locked} className={className}>
+    <div inert={locked} className={`relative ${className ?? ""}`}>
       {children}
+      {locked && (
+        <div aria-hidden="true" data-testid="locked-wash" className="pointer-events-none absolute inset-0 bg-card/70" />
+      )}
     </div>
   );
 }

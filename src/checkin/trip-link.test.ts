@@ -85,6 +85,28 @@ describe("ensureTripLink", () => {
     const bytes = () => Buffer.from([...(calls++ === 0 ? "AAAAAAAA" : "BBBBBBBB")].map((c) => BOOKING_CODE_ALPHABET.indexOf(c)));
     expect(await ensureTripLink(repo, EVENT, () => NOW, bytes)).toBe("BBBBBBBB");
   });
+
+  it("losing a race for the SAME trip returns the winner's code, never a second one", async () => {
+    // Another request inserted between this one's read and its insert: the first read sees
+    // nothing, the insert hits the one-link-per-trip unique, and the answer is the winner's.
+    class ReadBeforeWinner extends InMemoryRepository {
+      #stale = true;
+      override async getTripLinkForEvent(eventId: Parameters<InMemoryRepository["getTripLinkForEvent"]>[0]) {
+        if (this.#stale) {
+          this.#stale = false;
+          return null;
+        }
+        return super.getTripLinkForEvent(eventId);
+      }
+    }
+    const repo = new ReadBeforeWinner();
+    await repo.saveVessel(vessel);
+    await repo.saveEvent(event());
+    await repo.insertTripLink({ code: "WWWWWWWW", eventId: EVENT, createdAt: NOW });
+
+    expect(await ensureTripLink(repo, EVENT, () => NOW, bytesFor("BBBBBBBB"))).toBe("WWWWWWWW");
+    expect(await repo.getTripLinkByCode("BBBBBBBB")).toBeNull();
+  });
 });
 
 describe("resolveTripLink", () => {

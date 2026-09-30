@@ -1397,8 +1397,15 @@ export class InMemoryRepository implements Repository {
   #checkInConfig: Partial<CheckInConfig> = {};
 
   async postWaiverTemplate(template: WaiverTemplate): Promise<void> {
-    // Insert-only, mirroring the Postgres `on conflict do nothing`.
+    // An insert never overwrites, mirroring the Postgres `on conflict do nothing`.
     if (!this.#waiverTemplates.has(template.id)) this.#waiverTemplates.set(template.id, clone(template));
+  }
+  async updateWaiverTemplate(template: WaiverTemplate, now: string): Promise<boolean> {
+    // Mirrors the Postgres `where effective_from > $now`: the STORED version decides the lock.
+    const stored = this.#waiverTemplates.get(template.id);
+    if (!stored || stored.effectiveFrom <= now) return false;
+    this.#waiverTemplates.set(template.id, clone(template));
+    return true;
   }
   async getWaiverTemplate(id: WaiverTemplateId): Promise<WaiverTemplate | null> {
     const t = this.#waiverTemplates.get(id);

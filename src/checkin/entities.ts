@@ -13,8 +13,10 @@
 import type { CrewMemberId, EventId, GuestId, ReservationId, WaiverTemplateId } from "../domain/ids.js";
 
 /**
- * One version of the waiver text. **Insert-only**: new text is a new row, and no row is ever
- * edited, so the exact words a guest agreed to can always be produced.
+ * One version of the waiver text. **Locked once it takes effect**: from `effectiveFrom` on,
+ * someone may have signed it, so it is never changed again and the exact words a guest agreed to
+ * can always be produced. Before then nobody can have signed it, so a scheduled version can be
+ * edited in place (operator, 2026-09-29). New text for a version in force is a new row.
  *
  * Which version is current is worked out, never stored: the one with the latest `effectiveFrom`
  * that is not in the future. That is why there is no `retiredAt` — retiring a version would be an
@@ -28,9 +30,11 @@ export interface WaiverTemplate {
   body: string;
   /** ISO-8601 UTC. May be in the future: a version posted today can take effect next week. */
   effectiveFrom: string;
-  /** ISO-8601 UTC — when it was posted, which is not when it takes effect. */
+  /** ISO-8601 UTC — when it was posted (or last edited, while scheduled), which is not when it
+   *  takes effect. */
   postedAt: string;
-  /** The admin who posted it (an `admins` id, which is a crew id — DEC-092). */
+  /** The admin who posted it, or last edited it while scheduled (an `admins` id, which is a crew
+   *  id — DEC-092). */
   postedBy: string;
 }
 
@@ -41,7 +45,7 @@ export type GuardianRelation = "parent" | "guardian" | "custodian";
 export type GuestSource = "booker" | "self" | "crew";
 
 /**
- * One signing, or — in roster mode — one person the booking names before they sign.
+ * One signing.
  *
  * **Every signing is its own row, and nothing is ever merged or replaced.** Phone and email are
  * not identity: couples share an email and a family passes one phone down the line at the dock.
@@ -65,7 +69,7 @@ export interface Guest {
   guardianGuestId?: GuestId;
   guardianRelation?: GuardianRelation;
 
-  /** Absent = not signed: a guarded minor, or a roster-mode row. */
+  /** Absent = not signed — e.g. a guarded minor, whose guardian's row carries the signature. */
   signedAt?: string;
   waiverTemplateId?: WaiverTemplateId;
   /** The name as typed. */
@@ -100,17 +104,14 @@ export interface DepartureCount {
 export interface CheckInConfig {
   /** Birthdays before this many years ago make an adult. */
   ageOfMajority: number;
-  /** Days before departure the booker is reminded, largest first. */
+  /** Days before departure the booker is reminded, largest first. Empty = no reminders. */
   reminderDaysBefore: readonly number[];
-  /** Whether guest rows exist before they sign (spec §6). Off for BrewBoat. */
-  rosterMode: boolean;
 }
 
 /** Operator-approved defaults, 2026-09-29: 18, and Xola's 7 / 3 / 1-day reminders. */
 export const CHECK_IN_CONFIG_DEFAULTS: CheckInConfig = {
   ageOfMajority: 18,
   reminderDaysBefore: [7, 3, 1],
-  rosterMode: false,
 };
 
 /**
@@ -125,7 +126,6 @@ export const CHECK_IN_CONFIG_DEFAULTS: CheckInConfig = {
 export function normalizeCheckInConfig(stored: {
   ageOfMajority?: unknown;
   reminderDaysBefore?: unknown;
-  rosterMode?: unknown;
 }): CheckInConfig {
   const positiveInt = (n: unknown): n is number => Number.isInteger(n) && (n as number) > 0;
   const days = stored.reminderDaysBefore;
@@ -135,7 +135,5 @@ export function normalizeCheckInConfig(stored: {
       : CHECK_IN_CONFIG_DEFAULTS.ageOfMajority,
     reminderDaysBefore:
       Array.isArray(days) && days.every(positiveInt) ? [...days] : CHECK_IN_CONFIG_DEFAULTS.reminderDaysBefore,
-    rosterMode:
-      typeof stored.rosterMode === "boolean" ? stored.rosterMode : CHECK_IN_CONFIG_DEFAULTS.rosterMode,
   };
 }

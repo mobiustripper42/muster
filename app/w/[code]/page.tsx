@@ -1,27 +1,43 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
-import { openTripLink, type TripLinkTrip } from "@core/checkin/trip-link.js";
+import { vesselDateOf } from "@core/config/tenant.js";
+import {
+  groupCoverage,
+  loadSigningScene,
+  MAX_CHILDREN,
+  partyChoices,
+  partyFor,
+  type SigningPath,
+} from "@core/checkin/signing.js";
+import { normalizeTripCode, openTripLink, tripLinkUrl, type TripLinkTrip } from "@core/checkin/trip-link.js";
 import { limitKeyFor } from "@core/rate-limit/rate-limit.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
+import { appBaseUrl } from "../../lib/base-url";
 import { clientIpFrom } from "../../lib/client-ip";
+import { errCopyFor } from "../../lib/err-copy";
+import { readFormDraft } from "../../lib/form-draft";
 import { getRepo } from "../../lib/repo";
 import { logSwallowed } from "../../lib/swallowed";
 import { TENANT_NAME } from "../../lib/tenant";
+import type { SignErr } from "./actions";
+import { SigningFormView } from "./signing-form";
+import { KidsStep, PartyStep, stepHref, SuccessView, WhoStep } from "./signing-steps";
 
 /**
- * /w/<code> — a departure's trip link (Phase 18.3b, issue #1141, DEC-190). The page the booker's
- * shared link and the dock QR open. States per `docs/design/check-in-surfaces.md` §A5.
+ * /w/<code> — a departure's trip link, and the waiver signing page behind it (Phase 18.3b, issue
+ * #1141; Phase 18.4, issue #1118). Spec: `docs/design/check-in-surfaces.md` §A.
  *
  * **Limited first, then resolved** (`openTripLink`): over the limit nothing is looked up, so a guess
- * and a real code get the same answer. Throttled never reads "we can't find that trip" — a real
- * guest would conclude their link is broken.
+ * and a real code get the same answer. Throttled never reads "we can't find that trip".
  *
- * The signing form behind an open link is 18.4's; until then an open trip says so. The boat is never
- * named to a customer (the manage page's rule). No operator phone yet: Muster stores none
- * (issue #1140).
+ * An open trip walks the guest through: who they are signing for → which party (only when the
+ * departure has more than one booking) → how many kids (only on a kids path) → their details and the
+ * agreement on one page → the success screen. Each short step is links; the state rides the URL
+ * (`for`, `party`, `kids`), so the page works with no client JS (DEC-147).
  *
- * **Never logs the code**, and is not indexed: the code in the path is the whole credential.
+ * The boat is never named to a customer (the manage page's rule). No operator phone yet: Muster
+ * stores none (issue #1140). **Never logs the code**, and is not indexed.
  */
 
 export const dynamic = "force-dynamic";
@@ -31,28 +47,29 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function TripLinkPage({ params }: { params: Promise<{ code: string }> }) {
+type Search = { for?: string; party?: string; kids?: string; err?: string; signed?: string };
+
+export default async function TripLinkPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ code: string }>;
+  searchParams: Promise<Search>;
+}) {
   const { code } = await params;
+  const sp = await searchParams;
+  const now = new Date().toISOString();
 
   let view: Awaited<ReturnType<typeof openTripLink>>;
   try {
     view = await openTripLink(
-      {
-        repo: getRepo(),
-        now: () => new Date().toISOString(),
-        onFailure: (m) => console.error(`trip-link: ${m}`),
-      },
+      { repo: getRepo(), now: () => now, onFailure: (m) => console.error(`trip-link: ${m}`) },
       code,
       limitKeyFor(clientIpFrom(await headers())),
     );
   } catch (e) {
     logSwallowed("w/[code]", e, "a trip link did not resolve");
-    return (
-      <Page>
-        <h1 className="mb-2 text-xl font-semibold">Something went wrong</h1>
-        <p className="text-muted">We couldn’t open this trip just now. Try again in a moment.</p>
-      </Page>
-    );
+    return <SomethingWrong />;
   }
 
   switch (view.state) {
@@ -96,18 +113,130 @@ export default async function TripLinkPage({ params }: { params: Promise<{ code:
         </Page>
       );
     case "open":
-      return (
-        <Page trip={view.trip}>
-          <h1 className="mb-2 text-xl font-semibold">Waiver signing opens here soon</h1>
-          <p className="text-muted">Keep this link — it’s where everyone on this trip will sign.</p>
-        </Page>
-      );
+      try {
+        return <Page trip={view.trip}>{await openTrip(view.trip, code, sp, now)}</Page>;
+      } catch (e) {
+        logSwallowed("w/[code]:open", e, "the signing page did not load");
+        return <SomethingWrong />;
+      }
   }
+}
+
+/** The signing flow for an open trip — which step the URL asks for. */
+async function openTrip(trip: TripLinkTrip, rawCode: string, sp: Search, now: string): Promise<ReactNode> {
+  // `openTripLink` resolved this code, so it normalizes; links are built from the canonical form.
+  const code = normalizeTripCode(rawCode)!;
+  const repo = getRepo();
+  const scene = await loadSigningScene(repo, trip.eventId, now);
+
+  // The success screen — after a signing, before anything else. A `signed` id that is not this
+  // trip's signer reads as no id: a fresh form.
+  if (sp.signed) {
+    const signer = (await repo.listGuestsForEvent(trip.eventId)).find((g) => g.id === sp.signed && g.signedAt);
+    if (signer) {
+      const booking = scene.reservations.find((r) => r.id === signer.reservationId);
+      const coverage = booking
+        ? groupCoverage(booking.partySize, (await repo.listGuestsForReservation(booking.id)).length, scene.coiMaxPax)
+        : null;
+      return (
+        <SuccessView
+          firstName={signer.name.split(" ")[0] ?? signer.name}
+          coverage={coverage}
+          shareUrl={tripLinkUrl(appBaseUrl(), code)}
+          code={code}
+        />
+      );
+    }
+  }
+
+  if (!scene.template) {
+    return (
+      <>
+        <h1 className="mb-2 text-xl font-semibold">Waivers aren’t open for this trip yet</h1>
+        <p className="text-muted">Check back closer to your trip.</p>
+      </>
+    );
+  }
+
+  const path: SigningPath | undefined =
+    sp.for === "me" || sp.for === "kids" || sp.for === "child" ? sp.for : undefined;
+  if (!path) return <WhoStep code={code} ageOfMajority={scene.ageOfMajority} />;
+
+  // The party step shows only when the departure has several bookings and none is chosen yet.
+  const booking = partyFor(scene.reservations, sp.party);
+  if (booking === "choose") {
+    return (
+      <PartyStep
+        code={code}
+        path={path}
+        parties={partyChoices(scene.reservations).map((p) => ({ ...p, reservationId: String(p.reservationId) }))}
+        refused={sp.err === "bad_party"}
+      />
+    );
+  }
+  const party = scene.reservations.length > 1 ? sp.party : undefined;
+
+  const kidsNum = Number(sp.kids);
+  const kids = Number.isInteger(kidsNum) && kidsNum >= 1 && kidsNum <= MAX_CHILDREN ? kidsNum : undefined;
+  if (path !== "me" && !kids) {
+    return (
+      <KidsStep
+        state={{ code, path, party }}
+        backHref={scene.reservations.length > 1 ? stepHref({ code, path }) : stepHref({ code })}
+      />
+    );
+  }
+
+  const draft = sp.err ? await readFormDraft(`/w/${code}`) : null;
+  return (
+    <SigningFormView
+      code={code}
+      path={path}
+      party={party}
+      kids={kids ?? 0}
+      template={scene.template}
+      ageOfMajority={scene.ageOfMajority}
+      today={vesselDateOf(new Date(now))}
+      draft={draft}
+      error={errCopyFor(errorCopy(scene.ageOfMajority), sp.err, "error")}
+    />
+  );
+}
+
+/** What each refusal says, in the guest's words. Keyed to the action's codes, so a code with
+ *  nothing to say is a build error (#654). */
+function errorCopy(age: number): Record<SignErr, string> {
+  return {
+    no_waiver: "Waivers aren’t open for this trip yet.",
+    bad_party: "Pick who you’re here with.",
+    bad_kids_count: "Choose how many kids, 1 to 10.",
+    bad_name: "Enter your full legal name.",
+    legal_name_unconfirmed: "Tick the box to confirm this is your full legal name.",
+    bad_dob: "Pick your full date of birth — month, day and year.",
+    adult_too_young: `You need to be ${age} or older to sign. A parent or guardian signs for you.`,
+    bad_email: "Enter an email address we can reach you at.",
+    bad_phone: "That phone number doesn’t look right. Fix it, or leave it blank.",
+    bad_child_name: "Enter each child’s full name.",
+    bad_child_dob: "Pick each child’s full date of birth.",
+    child_too_old: `Each child must be under ${age}. Anyone ${age} or older signs for themselves.`,
+    consent_required: "Tick the box to agree to sign electronically.",
+    throttled: "Lots of people are signing from this connection right now. Wait a minute, then tap Sign again.",
+    error: "Something went wrong saving that. Tap Sign again.",
+  };
+}
+
+function SomethingWrong() {
+  return (
+    <Page>
+      <h1 className="mb-2 text-xl font-semibold">Something went wrong</h1>
+      <p className="text-muted">We couldn’t open this trip just now. Try again in a moment.</p>
+    </Page>
+  );
 }
 
 function Page({ trip, children }: { trip?: TripLinkTrip; children: ReactNode }) {
   return (
-    <main className="mx-auto max-w-lg px-4 py-16">
+    <main className="mx-auto max-w-lg px-4 py-10">
       <p className="mb-6 text-sm text-muted">
         {TENANT_NAME}
         {trip && (

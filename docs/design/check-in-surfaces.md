@@ -7,7 +7,8 @@ not in this repo).
 
 > **v0.5 changes — 2026-09-29, operator, while building 18.2.** **Templates** (D): a scheduled
 > version can be edited until it takes effect. **Roster mode is gone** from the settings (D) — a
-> future idea. **A5 gains a throttled state** (2026-09-30, 18.3b). The operator phone the A5 states
+> future idea. **A5 gains a throttled state** (2026-09-30, 18.3b). **A1: steps 3 and 4 are one
+> page; A3: the parent always sails; A5: a no-waiver state** (2026-09-30, 18.4). The operator phone the A5 states
 > name does not exist yet (issue #1140).
 >
 > **v0.4 changes — 2026-09-27, operator review.** Screen C gains a **passenger-count stepper**,
@@ -85,7 +86,9 @@ carrying **an unguessable token for the trip**, never the raw event id.
 ```
 
 **The document goes last** (WaiverSign's order). Short decisions first; the agreement is a review
-step at the end.
+step at the end. **Steps 3 and 4 are one page** (operator, 2026-09-30): the details on top, the
+agreement below them, Sign at the bottom. The document is still last, and there is one form to keep
+if the connection drops, not two.
 
 **Label the choices with ages.** `Myself (18+)` / `Me + my kids` / `A child (under 18)`.
 
@@ -129,6 +132,9 @@ Surnames only, scoped to one trip. This list is why the link must be a token.
   `Date of birth`. One signature covers all of them.
 - **Me + my kids** — both, in that order.
 
+**The parent always sails with the child** (operator, 2026-09-30), so *A child* and *Me + my kids*
+save the same rows, and the parent counts toward the group on the success screen.
+
 `is_minor` is computed from each DOB, never asked.
 
 ### A4 — The success screen (the most valuable screen in the system)
@@ -163,6 +169,7 @@ passing one phone down the line at the dock.
 | Event departed | *"This trip has already sailed."* + operator phone. No form. |
 | Event cancelled | Same shape, cancellation wording. |
 | Bad or expired link | *"We can't find that trip."* + operator phone. Never a stack trace, never a login. |
+| No waiver posted yet | *"Waivers aren't open for this trip yet."* No form (18.4). |
 | Too many opens from one connection | *"Lots of people are signing from this connection right now. Try again in a minute."* + **Try again**. Never "can't find that trip", and the trip is not looked up while throttled (DEC-189, 18.3b). |
 | Connection drops mid-sign | Keep the typed values and retry. Never lose the input. |
 

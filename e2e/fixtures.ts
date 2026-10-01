@@ -220,6 +220,31 @@ export async function plantTripLink(t: {
 }
 
 /**
+ * Plant a booked party on a departure (Phase 18.4) — the booking a signer joins, and the party size
+ * the success screen counts against. Written through the port, like the other plants.
+ */
+export async function plantBookedReservation(r: {
+  id: string;
+  eventId: string;
+  customerName: string;
+  partySize: number;
+}): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    await repo.saveReservation({
+      id: r.id as never,
+      eventId: r.eventId as never,
+      customerName: r.customerName,
+      partySize: r.partySize,
+      status: "booked",
+      source: "muster",
+    });
+  } finally {
+    await repo.close();
+  }
+}
+
+/**
  * Plant a waiver version (Phase 18.2) — for the states the page cannot reach by posting, like a
  * version that took effect in the past. Posted by the admin every `resetAndSeed` creates.
  */

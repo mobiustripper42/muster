@@ -13,9 +13,10 @@ test.describe("trip links /w/<code>", () => {
 
   test("an upcoming trip opens with its day and time, and never names the boat", async ({ page }) => {
     await plantTripLink({ code: "K3F9QZ2M", date: "2030-06-01", time: "15:00" });
-    // Typed back loosely, as someone reading it off a text would.
+    // Typed back loosely, as someone reading it off a text would. No waiver is posted here, so
+    // the open trip says so (18.4); the signing flow itself is `signing.spec.ts`.
     await page.goto("/w/k3f9-qz2m");
-    await expect(page.getByRole("heading", { name: "Waiver signing opens here soon" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Waivers aren’t open for this trip yet" })).toBeVisible();
     await expect(page.getByText("Sat, Jun 1 · 3:00 PM")).toBeVisible();
     await expect(page.getByText("Hops")).toHaveCount(0);
   });

@@ -20,6 +20,9 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+// The app's form look: fields are darker wells on a white card (the recover-link page, the admin
+// settings forms). Hand-rolled here because no shared form component exists yet — issue #484.
+const card = "flex flex-col gap-4 rounded-card border border-line bg-card p-4 shadow-sm";
 const input = "min-h-[48px] w-full rounded-card border border-line bg-bg px-3 text-ink";
 const select = "min-h-[48px] rounded-card border border-line bg-bg px-2 text-ink";
 
@@ -117,7 +120,7 @@ export function SigningFormView({
         </p>
       )}
 
-      <section className="flex flex-col gap-4">
+      <section className={card}>
         <h1 className="text-xl font-semibold">{heading}</h1>
         <label className="flex flex-col gap-1">
           <span className="text-sm text-muted">Full legal name</span>
@@ -149,7 +152,7 @@ export function SigningFormView({
         <section className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold">{kidsHeading}</h2>
           {Array.from({ length: kids }, (_, i) => (
-            <div key={i} className="flex flex-col gap-3 rounded-card border border-line bg-card p-3">
+            <div key={i} className={card}>
               <p className="text-sm font-medium text-ink">Child {i + 1}</p>
               <label className="flex flex-col gap-1">
                 <span className="text-sm text-muted">Child’s full name</span>
@@ -166,10 +169,10 @@ export function SigningFormView({
         </section>
       )}
 
-      <section className="flex flex-col gap-3">
+      <section className={card}>
         <h2 className="text-lg font-semibold">The agreement</h2>
         {/* In page flow — no scroll-to-bottom gate (§A1). Shown as written, line breaks kept. */}
-        <div className="whitespace-pre-wrap break-words rounded-card border border-line bg-card p-3 text-sm text-ink">
+        <div className="whitespace-pre-wrap break-words rounded-card border border-line bg-bg p-3 text-sm text-ink">
           {template.body}
         </div>
         <label className="flex min-h-[44px] items-start gap-3 text-sm text-ink">

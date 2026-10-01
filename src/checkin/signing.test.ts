@@ -60,6 +60,7 @@ function form(over: Partial<SigningForm> = {}, adult: Partial<SigningForm["adult
   return {
     path: "me",
     reservationId: RESV,
+    shownTemplateId: "wt-1",
     children: [],
     consent: true,
     ...over,
@@ -209,6 +210,12 @@ describe("buildSigning — refusals", () => {
     expect(buildSigning(form(), ctx({ template: null }))).toEqual({ ok: false, code: "no_waiver" });
   });
 
+  it("the waiver changed after the form was shown — the guest must read the new words first", () => {
+    // The row records the version the guest SAW, never one posted while they were typing.
+    expect(buildSigning(form({ shownTemplateId: "wt-0" }), ctx())).toEqual({ ok: false, code: "waiver_changed" });
+    expect(buildSigning(form({ shownTemplateId: "" }), ctx())).toEqual({ ok: false, code: "waiver_changed" });
+  });
+
   it("a booking that is not on this departure", () => {
     expect(buildSigning(form({ reservationId: asId<"ReservationId">("resv-elsewhere") }), ctx())).toEqual({
       ok: false,
@@ -344,8 +351,14 @@ describe("loadSigningScene and partyFor — what the page and the sign action bo
     expect(partyFor(two, "r2")).toBe("r2");
     expect(partyFor(two, "walkup")).toBeNull();
     expect(partyFor(two, "resv-elsewhere")).toBe("choose");
-    // With one booking the party step never shows, so a stray param cannot move the guest elsewhere.
-    expect(partyFor(one, "walkup")).toBe("r1");
+    expect(partyFor(one, "walkup")).toBeNull();
+  });
+
+  it("partyFor: a party the guest picked that is no longer booked means choose again — never a silent swap", () => {
+    // Nowak was picked, then cancelled, leaving only Smith: the guest is not quietly moved into
+    // Smith's group (code review, 18.4). They pick again, from Smith or walk-up.
+    expect(partyFor([resv("r1")], "r2")).toBe("choose");
+    expect(partyFor([], "r2")).toBeNull();
   });
 });
 

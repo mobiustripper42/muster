@@ -47,7 +47,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-type Search = { for?: string; party?: string; kids?: string; err?: string; signed?: string };
+type Search = { for?: string; party?: string; kids?: string; err?: string; signed?: string; restore?: string };
 
 export default async function TripLinkPage({
   params,
@@ -162,22 +162,25 @@ async function openTrip(trip: TripLinkTrip, rawCode: string, sp: Search, now: st
     sp.for === "me" || sp.for === "kids" || sp.for === "child" ? sp.for : undefined;
   if (!path) return <WhoStep code={code} ageOfMajority={scene.ageOfMajority} />;
 
-  // The party step shows only when the departure has several bookings and none is chosen yet.
+  const kidsNum = Number(sp.kids);
+  const kids = Number.isInteger(kidsNum) && kidsNum >= 1 && kidsNum <= MAX_CHILDREN ? kidsNum : undefined;
+
+  // The party step shows when the departure has several bookings and none is chosen yet, or when
+  // the one chosen was cancelled mid-form (then their details wait in the draft).
   const booking = partyFor(scene.reservations, sp.party);
   if (booking === "choose") {
     return (
       <PartyStep
         code={code}
         path={path}
+        kids={path === "me" ? undefined : kids}
         parties={partyChoices(scene.reservations).map((p) => ({ ...p, reservationId: String(p.reservationId) }))}
         refused={sp.err === "bad_party"}
       />
     );
   }
-  const party = scene.reservations.length > 1 ? sp.party : undefined;
-
-  const kidsNum = Number(sp.kids);
-  const kids = Number.isInteger(kidsNum) && kidsNum >= 1 && kidsNum <= MAX_CHILDREN ? kidsNum : undefined;
+  // Carried on the form only when the guest actually picked one; a private charter needs none.
+  const party = sp.party;
   if (path !== "me" && !kids) {
     return (
       <KidsStep
@@ -187,7 +190,8 @@ async function openTrip(trip: TripLinkTrip, rawCode: string, sp: Search, now: st
     );
   }
 
-  const draft = sp.err ? await readFormDraft(`/w/${code}`) : null;
+  // Refill from the draft after a refusal, or after picking again from a refused party (`restore`).
+  const draft = sp.err || sp.restore === "1" ? await readFormDraft(`/w/${code}`) : null;
   return (
     <SigningFormView
       code={code}
@@ -208,6 +212,7 @@ async function openTrip(trip: TripLinkTrip, rawCode: string, sp: Search, now: st
 function errorCopy(age: number): Record<SignErr, string> {
   return {
     no_waiver: "Waivers aren’t open for this trip yet.",
+    waiver_changed: "The waiver was just updated. Read it again below, then tick the box and tap Sign.",
     bad_party: "Pick who you’re here with.",
     bad_kids_count: "Choose how many kids, 1 to 10.",
     bad_name: "Enter your full legal name.",

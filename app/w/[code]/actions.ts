@@ -103,9 +103,18 @@ export async function signWaiver(formData: FormData): Promise<void> {
     await clearFormDraft(surface);
     redirect(`${surface}?signed=${encodeURIComponent(outcome.signed)}`);
   }
+  // A changed waiver must be agreed to again: the tick was for the old words, so it is not kept.
+  if (outcome.err === "waiver_changed") formData.delete("consent");
   await stashFormDraft(surface, formData);
-  // A party that no longer resolves goes back to the party step rather than the form.
-  if (outcome.err === "bad_party") redirect(`${surface}?for=${path}&err=bad_party`);
+  // A party that no longer resolves goes back to the party step. The stale pick stays in the URL:
+  // dropping it would let a departure now down to one booking fill that booking in silently — the
+  // swap `partyFor` refuses. The kid count is kept, and the party links there carry `restore=1`,
+  // so the form the guest lands on next is refilled from the draft.
+  if (outcome.err === "bad_party") {
+    const q = new URLSearchParams({ for: path, party, err: "bad_party" });
+    if (kids) q.set("kids", String(kids));
+    redirect(`${surface}?${q.toString()}`);
+  }
   redirect(stepQuery(`err=${outcome.err}`));
 }
 
@@ -134,6 +143,8 @@ function readForm(
   return {
     path,
     reservationId,
+    // The version the form showed — checked against the one in force (`waiver_changed`).
+    shownTemplateId: text("templateId"),
     adult: {
       name: text("name"),
       legalNameConfirmed: formData.get("legalName") === "yes",

@@ -108,6 +108,8 @@ export function SigningFormView({
       <input type="hidden" name="for" value={path} />
       <input type="hidden" name="party" value={party ?? ""} />
       <input type="hidden" name="kids" value={path === "me" ? "" : String(kids)} />
+      {/* The version shown, so the row records the words the guest read (waiver_changed). */}
+      <input type="hidden" name="templateId" value={template.id} />
 
       {error && (
         <p role="alert" className="rounded-card border border-bad-line bg-bad-bg px-3 py-2 text-sm text-bad">

@@ -58,6 +58,12 @@ export interface SigningForm {
   path: SigningPath;
   /** The booking the guest is with, or null for a walk-up. */
   reservationId: ReservationId | null;
+  /**
+   * The waiver version the form showed. The row must record the words the guest READ, so a
+   * version posted while they were typing refuses the signing rather than being recorded against
+   * text they never saw (security review, 18.4).
+   */
+  shownTemplateId: string;
   adult: {
     name: string;
     legalNameConfirmed: boolean;
@@ -90,6 +96,7 @@ export interface SigningContext {
 
 export type SigningError =
   | "no_waiver"
+  | "waiver_changed"
   | "bad_party"
   | "bad_kids_count"
   | "bad_name"
@@ -110,6 +117,7 @@ export function buildSigning(form: SigningForm, ctx: SigningContext): SigningRes
   const fail = (code: SigningError): SigningResult => ({ ok: false, code });
   const template = ctx.template;
   if (!template) return fail("no_waiver");
+  if (form.shownTemplateId !== template.id) return fail("waiver_changed");
   if (form.reservationId !== null && !ctx.bookedReservationIds.includes(form.reservationId)) {
     return fail("bad_party");
   }
@@ -295,17 +303,21 @@ export async function loadSigningScene(repo: Repository, eventId: EventId, now: 
 }
 
 /**
- * Which booking a guest is signing with. One booking — a private charter, BrewBoat's whole trade —
- * is that booking, and no party step is shown, so nothing in the URL can move the guest elsewhere.
- * No bookings means a walk-up. Several need the guest to choose (spec §A2): `party` is a booking
- * id on this departure, or `walkup`; anything else is "choose".
+ * Which booking a guest is signing with (spec §A2). `party` is what the guest picked: a booking id
+ * on this departure, or `walkup`.
+ *
+ * - No bookings: a walk-up.
+ * - A pick that is still booked: that booking. `walkup`: a walk-up.
+ * - A pick that is NOT still booked — cancelled while they typed — means choose again. Never a
+ *   silent swap into the one booking left: that would count a stranger in someone else's group.
+ * - No pick: one booking (a private charter, BrewBoat's whole trade) is that booking, and no party
+ *   step is shown; several mean choose.
  */
 export function partyFor(
   reservations: readonly Reservation[],
   party: string | undefined,
 ): ReservationId | null | "choose" {
-  if (reservations.length === 0) return null;
-  if (reservations.length === 1) return reservations[0]!.id;
-  if (party === "walkup") return null;
-  return reservations.find((r) => r.id === party)?.id ?? "choose";
+  if (reservations.length === 0 || party === "walkup") return null;
+  if (party) return reservations.find((r) => r.id === party)?.id ?? "choose";
+  return reservations.length === 1 ? reservations[0]!.id : "choose";
 }

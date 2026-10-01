@@ -13,6 +13,8 @@ export interface StepState {
   path?: SigningPath | undefined;
   party?: string | undefined;
   kids?: number | undefined;
+  /** Refill the form from the draft — set on the way back from a refused party (bad_party). */
+  restore?: boolean | undefined;
 }
 
 /** The page address for a step. The trip code is always the canonical one. */
@@ -21,6 +23,7 @@ export function stepHref(s: StepState): string {
   if (s.path) q.set("for", s.path);
   if (s.party) q.set("party", s.party);
   if (s.kids) q.set("kids", String(s.kids));
+  if (s.restore) q.set("restore", "1");
   const qs = q.toString();
   return `/w/${s.code}${qs ? `?${qs}` : ""}`;
 }
@@ -71,12 +74,16 @@ export function WhoStep({ code, ageOfMajority }: { code: string; ageOfMajority: 
 export function PartyStep({
   code,
   path,
+  kids,
   parties,
   refused,
 }: {
   code: string;
   path: SigningPath;
+  /** Carried through when the guest is sent back here mid-form, so they land on the form again. */
+  kids?: number | undefined;
   parties: { reservationId: string; surname: string; partySize: number }[];
+  /** The party they picked was cancelled while they typed. Their details wait in the draft. */
   refused: boolean;
 }) {
   return (
@@ -85,7 +92,7 @@ export function PartyStep({
       {refused && <p className="mb-3 text-sm text-bad">Pick who you’re here with.</p>}
       <div className="flex flex-col gap-3">
         {parties.map((p) => (
-          <AppLink key={p.reservationId} href={stepHref({ code, path, party: p.reservationId })} className={choice} spinner="overlay">
+          <AppLink key={p.reservationId} href={stepHref({ code, path, kids, party: p.reservationId, restore: refused })} className={choice} spinner="overlay">
             <span className={choiceRow}>
               <span>
                 {p.surname} · party of {p.partySize}
@@ -94,7 +101,7 @@ export function PartyStep({
             </span>
           </AppLink>
         ))}
-        <AppLink href={stepHref({ code, path, party: "walkup" })} className={choice} spinner="overlay">
+        <AppLink href={stepHref({ code, path, kids, party: "walkup", restore: refused })} className={choice} spinner="overlay">
           <span className={choiceRow}>
             <span>I’m a walk-up</span>
             <span aria-hidden>›</span>

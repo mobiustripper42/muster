@@ -10,6 +10,7 @@ import type { Page } from "@playwright/test";
 import {
   test,
   expect,
+  cancelReservationRow,
   exhaustRateLimit,
   plantBookedReservation,
   plantTripLink,
@@ -155,6 +156,44 @@ test.describe("waiver signing /w/<code>", () => {
     await page.waitForURL(/err=throttled/);
     await expect(page.getByText(/lots of people are signing from this connection/i)).toBeVisible();
     await expect(page.getByLabel("Full legal name").first()).toHaveValue("Fred Kowalski");
+  });
+
+  test("if the waiver changes while the guest is typing, they see the new words and must tick again", async ({ page }) => {
+    await charter();
+    await page.goto(`/w/${CODE}?for=me`);
+    await fillAdult(page);
+    await page.getByLabel(/I agree to sign electronically/i).check();
+    // The operator posts new words between the form loading and Sign.
+    await plantWaiverTemplate({
+      id: "wt-new",
+      version: "brewboat-2026-v2",
+      body: "Voyage Agreement, revised.",
+      effectiveFrom: "2026-02-01T05:00:00.000Z",
+    });
+    await page.getByRole("button", { name: "Sign" }).click();
+
+    await page.waitForURL(/err=waiver_changed/);
+    await expect(page.getByText(/the waiver was just updated/i)).toBeVisible();
+    await expect(page.getByText("Voyage Agreement, revised.")).toBeVisible();
+    // Agreeing to the old words is not agreeing to the new ones.
+    await expect(page.getByLabel(/I agree to sign electronically/i)).not.toBeChecked();
+    await expect(page.getByLabel("Full legal name").first()).toHaveValue("Fred Kowalski");
+  });
+
+  test("if the chosen party is cancelled mid-form, the guest picks again and keeps what they typed", async ({ page }) => {
+    await charter();
+    await plantBookedReservation({ id: "resv-nowak", eventId: EVENT, customerName: "Piotr Nowak", partySize: 2 });
+    await page.goto(`/w/${CODE}?for=me&party=resv-nowak`);
+    await fillAdult(page);
+    await cancelReservationRow("resv-nowak");
+    await agreeAndSign(page);
+
+    await page.waitForURL(/err=bad_party/);
+    await expect(page.getByText("Pick who you’re here with.")).toBeVisible();
+    await expect(page.getByRole("link", { name: /Nowak/ })).toHaveCount(0);
+    await page.getByRole("link", { name: /I’m a walk-up/ }).click();
+    await expect(page.getByLabel("Full legal name").first()).toHaveValue("Fred Kowalski");
+    await expect(page.getByLabel("Email")).toHaveValue("fred@example.com");
   });
 
   test("with no waiver posted, there is nothing to sign", async ({ page }) => {

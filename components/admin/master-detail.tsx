@@ -19,6 +19,12 @@ import { BackLink } from "../ui/back-link";
  * applies: the list is hidden and the pane is a normal full-screen page. Written as two literal
  * class sets, not interpolated, so Tailwind sees every class.
  *
+ * **The top of each column stays put** (issue #1128). In the calendar the list column is a flex
+ * column: the controls and legend sit still and the grid's own box takes the rest and scrolls
+ * (`CalendarGrid fill`). The column keeps `overflow-y-auto` only as a fallback for a window too short
+ * for even the grid's minimum. In its pane, the Close ✕ row is pinned at the top (`h-9`), and each
+ * pane pins its title block right under it (`PANE_HEAD` in `calendar-view.tsx`, `top-9`).
+ *
  * Server component, no JS: which pane is open is the URL, and Close is a link back to the list.
  */
 const LAYOUT = {
@@ -26,11 +32,13 @@ const LAYOUT = {
     frame: "lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,4fr)] lg:gap-6",
     list: "hidden min-w-0 lg:flex lg:min-h-0 lg:flex-col lg:gap-4 lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:pr-1",
     pane: "flex min-w-0 flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:pr-1",
+    close: "hidden lg:flex lg:justify-end",
   },
   calendar: {
     frame: "lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-5",
-    list: "hidden min-w-0 lg:block lg:min-h-0 lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:pr-1",
+    list: "hidden min-w-0 lg:flex lg:min-h-0 lg:flex-col lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:pr-1",
     pane: "flex min-w-0 flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:pr-1",
+    close: "hidden lg:sticky lg:top-0 lg:z-20 lg:flex lg:h-9 lg:flex-none lg:items-center lg:justify-end lg:bg-bg",
   },
 } as const;
 
@@ -61,7 +69,7 @@ export function MasterDetail({
         {list}
       </div>
       <div className={c.pane} {...(paneTestId ? { "data-testid": paneTestId } : {})}>
-        <div className="hidden lg:flex lg:justify-end">
+        <div className={c.close}>
           <AppLink href={closeHref} className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-xs">
             Close<span aria-hidden="true">&nbsp;✕</span>
           </AppLink>

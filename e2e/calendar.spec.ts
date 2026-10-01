@@ -312,12 +312,92 @@ test.describe("admin /admin/calendar", () => {
     ]) {
       await page.goto(url);
       await expect(page.getByTestId("cal-pane-col")).toBeVisible();
-      expect(await windowOverflow()).toBeLessThanOrEqual(1);
-      expect(await scrolls("cal-list-col")).toBe(true);
+      // Not even a pixel (issue #1128): the fill height budgeted the nav without its 1px border, so
+      // the window scrolled by a pixel or two — a scrollbar with nowhere to go.
+      expect(await windowOverflow()).toBe(0);
+      // The grid's own box is what scrolls on the left (issue #1128), under the pinned controls.
+      expect(await scrolls("cal-grid-scroll")).toBe(true);
       expect(await scrolls("cal-pane-col")).toBe(true);
-      // Independent: driving the grid column leaves the pane where it was.
-      await page.getByTestId("cal-list-col").evaluate((el) => (el.scrollTop = 200));
+      // Independent: driving the grid leaves the pane where it was.
+      await page.getByTestId("cal-grid-scroll").evaluate((el) => (el.scrollTop = 200));
       expect(await page.getByTestId("cal-pane-col").evaluate((el) => el.scrollTop)).toBe(0);
+    }
+  });
+
+  /**
+   * The top of each column stays on screen while the rest scrolls (issue #1128): the date, the
+   * filters, the legend and the row of boat names on the left; Close ✕, the title, its pill and the
+   * meta line on the right.
+   */
+  test("desktop: scrolling the grid keeps the date controls, filters, legend and boat names in view", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "below lg the pane is the whole screen and nothing is pinned");
+    await signInAsAdmin(page, "eric");
+    await page.goto(`/admin/calendar/${encodeURIComponent(demoReservationId(BOOKED.date, BOOKED.time))}?date=${BOOKED.date}`);
+
+    const grid = page.getByTestId("cal-grid-scroll");
+    await grid.evaluate((el) => (el.scrollTop = el.scrollHeight));
+    expect(await grid.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    // The column itself doesn't move: only the grid under the controls.
+    expect(await page.getByTestId("cal-list-col").evaluate((el) => el.scrollTop)).toBe(0);
+
+    await expect(page.getByRole("link", { name: "Previous day" })).toBeInViewport();
+    await expect(page.getByTestId("filter-all")).toBeInViewport();
+    await expect(page.getByTestId("cal-legend")).toBeInViewport();
+    // The boat names stay at the top of the grid, not scrolled out with the morning.
+    const head = page.getByTestId("cal-head");
+    await expect(head).toBeInViewport();
+    const [headTop, gridTop] = await Promise.all([
+      head.evaluate((el) => el.getBoundingClientRect().top),
+      grid.evaluate((el) => el.getBoundingClientRect().top),
+    ]);
+    expect(Math.abs(headTop - gridTop)).toBeLessThanOrEqual(2);
+
+    // Scrolled sideways too, the boat names past the first screenful still sit on a solid
+    // background: the row's cells paint their own, so the cards scrolled under them don't show
+    // through (operator, 2026-09-30: dashes through "Brew 4").
+    await grid.evaluate((el) => (el.scrollLeft = el.scrollWidth));
+    const bare = await head.evaluate((row) =>
+      Array.from(row.children).filter((c) => getComputedStyle(c).backgroundColor === "rgba(0, 0, 0, 0)").length,
+    );
+    expect(bare).toBe(0);
+  });
+
+  test("desktop: scrolling the pane keeps Close, the title, its pill and the meta line in view", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "below lg the pane is the whole screen and nothing is pinned");
+    await signInAsAdmin(page, "eric");
+    const cases = [
+      {
+        url: `/admin/calendar/${encodeURIComponent(demoReservationId(BOOKED.date, BOOKED.time))}?date=${BOOKED.date}`,
+        title: "Marcus Webb",
+        pill: "booking-state",
+        meta: "Booked online",
+      },
+      {
+        url: `/admin/calendar?date=${BOOKED.date}&hold=${encodeURIComponent(`${DEMO.vesselId}|${OPEN_TIME}`)}&book=1&guests=2`,
+        title: `${shortLabel(OPEN_TIME)} PM · Brew 3`,
+        pill: "slot-state",
+        meta: monthDay(BOOKED.date),
+      },
+    ];
+    for (const c of cases) {
+      await page.goto(c.url);
+      const col = page.getByTestId("cal-pane-col");
+      const titleTop = () =>
+        col.getByRole("heading", { name: c.title, level: 2 }).evaluate((el) => el.getBoundingClientRect().top);
+      const atRest = await titleTop();
+      await col.evaluate((el) => (el.scrollTop = el.scrollHeight));
+      // Pinned exactly where it sat: no nudge up as it catches (operator, 2026-09-30).
+      expect(Math.abs((await titleTop()) - atRest)).toBeLessThanOrEqual(1);
+      expect(await col.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+      await expect(page.getByRole("link", { name: "Close" })).toBeInViewport();
+      await expect(col.getByRole("heading", { name: c.title, level: 2 })).toBeInViewport();
+      await expect(col.getByTestId(c.pill)).toBeInViewport();
+      await expect(col.getByTestId("pane-head")).toContainText(c.meta);
+      await expect(col.getByTestId("pane-head")).toBeInViewport();
     }
   });
 
@@ -753,8 +833,12 @@ test.describe("admin reservation actions (#616)", () => {
     await page.getByTestId("cancel-start").click();
     await page.waitForURL(/cancel=1/);
 
-    // (b) Landed at the controls, not the top of the page.
-    const afterOpen = await page.evaluate(() => window.scrollY);
+    // (b) Landed at the controls, not the top of the page. Whichever box scrolls: the pane's own
+    // column on desktop (the window doesn't, PR #1110 — it used to move by the pixel issue #1128
+    // removed, which is what this line was reading), the window at 375px.
+    const afterOpen = await page.evaluate(
+      () => window.scrollY + (document.querySelector('[data-testid="cal-pane-col"]')?.scrollTop ?? 0),
+    );
     expect(afterOpen, "opening the confirm scrolled back to the top of the page").toBeGreaterThan(0);
     await expect(page.getByTestId("cancel-confirm")).toBeInViewport();
 
@@ -774,7 +858,11 @@ test.describe("admin reservation actions (#616)", () => {
     // And the same on the way out of the action itself.
     await page.getByRole("button", { name: CANCEL_BUTTON }).click();
     await page.waitForURL(/cancelled=/);
-    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    expect(
+      await page.evaluate(
+        () => window.scrollY + (document.querySelector('[data-testid="cal-pane-col"]')?.scrollTop ?? 0),
+      ),
+    ).toBeGreaterThan(0);
     // Either outcome — the refund half is refused without a Stripe intent, the cancel committed.
     await expect(
       page.getByTestId("action-done").or(page.getByTestId("action-error")),

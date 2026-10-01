@@ -505,7 +505,7 @@ export function CalendarLegend({ data }: { data: CalendarData }) {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
+    <div data-testid="cal-legend" className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
       {legendOfferings.map((o) => (
         <span key={String(o.id)} className="inline-flex items-center gap-1.5">
           <span
@@ -657,7 +657,8 @@ export function SlotPane({ data }: { data: CalendarData }) {
 export function SlotHeader({ data, p }: { data: CalendarData; p: PendingHold }) {
   const blocked = p.action === "release";
   return (
-    <>
+    // Pinned under Close ✕ as the pane scrolls on desktop (issue #1128) — `PANE_HEAD` below.
+    <div data-testid="pane-head" className={PANE_HEAD}>
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-xl font-semibold text-ink">
           {clockTime(p.time)} · {p.vesselName}
@@ -671,10 +672,22 @@ export function SlotHeader({ data, p }: { data: CalendarData; p: PendingHold }) 
           {blocked ? "Blocked" : "Open"}
         </span>
       </div>
-      <p className="-mt-2 text-sm text-muted">{formatFullDay(data.day)}</p>
-    </>
+      <p className="text-sm text-muted">{formatFullDay(data.day)}</p>
+    </div>
   );
 }
+
+/**
+ * A pane's title block — the name and its pill, then the meta line — pinned to the top of the
+ * pane column as it scrolls on desktop (issue #1128), directly under the frame's Close ✕ row
+ * (`master-detail.tsx`, which is `h-9`, hence `top-9`). On the page's own background so the cards
+ * slide under it cleanly. Shared by the slot pane, the booking steps and the booking pane.
+ *
+ * `-mt-3 pt-3` takes over the pane's `gap-3` above it: the block covers the gap with its own
+ * padding, so it sits in the same place at rest and pinned. Without it the gap vanished as the
+ * block caught and the title nudged up 12px (operator, 2026-09-30).
+ */
+export const PANE_HEAD = "flex flex-col gap-1 lg:sticky lg:top-9 lg:z-10 lg:-mt-3 lg:bg-bg lg:pb-2 lg:pt-3";
 
 /**
  * The booking steps' href (issue #1104 part 3): the calendar, this slot's pane, `book=1`, plus the
@@ -713,9 +726,18 @@ const selectedAttr = (on: boolean): "" | undefined => (on ? "" : undefined);
 export function CalendarGrid({
   data,
   selectedReservationId,
+  fill = false,
 }: {
   data: CalendarData;
   selectedReservationId?: string | undefined;
+  /**
+   * In the list-and-detail frame (a pane open): on desktop the grid's own box fills the column
+   * under the controls and legend and scrolls both ways, with the row of boat names pinned to its
+   * top (issue #1128). The box has to be the vertical scroller for that row to stick: inside a box
+   * that only scrolls sideways, `sticky` has nothing to stick to. Without a pane the page scrolls
+   * as it always has.
+   */
+  fill?: boolean;
 }) {
   const gridCols = `52px repeat(${data.vessels.length}, minmax(120px, 1fr))`;
   // What is selected, as one string: a reservation, or the slot whose pane is open. Changes on
@@ -740,19 +762,35 @@ export function CalendarGrid({
   }
 
   return (
-    <div className="mt-2 overflow-hidden rounded-card border border-line bg-card shadow-sm">
+    <div
+      className={`mt-2 overflow-hidden rounded-card border border-line bg-card shadow-sm ${
+        fill ? "lg:flex lg:min-h-[240px] lg:flex-1 lg:flex-col" : ""
+      }`}
+    >
       {/* Opening a pane re-renders the page: bring the selected card back into view (#1104). */}
       <RevealSelectedCard selectedKey={selectedKey} />
-      <div className="overflow-x-auto">
-        {/* Header row: corner + vessel names with hue dots. */}
-        <div className="grid border-b border-line" style={{ gridTemplateColumns: gridCols }}>
-          <div className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
+      <div
+        data-cal-scroll
+        data-testid="cal-grid-scroll"
+        className={fill ? "overflow-x-auto lg:min-h-0 lg:flex-1 lg:overflow-y-auto" : "overflow-x-auto"}
+      >
+        {/* Header row: corner + vessel names with hue dots. Pinned to the top of the grid's box when
+            it scrolls (issue #1128). Each CELL paints its own background and rule, not the row: the
+            row is only as wide as the box, so scrolled sideways past it the boat names had nothing
+            under them and the cards showed through ("Brew 4", operator 2026-09-30). */}
+        <div
+          data-cal-head
+          data-testid="cal-head"
+          className={`grid ${fill ? "lg:sticky lg:top-0 lg:z-20" : ""}`}
+          style={{ gridTemplateColumns: gridCols }}
+        >
+          <div className="border-b border-line bg-card px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
             Time
           </div>
           {data.vessels.map((v) => (
             <div
               key={String(v.id)}
-              className="flex items-center gap-1.5 border-l border-line px-2 py-2 text-[11.5px] font-semibold text-ink"
+              className="flex items-center gap-1.5 border-b border-l border-line bg-card px-2 py-2 text-[11.5px] font-semibold text-ink"
             >
               <span
                 className={`inline-block h-2 w-2 shrink-0 rounded-full ${vesselHueClass(String(v.id), v.hue)}`}

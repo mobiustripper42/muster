@@ -2,7 +2,7 @@ import { formatCents, type ReservationDetailView } from "@core/reservations/cale
 import { AppLink } from "../../../../../components/ui/app-link";
 import { Notice } from "../../../../../components/ui/notice";
 import { UnsavedGuard } from "../../../../../components/ui/unsaved-guard";
-import { clockTime, formatShortDay } from "../calendar-view";
+import { PANE_HEAD, clockTime, formatShortDay } from "../calendar-view";
 import { CopyButton } from "../../../../../components/ui/copy-button";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { RefundAmountSync } from "../../../../../components/admin/refund-amount-sync";
@@ -404,6 +404,7 @@ export function ReservationDetailPane({
   balance,
   actions,
   unpaid,
+  children,
 }: {
   v: ReservationDetailView;
   /** Balance-link state from the query string (11.2b) — the minted URL, or why not. */
@@ -412,12 +413,18 @@ export function ReservationDetailPane({
   actions?: PaneActionState | undefined;
   /** An unpaid phone booking's state (16.1): the just-booked notice and its cancel. */
   unpaid?: UnpaidActionState | undefined;
+  /** What follows the actions (the booking's history). Inside the pane rather than after it, so
+   *  the pinned title block stays up for the whole scroll (issue #1128): a sticky element only
+   *  sticks while its own container is on screen. */
+  children?: React.ReactNode;
 }) {
   const cancelled = v.status === "cancelled";
   const state = bookingState(v);
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Pinned under Close ✕ as the pane scrolls on desktop (issue #1128). */}
+      <div data-testid="pane-head" className={PANE_HEAD}>
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-xl font-semibold text-ink">{v.customerName}</h2>
         <span
@@ -427,7 +434,8 @@ export function ReservationDetailPane({
           {state.label}
         </span>
       </div>
-      <p className="-mt-2 text-sm text-muted">{metaLine(v)}</p>
+      <p className="text-sm text-muted">{metaLine(v)}</p>
+      </div>
 
       {unpaid?.justBooked && !cancelled ? <JustBooked v={v} linkSent={unpaid.linkSent} /> : null}
 
@@ -451,6 +459,7 @@ export function ReservationDetailPane({
 
       {actions && <PaneActions v={v} actions={actions} />}
       {unpaid && <PhoneBookingActions reservationId={v.reservationId} cancelled={cancelled} state={unpaid} />}
+      {children}
     </div>
   );
 }

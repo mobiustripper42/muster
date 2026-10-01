@@ -12,12 +12,12 @@ import { useEffect } from "react";
  * selection to stay visible.
  *
  * The same job `RevealSelectedRow` does for the shift board (DEC-114), with one difference that is
- * the reason this is its own island: the card has TWO scrollers — the list column (vertical; since
- * the PR #1110 review the calendar scrolls like Shifts, each column on its own and the window not
- * at all) and the grid's `overflow-x-auto` wrapper (sideways). Native `scrollIntoView` moves every
- * scrollable ancestor, so one call brings the card into view in both. "Visible" is measured
- * against the list column's box (`cal-list-col`, a DUAL-PURPOSE hook — e2e selects it too), falling
- * back to the window where there is no column.
+ * the reason this is its own island: the grid's own box scrolls BOTH ways. Since issue #1128 it is
+ * the one scroller on the left with a pane open — the controls and legend stay put above it, and
+ * the row of boat names is pinned to its top. "Visible" is measured against that box
+ * (`data-cal-scroll`) BELOW the pinned row (`data-cal-head`), because a card under the row is
+ * covered, falling back to the window. Native `scrollIntoView` moves every scrollable ancestor, so
+ * one call brings the card into view either way.
  *
  * Only moves when the card is not already comfortably visible, so clicking a card that is on
  * screen does not jolt the page. Inert when the grid is hidden (below `lg` with a pane open, the
@@ -33,12 +33,12 @@ export function RevealSelectedCard({ selectedKey }: { selectedKey: string }) {
     if (!card || card.offsetParent === null) return;
 
     const r = card.getBoundingClientRect();
-    const scroller = card.closest<HTMLElement>(".overflow-x-auto");
+    const scroller = card.closest<HTMLElement>("[data-cal-scroll]");
     const s = scroller?.getBoundingClientRect();
-    const c = card.closest<HTMLElement>('[data-testid="cal-list-col"]')?.getBoundingClientRect();
+    const head = scroller?.querySelector<HTMLElement>("[data-cal-head]")?.offsetHeight ?? 0;
     const MARGIN = 16;
-    const top = Math.max(c?.top ?? 0, 0) + MARGIN;
-    const bottom = Math.min(c?.bottom ?? window.innerHeight, window.innerHeight) - MARGIN;
+    const top = Math.max(s?.top ?? 0, 0) + head + MARGIN;
+    const bottom = Math.min(s?.bottom ?? window.innerHeight, window.innerHeight) - MARGIN;
     const offColumn = r.top < top || r.bottom > bottom;
     const offGrid = s !== undefined && (r.left < s.left || r.right > s.right);
     if (offColumn || offGrid) {

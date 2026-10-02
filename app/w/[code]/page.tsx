@@ -165,7 +165,7 @@ async function openTrip(trip: TripLinkTrip, rawCode: string, sp: Search, now: st
   }
 
   // Refill from the draft after a refusal, after picking again from a refused party, or after
-  // "+ Add a child" or Remove without JS (both `restore`).
+  // "+ Add a minor" or Remove without JS (both `restore`).
   const draft = sp.err || sp.restore === "1" ? await readFormDraft(`/w/${code}`) : null;
   return (
     <SigningFormView
@@ -188,16 +188,16 @@ function errorCopy(age: number): Record<SignErr, string> {
     no_waiver: "Waivers aren’t open for this trip yet.",
     waiver_changed: "The waiver was just updated. Read it again below, then tick the box and tap Sign.",
     bad_party: "Pick who you’re here with.",
-    bad_kids_count: `One signature covers up to ${MAX_CHILDREN} kids.`,
+    bad_kids_count: `One signature covers up to ${MAX_CHILDREN} minors.`,
     bad_name: "Enter your full legal name.",
     legal_name_unconfirmed: "Tick the box to confirm this is your full legal name.",
     bad_dob: "Pick your full date of birth — month, day and year.",
     adult_too_young: `You need to be ${age} or older to sign. A parent or guardian signs for you.`,
     bad_email: "Enter an email address we can reach you at.",
     bad_phone: "That phone number doesn’t look right. Fix it, or leave it blank.",
-    bad_child_name: "Enter each child’s full name.",
-    bad_child_dob: "Pick each child’s full date of birth.",
-    child_too_old: `Each child must be under ${age}. Anyone ${age} or older signs for themselves.`,
+    bad_child_name: "Enter each minor’s full name.",
+    bad_child_dob: "Pick each minor’s full date of birth.",
+    child_too_old: `Each minor must be under ${age}. Anyone ${age} or older signs for themselves.`,
     consent_required: "Tick the box to agree to sign electronically.",
     throttled: "Lots of people are signing from this connection right now. Wait a minute, then tap Sign again.",
     error: "Something went wrong saving that. Tap Sign again.",

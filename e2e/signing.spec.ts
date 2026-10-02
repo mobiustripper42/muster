@@ -1,9 +1,9 @@
 /**
- * The waiver signing page, /w/<code> (Phase 18.4, issue #1118). The rules — ages, the ten-kid cap,
+ * The waiver signing page, /w/<code> (Phase 18.4, issue #1118). The rules — ages, the ten-minor cap,
  * refusals, the group count — are unit-tested in `src/checkin/signing.test.ts`; here a guest walks
  * each path end to end at desktop and 375px. The page opens straight on the form (operator,
- * 2026-10-01): an adult alone, an adult who adds kids with "+ Add a child" and takes one away
- * again, the ten-kid limit, the same with JavaScript off, the party step, a refusal that keeps what
+ * 2026-10-01): an adult alone, an adult who adds minors with "+ Add a minor" and takes one away
+ * again, the ten-minor limit, the same with JavaScript off, the party step, a refusal that keeps what
  * was typed, a throttled submit, and a trip with no waiver posted.
  *
  * The trip is a private charter (one booking, party of 4) unless a test plants a second booking.
@@ -55,7 +55,7 @@ async function fillChild(page: Page, i: number, name: string, year: string): Pro
   await page.locator('select[name="childYear"]').nth(i).selectOption(year);
 }
 
-const addChild = (page: Page) => page.getByRole("button", { name: "+ Add a child" });
+const addChild = (page: Page) => page.getByRole("button", { name: "+ Add a minor" });
 
 async function agreeAndSign(page: Page): Promise<void> {
   await expect(page.getByText("I accept the risks of a boat trip.")).toBeVisible();
@@ -73,7 +73,7 @@ test.describe("waiver signing /w/<code>", () => {
     await page.goto(`/w/${CODE}`);
     await expect(page.getByText("Sat, Jun 1 · 3:00 PM")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Your details" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Child 1" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Minor 1" })).toHaveCount(0);
 
     await fillAdult(page);
     await agreeAndSign(page);
@@ -90,7 +90,7 @@ test.describe("waiver signing /w/<code>", () => {
     await expect(page.getByLabel("Full legal name").first()).toHaveValue("");
   });
 
-  test("+ Add a child adds a card on the phone, with no round trip — two kids count toward the group", async ({ page }) => {
+  test("+ Add a minor adds a card on the phone, with no round trip — two minors count toward the group", async ({ page }) => {
     await charter();
     const posts: string[] = [];
     page.on("request", (r) => {
@@ -100,7 +100,7 @@ test.describe("waiver signing /w/<code>", () => {
     await fillAdult(page);
 
     await clickHydrated(addChild(page));
-    await expect(page.getByRole("heading", { name: "Child 1" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Minor 1" })).toBeVisible();
     // The new card's name field takes the focus: add, type, add, type.
     await expect(childName(page, 0)).toBeFocused();
     await fillChild(page, 0, "Kyle Kowalski", "2014");
@@ -117,7 +117,7 @@ test.describe("waiver signing /w/<code>", () => {
     await expect(page.getByText("One person still needs to sign.")).toBeVisible();
   });
 
-  test("Remove takes that child away and the cards after it renumber", async ({ page }) => {
+  test("Remove takes that minor away, the cards after it renumber, and the focus moves to the add button", async ({ page }) => {
     await charter();
     await page.goto(`/w/${CODE}`);
     await fillAdult(page);
@@ -128,8 +128,10 @@ test.describe("waiver signing /w/<code>", () => {
     await addChild(page).click();
     await fillChild(page, 2, "Zoe Kowalski", "2021");
 
-    await page.getByRole("button", { name: "Remove child 2" }).click();
-    await expect(page.getByRole("heading", { name: "Child 3" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Remove minor 2" }).click();
+    await expect(page.getByRole("heading", { name: "Minor 3" })).toHaveCount(0);
+    // The focus does not fall off the page with the card: it lands on "+ Add a minor".
+    await expect(addChild(page)).toBeFocused();
     await expect(childName(page, 0)).toHaveValue("Kyle Kowalski");
     await expect(childName(page, 1)).toHaveValue("Zoe Kowalski");
     await expect(page.locator('select[name="childYear"]').nth(1)).toHaveValue("2021");
@@ -139,18 +141,20 @@ test.describe("waiver signing /w/<code>", () => {
     await expect(page.getByText("Your group: 3 of 4 signed")).toBeVisible();
   });
 
-  test(`${MAX_CHILDREN} kids is the most: the add button goes at ${MAX_CHILDREN} and comes back after a remove`, async ({ page }) => {
+  test(`${MAX_CHILDREN} minors is the most: the add button goes at ${MAX_CHILDREN} and comes back after a remove`, async ({ page }) => {
     await charter();
     await page.goto(`/w/${CODE}`);
     await clickHydrated(addChild(page));
     for (let i = 1; i < MAX_CHILDREN; i++) await addChild(page).click();
 
-    await expect(page.getByRole("heading", { name: `Child ${MAX_CHILDREN}`, exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: `Minor ${MAX_CHILDREN}`, exact: true })).toBeVisible();
     await expect(addChild(page)).toHaveCount(0);
-    await expect(page.getByText(`${MAX_CHILDREN} kids is the most on one signature.`)).toBeVisible();
+    await expect(page.getByText(`${MAX_CHILDREN} minors is the most on one signature.`)).toBeVisible();
 
-    await page.getByRole("button", { name: "Remove child 4" }).click();
+    await page.getByRole("button", { name: "Remove minor 4" }).click();
     await expect(addChild(page)).toBeVisible();
+    // The button was not on the page when Remove was tapped; the focus still finds it.
+    await expect(addChild(page)).toBeFocused();
   });
 
   test("a refusal comes back with everything still typed, the child cards included", async ({ page }) => {
@@ -167,7 +171,7 @@ test.describe("waiver signing /w/<code>", () => {
     await expect(page.getByLabel("Full legal name").first()).toHaveValue("Fred Kowalski");
     await expect(page.locator('select[name="dobYear"]')).toHaveValue("1980");
     await expect(page.getByLabel("Email")).toHaveValue("fred@nowhere");
-    await expect(page.getByRole("heading", { name: "Child 1" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Minor 1" })).toBeVisible();
     await expect(childName(page, 0)).toHaveValue("Kyle Kowalski");
     await expect(page.locator('select[name="childYear"]').nth(0)).toHaveValue("2014");
     await expect(page.getByLabel(/I agree to sign electronically/i)).toBeChecked();
@@ -262,7 +266,7 @@ test.describe("waiver signing /w/<code>", () => {
   test.describe("with JavaScript off", () => {
     test.use({ javaScriptEnabled: false });
 
-    test("+ Add a child and Remove still work — each is a round trip that keeps everything typed", async ({ page }) => {
+    test("+ Add a minor and Remove still work — each is a round trip that keeps everything typed", async ({ page }) => {
       // The progressive-enhancement half of DEC-147 rule 2: the island makes adding a child
       // instant, and without it the same buttons post the form and come back with one more card.
       await charter();
@@ -275,12 +279,12 @@ test.describe("waiver signing /w/<code>", () => {
       await fillChild(page, 0, "Kyle Kowalski", "2014");
 
       await addChild(page).click();
-      await expect(page.getByRole("heading", { name: "Child 2" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Minor 2" })).toBeVisible();
       await expect(childName(page, 0)).toHaveValue("Kyle Kowalski");
       await fillChild(page, 1, "Amy Kowalski", "2019");
 
-      await page.getByRole("button", { name: "Remove child 1" }).click();
-      await expect(page.getByRole("heading", { name: "Child 2" })).toHaveCount(0);
+      await page.getByRole("button", { name: "Remove minor 1" }).click();
+      await expect(page.getByRole("heading", { name: "Minor 2" })).toHaveCount(0);
       await expect(childName(page, 0)).toHaveValue("Amy Kowalski");
       await expect(page.getByLabel("Email")).toHaveValue("fred@example.com");
 

@@ -1,68 +1,184 @@
 /**
- * Blocks registry (task 12.10, DEC-125) — drives /admin/blocks end to end: create a scoped
- * Location block and see it in the registry with a server-computed "removes N slots" impact +
- * a booked-trip CONFLICT (committed state beats blocks — never silently cancelled); create a
- * Vessel block over the seeded bookings; select a block from the list to load it into the edit
- * panel (master-detail); then delete (Lift) it from the panel and watch it disappear. The kind
- * toggle swaps the Location/Vessel field sets (no-JS `:has()`). Domain validation + impact math
- * are unit-tested; this is the surface. Runs desktop + 375px.
+ * Blocks registry (task 12.10, DEC-125; reason-first since issue #1091) — drives /admin/blocks end
+ * to end in the operator's words: the editor asks what's happening before it asks for anything
+ * else, says how many departures came off the calendar, and Unblock asks before it puts them back.
+ * Domain validation and impact math are unit-tested; this is the surface. Runs desktop + 375px.
  *
  * The `reservation` seed builds a LIVE offering + owned days + two materialized bookings on
  * vessel-brew-3 at the dates the seed derives for today (#646), so the conflict count is real.
  */
+import type { Page } from "@playwright/test";
 import { DEMO } from "./reservation-demo.js";
 import { test, expect, resetAndSeed, signInAsAdmin, clickHydrated } from "./fixtures.js";
+
+const BOAT_OUT = /A boat is out of service/;
+const CLOSURE = /A dock or the river is closed/;
+const ONE_DEPARTURE = /Hold one departure/;
+
+/** The editor's three answers to "What's happening?" — present only while nothing is chosen. */
+async function choose(page: Page, answer: RegExp): Promise<void> {
+  await clickHydrated(page.getByRole("button", { name: answer }));
+}
 
 test.describe("admin /admin/blocks", () => {
   test.beforeEach(async () => {
     await resetAndSeed("reservation"); // live offering + owned days + 2 booked trips on Brew 3
   });
 
-  test("create (impact + conflict), select-to-edit, then delete", async ({ page }) => {
+  test("a closure: what's happening first, how many came off, then Unblock asks first", async ({ page }) => {
     await signInAsAdmin(page, "eric");
     await page.goto("/admin/blocks");
 
-    // ── Create a Location block (Location is the default kind) — the booked day, 13:00–16:00 ──
-    await page.selectOption('select[name="locationId"]', { label: "Reservation Demo Dock" });
-    await page.fill('input[name="date"]', DEMO.locationBlockWindow.date);
-    await page.fill('input[name="startTime"]', "13:00");
-    await page.fill('input[name="endTime"]', "16:00");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
-    await page.waitForURL(/sel=/); // saved → the new block is selected into the edit panel
+    await expect(
+      page.getByText(
+        "Nothing blocked. Take a boat out of service, close a dock for part of a day, or hold one departure on the calendar.",
+      ),
+    ).toBeVisible();
+    // The question comes first: no fields until it is answered.
+    await expect(page.getByText("What’s happening?")).toBeVisible();
+    await expect(page.getByLabel("Which location")).toHaveCount(0);
 
-    // Its row shows impact ("… slot") + the booked conflict (13:30 booked; 15:30 open = removed).
-    const locRow = page.getByTestId("block-row").filter({ hasText: "Reservation Demo Dock" });
-    await expect(locRow).toContainText("slot");
+    await choose(page, CLOSURE);
+    await page.getByLabel("Which location").selectOption({ label: "Reservation Demo Dock" });
+    await page.getByLabel("Date", { exact: true }).fill(DEMO.locationBlockWindow.date);
+    await page.getByLabel("From", { exact: true }).fill("13:00");
+    await page.getByLabel("To", { exact: true }).fill("16:00");
+    await page.getByRole("button", { name: "Block it", exact: true }).click();
+    await page.waitForURL(/sel=/);
+
+    // The row in the list's own words, and the count the confirmation repeats.
+    const row = page.getByTestId("block-row").filter({ hasText: "Reservation Demo Dock" });
+    await expect(row).toContainText("Closed");
+    const offSale = Number(await row.getByTestId("off-sale").textContent().then((t) => t?.match(/\d+/)?.[0]));
+    expect(offSale).toBeGreaterThan(0);
+    await expect(page.getByTestId("blocked-notice")).toHaveText(
+      `Blocked. ${offSale} ${offSale === 1 ? "departure is" : "departures are"} off the calendar.`,
+    );
     await expect(page.getByText(/1 booked \(\$549\) conflict/)).toBeVisible();
 
-    // ── + New → a Vessel block over the 11th–14th (kind toggle swaps to the vessel fields) ──
-    await page.getByRole("link", { name: "+ New" }).click();
-    await clickHydrated(page.getByRole("button", { name: /Vessel/ })); // kind toggle → vessel fields
-    await page.selectOption('select[name="vesselId"]', { label: DEMO.vesselName });
-    await page.fill('input[name="startDate"]', DEMO.vesselBlockWindow.start);
-    await page.fill('input[name="endDate"]', DEMO.vesselBlockWindow.end);
-    await page.getByRole("button", { name: "Save", exact: true }).click();
-    await page.waitForURL(/sel=/);
-    // Conflicts with BOTH seeded bookings ($549 + $439 = $988).
-    await expect(page.getByText(/2 booked \(\$988\) conflict/)).toBeVisible();
-
-    // ── Filter to Vessel only ──
-    await page.getByRole("link", { name: "Vessel", exact: true }).click();
+    // The chips say what they hold.
+    await page.getByRole("link", { name: "Boats out", exact: true }).click();
+    await expect(page.getByTestId("block-row")).toHaveCount(0);
+    await page.getByRole("link", { name: "Closures", exact: true }).click();
     await expect(page.getByTestId("block-row")).toHaveCount(1);
     await page.getByRole("link", { name: "All", exact: true }).click();
-    await expect(page.getByTestId("block-row")).toHaveCount(2);
 
-    // ── Select the location block from the list → it loads into the edit panel (prefilled) ──
-    await page.getByTestId("block-row").filter({ hasText: "Reservation Demo Dock" }).click();
-    await expect(page.locator('input[name="date"]')).toHaveValue(DEMO.locationBlockWindow.date);
-    await expect(page.locator('input[name="endTime"]')).toHaveValue("16:00");
+    // Unblock asks first, and Keep blocked writes nothing.
+    await page.getByTestId("block-row").click();
+    await clickHydrated(page.getByRole("button", { name: "Unblock", exact: true }));
+    const departures = offSale === 1 ? "this departure" : `these ${offSale} departures`;
+    await expect(page.getByText(`Put ${departures} back on sale?`)).toBeVisible();
+    await page.getByRole("button", { name: "Keep blocked", exact: true }).click();
+    await expect(page.getByText(`Put ${departures} back on sale?`)).toHaveCount(0);
+    await expect(page.getByTestId("block-row")).toHaveCount(1);
 
-    // ── Delete it from the panel → gone from the registry ──
-    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await clickHydrated(page.getByRole("button", { name: "Unblock", exact: true }));
+    await page.getByTestId("unblock-confirm").getByRole("button", { name: "Unblock", exact: true }).click();
     await page.waitForURL((url) => !url.searchParams.has("sel"));
-    await expect(page.getByTestId("block-row").filter({ hasText: "Reservation Demo Dock" })).toHaveCount(0);
+    await expect(page.getByTestId("block-row")).toHaveCount(0);
+  });
 
-    // The vessel block (and its conflict) survives.
-    await expect(page.getByText(/2 booked \(\$988\) conflict/)).toBeVisible();
+  test("a boat out: To left blank is the one day, and the list says Boat out", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto("/admin/blocks");
+
+    await choose(page, BOAT_OUT);
+    await page.getByLabel("Which boat").selectOption({ label: DEMO.vesselName });
+    await page.getByLabel("From", { exact: true }).fill(DEMO.vesselBlockWindow.start);
+    await page.getByRole("button", { name: "Block it", exact: true }).click();
+    await page.waitForURL(/sel=/);
+
+    const row = page.getByTestId("block-row");
+    await expect(row).toContainText("Boat out");
+    await expect(row).toContainText(DEMO.vesselName);
+    // Saved as a one-day block: the editor reloads it with To = From.
+    await expect(page.getByLabel(/^To/)).toHaveValue(DEMO.vesselBlockWindow.start);
+  });
+
+  /**
+   * The list's last column says what it counts, every row's columns line up under the headers, and
+   * When is the date over the time (issue #1090's alignment and wrapping, operator 2026-10-02).
+   * Each row is its own grid, so content-sized columns drifted row to row.
+   */
+  test("the list: Departures blocked, columns aligned across kinds, When as date over time", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto("/admin/blocks");
+
+    await choose(page, CLOSURE);
+    await page.getByLabel("Which location").selectOption({ label: "Reservation Demo Dock" });
+    await page.getByLabel("Date", { exact: true }).fill(DEMO.locationBlockWindow.date);
+    await page.getByLabel("From", { exact: true }).fill("13:00");
+    await page.getByLabel("To", { exact: true }).fill("16:00");
+    await page.getByRole("button", { name: "Block it", exact: true }).click();
+    await page.waitForURL(/sel=/);
+    await page.getByRole("link", { name: "+ New block" }).click();
+    await choose(page, BOAT_OUT);
+    await page.getByLabel("Which boat").selectOption({ label: DEMO.vesselName });
+    await page.getByLabel("From", { exact: true }).fill(DEMO.vesselBlockWindow.start);
+    await page.getByRole("button", { name: "Block it", exact: true }).click();
+    await page.waitForURL(/sel=/);
+
+    const closure = page.getByTestId("block-row").filter({ hasText: "Reservation Demo Dock" });
+    const boatOut = page.getByTestId("block-row").filter({ hasText: "Boat out" });
+    await expect(closure.getByTestId("when-time")).toHaveText("1:00 PM – 4:00 PM");
+    await expect(boatOut.getByTestId("when-time")).toHaveText("all day");
+    // The date line holds the date only.
+    await expect(closure.getByTestId("when-date")).not.toContainText("PM");
+
+    if ((page.viewportSize()?.width ?? 0) >= 720) {
+      await expect(page.getByText("Departures blocked", { exact: true })).toBeVisible();
+      const x = async (row: typeof closure, id: string) => (await row.getByTestId(id).boundingBox())!.x;
+      expect(await x(boatOut, "off-sale")).toBeCloseTo(await x(closure, "off-sale"), 0);
+      expect(await x(boatOut, "when-date")).toBeCloseTo(await x(closure, "when-date"), 0);
+    }
+  });
+
+  /**
+   * Issue #1090's bug: a refused boat-out came back as the other form, because the editor's
+   * choice was seeded from the selected block only and never from the refused draft.
+   */
+  test("a refused boat-out comes back as a boat-out, with what was typed", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto("/admin/blocks");
+
+    await choose(page, BOAT_OUT);
+    await page.getByLabel("From", { exact: true }).fill(DEMO.vesselBlockWindow.start);
+    await page.getByLabel("Reason").fill("engine service");
+    await page.getByRole("button", { name: "Block it", exact: true }).click(); // no boat picked
+
+    await expect(page.getByText("Pick a boat that’s still in the fleet.")).toBeVisible();
+    await expect(page.getByLabel("Which boat")).toBeVisible();
+    await expect(page.getByLabel("From", { exact: true })).toHaveValue(DEMO.vesselBlockWindow.start);
+    await expect(page.getByLabel("Reason")).toHaveValue("engine service");
+  });
+
+  test("Cancel drops a new block; one departure points at the calendar; + New block from an edit", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto("/admin/blocks");
+
+    await choose(page, CLOSURE);
+    await expect(page.getByLabel("Which location")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.getByLabel("Which location")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: BOAT_OUT })).toBeVisible();
+
+    await choose(page, ONE_DEPARTURE);
+    await expect(page.getByRole("link", { name: "Pick the departure on the calendar →" })).toHaveAttribute(
+      "href",
+      "/admin/calendar",
+    );
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+
+    // From an existing block, + New block is how you start another.
+    await choose(page, BOAT_OUT);
+    await page.getByLabel("Which boat").selectOption({ label: DEMO.vesselName });
+    await page.getByLabel("From", { exact: true }).fill(DEMO.vesselBlockWindow.start);
+    await page.getByRole("button", { name: "Block it", exact: true }).click();
+    await page.waitForURL(/sel=/);
+    await page.getByRole("link", { name: "+ New block" }).click();
+    await page.waitForURL((url) => !url.searchParams.has("sel"));
+    await expect(page.getByRole("button", { name: CLOSURE })).toBeVisible();
   });
 });

@@ -41,26 +41,77 @@ type Search = {
   kind?: string;
   past?: string;
   sel?: string;
+  /** `1` right after a save — the page says how many departures came off (issue #1091). */
+  saved?: string;
   err?: string;
 };
 
 const ERR_COPY: Record<BlockErr, string> = {
-  bad_kind: "Pick a block kind — Location or Vessel. (Slot blocks are made on the calendar.)",
+  bad_kind: "Pick what’s happening first.",
   bad_location: "Pick a location that still exists.",
-  bad_date: "Give the block a real date.",
-  bad_window: "Check the time window — HH:MM, and the start can’t be after the end.",
-  bad_vessel: "Pick a vessel that still exists.",
-  bad_range: "Check the date range — real dates, start on or before end.",
-  not_found: "That block was already lifted.",
+  bad_date: "Give the closure a real date.",
+  bad_window: "Check the times — the closure has to start before it ends.",
+  bad_vessel: "Pick a boat that’s still in the fleet.",
+  bad_range: "Check the dates — From has to be a real date, on or before To.",
+  not_found: "That block was already unblocked.",
   error: "Couldn’t do that just now — try again in a moment.",
 };
 
+/**
+ * The chips, in the editor's words (issue #1091). The URL keys keep the kinds' names — links and
+ * tests already carry `?kind=slot` — only the labels changed.
+ */
 const FILTERS: { key: string; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "location", label: "Location" },
-  { key: "vessel", label: "Vessel" },
-  { key: "slot", label: "Slot" },
+  { key: "vessel", label: "Boats out" },
+  { key: "location", label: "Closures" },
+  { key: "slot", label: "Single departures" },
 ];
+
+/** "removes N" in the operator's words — what the confirmation line after a save says. */
+function offCalendarLine(n: number): string {
+  if (n === 0) return "Blocked. Nothing in it was on sale, so nothing came off the calendar.";
+  return `Blocked. ${n} ${n === 1 ? "departure is" : "departures are"} off the calendar.`;
+}
+
+/**
+ * The Which column's second line: what the block reaches beyond the name above it. A boat out
+ * needs nothing — the badge and the boat already say it.
+ */
+const ROW_SCOPE: Record<BlockKind, string> = {
+  location: "every boat leaving here",
+  vessel: "",
+  vesselHold: "opens on the calendar",
+};
+
+/**
+ * The When column: the date on one line, the time on the next (operator, 2026-10-02) — one string
+ * wrapped wherever the column ran out, mid-phrase. A one-day boat out reads as one day, not
+ * "Oct 5 – Oct 5".
+ */
+function whenOf(block: Block): { date: string; time: string } {
+  switch (block.kind) {
+    case "location":
+      return { date: formatDay(block.date), time: `${formatTime(block.startTime)} – ${formatTime(block.endTime)}` };
+    case "vesselHold":
+      return { date: formatDay(block.date), time: formatTime(block.time) };
+    case "vessel":
+      return {
+        date:
+          block.startDate === block.endDate
+            ? formatDay(block.startDate)
+            : `${formatDay(block.startDate)} – ${formatDay(block.endDate)}`,
+        time: "all day",
+      };
+  }
+}
+
+/**
+ * The registry's columns, header and rows alike. `minmax(0, …)` because each row is its own grid:
+ * plain `fr` tracks grow to fit their row's text, so rows with shorter text drifted left of the
+ * headers (issue #1090). Fixed tracks make every row line up whatever it holds.
+ */
+const ROW_COLS = "min-[720px]:grid-cols-[130px_minmax(0,1.4fr)_minmax(0,1.2fr)_110px]";
 
 /** Registry filter key for a block kind — the single-slot kind files under "slot". */
 function filterKeyOf(kind: BlockKind): string {
@@ -137,6 +188,8 @@ export default async function AdminBlocks({
     ? Object.fromEntries(
         (
           [
+            // The answer to "What's happening?" — a refused boat-out has to come back as one (#1090).
+            "kind",
             "locationId",
             "date",
             "startTime",
@@ -182,6 +235,8 @@ export default async function AdminBlocks({
   );
 
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
+  const selectedRow = selected ? rows.find((r) => r.block === selected) : undefined;
+  const offSale = selectedRow?.impact.removedSlots ?? 0;
 
   return (
     <Shell width="6xl">
@@ -192,6 +247,11 @@ export default async function AdminBlocks({
       </header>
 
       {errCopy && <Notice tone="bad">{errCopy}</Notice>}
+      {!errCopy && sp.saved === "1" && selectedRow && (
+        <Notice tone="ok">
+          <span data-testid="blocked-notice">{offCalendarLine(offSale)}</span>
+        </Notice>
+      )}
 
       {/* Filters — kind + time scope, both segmented chips. */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -234,28 +294,25 @@ export default async function AdminBlocks({
       <div className="mt-3 grid grid-cols-1 gap-4 min-[1080px]:grid-cols-[1fr_340px]">
         {/* Registry (master) */}
         <div className="overflow-hidden rounded-card border border-line bg-card shadow-sm">
-          <div className="hidden border-b border-line px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted min-[720px]:grid min-[720px]:grid-cols-[110px_1.4fr_1.2fr_100px] min-[720px]:gap-3">
-            <div>Kind</div>
-            <div>What it blocks</div>
+          <div className={`hidden border-b border-line px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted min-[720px]:grid ${ROW_COLS} min-[720px]:gap-3`}>
+            <div>What</div>
+            <div>Which</div>
             <div>When</div>
-            <div>Removes</div>
+            {/* What the number counts: open departures the block takes off the calendar. Not
+                reservations — a block never removes a booking; those are the conflict badge. */}
+            <div>Departures blocked</div>
           </div>
 
           {visible.length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted">
-              No blocks{filter !== "all" ? " of this kind" : ""} yet. Create one on the right, or
-              block a single departure on the calendar.
+              {filter === "all"
+                ? "Nothing blocked. Take a boat out of service, close a dock for part of a day, or hold one departure on the calendar."
+                : "Nothing of this kind is blocked."}
             </p>
           ) : (
             visible.map(({ block, past, impact, vessel, location }) => {
               const kind = block.kind as BlockKind;
-              const when =
-                block.kind === "location"
-                  ? `${formatDay(block.date)} · ${formatTime(block.startTime)}–${formatTime(block.endTime)}`
-                  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-                  : block.kind === "vesselHold"
-                    ? `${formatDay(block.date)} · ${formatTime(block.time)}`
-                    : `${formatDay(block.startDate)} – ${formatDay(block.endDate)} · all day`;
+              const when = whenOf(block);
               const vesselName = vessel?.name ?? (("vesselId" in block) ? String(block.vesselId) : "");
               const locationName = location?.name ?? (block.kind === "location" ? String(block.locationId) : "");
 
@@ -264,22 +321,28 @@ export default async function AdminBlocks({
               // panel (#703). Selecting one used to open a read-only aside whose entire content
               // — boat, day, time — is already on the row you clicked, plus a second link to
               // the place you were trying to reach. There is nothing to edit here: a slot block
-              // is made and unmade on the calendar, so the row IS the forward link.
+              // is made and unmade on the calendar, so the row IS the forward link — and it opens
+              // that block's pane with its card selected (`?release=`), not just the bare day
+              // with the operator left to find the card (issue #1090).
               const rowHref =
                 block.kind === "vesselHold"
-                  ? `/admin/calendar?date=${block.date}`
+                  ? `/admin/calendar?date=${block.date}&release=${encodeURIComponent(String(block.id))}`
                   : hrefWith({ sel: String(block.id) });
               return (
                 <AppLink
                   key={block.id}
                   href={rowHref}
+                  // `overlay`, not the default inline spinner: the inline one wraps the row in an
+                  // `inline-flex` span, which shrank each row's grid to its own text and pulled
+                  // the columns out of line with the headers (issue #1090).
+                  spinner="overlay"
                   data-testid="block-row"
                   aria-current={isSel ? "page" : undefined}
-                  className={`block border-t border-line hover:bg-bg ${isSel ? "bg-bg" : ""} ${
+                  className={`relative block border-t border-line hover:bg-bg ${isSel ? "bg-bg" : ""} ${
                     past ? "opacity-50" : ""
                   }`}
                 >
-                  <div className="grid grid-cols-1 gap-1 px-4 py-3 text-sm min-[720px]:grid-cols-[110px_1.4fr_1.2fr_100px] min-[720px]:items-center min-[720px]:gap-3">
+                  <div className={`grid grid-cols-1 gap-1 px-4 py-3 text-sm ${ROW_COLS} min-[720px]:items-center min-[720px]:gap-3`}>
                   <div>
                     <KindPill kind={kind} />
                   </div>
@@ -296,13 +359,7 @@ export default async function AdminBlocks({
                       )}
                     </div>
                     <div className="text-xs text-muted">
-                      {kind === "location"
-                        ? "all vessels · all offerings here"
-                        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-                        : kind === "vesselHold"
-                          ? "one departure · opens on the calendar"
-                          : "out of service"}
-                      {block.note ? ` · ${block.note}` : ""}
+                      {[ROW_SCOPE[kind], block.note].filter(Boolean).join(" · ")}
                     </div>
                     {!past && impact.conflictCount > 0 && (
                       <span className="mt-1 inline-block rounded-full border border-warn-line bg-warn-bg px-2 py-0.5 text-[10px] font-semibold text-warn">
@@ -311,16 +368,21 @@ export default async function AdminBlocks({
                     )}
                   </div>
 
-                  <div className="font-mono text-xs text-muted">{when}</div>
+                  <div className="font-mono text-xs text-muted">
+                    <div data-testid="when-date">{when.date}</div>
+                    <div data-testid="when-time">{when.time}</div>
+                  </div>
 
-                  <div className="font-mono text-sm font-semibold text-ink">
+                  <div data-testid="off-sale" className="font-mono text-sm font-semibold text-ink">
                     {past ? (
                       <span className="text-muted">—</span>
                     ) : (
                       <>
                         {impact.removedSlots}
-                        <span className="block text-[10px] font-normal text-muted">
-                          {impact.removedSlots === 1 ? "slot" : "slots"}
+                        {/* The header says what this counts on desktop; at 375px there is no
+                            header row, so the number carries its own words. */}
+                        <span className="ml-1 text-xs font-normal text-muted min-[720px]:hidden">
+                          {impact.removedSlots === 1 ? "departure blocked" : "departures blocked"}
                         </span>
                       </>
                     )}
@@ -340,6 +402,7 @@ export default async function AdminBlocks({
           locations={locations}
           vessels={vessels}
           draftValues={draftValues}
+          offSale={offSale}
         />
       </div>
 

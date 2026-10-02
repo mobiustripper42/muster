@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type {
   Block,
   Event,
+  Location,
   Offering,
   Reservation,
   Vessel,
@@ -11,8 +12,10 @@ import { formatDuration } from "@core/reservations/availability-screen.js";
 import { vesselDateOf } from "@core/config/tenant.js";
 import {
   deriveVirtualAvailability,
+  isSlotBlocked,
   type VirtualSlot,
 } from "@core/reservations/availability.js";
+import { candidateTripMinutes } from "@core/reservations/hull-busy.js";
 import {
   DEFAULT_TRIP_MINUTES,
   assignLanes,
@@ -62,6 +65,8 @@ export type Search = {
   hold?: string;
   /** A `vesselHold` block id — the blocked slot whose pane is open, offering to release it. */
   release?: string;
+  /** `<vesselId>|<HH:MM>` — a slot darkened by a boat-out or closure, whose pane names it (#1091). */
+  scoped?: string;
   err?: string;
 };
 
@@ -135,6 +140,15 @@ export function formatShortDay(date: string): string {
   });
 }
 
+/** A boat-out's days, short: "Oct 5", "Oct 5–7", "Oct 30 – Nov 2". */
+export function dayRange(start: string, end: string): string {
+  const md = (iso: string) =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  if (start === end) return md(start);
+  if (start.slice(0, 7) === end.slice(0, 7)) return `${md(start)}–${Number(end.slice(8, 10))}`;
+  return `${md(start)} – ${md(end)}`;
+}
+
 export interface CalendarData {
   offerings: Offering[];
   vessels: Vessel[];
@@ -147,9 +161,12 @@ export interface CalendarData {
   vesselById: Map<string, Vessel>;
   reservationByEventId: Map<string, Reservation>;
   /** The `vesselHold` covering each physical `vessel|date|time`, if any (#703) — what makes a
-   *  dark card releasable HERE. A slot darkened by a `vessel` or `location` block has no entry,
-   *  stays inert, and is lifted on /admin/blocks where its real scope is visible. */
+   *  dark card releasable HERE. A slot darkened by a `vessel` or `location` block has no entry
+   *  here (see `scopedBySlot`) and is changed on /admin/blocks where its real scope is visible. */
   holdBySlot: Map<string, Block>;
+  /** The boat-out or closure darkening each physical `vessel|date|time` that no `vesselHold` does
+   *  (issue #1091) — what lets that card's pane name its block and open it on /admin/blocks. */
+  scopedBySlot: Map<string, Block>;
   /** The operator's unpaid phone booking on each physical `vessel|date|time` (16.1) — what makes
    *  a `held` card a link to its pane rather than an inert "Checking out". */
   phoneBookingBySlot: Map<string, Reservation>;
@@ -180,7 +197,10 @@ interface PendingSlot {
 }
 export type PendingHold =
   | (PendingSlot & { action: "hold" })
-  | (PendingSlot & { action: "release"; blockId: string });
+  | (PendingSlot & { action: "release"; blockId: string })
+  /** Darkened by a boat-out or closure (#1091): not undoable from one card, so the pane names the
+   *  block ("Brew 3 out of service · Oct 5–7") and opens it on /admin/blocks. */
+  | (PendingSlot & { action: "scoped"; blockId: string; blockLabel: string });
 
 /** The physical slot key shared by `tripBySlot`, `holdBySlot` and the confirm params. */
 export function slotKey(vesselId: string, date: string, time: string): string {
@@ -203,14 +223,16 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
   let blocks: Block[];
   let events: Event[];
   let reservations: Reservation[];
+  let locations: Location[];
   try {
     const repo = getRepo();
-    [offerings, vessels, blocks, events, reservations] = await Promise.all([
+    [offerings, vessels, blocks, events, reservations, locations] = await Promise.all([
       repo.listOfferings(),
       repo.listVessels(),
       repo.listBlocks(),
       repo.listEvents(),
       repo.listAllReservations(),
+      repo.listLocations(),
     ]);
   } catch (e) {
     // Returning `null` hands each route a bare "couldn't load" with no cause, and
@@ -303,23 +325,32 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
       .map((o) => ({ name: o.name, tripMinutes: o.tripLengthMinutes })),
   });
 
+  const scopedBySlot = scopedBlocksBySlot(slots, blocks, holdBySlot, offeringByIdLocal);
+  const locationName = new Map(locations.map((l) => [String(l.id), l.name]));
+  const blockLabel = (b: Block) => describeBlock(b, nameOf, (id) => locationName.get(id) ?? id);
+  const onSlot = (vid: string, time: string) =>
+    slots.filter((s) => String(s.vesselId) === vid && s.time === time);
+  /** The pane for a DARK card at this boat-time — its slot block's, else its boat-out's or closure's. */
+  const blockedPane = (vid: string, time: string): PendingHold | null => {
+    const key = slotKey(vid, day, time);
+    const hold = holdBySlot.get(key);
+    const facts = { vesselId: vid, vesselName: nameOf(vid), time, ...slotFacts(vid, time, onSlot(vid, time)) };
+    if (hold) return { action: "release", blockId: String(hold.id), ...facts };
+    const block = scopedBySlot.get(key);
+    if (block) return { action: "scoped", blockId: String(block.id), blockLabel: blockLabel(block), ...facts };
+    return null;
+  };
+
   // Resolve the confirm from the query. A param that names nothing real renders NO banner
   // rather than an error: the common way to get one is a slot that was booked or already
   // released while the confirm sat open, and the grid behind it already shows what happened.
   let pending: PendingHold | null = null;
   if (sp.release) {
     const block = [...holdBySlot.values()].find((b) => String(b.id) === sp.release);
-    if (block && block.kind === "vesselHold") {
-      const vid = String(block.vesselId);
-      pending = {
-        action: "release",
-        blockId: String(block.id),
-        vesselId: vid,
-        vesselName: nameOf(vid),
-        time: block.time,
-        ...slotFacts(vid, block.time, slots.filter((s) => String(s.vesselId) === vid && s.time === block.time)),
-      };
-    }
+    if (block && block.kind === "vesselHold") pending = blockedPane(String(block.vesselId), block.time);
+  } else if (sp.scoped) {
+    const [vesselId = "", time = ""] = sp.scoped.split("|");
+    pending = blockedPane(vesselId, time);
   } else if (sp.hold) {
     const [vesselId = "", time = ""] = sp.hold.split("|");
     const open = slots.filter(
@@ -333,6 +364,10 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
         time,
         ...slotFacts(vesselId, time, open),
       };
+    } else {
+      // Blocked since the pane opened — most often a phone booking refused because the boat was
+      // taken out mid-call. Land on the block that did it rather than on no pane at all (#1091).
+      pending = blockedPane(vesselId, time);
     }
   }
 
@@ -347,6 +382,7 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     vesselById,
     reservationByEventId,
     holdBySlot,
+    scopedBySlot,
     phoneBookingBySlot,
     day,
     today,
@@ -354,6 +390,52 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     pending,
     err: sp.err,
   };
+}
+
+/**
+ * Which boat-out or closure darkened each blocked card that no slot block did (issue #1091).
+ *
+ * Attributed per block with the same `isSlotBlocked` the deriver used, measured against the same
+ * trip length, so the block the pane names is one that really covers this departure. When two
+ * overlap, the first in the list is named — opening either one is a true answer.
+ */
+function scopedBlocksBySlot(
+  slots: readonly VirtualSlot[],
+  blocks: readonly Block[],
+  holdBySlot: ReadonlyMap<string, Block>,
+  offeringById: ReadonlyMap<string, Offering>,
+): Map<string, Block> {
+  const scoped = blocks.filter((b) => b.kind !== "vesselHold");
+  const out = new Map<string, Block>();
+  for (const s of slots) {
+    if (s.status !== "blocked") continue;
+    const key = slotKey(String(s.vesselId), s.date, s.time);
+    if (holdBySlot.has(key) || out.has(key)) continue;
+    const offering = offeringById.get(String(s.offeringId));
+    if (!offering) continue;
+    const trip = candidateTripMinutes(offering);
+    const hit = scoped.find((b) =>
+      isSlotBlocked([b], String(offering.locationId), s.vesselId, s.date, s.time, trip),
+    );
+    if (hit) out.set(key, hit);
+  }
+  return out;
+}
+
+/** The block, named the way /admin/blocks names it: "Brew 3 out of service · Oct 5–7". */
+function describeBlock(
+  b: Block,
+  vesselName: (id: string) => string,
+  locationName: (id: string) => string,
+): string {
+  switch (b.kind) {
+    case "vessel":
+      return `${vesselName(String(b.vesselId))} out of service · ${dayRange(b.startDate, b.endDate)}`;
+    case "location":
+      return `${locationName(String(b.locationId))} closed · ${clockTime(b.startTime)}–${clockTime(b.endTime)}`;
+    case "vesselHold":
+      return "This departure only";
+  }
 }
 
 /** What every calendar href is built from: the day on screen, today, and the filter chip. */
@@ -371,6 +453,7 @@ export function calendarHref(data: HrefData, o: {
   filter?: string;
   hold?: string;
   release?: string;
+  scoped?: string;
 }): string {
   const d = o.date ?? data.day;
   const f = o.filter ?? data.filter;
@@ -379,6 +462,7 @@ export function calendarHref(data: HrefData, o: {
   if (f !== "all") params.set("filter", f);
   if (o.hold) params.set("hold", o.hold);
   if (o.release) params.set("release", o.release);
+  if (o.scoped) params.set("scoped", o.scoped);
   const q = params.toString();
   return q ? `/admin/calendar?${q}` : "/admin/calendar";
 }
@@ -560,7 +644,7 @@ const ERR_COPY: Record<CalendarErr, string> = {
   already_held: "That departure was already blocked.",
   slot_taken: "Someone booked that departure — it’s a trip now, so it can’t be blocked.",
   not_found: "That block was already lifted.",
-  not_a_hold: "That’s a location or vessel block — lift it on Blocks, where its full scope shows.",
+  not_a_hold: "That’s a boat out of service or a closure, not one departure — open it on Blocks to change it.",
   error: "Couldn’t do that just now — try again in a moment.",
 };
 
@@ -587,10 +671,10 @@ export function CalendarError({ err }: { err?: string | undefined }) {
  * open, Close is a link back to the grid, and the write's inputs come from the RESOLVED slot,
  * never from the raw query.
  */
-export function SlotPane({ data }: { data: CalendarData }) {
+export function SlotPane({ data, bookErr }: { data: CalendarData; bookErr?: string | undefined }) {
   const p = data.pending;
   if (!p) return null;
-  const blocked = p.action === "release";
+  const blocked = p.action !== "hold";
   const one = p.offerings.length === 1 ? p.offerings[0] : undefined;
   const onWater = one ? formatDuration(one.tripMinutes) : null;
   const cruiseLabel = p.offerings.length > 1 ? "Cruises" : "Cruise";
@@ -599,11 +683,18 @@ export function SlotPane({ data }: { data: CalendarData }) {
     <div data-testid="slot-pane" className="flex flex-col gap-3">
       <SlotHeader data={data} p={p} />
 
+      {/* A phone booking refused because the departure went dark mid-call lands here (#1091). */}
+      {blocked && bookErr === "blocked" ? (
+        <Notice tone="bad">Blocked while you were booking — nothing was booked.</Notice>
+      ) : null}
+
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-card border border-line bg-card px-4 py-3 text-sm">
         {blocked ? (
           <>
             <dt className="text-muted">Blocked</dt>
-            <dd className="text-right text-ink">This departure only</dd>
+            <dd className="text-right text-ink">
+              {p.action === "scoped" ? p.blockLabel : "This departure only"}
+            </dd>
           </>
         ) : null}
         {p.offerings.map((o, i) => (
@@ -628,23 +719,34 @@ export function SlotPane({ data }: { data: CalendarData }) {
             Book it
           </AppLink>
         ) : null}
-        <form action={blocked ? releaseHold : holdSlot} className="flex flex-1">
-          <input type="hidden" name="date" value={data.day} />
-          <input type="hidden" name="filter" value={data.filter} />
-          {blocked ? (
-            <input type="hidden" name="id" value={p.blockId} />
-          ) : (
-            <>
-              <input type="hidden" name="vesselId" value={p.vesselId} />
-              <input type="hidden" name="time" value={p.time} />
-            </>
-          )}
-          {/* Beside Book, Block is the secondary action — outlined, so the two are never one
-              colour at 375px where a mis-tap would take a slot off the market. */}
-          <SubmitButton className={blocked ? "btn-primary w-full" : "btn-secondary w-full"}>
-            {blocked ? "Unblock it" : "Block it"}
-          </SubmitButton>
-        </form>
+        {p.action === "scoped" ? (
+          // A boat-out or closure covers more than this card, so it is changed where its whole
+          // scope shows — and this is the way there, not a sentence saying it exists (#1091).
+          <AppLink
+            href={`/admin/blocks?sel=${encodeURIComponent(p.blockId)}`}
+            className="btn-secondary flex-1"
+          >
+            Open that block →
+          </AppLink>
+        ) : (
+          <form action={blocked ? releaseHold : holdSlot} className="flex flex-1">
+            <input type="hidden" name="date" value={data.day} />
+            <input type="hidden" name="filter" value={data.filter} />
+            {p.action === "release" ? (
+              <input type="hidden" name="id" value={p.blockId} />
+            ) : (
+              <>
+                <input type="hidden" name="vesselId" value={p.vesselId} />
+                <input type="hidden" name="time" value={p.time} />
+              </>
+            )}
+            {/* Beside Book, Block is the secondary action — outlined, so the two are never one
+                colour at 375px where a mis-tap would take a slot off the market. */}
+            <SubmitButton className={blocked ? "btn-primary w-full" : "btn-secondary w-full"}>
+              {blocked ? "Unblock it" : "Block it"}
+            </SubmitButton>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -655,7 +757,7 @@ export function SlotPane({ data }: { data: CalendarData }) {
  * booking steps (`BookPane`), so the pane does not jump when Book it turns it into a booking.
  */
 export function SlotHeader({ data, p }: { data: CalendarData; p: PendingHold }) {
-  const blocked = p.action === "release";
+  const blocked = p.action !== "hold";
   return (
     // Pinned under Close ✕ as the pane scrolls on desktop (issue #1128) — `PANE_HEAD` below.
     <div data-testid="pane-head" className={PANE_HEAD}>
@@ -939,13 +1041,16 @@ export function CalendarGrid({
                   if (s.status === "blocked") {
                     // A dark card is releasable HERE only when a single-slot hold is what made
                     // it dark. A `vessel` or `location` block covers far more than this card
-                    // shows, so it stays inert and is lifted on /admin/blocks, where its scope
-                    // is visible — the same reason `releaseVesselHoldAdmin` refuses one by id.
+                    // shows, so its pane only names it and opens it on /admin/blocks, where its
+                    // scope is visible — the same reason `releaseVesselHoldAdmin` refuses one by id.
                     const hold = data.holdBySlot.get(physical);
                     const askedRelease =
-                      data.pending?.action === "release" &&
-                      hold !== undefined &&
-                      data.pending.blockId === String(hold.id);
+                      (data.pending?.action === "release" &&
+                        hold !== undefined &&
+                        data.pending.blockId === String(hold.id)) ||
+                      (data.pending?.action === "scoped" &&
+                        data.pending.vesselId === String(s.vesselId) &&
+                        data.pending.time === s.time);
                     // A slot block wears an accent border, a scoped one the plain line. Both dark
                     // and unsellable, but only one is the operator's own and undoable from
                     // here — if they looked identical the legend would be the only thing
@@ -982,17 +1087,25 @@ export function CalendarGrid({
                         Blocked
                       </AppLink>
                     ) : (
-                      <div
+                      // A boat-out or closure: not undoable from one card, but no longer inert —
+                      // its pane names the block and opens it on Blocks (issue #1091).
+                      <AppLink
                         key={key}
+                        href={calendarHref(data, { scoped: `${String(s.vesselId)}|${s.time}` })}
+                        spinner="overlay"
+                        aria-label={`Blocked ${shortTime(s.time)}, ${
+                          data.vesselById.get(String(s.vesselId))?.name ?? String(s.vesselId)
+                        }`}
                         data-testid="cal-block"
                         data-vessel={String(s.vesselId)}
                         data-status="blocked"
                         data-blocked-by="scoped"
+                        data-cal-selected={selectedAttr(askedRelease)}
                         className={cls}
                         style={style}
                       >
                         Blocked
-                      </div>
+                      </AppLink>
                     );
                   }
 

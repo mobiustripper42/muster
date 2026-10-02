@@ -15,6 +15,7 @@ import {
   expect,
   fillHydrated,
   plantPayment,
+  plantVesselBlock,
   reopenEvent,
   resetAndSeed,
   signInAsAdmin,
@@ -249,25 +250,58 @@ test.describe("admin /admin/calendar", () => {
     await page.goto("/admin/blocks?kind=slot");
     const row = page.getByTestId("block-row");
     await expect(row).toHaveCount(1);
-    await expect(row).toContainText("Slot");
+    await expect(row).toContainText("One departure");
     await expect(row).toContainText("Brew 3");
-    await expect(row).toContainText("one departure · opens on the calendar");
+    await expect(row).toContainText("opens on the calendar");
     await expect(row).toContainText("1");
 
     // The row IS the forward link — one click to the block's own day, no read-only aside in
-    // between (#703). Clicking it must not select it into the editor.
+    // between (#703) — and it lands with that block's pane already open and its card selected
+    // (issue #1090), not on the bare day with the operator left to find the card.
     await row.click();
-    await page.waitForURL(new RegExp(`/admin/calendar\\?date=${BOOKED.date}`));
+    await page.waitForURL(new RegExp(`/admin/calendar\\?date=${BOOKED.date}&release=`));
+    const release = page.getByTestId("slot-pane");
+    await expect(release.getByTestId("slot-state")).toHaveText("Blocked");
+    await expect(slotBlock).toHaveAttribute("data-cal-selected", "");
 
     // Unblocked from the calendar, the slot comes back on sale (DEC-125, reversible-in-spirit).
-    await slotBlock.click();
-    const release = page.getByTestId("slot-pane");
     await expect(release).toContainText(shortLabel(OPEN_TIME));
     await expect(release).toContainText("Blocked");
     await release.getByRole("button", { name: "Unblock it" }).click();
 
     await expect(openAt(page, shortLabel(OPEN_TIME))).toBeVisible();
     await expect(slotBlock).toHaveCount(0);
+  });
+
+  /**
+   * A departure darkened by a boat-out or a closure (issue #1091). Its card was inert, and the
+   * slot pane's only answer was "lift it on Blocks" — a dead end with no way to find which block.
+   * Now the pane names the block and opens it on Blocks, where its whole scope shows.
+   */
+  test("a departure under a boat-out names the block and opens it on Blocks", async ({ page }) => {
+    await plantVesselBlock({
+      id: "block-e2e-boat-out",
+      vesselId: DEMO.vesselId,
+      startDate: BOOKED.date,
+      endDate: BOOKED.date,
+    });
+    await signInAsAdmin(page, "eric");
+    await page.goto(`/admin/calendar?date=${BOOKED.date}`);
+
+    await page
+      .locator(`[data-testid="cal-block"][data-blocked-by="scoped"][data-vessel="${DEMO.vesselId}"]`)
+      .first()
+      .click();
+    const pane = page.getByTestId("slot-pane");
+    await expect(pane.getByTestId("slot-state")).toHaveText("Blocked");
+    await expect(pane).toContainText("Brew 3 out of service");
+    // Not undoable from one card: the block covers more than this departure.
+    await expect(pane.getByRole("button", { name: "Unblock it" })).toHaveCount(0);
+
+    await pane.getByRole("link", { name: "Open that block →" }).click();
+    await page.waitForURL(/\/admin\/blocks\?sel=block-e2e-boat-out/);
+    await expect(page.getByLabel("From", { exact: true })).toHaveValue(BOOKED.date);
+    await expect(page.getByRole("button", { name: "Unblock", exact: true })).toBeVisible();
   });
 
   /**

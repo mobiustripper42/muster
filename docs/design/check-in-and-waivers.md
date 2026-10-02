@@ -7,7 +7,7 @@ and sea-time work are **separate, not yet designed**; where this doc mentions th
 future reader of a field, not a built dependency.
 
 > **v0.8 changes — 2026-10-01, operator, after using 18.4.** **Signing asks nothing before the form**
-> (§6, §7): no *who are you signing for?*, no *how many kids?*; `+ Add a child` adds a card at a
+> (§6, §7): no *who are you signing for?*, no *how many kids?*; `+ Add a minor` adds a card at a
 > time, up to ten.
 >
 > **v0.7 changes — 2026-09-29, operator, while building 18.2.** **A waiver version locks when it
@@ -248,7 +248,7 @@ frozen, because the row is a record of a past departure and must not reclassify 
 birthday. The age of majority is a setting. Cap one signing session at one adult plus ten minors.
 
 **DOB is three selects, and its range is constrained by the card it is on.** The signer's year list
-starts 18 years ago; on a child card it ends 18 years ago. `is_minor` is enforced at the input rather
+starts 18 years ago; on a minor's card it ends 18 years ago. `is_minor` is enforced at the input rather
 than validated after it (WaiverSign's detail).
 
 **Email required, phone optional.** All three products require email and none requires phone, and
@@ -322,7 +322,7 @@ asked before the form either (operator, 2026-10-01): almost every guest signs fo
 
 1. **Your details** — legal name + certify checkbox, DOB (three constrained selects), email; phone
    offered, not required.
-2. **Kids, if any** — `+ Add a child` adds a card (name + DOB) at a time, up to ten.
+2. **Minors, if any** — `+ Add a minor` adds a card (name + DOB) at a time, up to ten.
 3. **Review the agreement** — the full text in page flow, no forced scroll-to-bottom.
 4. **Sign** — one consent checkbox and the button.
 

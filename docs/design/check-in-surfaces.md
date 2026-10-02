@@ -7,7 +7,8 @@ not in this repo).
 
 > **v0.6 changes — 2026-10-01, operator, after using 18.4.** **A1, A3: one form.** The *who are
 > you signing for?* and *how many kids?* steps are gone. The page opens on the guest's details, and
-> `+ Add a child` under them adds a card at a time, each with a remove, up to ten.
+> `+ Add a minor` under them adds a card at a time, each with a remove, up to ten. The guest reads
+> *minor*, never *child* (2026-10-02).
 >
 > **v0.5 changes — 2026-09-29, operator, while building 18.2.** **Templates** (D): a scheduled
 > version can be edited until it takes effect. **Roster mode is gone** from the settings (D) — a
@@ -77,12 +78,12 @@ carrying **an unguessable token for the trip**, never the raw event id.
 │ Email [____]           │
 │ Phone (opt) [____]     │
 ├────────────────────────┤
-│ Child 1      ✕ Remove  │  one card per child,
-│ Child's full name [__] │  none until added
+│ Minor 1      ✕ Remove  │  one card per minor,
+│ Minor's full name [__] │  none until added
 │ Date of birth          │
 ├────────────────────────┤
-│ [  + Add a child  ]    │  gone at ten
-│ For kids under 18      │
+│ [  + Add a minor  ]    │  gone at ten
+│ For anyone under 18    │
 ├────────────────────────┤
 │ The agreement          │
 │ [the text, in page     │
@@ -99,17 +100,20 @@ at the bottom, all one page (operator, 2026-09-30) — one form to keep if the c
 signing for?* and no *how many kids?*: almost every guest signs for themselves, and the two steps
 stood between every one of them and the form. The page opens on the guest's details.
 
-**`+ Add a child`** sits under the details card. Each tap adds a card, `Child's full name` + `Date of
+**`+ Add a minor`** sits under the details card. Each tap adds a card, `Minor's full name` + `Date of
 birth`, with a **✕ Remove**; the button moves down to stay under the last card, and goes at ten, the
 cap. This is a client island (DEC-147): a card appears with no round trip, and its name field takes
-the focus. Without JS the same button posts the form, and it comes back with everything typed and
-one more card.
+the focus; after a Remove the focus moves to the add button. Without JS the same button posts the
+form, and it comes back with everything typed and one more card.
+
+**The guest reads *minor*, never *child*** (operator, 2026-10-02). A parent of a sixteen-year-old
+does not think *child*, and the rule is *under the age of majority*, which is what *minor* means.
 
 **Ages are stated where they apply.** *"You must be 18 or older to sign"* under *Your details*;
-*"For kids under 18 coming with you"* under the add button. Both read the operator's age of majority.
+*"For anyone under 18 coming with you"* under the add button. Both read the operator's age of majority.
 
 **DOB is three selects, and the year range is constrained by the card.** The guest's year list
-starts 18 years ago; a child card's ends 18 years ago.
+starts 18 years ago; a minor's card ends 18 years ago.
 
 **Email required, phone optional.** Nothing verifies either.
 
@@ -140,8 +144,8 @@ Surnames only, scoped to one trip. This list is why the link must be a token.
 
 ### A3 — Minors
 
-- **Just the guest** — the details card, and no child cards.
-- **With kids** — the details card, then a card per child added: `Child's full name` +
+- **Just the guest** — the details card, and no minor cards.
+- **With minors** — the details card, then a card per minor added: `Minor's full name` +
   `Date of birth`. One signature covers all of them, up to ten.
 
 **The parent always sails with the child** (operator, 2026-09-30), so a parent signs as themselves

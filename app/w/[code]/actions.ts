@@ -37,7 +37,7 @@ const CHILD_FIELDS = ["childName", "childMonth", "childDay", "childYear"] as con
  * - Every rule is `signAndSave`'s (`src/checkin/signing.ts`). A refusal comes back with everything
  *   typed (the form-draft, DEC-147).
  *
- * "+ Add a child" and Remove land here too when the browser runs no JS (the `ChildCards` island
+ * "+ Add a minor" and Remove land here too when the browser runs no JS (the `ChildCards` island
  * handles them otherwise). They write nothing, so they come before the limit.
  *
  * Never logs the trip code or anything the guest typed. `redirect()` throws, so it stays outside

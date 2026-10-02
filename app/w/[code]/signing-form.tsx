@@ -15,11 +15,11 @@ import { card, input } from "./form-look";
  * one form to keep if the connection drops.
  *
  * **It opens straight on the details.** Nobody is asked first who they are signing for or how many
- * kids: "+ Add a child" under the details adds a card at a time (operator, 2026-10-01 — almost
+ * kids: "+ Add a minor" under the details adds a card at a time (operator, 2026-10-01 — almost
  * every guest signs for themselves, and the questions were a step each in their way). The cards
  * are the `ChildCards` island; the rest is server-rendered and posts without JS (DEC-147).
  *
- * A refused submit comes back through the form-draft with every field as typed, the child cards
+ * A refused submit comes back through the form-draft with every field as typed, the minor cards
  * included (§A5: never lose the input).
  */
 
@@ -60,8 +60,8 @@ export function SigningFormView({
   return (
     <form action={signWaiver} className="flex flex-col gap-5">
       {/* Enter in any field means Sign. A form's Enter key presses its FIRST submit button, and
-          "+ Add a child" and Remove are submit buttons (so they work without JS): without this,
-          Enter in the name field would add a child. */}
+          "+ Add a minor" and Remove are submit buttons (so they work without JS): without this,
+          Enter in the name field would add a minor. */}
       {/* eslint-disable-next-line no-restricted-syntax -- invisible Enter-key target; the visible Sign below is the SubmitButton */}
       <button type="submit" tabIndex={-1} aria-hidden="true" className="sr-only">
         Sign

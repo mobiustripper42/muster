@@ -119,12 +119,15 @@ describe("resolveTripLink", () => {
     });
   });
 
-  it("says a departure has sailed from its departure time on", async () => {
+  it("stays open for the rest of the trip's day, and says it has sailed once that day is over (boat time)", async () => {
+    // A boat held for weather still takes signatures at the gangway (operator, 2026-10-02): the
+    // link is good until midnight on the boat's calendar, not until the scheduled 3:00 PM.
     const repo = await world();
     await repo.insertTripLink({ code: "K3F9QZ2M", eventId: EVENT, createdAt: NOW });
-    // 3:00 PM New York is 19:00 UTC.
-    expect((await resolveTripLink(repo, "K3F9QZ2M", "2026-10-10T18:59:59.000Z")).state).toBe("open");
-    expect((await resolveTripLink(repo, "K3F9QZ2M", "2026-10-10T19:00:00.000Z")).state).toBe("departed");
+    // 3:00 PM New York is 19:00 UTC; midnight there is 04:00 UTC the next day.
+    expect((await resolveTripLink(repo, "K3F9QZ2M", "2026-10-10T19:00:00.000Z")).state).toBe("open");
+    expect((await resolveTripLink(repo, "K3F9QZ2M", "2026-10-11T03:59:59.000Z")).state).toBe("open");
+    expect((await resolveTripLink(repo, "K3F9QZ2M", "2026-10-11T04:00:00.000Z")).state).toBe("departed");
   });
 
   it("says a cancelled departure was cancelled, even before it would have sailed", async () => {

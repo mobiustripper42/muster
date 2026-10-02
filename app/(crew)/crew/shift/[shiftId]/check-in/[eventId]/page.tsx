@@ -1,15 +1,19 @@
 import { redirect } from "next/navigation";
 import { buildCheckInScreen, checkInTrip } from "@core/checkin/check-in.js";
+import { ensureTripLink, tripLinkUrl } from "@core/checkin/trip-link.js";
 import { TENANT_TIMEZONE, vesselDateOf } from "@core/config/tenant.js";
 import { asId } from "@core/domain/ids.js";
 import { CrewHeader } from "../../../../../../../components/crew/crew-header";
 import { Notice } from "../../../../../../../components/ui/notice";
+import { TripQrSheet } from "../../../../../../../components/crew/trip-qr-sheet";
 import { Shell } from "../../../../../../../components/ui/shell";
 import { readSubject } from "../../../../../../lib/auth";
+import { appBaseUrl } from "../../../../../../lib/base-url";
 import { errCopyFor } from "../../../../../../lib/err-copy";
 import { fmt12 } from "../../../../../../lib/format";
 import { getRepo } from "../../../../../../lib/repo";
 import { CREW_UNAVAILABLE, logSwallowed } from "../../../../../../lib/swallowed";
+import { TENANT_NAME } from "../../../../../../lib/tenant";
 import type { CheckInErr } from "./actions";
 import { CheckInList } from "./check-in-list";
 import { PassengerCount } from "./passenger-count";
@@ -23,11 +27,26 @@ import { PassengerCount } from "./passenger-count";
  * Neither blocks departure (§8), and nothing here turns read-only after the trip — the captain's
  * official log is the record that locks (operator, 2026-10-02).
  *
- * Only confirmed crew on the shift, for a departure on it (`checkInTrip`). New signers show up on a
- * reload; re-reading on its own is 18.5b.
+ * Only confirmed crew on the shift, for a departure on it (`checkInTrip`).
+ *
+ * **The QR sheet** (18.5b, §C2) shows the departure's signing link, made here the first time the
+ * page is drawn (`ensureTripLink` — a code does nothing until someone scans it). **New signers
+ * appear on their own**: the list re-reads the page every `refreshSeconds` while it is on screen
+ * (DEC-192).
  */
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Seconds between re-reads while the page is on screen (DEC-192). One number, set after a dock test
+ * (operator, 2026-10-02: four boats, four or five phones each); `CHECKIN_REFRESH_SECONDS` changes it
+ * without a code change. Read here, on the server, and passed down — never a `NEXT_PUBLIC_` value.
+ */
+const DEFAULT_REFRESH_SECONDS = 20;
+function refreshSeconds(): number {
+  const n = Number(process.env.CHECKIN_REFRESH_SECONDS);
+  return Number.isInteger(n) && n >= 5 && n <= 300 ? n : DEFAULT_REFRESH_SECONDS;
+}
 
 /** Codes only in `?err=` (DEC-147); copy here. None names the boat's limit (§4a). */
 const ERR_COPY: Record<CheckInErr, string> = {
@@ -76,6 +95,7 @@ export default async function CheckInPage({
         count,
         counterName: counter?.name ?? "crew",
         screen: buildCheckInScreen(guests, trip.limit, count, vesselDateOf(new Date())),
+        signingUrl: await signingUrlFor(trip.eventId),
       };
     } else {
       view = null;
@@ -99,7 +119,7 @@ export default async function CheckInPage({
     );
   }
 
-  const { trip, count, counterName, screen } = view;
+  const { trip, count, counterName, screen, signingUrl } = view;
   const error = errCopyFor(ERR_COPY, sp.err, "error");
   return (
     <Shell>
@@ -116,6 +136,14 @@ export default async function CheckInPage({
         rows={screen.rows}
         limit={screen.limit}
         signed={screen.signed}
+        refreshSeconds={refreshSeconds()}
+      />
+
+      {/* A direct child of <main>: the sheet's "behind" is everything else here. */}
+      <TripQrSheet
+        url={signingUrl}
+        label={`${TENANT_NAME} ${fmt12(trip.time)}`}
+        big={screen.rows.length === 0}
       />
 
       <section className="flex flex-col gap-2">
@@ -134,4 +162,18 @@ export default async function CheckInPage({
       </section>
     </Shell>
   );
+}
+
+/**
+ * The departure's signing link for the QR, made the first time it is needed. A failure costs the
+ * code, never the list: the sheet says it did not load and the rest of the page works.
+ */
+async function signingUrlFor(eventId: Parameters<typeof ensureTripLink>[1]): Promise<string | null> {
+  try {
+    const code = await ensureTripLink(getRepo(), eventId, () => new Date().toISOString());
+    return tripLinkUrl(appBaseUrl(), code);
+  } catch (e) {
+    logSwallowed("crew/check-in:qr", e, "the check-in QR had no link");
+    return null;
+  }
 }

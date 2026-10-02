@@ -7,7 +7,7 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-29 terms.
+32 terms.
 
 | Term | Says | Not |
 |---|---|---|
@@ -24,17 +24,20 @@ alternates start being caught.
 | **hold minutes** | the whole time a boat is committed to one trip — on the water, then back at the dock ready for the next | `hold time`, `lock time`, `occupied minutes` |
 | **idempotency key** | a label sent with a charge so that repeating the same request does the same thing once, instead of charging twice | — |
 | **lapsed** | a pending reservation whose payment window has run out — worked out from the clock every time, never written down | — |
+| **MIT** | a short open-source licence that lets anyone use, change and ship the code, keeping only its notice | — |
 | **MMC** | the Coast Guard credential a captain must hold and keep current — on BrewBoat's boats a mate does not need one | — |
 | **off-session** | charging a saved card when the customer is not at the keyboard, so nobody is there to answer a decline | — |
 | **open** | a slot that is for sale; nothing is written for it | — |
 | **Payment Element** | Stripe's card form, embedded in our own page, so the customer never leaves the site to pay | `Stripe Elements`, `inline Elements` |
 | **payment window** | how long a checkout holds the boat before the customer loses it and it goes back on sale. The code calls it the checkout hold. | — |
+| **QR** | a square barcode a phone camera reads to open a web link — here, a trip's signing page | — |
 | **required crew** | the crew a boat must carry to sail — a list of roles and how many of each, not a number of passengers. That is the COI limit | — |
 | **residual race** | two customers pay for the last boat at the same moment; one wins, and the other has to be refunded and told | — |
 | **RLS** | a database feature that filters rows per signed-in user. Muster does not use it — who may see what is decided in the service layer | — |
 | **SAQ-A** | the lightest card-industry compliance tier, which applies because card numbers never reach our servers | — |
 | **SCA** | a European rule requiring that extra bank check on most card payments | — |
 | **sold** | a slot somebody bought — a booked reservation on it. The code calls the slot booked. | — |
+| **SVG** | a picture the browser draws from shapes rather than pixels, so it stays sharp at any size | — |
 | **TLS** | the encrypted transport Crunchy Bridge requires on every connection; applied by pgConnectionConfig, never by a caller | — |
 | **trip** | one boat leaving at one time on one day — what a customer buys and crew sail. The code calls it a slot. | — |
 | **trip time** | how long the customer is actually on the water, always less than the hold minutes for that trip | — |

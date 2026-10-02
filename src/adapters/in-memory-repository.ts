@@ -1466,6 +1466,22 @@ export class InMemoryRepository implements Repository {
     else delete next.checkedIn;
     this.#guests.set(guestId, next);
   }
+  async checkInGuestIfRoom(
+    eventId: EventId,
+    guestId: GuestId,
+    checkIn: { at: string; by: CrewMemberId },
+    limit: number,
+  ): Promise<"ok" | "full" | "not_found"> {
+    // No await between the count and the write, so two calls cannot interleave here — the
+    // serialization Postgres gets from the row lock.
+    const g = this.#guests.get(guestId);
+    if (!g || g.eventId !== eventId) return "not_found";
+    if (g.checkedIn) return "ok";
+    const aboard = [...this.#guests.values()].filter((x) => x.eventId === eventId && x.checkedIn).length;
+    if (aboard >= limit) return "full";
+    this.#guests.set(guestId, { ...g, checkedIn: { ...checkIn } });
+    return "ok";
+  }
 
   async setDepartureCount(eventId: EventId, count: DepartureCount): Promise<void> {
     this.#departureCounts.set(eventId, { ...count });

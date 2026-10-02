@@ -1,11 +1,14 @@
 # Check-In & Waivers — Xola Replacement
 
-Status: draft v0.8 · Thirteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
+Status: draft v0.9 · Thirteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
 Screens live in the sibling `check-in-surfaces.md`. Patterns copied from shipping products are sourced
 in `waiver-checkin-market-scan.md` (written in the design chat; not in this repo). The captain's log
 and sea-time work are **separate, not yet designed**; where this doc mentions them it is naming a
 future reader of a field, not a built dependency.
 
+> **v0.9 changes — 2026-10-02, operator, speccing 18.5.** **The passenger count starts at the number
+> signed** (§7, §14 — closed). **Check in** sits in each departure's row on the shift card (§7).
+>
 > **v0.8 changes — 2026-10-01, operator, after using 18.4.** **Signing asks nothing before the form**
 > (§6, §7): no *who are you signing for?*, no *how many kids?*; `+ Add a child` adds a card at a
 > time, up to ten.
@@ -335,7 +338,8 @@ and at a dock it would be a disaster.
 
 ### Crew check-in — a list that empties, and a count
 
-On the crew app, per event, from the shift card. One screen, one gesture per person.
+On the crew app, per event: a **Check in** button in each departure's row on the shift card. One
+screen, one gesture per person.
 
 ```
     ‹  BrewBoat · Sat Jul 18 · 3:00 PM
@@ -364,7 +368,8 @@ On the crew app, per event, from the shift card. One screen, one gesture per per
 - **Every signed name is shown. There is never a "…9 more."** The list scrolls inside its own
   region; header and footer stay put.
 - **The passenger count is set by the mate**, independent of the ticks, and covers unsigned
-  walk-ons. It stops at the COI max (§4a). Its starting value is open (§14).
+  walk-ons. It stops at the COI max (§4a). It starts at the number signed until a count is
+  confirmed (§14).
 - **Ordered alphabetically by the name as typed.** People walk up saying "I'm Fred."
 - **New signers appear without a refresh.** The screen re-checks the server while open (polling;
   interval chosen in the build).
@@ -465,7 +470,6 @@ is retired and replaced by nothing today).
 
 ## 14. Deferred / open
 
-- **The passenger count's starting value** — the number checked in, or the booking's party size.
 - **Reminder default** — the admin sets frequency (§5); what it ships as.
 - **Age of majority** — the setting's default value.
 - **Retention — the policy, not the mechanism.** Mechanism settled: **redact, not move.** Once a
@@ -476,7 +480,7 @@ is retired and replaced by nothing today).
   retention — with Drew, same conversation.
 - **Offline** (§11) — future idea.
 
-**Closed:** overage (§9); unsigned-at-departure (§8); repeat-customer reuse (**sign every trip**);
+**Closed:** the passenger count's starting value (**the number signed**, 2026-10-02); overage (§9); unsigned-at-departure (§8); repeat-customer reuse (**sign every trip**);
 PWA vs native (§11); email required, phone optional (§6); document last (§7); the COI rule (§4a);
 ticks and count independent (§3); no merging on phone or email (§6); no coexistence (§13); the
 checkout checkbox is payment terms (§6); build vs buy (§2a); waiver text (lifted from the existing

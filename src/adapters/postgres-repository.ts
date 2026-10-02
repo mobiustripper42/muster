@@ -2926,6 +2926,54 @@ export class PostgresRepository implements Repository {
       [guestId, checkIn?.at ?? null, checkIn?.by ?? null],
     );
   }
+  async checkInGuestIfRoom(
+    eventId: EventId,
+    guestId: GuestId,
+    checkIn: { at: string; by: CrewMemberId },
+    limit: number,
+  ): Promise<"ok" | "full" | "not_found"> {
+    // The COI rule under concurrency (spec §4a): two mates tapping the last two names at once must
+    // not both see room. The departure's row is locked first, so every tick on that departure takes
+    // its turn — count, then write — and the second one counts the first.
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      const event = await client.query("select 1 from events where id=$1 for update", [eventId]);
+      const found = await client.query("select checked_in_at from guests where id=$1 and event_id=$2", [
+        guestId,
+        eventId,
+      ]);
+      if ((event.rowCount ?? 0) === 0 || !found.rows[0]) {
+        await client.query("rollback");
+        return "not_found";
+      }
+      if (found.rows[0].checked_in_at !== null) {
+        await client.query("rollback");
+        return "ok"; // already aboard: the first tick stands
+      }
+      const aboard = await client.query(
+        "select count(*)::int as n from guests where event_id=$1 and checked_in_at is not null",
+        [eventId],
+      );
+      if (aboard.rows[0].n >= limit) {
+        await client.query("rollback");
+        return "full";
+      }
+      // Only the two tick columns: a signature is never rewritten by a check-in.
+      await client.query("update guests set checked_in_at=$2, checked_in_by=$3 where id=$1", [
+        guestId,
+        checkIn.at,
+        checkIn.by,
+      ]);
+      await client.query("commit");
+      return "ok";
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
 
   async setDepartureCount(eventId: EventId, count: DepartureCount): Promise<void> {
     // Only the three count columns. saveEvent names its columns and never touches these.

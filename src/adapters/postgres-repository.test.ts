@@ -217,6 +217,58 @@ if (!dbUp) {
   });
 
   /**
+   * The check-in tick's one real race (Phase 18.5a): two mates tapping the last two names at once.
+   * Postgres-only, and staged rather than fired as a burst — a parallel burst passed with the lock
+   * removed, because the first tick finished before the next connection opened. Here a second
+   * connection is mid-tick on the departure, holding its row, when the repository's tick arrives:
+   * the tick must wait for it and then count it. Without the row lock it counts too early, sees
+   * room, and both land — two aboard on a boat that carries one.
+   */
+  describe("check-in tick under concurrency (18.5a)", () => {
+    it("a tick that arrives while another is mid-write waits for it, then finds the boat full", async () => {
+      await truncateAll(pool);
+      const repo = new PostgresRepository(pool);
+      const event = asId<"EventId">("evt-race");
+      const crew = asId<"CrewMemberId">("crew-race");
+      await repo.saveVessel({ id: asId<"VesselId">("vessel-race"), name: "Hops", coiMaxPax: 1, manning: [] });
+      await repo.saveCrewMember({ id: crew, name: "Quint", phone: "+15555550100", ratings: [], status: "active", reliabilityScore: null });
+      await repo.saveEvent({ id: event, vesselId: asId<"VesselId">("vessel-race"), date: "2026-10-10", time: "15:00", capacity: 1, status: "scheduled", source: "muster" });
+      const guest = (id: string) => ({
+        id: asId<"GuestId">(id),
+        eventId: event,
+        name: id,
+        isMinor: false,
+        source: "self" as const,
+        createdAt: "2026-10-01T18:00:00.000Z",
+      });
+      await repo.saveGuests([guest("g-first"), guest("g-second")]);
+      const tick = { at: "2026-10-10T18:58:00.000Z", by: crew };
+
+      // The other phone: mid-tick, holding the departure's row, its write not yet committed.
+      const other = await pool.connect();
+      try {
+        await other.query("begin");
+        await other.query("select 1 from events where id=$1 for update", [event]);
+        await other.query("update guests set checked_in_at=$2, checked_in_by=$3 where id=$1", ["g-first", tick.at, crew]);
+
+        let settled = false;
+        const mine = repo.checkInGuestIfRoom(event, asId<"GuestId">("g-second"), tick, 1).finally(() => {
+          settled = true;
+        });
+        await new Promise((r) => setTimeout(r, 300));
+        expect(settled).toBe(false); // waiting its turn behind the other phone
+
+        await other.query("commit");
+        expect(await mine).toBe("full");
+      } finally {
+        other.release();
+      }
+      const aboard = (await repo.listGuestsForEvent(event)).filter((g) => g.checkedIn).map((g) => g.id);
+      expect(aboard).toEqual(["g-first"]);
+    });
+  });
+
+  /**
    * The check-in tables' foreign keys (Phase 18.1). Postgres-only because the in-memory double
    * does not model references — the shared contract saves the referenced rows so both suites
    * stay identical, and this is the half only a real database can answer. One signing's rows are

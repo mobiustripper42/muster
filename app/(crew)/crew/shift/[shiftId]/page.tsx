@@ -276,7 +276,13 @@ function Card({
         </section>
       )}
 
-      <ShiftManifest events={card.events} sharedDock={card.sharedDock} senderName={senderName} shiftId={shiftId} />
+      <ShiftManifest
+        events={card.events}
+        sharedDock={card.sharedDock}
+        senderName={senderName}
+        shiftId={shiftId}
+        checkInHref={(eventId) => `/crew/shift/${encodeURIComponent(shiftId)}/check-in/${encodeURIComponent(eventId)}`}
+      />
 
       {/* The rest of the day (#315) — collapsed by default; renders nothing when
           this is the only shift that day. */}

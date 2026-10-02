@@ -1010,6 +1010,19 @@ export interface Repository {
   /** Tick a guest aboard (`{at, by}`) or clear the tick (`null`). States the outcome, so a
    *  repeated call lands in the same place. Touches nothing else on the row. */
   setGuestCheckIn(guestId: GuestId, checkIn: { at: string; by: CrewMemberId } | null): Promise<void>;
+  /**
+   * Tick a guest aboard only while the departure has room: its checked-in guests stay at or under
+   * `limit` (the boat's COI max, spec §4a) however many phones tick at once — the count and the
+   * write are one serialized step per departure. `"ok"` also for a guest already aboard: the first
+   * tick stands and nobody is counted twice. `"not_found"` when the guest is not on `eventId`.
+   * Unticking needs no room and stays `setGuestCheckIn(id, null)`.
+   */
+  checkInGuestIfRoom(
+    eventId: EventId,
+    guestId: GuestId,
+    checkIn: { at: string; by: CrewMemberId },
+    limit: number,
+  ): Promise<"ok" | "full" | "not_found">;
 
   /** Set the departure's passenger count — the current value only; a new set replaces it.
    *  Stored on the `events` row but written only here: `saveEvent` never touches it. */

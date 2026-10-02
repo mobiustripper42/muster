@@ -1,10 +1,14 @@
 # Check-In & Waiver — Surfaces
 
-Status: draft v0.6 · Fourteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
+Status: draft v0.7 · Fourteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
 The **screens only**. Data model, build/buy and rationale live in `check-in-and-waivers.md`;
 patterns copied from shipping products are sourced in `waiver-checkin-market-scan.md` (design chat,
 not in this repo).
 
+> **v0.7 changes — 2026-10-02, operator, speccing 18.5.** **C1:** **Check in** sits in each
+> departure's row on the shift card, and the passenger count starts at the number signed. **C2:** no
+> brightness control until a native app. **C4:** nothing turns read-only after the trip.
+>
 > **v0.6 changes — 2026-10-01, operator, after using 18.4.** **A1, A3: one form.** The *who are
 > you signing for?* and *how many kids?* steps are gone. The page opens on the guest's details, and
 > `+ Add a child` under them adds a card at a time, each with a remove, up to ten.
@@ -259,8 +263,13 @@ on the dock, two minutes before lines off.
 lands in the `Checked in` disclosure. Tap it there to undo. The list shrinks toward empty.
 
 **The count is the mate's.** `PASSENGERS` is a stepper he sets, independent of the ticks: it covers
-anyone aboard who never signed or was never ticked. It stops at the COI max. Its starting value is
-open (`check-in-and-waivers.md` §14).
+anyone aboard who never signed or was never ticked. It stops at the COI max. **It starts at the number
+signed** — every person on a signed waiver, minors included, capped at the COI max — until a count
+is confirmed, then at that count (operator, 2026-10-02).
+
+**Reached from the shift card.** A **Check in** button sits in each departure's row of the manifest
+(operator, 2026-10-02), so a shift with two trips has two lists, each with its own count. It opens
+at any time, for confirmed crew on that shift.
 
 - **Every signed name is shown. Never a "…9 more."** The list scrolls inside its own region.
 - **`SIGNED` is read-only and climbs on its own** as people scan at the rail (the screen polls).
@@ -279,7 +288,8 @@ open (`check-in-and-waivers.md` §14).
               [ Done ]
 ```
 
-Full screen brightness while open, restore on close. The guest scans with their own phone and signs
+A large black-on-white code. **No brightness control**: a web page cannot set the screen's
+brightness, so that waits for a native app (operator, 2026-10-02). The guest scans with their own phone and signs
 there. Behind the sheet, `SIGNED` climbs and their name appears in the list, unticked.
 
 ### C3 — States
@@ -307,6 +317,9 @@ One tap. No confirmation dialog — the button already says the number.
 off, or after (operator, 2026-09-29). Changing it replaces the number, the time and who counted;
 no history is kept, and there is no undo because there is nothing to undo. Still capped at the COI
 max.
+
+**Nothing on this screen turns read-only after the trip** (operator, 2026-10-02). Ticks and the
+count stay editable; the captain's official log, when it is designed, is the record that locks.
 
 ---
 

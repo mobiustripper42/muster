@@ -3,6 +3,7 @@ import { buildIntroText, firstName } from "@core/crewapp/intro-text.js";
 import { PICKUP_LOCATION, PICKUP_MAP_URL, TENANT_TIMEZONE } from "@core/config/tenant.js";
 import { fmt12, tel, sms } from "../../app/lib/format";
 import { TENANT_NAME } from "../../app/lib/tenant";
+import { AppLink } from "../ui/app-link";
 import { GuestTextButton } from "./guest-text-button";
 
 const mapHref = (q: string) => `https://maps.google.com/?q=${encodeURIComponent(q)}`;
@@ -25,12 +26,16 @@ const contactedTime = (iso: string) =>
  *
  * `senderName` (the viewer's name, #345) makes the guest Text button preload the
  * intro message. Absent → the Text button is a plain (empty) sms, the #319 behavior.
+ *
+ * `checkInHref` (Phase 18.5a) puts **Check in** in each departure's row — the crew card passes it,
+ * the operator cockpit does not.
  */
 export function ShiftManifest({
   events,
   sharedDock,
   senderName,
   shiftId,
+  checkInHref,
 }: {
   events: EventManifestView[];
   // Explicit `| undefined` so a possibly-absent shared dock can be passed straight
@@ -39,6 +44,8 @@ export function ShiftManifest({
   senderName?: string | undefined;
   /** The shift these guests belong to — keys their contact records (#345 Part B). */
   shiftId: string;
+  /** The check-in page for a departure; absent hides the button. */
+  checkInHref?: ((eventId: string) => string) | undefined;
 }) {
   return (
     <section aria-label="Manifest" className="flex flex-col gap-2">
@@ -56,6 +63,16 @@ export function ShiftManifest({
         >
           <summary className="flex min-h-[44px] items-center justify-between px-4 py-3 font-semibold text-ink [&::-webkit-details-marker]:hidden">
             <span className="font-mono">{fmt12(ev.departureTime)}</span>
+            {/* In the row that opens the manifest, as the operator placed it (2026-10-02). A link
+                inside a <summary> follows the link and leaves the section as it was. */}
+            {checkInHref && (
+              <AppLink
+                href={checkInHref(String(ev.eventId))}
+                className="btn-secondary inline-flex min-h-[44px] items-center px-3 text-sm"
+              >
+                Check in
+              </AppLink>
+            )}
             <span className="flex items-center gap-2 text-sm font-normal text-muted">
               {ev.pax} guests
               {/* eslint-disable-next-line no-restricted-syntax -- aria-hidden caret: decoration, not text (#951). <summary> announces its own open/closed state. */}

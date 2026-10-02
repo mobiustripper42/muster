@@ -245,6 +245,42 @@ export async function plantBookedReservation(r: {
 }
 
 /**
+ * Plant signed guests on a departure (Phase 18.5a) — the rows the mate's check-in list shows. An
+ * adult is signed; a minor names its guardian and carries no signature, as a real signing writes
+ * them. `checkedIn` plants a tick already made (by Quint), for the states a fresh list cannot reach,
+ * like a boat one tick from full.
+ */
+export async function plantGuests(
+  eventId: string,
+  guests: { id: string; name: string; minorOf?: string; dob?: string; checkedIn?: boolean }[],
+): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const at = "2026-10-01T18:00:00.000Z";
+    await repo.saveGuests(
+      // Guardians first: a minor's row points at theirs.
+      [...guests]
+        .sort((a, b) => Number(Boolean(a.minorOf)) - Number(Boolean(b.minorOf)))
+        .map((g) => ({
+          id: g.id as never,
+          eventId: eventId as never,
+          name: g.name,
+          isMinor: Boolean(g.minorOf),
+          ...(g.dob ? { dob: g.dob } : {}),
+          ...(g.minorOf
+            ? { guardianGuestId: g.minorOf as never }
+            : { email: `${g.id}@example.com`, signedAt: at, signatureName: g.name }),
+          ...(g.checkedIn ? { checkedIn: { at, by: "crew-quint" as never } } : {}),
+          source: "self" as const,
+          createdAt: at,
+        })),
+    );
+  } finally {
+    await repo.close();
+  }
+}
+
+/**
  * Cancel a booking behind the page's back (Phase 18.4) — the race where a party disappears while a
  * guest is filling in the form. A bare status flip, not the cancellation flow: the test is about
  * what the signing page does, not about refunds.

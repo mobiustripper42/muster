@@ -294,6 +294,59 @@ export function runCheckInContract(
       });
     });
 
+    describe("a tick that keeps to the boat's limit (18.5a)", () => {
+      // The COI rule (spec §4a): ticks never record more people aboard than the boat may carry,
+      // however many phones tick at once. `limit` is the boat's COI max, passed by the caller.
+      const tick = { at: "2026-10-10T18:58:00.000Z", by: CREW };
+      const guest = (n: number) => adult({ id: asId<"GuestId">(`guest-${n}`), name: `Guest ${n}` });
+      const id = (n: number) => asId<"GuestId">(`guest-${n}`);
+      const aboard = async (eventId = EVENT) =>
+        (await repo.listGuestsForEvent(eventId)).filter((g) => g.checkedIn).map((g) => g.id).sort();
+
+      it("ticks a guest aboard while there is room", async () => {
+        await repo.saveGuests([guest(1)]);
+        expect(await repo.checkInGuestIfRoom(EVENT, id(1), tick, 16)).toBe("ok");
+        expect((await repo.listGuestsForEvent(EVENT))[0]?.checkedIn).toEqual(tick);
+      });
+
+      it("refuses at the limit and leaves the guest unticked; an untick frees the spot", async () => {
+        await repo.saveGuests([guest(1), guest(2)]);
+        expect(await repo.checkInGuestIfRoom(EVENT, id(1), tick, 1)).toBe("ok");
+        expect(await repo.checkInGuestIfRoom(EVENT, id(2), tick, 1)).toBe("full");
+        expect(await aboard()).toEqual(["guest-1"]);
+
+        await repo.setGuestCheckIn(id(1), null);
+        expect(await repo.checkInGuestIfRoom(EVENT, id(2), tick, 1)).toBe("ok");
+        expect(await aboard()).toEqual(["guest-2"]);
+      });
+
+      it("a second tick of a guest already aboard is ok, keeps the first tick, and counts once", async () => {
+        await repo.saveGuests([guest(1)]);
+        await repo.checkInGuestIfRoom(EVENT, id(1), tick, 1);
+        // At the limit, and still ok: a retry after a tick that did land is not a new person.
+        expect(await repo.checkInGuestIfRoom(EVENT, id(1), { at: "2026-10-10T19:05:00.000Z", by: CREW }, 1)).toBe("ok");
+        expect((await repo.listGuestsForEvent(EVENT))[0]?.checkedIn).toEqual(tick);
+      });
+
+      it("counts only this departure's guests against the limit", async () => {
+        const { reservationId: _drop, ...noBooking } = guest(9);
+        await repo.saveGuests([guest(1), { ...noBooking, eventId: EVENT_2 }]);
+        expect(await repo.checkInGuestIfRoom(EVENT_2, id(9), tick, 1)).toBe("ok");
+        expect(await repo.checkInGuestIfRoom(EVENT, id(1), tick, 1)).toBe("ok");
+      });
+
+      it("does not find a guest who is not on that departure", async () => {
+        const { reservationId: _drop, ...noBooking } = guest(9);
+        await repo.saveGuests([{ ...noBooking, eventId: EVENT_2 }]);
+        expect(await repo.checkInGuestIfRoom(EVENT, id(9), tick, 16)).toBe("not_found");
+        expect(await repo.checkInGuestIfRoom(EVENT, asId<"GuestId">("guest-ghost"), tick, 16)).toBe("not_found");
+        expect(await aboard(EVENT_2)).toEqual([]);
+      });
+      // Two phones at once is pinned in `postgres-repository.test.ts`: a parallel burst here
+      // passed with the row lock removed, because the first tick finished before the others
+      // connected, so it proved nothing. The in-memory double is serial by construction.
+    });
+
     describe("the departure count", () => {
       it("has none until the mate sets one", async () => {
         expect(await repo.getDepartureCount(EVENT)).toBeNull();

@@ -146,7 +146,11 @@ export function AdminNav({
     // Exactly `Shell fill`'s 3.25rem on desktop, border included (issue #1128): the fill height is
     // the window less this bar, and a bar that came out a pixel or two taller — the border, or font
     // rendering — left the window scrolling by that much under the two-column pages.
-    <nav ref={navRef} aria-label="Admin" className="sticky top-0 z-20 border-b border-line bg-card lg:h-[3.25rem]">
+    //
+    // `z-30`, above anything a page pins (those use `z-10`/`z-20`). The menus below are layered
+    // inside this bar, so the bar's own level is theirs: at `z-20` it tied with the calendar pane's
+    // pinned Close ✕ row, and the later element won — the Close row painted over the Crew menu.
+    <nav ref={navRef} aria-label="Admin" className="sticky top-0 z-30 border-b border-line bg-card lg:h-[3.25rem]">
       {/* Wider than the `max-w-3xl` page shell on purpose (#586). The nav is chrome, not reading
           copy: borrowing the body-copy width capped nav content at 768px no matter how wide the
           monitor was, so a 1440px screen had ~830px of empty white bar on either side while the

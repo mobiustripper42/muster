@@ -13,6 +13,7 @@
 import {
   test,
   expect,
+  clickHydrated,
   fillHydrated,
   plantPayment,
   plantVesselBlock,
@@ -355,6 +356,37 @@ test.describe("admin /admin/calendar", () => {
       // Independent: driving the grid leaves the pane where it was.
       await page.getByTestId("cal-grid-scroll").evaluate((el) => (el.scrollTop = 200));
       expect(await page.getByTestId("cal-pane-col").evaluate((el) => el.scrollTop)).toBe(0);
+    }
+  });
+
+  /**
+   * An open nav menu sits above whatever the page pins (operator, 2026-10-02). The pane's sticky
+   * Close ✕ row was `z-20`, the same as the sticky nav bar — and the nav's menus are layered
+   * INSIDE the bar, so they were at 20 too. On a tie the later element wins, so the Close row
+   * painted over the Crew menu's items. Checked by what is actually on top at each item's centre.
+   */
+  test("desktop: an open nav menu is drawn above the pane's pinned Close row", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "below lg the nav is a drawer");
+    await signInAsAdmin(page, "eric");
+    await page.goto(
+      `/admin/calendar/${encodeURIComponent(demoReservationId(BOOKED.date, BOOKED.time))}?date=${BOOKED.date}`,
+    );
+    await expect(page.getByTestId("cal-pane-col")).toBeVisible();
+
+    const nav = page.getByRole("navigation", { name: "Admin" });
+    const crew = nav.locator("summary:visible").filter({ hasText: "Crew" }).locator("xpath=..");
+    await clickHydrated(crew.locator("summary"));
+    await expect(crew).toHaveAttribute("open", "");
+
+    const items = crew.getByRole("link");
+    expect(await items.count()).toBeGreaterThan(0);
+    for (const item of await items.all()) {
+      const onTop = await item.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return hit !== null && el.contains(hit);
+      });
+      expect(onTop, `${await item.textContent()} is covered`).toBe(true);
     }
   });
 

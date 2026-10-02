@@ -1,11 +1,15 @@
 # Check-In & Waivers — Xola Replacement
 
-Status: draft v0.7 · Thirteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
+Status: draft v0.8 · Thirteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
 Screens live in the sibling `check-in-surfaces.md`. Patterns copied from shipping products are sourced
 in `waiver-checkin-market-scan.md` (written in the design chat; not in this repo). The captain's log
 and sea-time work are **separate, not yet designed**; where this doc mentions them it is naming a
 future reader of a field, not a built dependency.
 
+> **v0.8 changes — 2026-10-01, operator, after using 18.4.** **Signing asks nothing before the form**
+> (§6, §7): no *who are you signing for?*, no *how many kids?*; `+ Add a child` adds a card at a
+> time, up to ten.
+>
 > **v0.7 changes — 2026-09-29, operator, while building 18.2.** **A waiver version locks when it
 > takes effect** (§6, §10): before then nobody can have signed it, so a scheduled version is edited
 > in place, and a future day holds one version. **Roster mode is a future idea** (§6), not a setting.
@@ -243,9 +247,9 @@ nags a nine-year-old.
 frozen, because the row is a record of a past departure and must not reclassify when the kid has a
 birthday. The age of majority is a setting. Cap one signing session at one adult plus ten minors.
 
-**DOB is three selects, and its range is constrained by the path taken.** Pick *"Myself (Adult
-18+)"* and the year list starts 18 years ago; on a child block it ends 18 years ago. `is_minor` is
-enforced at the input rather than validated after it (WaiverSign's detail).
+**DOB is three selects, and its range is constrained by the card it is on.** The signer's year list
+starts 18 years ago; on a child card it ends 18 years ago. `is_minor` is enforced at the input rather
+than validated after it (WaiverSign's detail).
 
 **Email required, phone optional.** All three products require email and none requires phone, and
 BrewBoat's own data agrees: DEC-017 found **email inline on 100% of reservations** against an
@@ -312,16 +316,15 @@ with?" step disappears. For a multi-reservation event it shows a short list by b
 | Smartwaiver | document (with an inline *Initial* box mid-text) → who → confirm → fields → consent → agree |
 | **WaiverSign** | **who → fields → review document → sign** |
 
-**Follow WaiverSign.** Opening with a wall of legal text on a 390px screen is the worst first
-impression of a page a guest was handed twenty seconds ago at a gangway.
+**Follow WaiverSign, less its *who* step.** Opening with a wall of legal text on a 390px screen is
+the worst first impression of a page a guest was handed twenty seconds ago at a gangway. Nothing is
+asked before the form either (operator, 2026-10-01): almost every guest signs for themselves.
 
-1. **Who are you signing for?** — *Myself (18+)* / *A child (under 18)* / *Me and my kids*.
-2. **How many kids**, when the path includes them — declared before the form; makes the ten cap
-   visible.
-3. **Your details** — legal name + certify checkbox, DOB (three constrained selects), email; phone
+1. **Your details** — legal name + certify checkbox, DOB (three constrained selects), email; phone
    offered, not required.
-4. **Review the agreement** — the full text in page flow, no forced scroll-to-bottom.
-5. **Sign** — one consent checkbox and the button.
+2. **Kids, if any** — `+ Add a child` adds a card (name + DOB) at a time, up to ten.
+3. **Review the agreement** — the full text in page flow, no forced scroll-to-bottom.
+4. **Sign** — one consent checkbox and the button.
 
 **The signature is a typed name plus a consent checkbox — not a drawn squiggle.** E-SIGN (15 U.S.C.
 § 7001) cares that the signer took a deliberate act indicating intent, not that the act looked like

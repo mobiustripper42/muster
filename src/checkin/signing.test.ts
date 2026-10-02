@@ -58,7 +58,6 @@ const dob = (iso: string) => {
 
 function form(over: Partial<SigningForm> = {}, adult: Partial<SigningForm["adult"]> = {}): SigningForm {
   return {
-    path: "me",
     reservationId: RESV,
     shownTemplateId: "wt-1",
     children: [],
@@ -117,9 +116,9 @@ describe("buildSigning — the rows one signing writes", () => {
     expect(r.ok && r.rows[0]).not.toHaveProperty("signedUserAgent");
   });
 
-  it("Me + my kids: the adult signs, each child points at them, unsigned and covered — adult first", () => {
+  it("an adult with kids: the adult signs, each child points at them, unsigned and covered — adult first", () => {
     const r = buildSigning(
-      form({ path: "kids", children: [kid("Kyle Kowalski", "2014-06-20"), kid("Amy Kowalski", "2019-01-05")] }),
+      form({ children: [kid("Kyle Kowalski", "2014-06-20"), kid("Amy Kowalski", "2019-01-05")] }),
       ctx(),
     );
     if (!r.ok) throw new Error(r.code);
@@ -141,11 +140,13 @@ describe("buildSigning — the rows one signing writes", () => {
     });
   });
 
-  it("A child (under 18) writes exactly what Me + my kids does — the parent always sails (operator, 2026-09-30)", () => {
-    const kids = [kid("Kyle Kowalski", "2014-06-20")];
-    const a = buildSigning(form({ path: "child", children: kids }), ctx());
-    const b = buildSigning(form({ path: "kids", children: kids }), ctx());
-    expect(a).toEqual(b);
+  it("nobody declares who they sign for: the children are whatever child cards the form sent (operator, 2026-10-01)", () => {
+    // One form, with "+ Add a child". The parent always sails (operator, 2026-09-30), so "just me"
+    // and "me and my kids" differ only in how many cards were added.
+    const alone = buildSigning(form(), ctx());
+    expect(alone.ok && alone.rows.length).toBe(1);
+    const withKid = buildSigning(form({ children: [kid("Kyle Kowalski", "2014-06-20")] }), ctx());
+    expect(withKid.ok && withKid.rows.length).toBe(2);
   });
 
   it("never merges — a second signing with the same email and phone is new rows", () => {
@@ -168,7 +169,7 @@ describe("buildSigning — ages, against the age of majority on the day of signi
   });
 
   it("a child who turns 18 today is no longer a child; one a day younger is", () => {
-    const withKid = (iso: string) => form({ path: "kids", children: [kid("Kyle Kowalski", iso)] });
+    const withKid = (iso: string) => form({ children: [kid("Kyle Kowalski", iso)] });
     expect(buildSigning(withKid("2008-10-10"), ctx())).toEqual({ ok: false, code: "child_too_old" });
     const r = buildSigning(withKid("2008-10-11"), ctx());
     expect(r.ok && r.rows[1]?.isMinor).toBe(true);
@@ -177,7 +178,7 @@ describe("buildSigning — ages, against the age of majority on the day of signi
   it("follows the setting, not a hard-coded 18", () => {
     const c = ctx({ ageOfMajority: 21 });
     expect(buildSigning(form({}, { dob: dob("2006-01-01") }), c)).toEqual({ ok: false, code: "adult_too_young" });
-    const r = buildSigning(form({ path: "kids", children: [kid("Sam Kowalski", "2006-01-01")] }), c);
+    const r = buildSigning(form({ children: [kid("Sam Kowalski", "2006-01-01")] }), c);
     expect(r.ok && r.rows[1]?.isMinor).toBe(true);
   });
 
@@ -200,7 +201,7 @@ describe("buildSigning — ages, against the age of majority on the day of signi
   });
 
   it("refuses a child's date of birth that does not exist", () => {
-    const r = buildSigning(form({ path: "kids", children: [{ name: "Kyle", dob: { year: 2014, month: 13, day: 1 } }] }), ctx());
+    const r = buildSigning(form({ children: [{ name: "Kyle", dob: { year: 2014, month: 13, day: 1 } }] }), ctx());
     expect(r).toEqual({ ok: false, code: "bad_child_dob" });
   });
 });
@@ -223,15 +224,12 @@ describe("buildSigning — refusals", () => {
     });
   });
 
-  it(`kids: at least one on a kids path, none on Myself, and never more than ${MAX_CHILDREN}`, () => {
+  it(`kids: none is just the adult, and never more than ${MAX_CHILDREN} on one signature`, () => {
+    // The form stops offering "+ Add a child" at ten; a post with more was not sent by it.
     const many = Array.from({ length: MAX_CHILDREN + 1 }, (_, i) => kid(`Kid ${i}`, "2015-01-01"));
-    expect(buildSigning(form({ path: "kids", children: [] }), ctx())).toEqual({ ok: false, code: "bad_kids_count" });
-    expect(buildSigning(form({ path: "child", children: many }), ctx())).toEqual({ ok: false, code: "bad_kids_count" });
-    expect(buildSigning(form({ path: "me", children: [kid("Kyle", "2014-06-20")] }), ctx())).toEqual({
-      ok: false,
-      code: "bad_kids_count",
-    });
-    expect(buildSigning(form({ path: "kids", children: many.slice(0, MAX_CHILDREN) }), ctx()).ok).toBe(true);
+    expect(buildSigning(form({ children: many }), ctx())).toEqual({ ok: false, code: "bad_kids_count" });
+    expect(buildSigning(form({ children: many.slice(0, MAX_CHILDREN) }), ctx()).ok).toBe(true);
+    expect(buildSigning(form({ children: [] }), ctx()).ok).toBe(true);
   });
 
   it.each([
@@ -246,7 +244,7 @@ describe("buildSigning — refusals", () => {
   });
 
   it("refuses a child with no name", () => {
-    expect(buildSigning(form({ path: "kids", children: [kid(" ", "2014-06-20")] }), ctx())).toEqual({
+    expect(buildSigning(form({ children: [kid(" ", "2014-06-20")] }), ctx())).toEqual({
       ok: false,
       code: "bad_child_name",
     });
@@ -260,7 +258,7 @@ describe("buildSigning — refusals", () => {
 describe("signAndSave", () => {
   it("writes the rows together and hands back the signer", async () => {
     const repo = new InMemoryRepository();
-    const r = await signAndSave(repo, form({ path: "kids", children: [kid("Kyle Kowalski", "2014-06-20")] }), ctx());
+    const r = await signAndSave(repo, form({ children: [kid("Kyle Kowalski", "2014-06-20")] }), ctx());
     expect(r.ok && r.signer.name).toBe("Fred Kowalski");
     expect((await repo.listGuestsForEvent(EVENT)).map((g) => g.name).sort()).toEqual(["Fred Kowalski", "Kyle Kowalski"]);
   });
@@ -272,7 +270,7 @@ describe("signAndSave", () => {
   });
 });
 
-describe("birthYearOptions — the year select, bounded by the path", () => {
+describe("birthYearOptions — the year select, bounded by who the block is for", () => {
   it("an adult's list starts at the age of majority and goes back 110 years, newest first", () => {
     const years = birthYearOptions("adult", "2026-10-10", 18);
     expect(years[0]).toBe(2008);

@@ -2,14 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { vesselDateOf } from "@core/config/tenant.js";
-import {
-  groupCoverage,
-  loadSigningScene,
-  MAX_CHILDREN,
-  partyChoices,
-  partyFor,
-  type SigningPath,
-} from "@core/checkin/signing.js";
+import { groupCoverage, loadSigningScene, MAX_CHILDREN, partyChoices, partyFor } from "@core/checkin/signing.js";
 import { normalizeTripCode, openTripLink, tripLinkUrl, type TripLinkTrip } from "@core/checkin/trip-link.js";
 import { limitKeyFor } from "@core/rate-limit/rate-limit.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
@@ -22,7 +15,7 @@ import { logSwallowed } from "../../lib/swallowed";
 import { TENANT_NAME } from "../../lib/tenant";
 import type { SignErr } from "./actions";
 import { SigningFormView } from "./signing-form";
-import { KidsStep, PartyStep, stepHref, SuccessView, WhoStep } from "./signing-steps";
+import { PartyStep, SuccessView } from "./signing-steps";
 
 /**
  * /w/<code> — a departure's trip link, and the waiver signing page behind it (Phase 18.3b, issue
@@ -31,10 +24,10 @@ import { KidsStep, PartyStep, stepHref, SuccessView, WhoStep } from "./signing-s
  * **Limited first, then resolved** (`openTripLink`): over the limit nothing is looked up, so a guess
  * and a real code get the same answer. Throttled never reads "we can't find that trip".
  *
- * An open trip walks the guest through: who they are signing for → which party (only when the
- * departure has more than one booking) → how many kids (only on a kids path) → their details and the
- * agreement on one page → the success screen. Each short step is links; the state rides the URL
- * (`for`, `party`, `kids`), so the page works with no client JS (DEC-147).
+ * An open trip opens on the form: the guest's details, a card per child they add, and the agreement,
+ * on one page → the success screen. Only a departure with more than one booking asks first which
+ * party they are with; that step is links, and the pick rides the URL (`party`), so the page works
+ * with no client JS (DEC-147).
  *
  * The boat is never named to a customer (the manage page's rule). No operator phone yet: Muster
  * stores none (issue #1140). **Never logs the code**, and is not indexed.
@@ -47,7 +40,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-type Search = { for?: string; party?: string; kids?: string; err?: string; signed?: string; restore?: string };
+type Search = { party?: string; err?: string; signed?: string; restore?: string };
 
 export default async function TripLinkPage({
   params,
@@ -158,13 +151,6 @@ async function openTrip(trip: TripLinkTrip, rawCode: string, sp: Search, now: st
     );
   }
 
-  const path: SigningPath | undefined =
-    sp.for === "me" || sp.for === "kids" || sp.for === "child" ? sp.for : undefined;
-  if (!path) return <WhoStep code={code} ageOfMajority={scene.ageOfMajority} />;
-
-  const kidsNum = Number(sp.kids);
-  const kids = Number.isInteger(kidsNum) && kidsNum >= 1 && kidsNum <= MAX_CHILDREN ? kidsNum : undefined;
-
   // The party step shows when the departure has several bookings and none is chosen yet, or when
   // the one chosen was cancelled mid-form (then their details wait in the draft).
   const booking = partyFor(scene.reservations, sp.party);
@@ -172,32 +158,20 @@ async function openTrip(trip: TripLinkTrip, rawCode: string, sp: Search, now: st
     return (
       <PartyStep
         code={code}
-        path={path}
-        kids={path === "me" ? undefined : kids}
         parties={partyChoices(scene.reservations).map((p) => ({ ...p, reservationId: String(p.reservationId) }))}
         refused={sp.err === "bad_party"}
       />
     );
   }
-  // Carried on the form only when the guest actually picked one; a private charter needs none.
-  const party = sp.party;
-  if (path !== "me" && !kids) {
-    return (
-      <KidsStep
-        state={{ code, path, party }}
-        backHref={scene.reservations.length > 1 ? stepHref({ code, path }) : stepHref({ code })}
-      />
-    );
-  }
 
-  // Refill from the draft after a refusal, or after picking again from a refused party (`restore`).
+  // Refill from the draft after a refusal, after picking again from a refused party, or after
+  // "+ Add a child" or Remove without JS (both `restore`).
   const draft = sp.err || sp.restore === "1" ? await readFormDraft(`/w/${code}`) : null;
   return (
     <SigningFormView
       code={code}
-      path={path}
-      party={party}
-      kids={kids ?? 0}
+      // Carried on the form only when the guest actually picked one; a private charter needs none.
+      party={sp.party}
       template={scene.template}
       ageOfMajority={scene.ageOfMajority}
       today={vesselDateOf(new Date(now))}
@@ -214,7 +188,7 @@ function errorCopy(age: number): Record<SignErr, string> {
     no_waiver: "Waivers aren’t open for this trip yet.",
     waiver_changed: "The waiver was just updated. Read it again below, then tick the box and tap Sign.",
     bad_party: "Pick who you’re here with.",
-    bad_kids_count: "Choose how many kids, 1 to 10.",
+    bad_kids_count: `One signature covers up to ${MAX_CHILDREN} kids.`,
     bad_name: "Enter your full legal name.",
     legal_name_unconfirmed: "Tick the box to confirm this is your full legal name.",
     bad_dob: "Pick your full date of birth — month, day and year.",

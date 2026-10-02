@@ -5,9 +5,9 @@
  *
  * **One signing writes one adult row and N child rows, together.** The adult signs (the typed name,
  * the waiver version, the device). Children do not sign: each points at the adult, unsigned, and
- * counts as covered. The parent always sails with the child (operator, 2026-09-30), so *Me + my
- * kids* and *A child (under 18)* write exactly the same rows; only the label the guest picked
- * differs.
+ * counts as covered. The parent always sails with the child (operator, 2026-09-30), so nobody says
+ * up front who they are signing for: the form is the adult's details plus however many child cards
+ * they added, from none to ten (operator, 2026-10-01).
  *
  * **Nothing is ever merged.** A shared phone or email is normal (couples, families passing one
  * phone down the line), so every signing is new rows. A duplicate costs nothing.
@@ -43,9 +43,6 @@ export const MAX_CHILDREN = 10;
 export const OLDEST_AGE = 110;
 const MAX_NAME = 100;
 
-/** Who the guest said they are signing for (step 1). */
-export type SigningPath = "me" | "kids" | "child";
-
 /** A date of birth as the three selects send it. A blank select arrives as NaN. */
 export interface DateParts {
   year: number;
@@ -55,7 +52,6 @@ export interface DateParts {
 
 /** One submitted form, already read off the request but not yet checked. */
 export interface SigningForm {
-  path: SigningPath;
   /** The booking the guest is with, or null for a walk-up. */
   reservationId: ReservationId | null;
   /**
@@ -72,6 +68,7 @@ export interface SigningForm {
     /** Optional: blank is fine. */
     phone: string;
   };
+  /** One per child card on the form, in order. None is the adult alone. */
   children: { name: string; dob: DateParts }[];
   /** The e-sign consent box. */
   consent: boolean;
@@ -121,10 +118,7 @@ export function buildSigning(form: SigningForm, ctx: SigningContext): SigningRes
   if (form.reservationId !== null && !ctx.bookedReservationIds.includes(form.reservationId)) {
     return fail("bad_party");
   }
-  const kidCount = form.children.length;
-  if (form.path === "me" ? kidCount !== 0 : kidCount < 1 || kidCount > MAX_CHILDREN) {
-    return fail("bad_kids_count");
-  }
+  if (form.children.length > MAX_CHILDREN) return fail("bad_kids_count");
 
   const name = tidyName(form.adult.name);
   if (!name) return fail("bad_name");
@@ -234,7 +228,7 @@ export function ageOn(dob: string, today: string): number {
 }
 
 /**
- * The birth-year select, newest first. An adult's starts at the age of majority; a child's ends
+ * The birth-year select, newest first. An adult's starts at the age of majority; a child card's ends
  * there. The boundary year is in both, because someone born that year is on one side or the other
  * depending on the day, and the check above settles which.
  */

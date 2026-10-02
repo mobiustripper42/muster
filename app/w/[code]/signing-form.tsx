@@ -1,86 +1,43 @@
-import { birthYearOptions, type SigningPath } from "@core/checkin/signing.js";
+import { birthYearOptions, MAX_CHILDREN } from "@core/checkin/signing.js";
 import type { WaiverTemplate } from "@core/checkin/entities.js";
 import { SubmitButton } from "../../../components/ui/submit-button";
 import { UnsavedGuard } from "../../../components/ui/unsaved-guard";
 import { ESIGN_CONSENT_LINE, ESIGN_CONSENT_TEXT } from "../../lib/esign-consent";
 import type { FormDraft } from "../../lib/form-draft";
 import { signWaiver } from "./actions";
+import { ChildCards } from "./child-cards";
+import { DateOfBirth, type DobParts } from "./date-of-birth";
+import { card, input } from "./form-look";
 
 /**
- * The details and the agreement, on one page (Phase 18.4; operator's choice B, 2026-09-30): the
- * guest's details first, the agreement below, and Sign at the bottom — so the document is still
- * last (§A1), and there is one form to keep if the connection drops, not two.
+ * The signing form (Phase 18.4): the guest's details, a card for each child they add, then the
+ * agreement and Sign at the bottom — one page, so the document is still last (§A1), and there is
+ * one form to keep if the connection drops.
  *
- * No client JS needed (DEC-147). A refused submit comes back through the form-draft with every
- * field as typed (§A5: never lose the input).
+ * **It opens straight on the details.** Nobody is asked first who they are signing for or how many
+ * kids: "+ Add a child" under the details adds a card at a time (operator, 2026-10-01 — almost
+ * every guest signs for themselves, and the questions were a step each in their way). The cards
+ * are the `ChildCards` island; the rest is server-rendered and posts without JS (DEC-147).
+ *
+ * A refused submit comes back through the form-draft with every field as typed, the child cards
+ * included (§A5: never lose the input).
  */
 
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
+const ADULT_DOB: DobParts = { month: "dobMonth", day: "dobDay", year: "dobYear" };
 
-// The app's form look: fields are darker wells on a white card (the recover-link page, the admin
-// settings forms). Hand-rolled here because no shared form component exists yet — issue #484.
-const card = "flex flex-col gap-4 rounded-card border border-line bg-card p-4 shadow-sm";
-const input = "min-h-[48px] w-full rounded-card border border-line bg-bg px-3 text-ink";
-const select = "min-h-[48px] rounded-card border border-line bg-bg px-2 text-ink";
-
-function DateOfBirth({
-  prefix,
-  years,
-  draft,
-  label,
-}: {
-  /** `dob` for the adult, `child{i}` for a child block. */
-  prefix: { month: string; day: string; year: string };
-  years: number[];
-  draft: FormDraft | null;
-  label: string;
-}) {
-  return (
-    <fieldset className="flex flex-col gap-1">
-      <legend className="mb-1 text-sm text-muted">{label}</legend>
-      <div className="grid grid-cols-[1.4fr_1fr_1.1fr] gap-2">
-        <select name={prefix.month} required aria-label={`${label}: month`} defaultValue={draft?.get(prefix.month) ?? ""} className={select}>
-          <option value="">Month</option>
-          {MONTHS.map((m, i) => (
-            <option key={m} value={i + 1}>
-              {m}
-            </option>
-          ))}
-        </select>
-        <select name={prefix.day} required aria-label={`${label}: day`} defaultValue={draft?.get(prefix.day) ?? ""} className={select}>
-          <option value="">Day</option>
-          {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
-        <select name={prefix.year} required aria-label={`${label}: year`} defaultValue={draft?.get(prefix.year) ?? ""} className={select}>
-          <option value="">Year</option>
-          {years.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
-      </div>
-    </fieldset>
-  );
-}
-
-function kidsHeadingFor(path: SigningPath, kids: number): string {
-  if (path !== "child") return "Your kids";
-  return kids === 1 ? "Your child" : "Your children";
+/** The child cards a refused or restored form comes back with, in order. */
+function childCardsFrom(draft: FormDraft | null): ({ name: string } & DobParts)[] {
+  if (!draft) return [];
+  const [months, days, years] = [draft.all("childMonth"), draft.all("childDay"), draft.all("childYear")];
+  return draft
+    .all("childName")
+    .slice(0, MAX_CHILDREN)
+    .map((name, i) => ({ name, month: months[i] ?? "", day: days[i] ?? "", year: years[i] ?? "" }));
 }
 
 export function SigningFormView({
   code,
-  path,
   party,
-  kids,
   template,
   ageOfMajority,
   today,
@@ -88,10 +45,8 @@ export function SigningFormView({
   error,
 }: {
   code: string;
-  path: SigningPath;
-  /** The raw `party` param, carried through so a refusal returns to the same step. */
+  /** The raw `party` param, carried through so a refusal returns to the same party. */
   party: string | undefined;
-  kids: number;
   template: WaiverTemplate;
   ageOfMajority: number;
   /** Boat-local `YYYY-MM-DD`. */
@@ -101,16 +56,19 @@ export function SigningFormView({
 }) {
   const adultYears = birthYearOptions("adult", today, ageOfMajority);
   const childYears = birthYearOptions("child", today, ageOfMajority);
-  const heading = path === "child" ? "Your details (parent or guardian)" : "Your details";
-  const kidsHeading = kidsHeadingFor(path, kids);
 
   return (
     <form action={signWaiver} className="flex flex-col gap-5">
+      {/* Enter in any field means Sign. A form's Enter key presses its FIRST submit button, and
+          "+ Add a child" and Remove are submit buttons (so they work without JS): without this,
+          Enter in the name field would add a child. */}
+      {/* eslint-disable-next-line no-restricted-syntax -- invisible Enter-key target; the visible Sign below is the SubmitButton */}
+      <button type="submit" tabIndex={-1} aria-hidden="true" className="sr-only">
+        Sign
+      </button>
       <UnsavedGuard restored={draft !== null} />
       <input type="hidden" name="code" value={code} />
-      <input type="hidden" name="for" value={path} />
       <input type="hidden" name="party" value={party ?? ""} />
-      <input type="hidden" name="kids" value={path === "me" ? "" : String(kids)} />
       {/* The version shown, so the row records the words the guest read (waiver_changed). */}
       <input type="hidden" name="templateId" value={template.id} />
 
@@ -121,7 +79,10 @@ export function SigningFormView({
       )}
 
       <section className={card}>
-        <h1 className="text-xl font-semibold">{heading}</h1>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold">Your details</h1>
+          <p className="text-sm text-muted">You must be {ageOfMajority} or older to sign.</p>
+        </div>
         <label className="flex flex-col gap-1">
           <span className="text-sm text-muted">Full legal name</span>
           <input name="name" required maxLength={100} autoComplete="name" defaultValue={draft?.get("name") ?? ""} className={input} />
@@ -137,7 +98,12 @@ export function SigningFormView({
           />
           <span>I certify that this is my full legal name</span>
         </label>
-        <DateOfBirth prefix={{ month: "dobMonth", day: "dobDay", year: "dobYear" }} years={adultYears} draft={draft} label="Date of birth" />
+        <DateOfBirth
+          names={ADULT_DOB}
+          years={adultYears}
+          defaults={{ month: draft?.get("dobMonth") ?? "", day: draft?.get("dobDay") ?? "", year: draft?.get("dobYear") ?? "" }}
+          label="Date of birth"
+        />
         <label className="flex flex-col gap-1">
           <span className="text-sm text-muted">Email</span>
           <input name="email" type="email" required autoComplete="email" inputMode="email" defaultValue={draft?.get("email") ?? ""} className={input} />
@@ -148,26 +114,12 @@ export function SigningFormView({
         </label>
       </section>
 
-      {path !== "me" && (
-        <section className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold">{kidsHeading}</h2>
-          {Array.from({ length: kids }, (_, i) => (
-            <div key={i} className={card}>
-              <p className="text-sm font-medium text-ink">Child {i + 1}</p>
-              <label className="flex flex-col gap-1">
-                <span className="text-sm text-muted">Child’s full name</span>
-                <input name={`childName${i}`} required maxLength={100} defaultValue={draft?.get(`childName${i}`) ?? ""} className={input} />
-              </label>
-              <DateOfBirth
-                prefix={{ month: `childMonth${i}`, day: `childDay${i}`, year: `childYear${i}` }}
-                years={childYears}
-                draft={draft}
-                label={`Child ${i + 1}’s date of birth`}
-              />
-            </div>
-          ))}
-        </section>
-      )}
+      <ChildCards
+        initial={childCardsFrom(draft)}
+        max={MAX_CHILDREN}
+        years={childYears}
+        ageOfMajority={ageOfMajority}
+      />
 
       <section className={card}>
         <h2 className="text-lg font-semibold">The agreement</h2>

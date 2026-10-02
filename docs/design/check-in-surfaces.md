@@ -1,13 +1,18 @@
 # Check-In & Waiver — Surfaces
 
-Status: draft v0.5 · Fourteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
+Status: draft v0.6 · Fourteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
 The **screens only**. Data model, build/buy and rationale live in `check-in-and-waivers.md`;
 patterns copied from shipping products are sourced in `waiver-checkin-market-scan.md` (design chat,
 not in this repo).
 
+> **v0.6 changes — 2026-10-01, operator, after using 18.4.** **A1, A3: one form.** The *who are
+> you signing for?* and *how many kids?* steps are gone. The page opens on the guest's details, and
+> `+ Add a child` under them adds a card at a time, each with a remove, up to ten.
+>
 > **v0.5 changes — 2026-09-29, operator, while building 18.2.** **Templates** (D): a scheduled
 > version can be edited until it takes effect. **Roster mode is gone** from the settings (D) — a
-> future idea. **A5 gains a throttled state** (2026-09-30, 18.3b). The operator phone the A5 states
+> future idea. **A5 gains a throttled state** (2026-09-30, 18.3b). **A1: steps 3 and 4 are one
+> page; A3: the parent always sails; A5: a no-waiver state** (2026-09-30, 18.4). The operator phone the A5 states
 > name does not exist yet (issue #1140).
 >
 > **v0.4 changes — 2026-09-27, operator review.** Screen C gains a **passenger-count stepper**,
@@ -57,47 +62,58 @@ A and C are the ones that matter. B is one page and punches above its weight. D 
 One page. Arrives from a dock QR, a shared link, or the booking confirmation / manage page — always
 carrying **an unguessable token for the trip**, never the raw event id.
 
-### A1 — Four steps, and the agreement is the last one
+### A1 — One form, and the agreement is the last thing on it
 
 ```
-   step 1                 step 2                step 3               step 4
-┌──────────────┐      ┌──────────────┐     ┌──────────────┐    ┌──────────────┐
-│ BrewBoat     │      │ BrewBoat     │     │ BrewBoat     │    │ BrewBoat     │
-│ Sat · 3:00PM │      │ Sat · 3:00PM │     │ Sat · 3:00PM │    │ Sat · 3:00PM │
-├──────────────┤      ├──────────────┤     ├──────────────┤    ├──────────────┤
-│ Who are you  │      │ How many     │     │ Your details │    │ Voyage       │
-│ signing for? │      │ kids?        │     │              │    │ Agreement    │
-│              │      │              │     │ Full legal   │    │              │
-│ ┌──────────┐ │      │ (1) (2) (3)  │     │ name         │    │ [the text,   │
-│ │ Myself   │ │      │ (4) (5) (+)  │     │ [_________]  │    │  scrollable, │
-│ │  18+     │ │      │              │     │ ☐ legal name │    │  in page     │
-│ └──────────┘ │      │              │     │              │    │  flow]       │
-│ ┌──────────┐ │      │              │     │ Date of birth│    │              │
-│ │ Me + my  │ │      │              │     │ [Mon][D][Yr] │    │ ☐ I agree +  │
-│ │ kids     │ │      │              │     │              │    │   e-sign     │
-│ └──────────┘ │      │              │     │ Email        │    │              │
-│ ┌──────────┐ │      │              │     │ [_________]  │    │ [   Sign   ] │
-│ │ A child  │ │      │              │     │ Phone (opt)  │    │              │
-│ │ under 18 │ │      │              │     │ [_________]  │    │              │
-│ └──────────┘ │      │              │     │              │    │              │
-└──────────────┘      └──────────────┘     └──────────────┘    └──────────────┘
-                       only on a kids path
+┌────────────────────────┐
+│ BrewBoat · Sat 3:00 PM │
+├────────────────────────┤
+│ Your details           │
+│ You must be 18 or older│
+│ Full legal name [____] │
+│ ☐ legal name           │
+│ Date of birth          │
+│ [Mon][D][Yr]           │
+│ Email [____]           │
+│ Phone (opt) [____]     │
+├────────────────────────┤
+│ Child 1      ✕ Remove  │  one card per child,
+│ Child's full name [__] │  none until added
+│ Date of birth          │
+├────────────────────────┤
+│ [  + Add a child  ]    │  gone at ten
+│ For kids under 18      │
+├────────────────────────┤
+│ The agreement          │
+│ [the text, in page     │
+│  flow]                 │
+│ ☐ I agree + e-sign     │
+│ [       Sign       ]   │
+└────────────────────────┘
 ```
 
-**The document goes last** (WaiverSign's order). Short decisions first; the agreement is a review
-step at the end.
+**The document goes last** (WaiverSign's order): the details on top, the agreement below them, Sign
+at the bottom, all one page (operator, 2026-09-30) — one form to keep if the connection drops.
 
-**Label the choices with ages.** `Myself (18+)` / `Me + my kids` / `A child (under 18)`.
+**No questions before the form** (operator, 2026-10-01, after using it). There is no *who are you
+signing for?* and no *how many kids?*: almost every guest signs for themselves, and the two steps
+stood between every one of them and the form. The page opens on the guest's details.
 
-**Declare the number of kids before the form**, not with an `+ Add another` button. Picking "3"
-generates three blocks and makes the ten-child cap visible.
+**`+ Add a child`** sits under the details card. Each tap adds a card, `Child's full name` + `Date of
+birth`, with a **✕ Remove**; the button moves down to stay under the last card, and goes at ten, the
+cap. This is a client island (DEC-147): a card appears with no round trip, and its name field takes
+the focus. Without JS the same button posts the form, and it comes back with everything typed and
+one more card.
 
-**DOB is three selects, and the year range is constrained by step 1.** On `Myself (18+)` the year
-list starts 18 years ago; on a child block it ends 18 years ago.
+**Ages are stated where they apply.** *"You must be 18 or older to sign"* under *Your details*;
+*"For kids under 18 coming with you"* under the add button. Both read the operator's age of majority.
+
+**DOB is three selects, and the year range is constrained by the card.** The guest's year list
+starts 18 years ago; a child card's ends 18 years ago.
 
 **Email required, phone optional.** Nothing verifies either.
 
-**No forced scroll-to-bottom** on step 4. The text sits in page flow above the button.
+**No forced scroll-to-bottom** on the agreement. The text sits in page flow above the button.
 
 **No drawn signature.** Typed name + legal-name checkbox + consent checkbox.
 
@@ -106,8 +122,8 @@ behind a "what does this mean?" link.
 
 ### A2 — The party step
 
-Only rendered when the event has **more than one reservation**. A private charter has exactly one,
-so BrewBoat never sees this screen.
+Only rendered when the event has **more than one reservation**, before the form. A private charter
+has exactly one, so BrewBoat never sees this screen.
 
 ```
   Who are you here with?
@@ -124,10 +140,12 @@ Surnames only, scoped to one trip. This list is why the link must be a token.
 
 ### A3 — Minors
 
-- **Myself (18+)** — step 2 skipped; one block of details.
-- **A child (under 18)** — guardian's details, then N child blocks: `Child's full name` +
-  `Date of birth`. One signature covers all of them.
-- **Me + my kids** — both, in that order.
+- **Just the guest** — the details card, and no child cards.
+- **With kids** — the details card, then a card per child added: `Child's full name` +
+  `Date of birth`. One signature covers all of them, up to ten.
+
+**The parent always sails with the child** (operator, 2026-09-30), so a parent signs as themselves
+and adds the kids, and counts toward the group on the success screen.
 
 `is_minor` is computed from each DOB, never asked.
 
@@ -163,6 +181,7 @@ passing one phone down the line at the dock.
 | Event departed | *"This trip has already sailed."* + operator phone. No form. |
 | Event cancelled | Same shape, cancellation wording. |
 | Bad or expired link | *"We can't find that trip."* + operator phone. Never a stack trace, never a login. |
+| No waiver posted yet | *"Waivers aren't open for this trip yet."* No form (18.4). |
 | Too many opens from one connection | *"Lots of people are signing from this connection right now. Try again in a minute."* + **Try again**. Never "can't find that trip", and the trip is not looked up while throttled (DEC-189, 18.3b). |
 | Connection drops mid-sign | Keep the typed values and retry. Never lose the input. |
 

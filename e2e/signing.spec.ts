@@ -1,9 +1,9 @@
 /**
- * The waiver signing page, /w/<code> (Phase 18.4, issue #1118). The rules — ages, the ten-kid cap,
+ * The waiver signing page, /w/<code> (Phase 18.4, issue #1118). The rules — ages, the ten-minor cap,
  * refusals, the group count — are unit-tested in `src/checkin/signing.test.ts`; here a guest walks
  * each path end to end at desktop and 375px. The page opens straight on the form (operator,
- * 2026-10-01): an adult alone, an adult who adds kids with "+ Add a minor" and takes one away
- * again, the ten-kid limit, the same with JavaScript off, the party step, a refusal that keeps what
+ * 2026-10-01): an adult alone, an adult who adds minors with "+ Add a minor" and takes one away
+ * again, the ten-minor limit, the same with JavaScript off, the party step, a refusal that keeps what
  * was typed, a throttled submit, and a trip with no waiver posted.
  *
  * The trip is a private charter (one booking, party of 4) unless a test plants a second booking.
@@ -90,7 +90,7 @@ test.describe("waiver signing /w/<code>", () => {
     await expect(page.getByLabel("Full legal name").first()).toHaveValue("");
   });
 
-  test("+ Add a minor adds a card on the phone, with no round trip — two kids count toward the group", async ({ page }) => {
+  test("+ Add a minor adds a card on the phone, with no round trip — two minors count toward the group", async ({ page }) => {
     await charter();
     const posts: string[] = [];
     page.on("request", (r) => {

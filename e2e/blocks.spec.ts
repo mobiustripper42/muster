@@ -96,6 +96,44 @@ test.describe("admin /admin/blocks", () => {
   });
 
   /**
+   * The list's last column says what it counts, every row's columns line up under the headers, and
+   * When is the date over the time (issue #1090's alignment and wrapping, operator 2026-10-02).
+   * Each row is its own grid, so content-sized columns drifted row to row.
+   */
+  test("the list: Departures blocked, columns aligned across kinds, When as date over time", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto("/admin/blocks");
+
+    await choose(page, CLOSURE);
+    await page.getByLabel("Which location").selectOption({ label: "Reservation Demo Dock" });
+    await page.getByLabel("Date", { exact: true }).fill(DEMO.locationBlockWindow.date);
+    await page.getByLabel("From", { exact: true }).fill("13:00");
+    await page.getByLabel("To", { exact: true }).fill("16:00");
+    await page.getByRole("button", { name: "Block it", exact: true }).click();
+    await page.waitForURL(/sel=/);
+    await page.getByRole("link", { name: "+ New block" }).click();
+    await choose(page, BOAT_OUT);
+    await page.getByLabel("Which boat").selectOption({ label: DEMO.vesselName });
+    await page.getByLabel("From", { exact: true }).fill(DEMO.vesselBlockWindow.start);
+    await page.getByRole("button", { name: "Block it", exact: true }).click();
+    await page.waitForURL(/sel=/);
+
+    const closure = page.getByTestId("block-row").filter({ hasText: "Reservation Demo Dock" });
+    const boatOut = page.getByTestId("block-row").filter({ hasText: "Boat out" });
+    await expect(closure.getByTestId("when-time")).toHaveText("1:00 PM – 4:00 PM");
+    await expect(boatOut.getByTestId("when-time")).toHaveText("all day");
+    // The date line holds the date only.
+    await expect(closure.getByTestId("when-date")).not.toContainText("PM");
+
+    if ((page.viewportSize()?.width ?? 0) >= 720) {
+      await expect(page.getByText("Departures blocked", { exact: true })).toBeVisible();
+      const x = async (row: typeof closure, id: string) => (await row.getByTestId(id).boundingBox())!.x;
+      expect(await x(boatOut, "off-sale")).toBeCloseTo(await x(closure, "off-sale"), 0);
+      expect(await x(boatOut, "when-date")).toBeCloseTo(await x(closure, "when-date"), 0);
+    }
+  });
+
+  /**
    * Issue #1090's bug: a refused boat-out came back as the other form, because the editor's
    * choice was seeded from the selected block only and never from the refused draft.
    */

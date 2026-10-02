@@ -84,19 +84,34 @@ const ROW_SCOPE: Record<BlockKind, string> = {
   vesselHold: "opens on the calendar",
 };
 
-/** The When column. A one-day boat out reads as one day, not "Oct 5 – Oct 5". */
-function whenOf(block: Block): string {
+/**
+ * The When column: the date on one line, the time on the next (operator, 2026-10-02) — one string
+ * wrapped wherever the column ran out, mid-phrase. A one-day boat out reads as one day, not
+ * "Oct 5 – Oct 5".
+ */
+function whenOf(block: Block): { date: string; time: string } {
   switch (block.kind) {
     case "location":
-      return `${formatDay(block.date)} · ${formatTime(block.startTime)}–${formatTime(block.endTime)}`;
+      return { date: formatDay(block.date), time: `${formatTime(block.startTime)} – ${formatTime(block.endTime)}` };
     case "vesselHold":
-      return `${formatDay(block.date)} · ${formatTime(block.time)}`;
+      return { date: formatDay(block.date), time: formatTime(block.time) };
     case "vessel":
-      return block.startDate === block.endDate
-        ? `${formatDay(block.startDate)} · all day`
-        : `${formatDay(block.startDate)} – ${formatDay(block.endDate)} · all day`;
+      return {
+        date:
+          block.startDate === block.endDate
+            ? formatDay(block.startDate)
+            : `${formatDay(block.startDate)} – ${formatDay(block.endDate)}`,
+        time: "all day",
+      };
   }
 }
+
+/**
+ * The registry's columns, header and rows alike. `minmax(0, …)` because each row is its own grid:
+ * plain `fr` tracks grow to fit their row's text, so rows with shorter text drifted left of the
+ * headers (issue #1090). Fixed tracks make every row line up whatever it holds.
+ */
+const ROW_COLS = "min-[720px]:grid-cols-[130px_minmax(0,1.4fr)_minmax(0,1.2fr)_110px]";
 
 /** Registry filter key for a block kind — the single-slot kind files under "slot". */
 function filterKeyOf(kind: BlockKind): string {
@@ -279,11 +294,13 @@ export default async function AdminBlocks({
       <div className="mt-3 grid grid-cols-1 gap-4 min-[1080px]:grid-cols-[1fr_340px]">
         {/* Registry (master) */}
         <div className="overflow-hidden rounded-card border border-line bg-card shadow-sm">
-          <div className="hidden border-b border-line px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted min-[720px]:grid min-[720px]:grid-cols-[130px_1.4fr_1.2fr_100px] min-[720px]:gap-3">
+          <div className={`hidden border-b border-line px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted min-[720px]:grid ${ROW_COLS} min-[720px]:gap-3`}>
             <div>What</div>
             <div>Which</div>
             <div>When</div>
-            <div>Off sale</div>
+            {/* What the number counts: open departures the block takes off the calendar. Not
+                reservations — a block never removes a booking; those are the conflict badge. */}
+            <div>Departures blocked</div>
           </div>
 
           {visible.length === 0 ? (
@@ -304,22 +321,28 @@ export default async function AdminBlocks({
               // panel (#703). Selecting one used to open a read-only aside whose entire content
               // — boat, day, time — is already on the row you clicked, plus a second link to
               // the place you were trying to reach. There is nothing to edit here: a slot block
-              // is made and unmade on the calendar, so the row IS the forward link.
+              // is made and unmade on the calendar, so the row IS the forward link — and it opens
+              // that block's pane with its card selected (`?release=`), not just the bare day
+              // with the operator left to find the card (issue #1090).
               const rowHref =
                 block.kind === "vesselHold"
-                  ? `/admin/calendar?date=${block.date}`
+                  ? `/admin/calendar?date=${block.date}&release=${encodeURIComponent(String(block.id))}`
                   : hrefWith({ sel: String(block.id) });
               return (
                 <AppLink
                   key={block.id}
                   href={rowHref}
+                  // `overlay`, not the default inline spinner: the inline one wraps the row in an
+                  // `inline-flex` span, which shrank each row's grid to its own text and pulled
+                  // the columns out of line with the headers (issue #1090).
+                  spinner="overlay"
                   data-testid="block-row"
                   aria-current={isSel ? "page" : undefined}
-                  className={`block border-t border-line hover:bg-bg ${isSel ? "bg-bg" : ""} ${
+                  className={`relative block border-t border-line hover:bg-bg ${isSel ? "bg-bg" : ""} ${
                     past ? "opacity-50" : ""
                   }`}
                 >
-                  <div className="grid grid-cols-1 gap-1 px-4 py-3 text-sm min-[720px]:grid-cols-[130px_1.4fr_1.2fr_100px] min-[720px]:items-center min-[720px]:gap-3">
+                  <div className={`grid grid-cols-1 gap-1 px-4 py-3 text-sm ${ROW_COLS} min-[720px]:items-center min-[720px]:gap-3`}>
                   <div>
                     <KindPill kind={kind} />
                   </div>
@@ -345,7 +368,10 @@ export default async function AdminBlocks({
                     )}
                   </div>
 
-                  <div className="font-mono text-xs text-muted">{when}</div>
+                  <div className="font-mono text-xs text-muted">
+                    <div data-testid="when-date">{when.date}</div>
+                    <div data-testid="when-time">{when.time}</div>
+                  </div>
 
                   <div data-testid="off-sale" className="font-mono text-sm font-semibold text-ink">
                     {past ? (
@@ -353,8 +379,10 @@ export default async function AdminBlocks({
                     ) : (
                       <>
                         {impact.removedSlots}
-                        <span className="block text-[10px] font-normal text-muted">
-                          {impact.removedSlots === 1 ? "departure" : "departures"}
+                        {/* The header says what this counts on desktop; at 375px there is no
+                            header row, so the number carries its own words. */}
+                        <span className="ml-1 text-xs font-normal text-muted min-[720px]:hidden">
+                          {impact.removedSlots === 1 ? "departure blocked" : "departures blocked"}
                         </span>
                       </>
                     )}

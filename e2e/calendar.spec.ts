@@ -256,13 +256,15 @@ test.describe("admin /admin/calendar", () => {
     await expect(row).toContainText("1");
 
     // The row IS the forward link — one click to the block's own day, no read-only aside in
-    // between (#703). Clicking it must not select it into the editor.
+    // between (#703) — and it lands with that block's pane already open and its card selected
+    // (issue #1090), not on the bare day with the operator left to find the card.
     await row.click();
-    await page.waitForURL(new RegExp(`/admin/calendar\\?date=${BOOKED.date}`));
+    await page.waitForURL(new RegExp(`/admin/calendar\\?date=${BOOKED.date}&release=`));
+    const release = page.getByTestId("slot-pane");
+    await expect(release.getByTestId("slot-state")).toHaveText("Blocked");
+    await expect(slotBlock).toHaveAttribute("data-cal-selected", "");
 
     // Unblocked from the calendar, the slot comes back on sale (DEC-125, reversible-in-spirit).
-    await slotBlock.click();
-    const release = page.getByTestId("slot-pane");
     await expect(release).toContainText(shortLabel(OPEN_TIME));
     await expect(release).toContainText("Blocked");
     await release.getByRole("button", { name: "Unblock it" }).click();

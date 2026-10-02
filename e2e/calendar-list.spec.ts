@@ -11,9 +11,9 @@
  * Runs desktop + 375px (registered in the mobile testMatch).
  */
 import type { Page } from "@playwright/test";
-import { test, expect, fillHydrated, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import { test, expect, fillHydrated, plantShiftForBooking, resetAndSeed, signInAsAdmin } from "./fixtures.js";
 import { shortTime } from "../src/reservations/calendar-grid.js";
-import { BOOKED, DEMO, OPEN_TIME } from "./reservation-demo.js";
+import { BOOKED, DEMO, OPEN_TIME, demoReservationId } from "./reservation-demo.js";
 
 const LIST = `/admin/calendar?date=${BOOKED.date}&view=list`;
 
@@ -54,6 +54,18 @@ test.describe("admin calendar — List view (issue #1079)", () => {
     await page.getByTestId("view-grid").click();
     await expect(page.getByTestId("cal-row")).toHaveCount(0);
     await expect(page.locator('[data-testid="cal-block"]').first()).toBeVisible();
+  });
+
+  test("Crew: a booked row shows seats filled out of seats needed, read from its shift", async ({ page }) => {
+    await plantShiftForBooking({ reservationId: demoReservationId(BOOKED.date, BOOKED.time), required: 2 });
+    await signInAsAdmin(page, "eric");
+    await page.goto(LIST);
+
+    const marcus = rowAt(page, DEMO.vesselId, BOOKED.time);
+    // Nobody on either seat yet: 0 of 2, which reads as short.
+    await expect(marcus).toContainText("0/2");
+    // An open row has no shift and so no crew figure.
+    await expect(rowAt(page, DEMO.vesselId, OPEN_TIME)).not.toContainText("/2");
   });
 
   test("the chips and the day arrows keep the List", async ({ page }) => {

@@ -408,7 +408,7 @@ export default async function ReservationDetailPage({
           ...(sp.balanceErr !== undefined ? { err: sp.balanceErr } : {}),
           date: sp.date ?? "",
           filter: sp.filter ?? "",
-      view: sp.view === "list" ? "list" : "",
+          view: sp.view === "list" ? "list" : "",
         }}
         {...(actions ? { actions } : {})}
       >
@@ -537,7 +537,7 @@ async function PhoneBookingPage({
         unpaid={{
           date: sp.date ?? "",
           filter: sp.filter ?? "",
-      view: sp.view === "list" ? "list" : "",
+          view: sp.view === "list" ? "list" : "",
           justBooked: sp.booked !== undefined,
           confirmingCancel: sp.cancel === "1",
           cancelHref: paneHref(reservation.id, sp, { cancel: "1" }),

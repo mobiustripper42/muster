@@ -897,7 +897,7 @@ export function slotMatchesFilter(filter: string, s: VirtualSlot): boolean {
 
 /** `data-cal-selected` present on the selected card(s), absent elsewhere — what
  *  `RevealSelectedCard` looks for. A helper so the grid's render stays under the complexity ceiling. */
-export const selectedAttr =(on: boolean): "" | undefined => (on ? "" : undefined);
+export const selectedAttr = (on: boolean): "" | undefined => (on ? "" : undefined);
 
 /**
  * The grid itself: 52px time gutter + one column per fleet vessel, blocks absolutely

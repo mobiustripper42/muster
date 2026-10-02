@@ -124,7 +124,7 @@ function CancelControl({ reservationId, state }: { reservationId: string; state:
       <input type="hidden" name="reservationId" value={reservationId} />
       <input type="hidden" name="date" value={state.date} />
       <input type="hidden" name="filter" value={state.filter} />
-        <input type="hidden" name="view" value={state.view} />
+      <input type="hidden" name="view" value={state.view} />
       <p className="text-sm font-medium text-ink">Cancel this booking and free the boat?</p>
       <p className="text-xs text-muted">Nothing was paid, so nothing is refunded.</p>
       <fieldset>

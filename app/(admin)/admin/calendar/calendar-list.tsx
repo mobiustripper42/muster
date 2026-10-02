@@ -147,6 +147,11 @@ function rowOf(
     };
   }
 
+  // Open outranks blocked here, unlike `slotStatus`, on purpose. A closure is keyed on the
+  // offering's location, so two cruises sharing a boat-time can disagree: one open, one blocked. The
+  // grid draws both cards; this list has one row, and it is a list to SELL from — so the row says
+  // what can still be sold (Open, + Book, the open cruise named) rather than hiding a sellable trip
+  // behind the cruise that can't run. The booking steps only offer the open cruise.
   const open = slots.filter((s) => s.status === "available");
   if (open.length > 0) {
     return {

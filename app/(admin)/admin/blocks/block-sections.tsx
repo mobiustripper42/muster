@@ -14,11 +14,14 @@ export type BlockKind = "location" | "vessel" | "vesselHold";
  * words for one thing (you held on the calendar, then went to Blocks to find it) and collided
  * with DEC-109's transient customer checkout-hold, a different row with a countdown on it.
  * Operator's call, 2026-08-08. The data-model name stays `vesselHold`; this is the label only.
+ *
+ * The labels say what happened, not the scope's name (issue #1091): a new admin reads "Boat out"
+ * without first learning that a vessel block is what takes a boat out.
  */
 export const KIND_META: Record<BlockKind, { label: string; dot: string; pill: string }> = {
-  location: { label: "Location", dot: "bg-muted", pill: "border-line bg-bg text-muted" },
-  vessel: { label: "Vessel", dot: "bg-bad", pill: "border-bad-line bg-bad-bg text-bad" },
-  vesselHold: { label: "Slot", dot: "bg-accent", pill: "border-line bg-bg text-ink" },
+  location: { label: "Closed", dot: "bg-muted", pill: "border-line bg-bg text-muted" },
+  vessel: { label: "Boat out", dot: "bg-bad", pill: "border-bad-line bg-bad-bg text-bad" },
+  vesselHold: { label: "One departure", dot: "bg-accent", pill: "border-line bg-bg text-ink" },
 };
 
 /** "2026-08-12" → "Wed Aug 12". Read at UTC midnight so the label never shifts by TZ. */

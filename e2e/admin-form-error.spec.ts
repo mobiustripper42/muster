@@ -468,34 +468,35 @@ test.describe("a refused edit on the per-row surfaces (#780)", () => {
     // registry by default and the editor would have nothing to select.
     const day = daysFromToday(30);
     await page.goto("/admin/blocks");
-    await page.selectOption('select[aria-label="Block location"]', { label: "Existing East Bank" });
-    await page.locator('input[aria-label="Block date"]').fill(day);
-    await page.locator('input[aria-label="Block start time"]').fill("09:00");
-    await page.locator('input[aria-label="Block end time"]').fill("17:00");
-    await page.locator('input[aria-label="Block reason"]').fill("river closed");
-    await page.getByRole("button", { name: "Save" }).click();
+    await clickHydrated(page.getByRole("button", { name: /A dock or the river is closed/ }));
+    await page.getByLabel("Which location").selectOption({ label: "Existing East Bank" });
+    await page.getByLabel("Date", { exact: true }).fill(day);
+    await page.getByLabel("From", { exact: true }).fill("09:00");
+    await page.getByLabel("To", { exact: true }).fill("17:00");
+    await page.getByLabel("Reason").fill("river closed");
+    await page.getByRole("button", { name: "Block it" }).click();
     await page.waitForURL(/sel=block-/);
 
     // Now refuse an EDIT: an end time before the start (`bad_window`). Server-only — two
     // `<input type="time">`s know nothing about each other.
-    await page.locator('input[aria-label="Block reason"]').fill("engine service");
-    await page.locator('input[aria-label="Block end time"]').fill("08:00");
+    await page.getByLabel("Reason").fill("engine service");
+    await page.getByLabel("To", { exact: true }).fill("08:00");
     await page.getByRole("button", { name: "Save" }).click();
 
-    await expect(page.getByText(/Check the time window/)).toBeVisible();
+    await expect(page.getByText(/Check the times/)).toBeVisible();
 
     // **Still editing the same block.** The refusal redirect dropped `?sel=` entirely, which
     // silently turns the edit panel back into a create form — and the hidden `id` empties with
     // it, so correcting the time and saving again would file a SECOND block instead of fixing
-    // the first. Delete only renders while editing, so its presence is the cheap proof.
-    await expect(page.getByRole("button", { name: "Delete" })).toBeVisible();
+    // the first. Unblock only renders while editing, so its presence is the cheap proof.
+    await expect(page.getByRole("button", { name: "Unblock" })).toBeVisible();
 
     // The typing survived. "engine service" cannot come from the stored record — that still
     // says "river closed" — so this distinguishes a restore from a re-render.
-    await expect(page.locator('input[aria-label="Block reason"]')).toHaveValue("engine service");
-    await expect(page.locator('input[aria-label="Block end time"]')).toHaveValue("08:00");
-    await expect(page.locator('input[aria-label="Block start time"]')).toHaveValue("09:00");
-    await expect(page.locator('input[aria-label="Block date"]')).toHaveValue(day);
+    await expect(page.getByLabel("Reason")).toHaveValue("engine service");
+    await expect(page.getByLabel("To", { exact: true })).toHaveValue("08:00");
+    await expect(page.getByLabel("From", { exact: true })).toHaveValue("09:00");
+    await expect(page.getByLabel("Date", { exact: true })).toHaveValue(day);
   });
 
   test("time-off: a refused range keeps the crew member as well as the dates", async ({ page }) => {

@@ -15,7 +15,15 @@
  * Runs desktop + 375px (registered in the mobile testMatch).
  */
 import type { Page } from "@playwright/test";
-import { test, expect, clickHydrated, fillHydrated, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import {
+  test,
+  expect,
+  clickHydrated,
+  fillHydrated,
+  plantVesselBlock,
+  resetAndSeed,
+  signInAsAdmin,
+} from "./fixtures.js";
 import { shortTime } from "../src/reservations/calendar-grid.js";
 import { BOOKED, DEMO, OPEN_TIME } from "./reservation-demo.js";
 
@@ -146,6 +154,34 @@ test.describe("admin phone booking", () => {
     await expect(pane.getByPlaceholder("Guest’s full name")).toHaveValue("Kept Name");
     await expect(pane.getByTestId("summary-total")).toBeVisible();
     await expect(page).toHaveURL(/guests=2/);
+  });
+
+  /**
+   * The boat was taken out of service while the operator was on the phone (issue #1091). The
+   * refusal used to land on a calendar with no pane and no message — the "blocked" copy only
+   * renders on the checkout step, which needs the slot open. Now it lands on the blocked
+   * departure's pane, which says nothing was booked and opens the block.
+   */
+  test("a booking refused because the boat was just blocked opens that block", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto(`${BOOK}&guests=2`);
+    await fillHydrated(page.getByPlaceholder("Guest’s full name"), "Phone Caller");
+    await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0199");
+    await plantVesselBlock({
+      id: "block-e2e-mid-call",
+      vesselId: DEMO.vesselId,
+      startDate: BOOKED.date,
+      endDate: BOOKED.date,
+    });
+    await page.getByTestId("book-phone").click();
+
+    const pane = page.getByTestId("slot-pane");
+    await expect(pane).toContainText("Blocked while you were booking — nothing was booked.");
+    await expect(pane).toContainText("Brew 3 out of service");
+    await expect(pane.getByRole("link", { name: "Open that block →" })).toHaveAttribute(
+      "href",
+      "/admin/blocks?sel=block-e2e-mid-call",
+    );
   });
 
   test("more guests than the boat takes is refused on the passengers step", async ({ page }) => {

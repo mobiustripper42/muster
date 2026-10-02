@@ -35,6 +35,9 @@ export async function saveBlock(formData: FormData): Promise<void> {
   const id = rawId || `block-${randomUUID()}`;
   const kind = String(formData.get("kind") ?? "");
   const note = String(formData.get("note") ?? "");
+  // A boat out with no To is out for the one day (issue #1091): the editor says "blank = one day".
+  const startDate = String(formData.get("startDate") ?? "");
+  const endDate = String(formData.get("endDate") ?? "").trim() || startDate;
 
   let code: BlockErr | null = null;
   try {
@@ -46,8 +49,8 @@ export async function saveBlock(formData: FormData): Promise<void> {
       startTime: String(formData.get("startTime") ?? ""),
       endTime: String(formData.get("endTime") ?? ""),
       vesselId: String(formData.get("vesselId") ?? ""),
-      startDate: String(formData.get("startDate") ?? ""),
-      endDate: String(formData.get("endDate") ?? ""),
+      startDate,
+      endDate,
       ...(note.trim() ? { note } : {}),
     });
     code = result.ok ? null : result.code;
@@ -60,8 +63,9 @@ export async function saveBlock(formData: FormData): Promise<void> {
   revalidatePath("/admin/blocks");
   if (!code) {
     await clearFormDraft("/admin/blocks");
-    // On success, select the saved block so it loads back into the edit panel; no success banner.
-    redirect(`/admin/blocks?sel=${id}`);
+    // On success, select the saved block so it loads back into the edit panel, and say how many
+    // departures came off the calendar (issue #1091) — the page reads `saved` and the row's count.
+    redirect(`/admin/blocks?sel=${id}&saved=1`);
   }
 
   // A refusal keeps both halves of what the operator had (#780): the typing, via the draft, and

@@ -78,7 +78,7 @@ export default async function AdminCalendar({
             data.pending.action === "hold" && sp.book === "1" ? (
               <BookPane data={data} sp={sp} />
             ) : (
-              <SlotPane data={data} />
+              <SlotPane data={data} bookErr={sp.bookErr} />
             )
           }
           closeHref={calendarHref(data, {})}

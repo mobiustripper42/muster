@@ -281,6 +281,31 @@ export async function plantGuests(
 }
 
 /**
+ * Change a guest row behind the page's back (Phase 18.5a) — what another crew phone, or a guest
+ * row going away, does while this phone's list is open. A bare row write, not the check-in path:
+ * the test is about what the open list shows next.
+ */
+export async function untickGuestRow(id: string): Promise<void> {
+  const client = new pg.Client(pgConnectionConfig(TEST_DATABASE_URL));
+  await client.connect();
+  try {
+    await client.query("update guests set checked_in_at = null, checked_in_by = null where id = $1", [id]);
+  } finally {
+    await client.end();
+  }
+}
+
+export async function deleteGuestRow(id: string): Promise<void> {
+  const client = new pg.Client(pgConnectionConfig(TEST_DATABASE_URL));
+  await client.connect();
+  try {
+    await client.query("delete from guests where id = $1", [id]);
+  } finally {
+    await client.end();
+  }
+}
+
+/**
  * Cancel a booking behind the page's back (Phase 18.4) — the race where a party disappears while a
  * guest is filling in the form. A bare status flip, not the cancellation flow: the test is about
  * what the signing page does, not about refunds.

@@ -10,7 +10,16 @@
  * departure on Hops, which carries 12.
  */
 import type { Page, Route } from "@playwright/test";
-import { test, expect, clickHydrated, plantGuests, resetAndSeed, signInAsCrew } from "./fixtures.js";
+import {
+  test,
+  expect,
+  clickHydrated,
+  deleteGuestRow,
+  plantGuests,
+  resetAndSeed,
+  signInAsCrew,
+  untickGuestRow,
+} from "./fixtures.js";
 
 const SHIFT = "shift-soon";
 const EVENT = "evt-soon-3pm";
@@ -38,10 +47,16 @@ test.describe("crew check-in", () => {
   test("Check in on the departure's row opens that departure's list — alphabetical, a minor with who they came with", async ({ page }) => {
     await smiths();
     await page.goto(`/crew/shift/${SHIFT}`);
-    await page.locator("details", { hasText: "3:00 PM" }).getByRole("link", { name: "Check in" }).click();
+    await page.getByRole("link", { name: "Check in the 3:00 PM trip" }).click();
 
     await page.waitForURL(new RegExp(`${PAGE}$`));
     await expect(page.getByText(/Hops · .* · 3:00 PM/)).toBeVisible();
+    // The button sits in the row but not inside its <summary>: a link inside the toggle is one
+    // control inside another to a screen reader (code review, 18.5a).
+    await page.goBack();
+    await expect(page.getByRole("link", { name: /^Check in the/ })).toHaveCount(2);
+    await expect(page.locator("summary a")).toHaveCount(0);
+    await page.goForward();
     await expect(page.getByTestId("checked-in-tile")).toContainText("0");
     await expect(toBoard(page).getByRole("button")).toHaveText([/^Grace Kim/, /^Kyle Smith \(\d+\) · w\/ Robert/, /^Robert Smith/]);
   });
@@ -78,6 +93,29 @@ test.describe("crew check-in", () => {
       await page.reload();
       await expect(toBoard(page).getByRole("button", { name: /^Grace Kim/ })).toBeVisible({ timeout: 2_000 });
     }).toPass();
+  });
+
+  test("when the list re-reads, it shows what another phone did — a saved tick here does not hide it", async ({ page }) => {
+    await plantGuests(EVENT, [
+      { id: "g-grace", name: "Grace Kim" },
+      { id: "g-zed", name: "Zed Ward" },
+    ]);
+    await page.goto(PAGE);
+    // The tick lands — the server has answered — before anything changes behind it.
+    await Promise.all([
+      page.waitForResponse((r) => r.request().method() === "POST"),
+      clickHydrated(row(page, "Grace Kim")),
+    ]);
+    await expect(checkedIn(page)).toContainText("Checked in · 1");
+
+    // Another phone takes Grace back off, and Zed's row goes away.
+    await untickGuestRow("g-grace");
+    await deleteGuestRow("g-zed");
+    // This phone taps Zed: refused, so the list re-reads from the server.
+    await row(page, "Zed Ward").click();
+
+    await expect(toBoard(page).getByRole("button", { name: /^Grace Kim/ })).toBeVisible();
+    await expect(page.getByTestId("checked-in-tile")).toContainText("0");
   });
 
   test("at the boat's limit the rows still to board stop taking taps, and the count stops there too", async ({ page }) => {

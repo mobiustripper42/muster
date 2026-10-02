@@ -56,99 +56,105 @@ export function ShiftManifest({
         </span>
       </h2>
       {events.map((ev) => (
-        <details
-          key={ev.eventId}
-          className="group overflow-hidden rounded-card border border-line bg-card"
-          open={events.length === 1}
-        >
-          <summary className="flex min-h-[44px] items-center justify-between px-4 py-3 font-semibold text-ink [&::-webkit-details-marker]:hidden">
-            <span className="font-mono">{fmt12(ev.departureTime)}</span>
-            {/* In the row that opens the manifest, as the operator placed it (2026-10-02). A link
-                inside a <summary> follows the link and leaves the section as it was. */}
-            {checkInHref && (
-              <AppLink
-                href={checkInHref(String(ev.eventId))}
-                className="btn-secondary inline-flex min-h-[44px] items-center px-3 text-sm"
-              >
-                Check in
-              </AppLink>
-            )}
-            <span className="flex items-center gap-2 text-sm font-normal text-muted">
-              {ev.pax} guests
-              {/* eslint-disable-next-line no-restricted-syntax -- aria-hidden caret: decoration, not text (#951). <summary> announces its own open/closed state. */}
-              <span className="text-faint transition-transform group-open:rotate-90" aria-hidden>
-                ›
-              </span>
-            </span>
-          </summary>
-          {!sharedDock && ev.dock && (
-            <a
-              href={mapHref(ev.dock)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex min-h-[44px] items-center justify-between border-t border-line px-4 py-3 text-sm"
+        <div key={ev.eventId} className="relative">
+          {/* **Check in** shows in the departure's row, where the operator placed it (2026-10-02),
+              but it is not inside the <summary>: a link inside the toggle is one control inside
+              another to a screen reader (code review, 18.5a). It sits over the row instead, and
+              comes first in the tab order. The row is a fixed 52px so the 44px button centres. */}
+          {checkInHref && (
+            <AppLink
+              href={checkInHref(String(ev.eventId))}
+              aria-label={`Check in the ${fmt12(ev.departureTime)} trip`}
+              className="btn-secondary absolute left-1/2 top-1 z-10 inline-flex min-h-[44px] -translate-x-1/2 items-center px-3 text-sm"
             >
-              <span className="text-ink">
-                <span aria-hidden>📍</span> {ev.dock}
-              </span>
-              <span className="font-semibold text-accent">Map ›</span>
-            </a>
+              Check in
+            </AppLink>
           )}
-          <div className="border-t border-line">
-            {ev.guests.length === 0 ? (
-              <div className="px-4 py-3 text-sm text-muted">No guests booked.</div>
-            ) : (
-              ev.guests.map((g, i) => (
-                // Guest row: name ×party (+ the "✓ texted" mark when someone's
-                // contacted them, #345 Part B), then Call/Text buttons when we have a
-                // number. The number itself lives in the button hrefs (+ `title`).
-                <div
-                  key={i}
-                  className="flex min-h-[44px] items-start justify-between gap-2 px-4 py-3 text-sm"
-                >
-                  <span className="flex min-w-0 flex-col">
-                    <span className="text-ink">
-                      {g.name} <span className="text-muted">×{g.party}</span>
+          <details
+            className="group overflow-hidden rounded-card border border-line bg-card"
+            open={events.length === 1}
+          >
+            <summary
+              className={`flex ${checkInHref ? "min-h-[52px]" : "min-h-[44px]"} items-center justify-between px-4 py-3 font-semibold text-ink [&::-webkit-details-marker]:hidden`}
+            >
+              <span className="font-mono">{fmt12(ev.departureTime)}</span>
+              <span className="flex items-center gap-2 text-sm font-normal text-muted">
+                {ev.pax} guests
+                {/* eslint-disable-next-line no-restricted-syntax -- aria-hidden caret: decoration, not text (#951). <summary> announces its own open/closed state. */}
+                <span className="text-faint transition-transform group-open:rotate-90" aria-hidden>
+                  ›
+                </span>
+              </span>
+            </summary>
+            {!sharedDock && ev.dock && (
+              <a
+                href={mapHref(ev.dock)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-[44px] items-center justify-between border-t border-line px-4 py-3 text-sm"
+              >
+                <span className="text-ink">
+                  <span aria-hidden>📍</span> {ev.dock}
+                </span>
+                <span className="font-semibold text-accent">Map ›</span>
+              </a>
+            )}
+            <div className="border-t border-line">
+              {ev.guests.length === 0 ? (
+                <div className="px-4 py-3 text-sm text-muted">No guests booked.</div>
+              ) : (
+                ev.guests.map((g, i) => (
+                  // Guest row: name ×party (+ the "✓ texted" mark when someone's
+                  // contacted them, #345 Part B), then Call/Text buttons when we have a
+                  // number. The number itself lives in the button hrefs (+ `title`).
+                  <div
+                    key={i}
+                    className="flex min-h-[44px] items-start justify-between gap-2 px-4 py-3 text-sm"
+                  >
+                    <span className="flex min-w-0 flex-col">
+                      <span className="text-ink">
+                        {g.name} <span className="text-muted">×{g.party}</span>
+                      </span>
+                      {g.contact && (
+                        <span className="text-xs text-ok">
+                          ✓ Texted by {firstName(g.contact.by)} · {contactedTime(g.contact.at)}
+                        </span>
+                      )}
                     </span>
-                    {g.contact && (
-                      <span className="text-xs text-ok">
-                        ✓ Texted by {firstName(g.contact.by)} · {contactedTime(g.contact.at)}
+                    {g.phone && (
+                      <span className="flex shrink-0 gap-1">
+                        <a
+                          href={tel(g.phone)}
+                          className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-base"
+                        >
+                          <span aria-hidden="true">✆&nbsp;</span>Call
+                        </a>
+                        {/* Client island (#345 Part B): records the tap, then hands off
+                            to Messages with the intro preloaded (Part A). No-JS still
+                            opens Messages, just unrecorded. */}
+                        <GuestTextButton
+                          href={sms(
+                            g.phone,
+                            buildIntroText({
+                              senderName,
+                              tenantName: TENANT_NAME,
+                              departureLabel: fmt12(ev.departureTime),
+                              location: PICKUP_LOCATION,
+                              mapUrl: PICKUP_MAP_URL,
+                            }),
+                          )}
+                          reservationId={g.reservationId}
+                          shiftId={shiftId}
+                          className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-base"
+                        />
                       </span>
                     )}
-                  </span>
-                  {g.phone && (
-                    <span className="flex shrink-0 gap-1">
-                      <a
-                        href={tel(g.phone)}
-                        className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-base"
-                      >
-                        <span aria-hidden="true">✆&nbsp;</span>Call
-                      </a>
-                      {/* Client island (#345 Part B): records the tap, then hands off
-                          to Messages with the intro preloaded (Part A). No-JS still
-                          opens Messages, just unrecorded. */}
-                      <GuestTextButton
-                        href={sms(
-                          g.phone,
-                          buildIntroText({
-                            senderName,
-                            tenantName: TENANT_NAME,
-                            departureLabel: fmt12(ev.departureTime),
-                            location: PICKUP_LOCATION,
-                            mapUrl: PICKUP_MAP_URL,
-                          }),
-                        )}
-                        reservationId={g.reservationId}
-                        shiftId={shiftId}
-                        className="btn-quiet inline-flex min-h-9 items-center px-1.5 text-base"
-                      />
-                    </span>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </details>
+                  </div>
+                ))
+              )}
+            </div>
+          </details>
+        </div>
       ))}
     </section>
   );

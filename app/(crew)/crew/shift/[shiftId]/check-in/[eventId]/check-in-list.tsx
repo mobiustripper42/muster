@@ -48,6 +48,15 @@ export function CheckInList({
   // server's answer again.
   const [local, setLocal] = useState<Record<string, Local>>({});
 
+  // A fresh read from the server (`rows` is a new array only when the page renders again) is the
+  // truth for every row whose save has landed. Kept, a "saved" tap would hide what another phone
+  // did to that guest since (code review, 18.5a). Taps still in flight, or failed, stay on top.
+  const [readRows, setReadRows] = useState(rows);
+  if (rows !== readRows) {
+    setReadRows(rows);
+    setLocal((l) => Object.fromEntries(Object.entries(l).filter(([, v]) => v.status !== "saved")));
+  }
+
   const shown = rows.map((r) => ({ ...r, checkedIn: local[r.guestId]?.checkedIn ?? r.checkedIn, status: local[r.guestId]?.status }));
   const toBoard = shown.filter((r) => !r.checkedIn);
   const aboard = shown.filter((r) => r.checkedIn);

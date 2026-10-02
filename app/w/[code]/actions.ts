@@ -20,6 +20,7 @@ import { clientIpFrom } from "../../lib/client-ip";
 import { clearFormDraft, stashFormDraft } from "../../lib/form-draft";
 import { getRepo } from "../../lib/repo";
 import { logSwallowed } from "../../lib/swallowed";
+import { ADD_CHILD, REMOVE_CHILD } from "./child-intent";
 
 /** Every code the sign action can put in `?err=` — the core's refusals plus the two minted here. */
 export type SignErr = SigningError | "throttled" | "error";
@@ -58,7 +59,7 @@ export async function signWaiver(formData: FormData): Promise<void> {
   // The whole form comes back through the same draft a refusal uses, so nothing typed is lost,
   // and `restore=1` tells the page to read it.
   const intent = String(formData.get("intent") ?? "");
-  if (intent === "add-child" || intent.startsWith("remove-child-")) {
+  if (intent === ADD_CHILD || intent.startsWith(REMOVE_CHILD)) {
     editChildCards(formData, intent);
     await stashFormDraft(surface, formData);
     redirect(back({ restore: "1" }));
@@ -130,10 +131,10 @@ export async function signWaiver(formData: FormData): Promise<void> {
 function editChildCards(formData: FormData, intent: string): void {
   const columns = CHILD_FIELDS.map((f) => formData.getAll(f).map(String));
   const count = columns[0]?.length ?? 0;
-  if (intent === "add-child") {
+  if (intent === ADD_CHILD) {
     if (count < MAX_CHILDREN) for (const c of columns) c.push("");
   } else {
-    const at = Number(intent.slice("remove-child-".length));
+    const at = Number(intent.slice(REMOVE_CHILD.length));
     if (Number.isInteger(at) && at >= 0 && at < count) for (const c of columns) c.splice(at, 1);
   }
   CHILD_FIELDS.forEach((f, i) => {

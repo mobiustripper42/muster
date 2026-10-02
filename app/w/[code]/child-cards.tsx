@@ -2,6 +2,7 @@
 
 import { useRef, useState, type MouseEvent } from "react";
 import { useFormStatus } from "react-dom";
+import { ADD_CHILD, REMOVE_CHILD } from "./child-intent";
 import { DateOfBirth, type DobParts } from "./date-of-birth";
 import { card, input } from "./form-look";
 
@@ -69,7 +70,7 @@ export function ChildCards({
             {/* eslint-disable-next-line no-restricted-syntax -- handled in the browser, no round trip to spin for (header) */}
             <button type="submit"
               name="intent"
-              value={`remove-child-${i}`}
+              value={`${REMOVE_CHILD}${i}`}
               formNoValidate
               disabled={pending}
               onClick={remove(c.key)}
@@ -92,7 +93,7 @@ export function ChildCards({
           // eslint-disable-next-line no-restricted-syntax -- handled in the browser, no round trip to spin for (header)
           <button type="submit"
             name="intent"
-            value="add-child"
+            value={ADD_CHILD}
             formNoValidate
             disabled={pending}
             onClick={add}

@@ -162,6 +162,7 @@ function PassengersStep({
       <form method="get" action="/admin/calendar" className="flex flex-col gap-3">
         <input type="hidden" name="date" value={data.day} />
         {data.filter !== "all" ? <input type="hidden" name="filter" value={data.filter} /> : null}
+        {data.view === "list" ? <input type="hidden" name="view" value="list" /> : null}
         <input type="hidden" name="hold" value={`${p.vesselId}|${p.time}`} />
         <input type="hidden" name="book" value="1" />
         <div className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
@@ -266,7 +267,7 @@ function CheckoutStep({
         </div>
 
         <PhoneBookingForm
-          slot={{ date: data.day, time: p.time, vesselId: p.vesselId, offeringId: String(offering.id), guests }}
+          slot={{ date: data.day, time: p.time, vesselId: p.vesselId, offeringId: String(offering.id), guests, view: data.view }}
           money={money}
           tiers={tiers}
           initial={{

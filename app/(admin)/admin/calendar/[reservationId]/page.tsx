@@ -37,6 +37,7 @@ import {
   type CalendarData,
   type Search,
 } from "../calendar-view";
+import { CalendarList } from "../calendar-list";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
 import {
   ReservationDetailPane,
@@ -357,6 +358,7 @@ export default async function ReservationDetailPage({
     actions = {
       date: sp.date ?? "",
       filter: sp.filter ?? "",
+      view: sp.view === "list" ? "list" : "",
       cancelHref: detailHref({ cancel: "1" }),
       backHref: detailHref({}),
       confirmingCancel: sp.cancel === "1",
@@ -406,6 +408,7 @@ export default async function ReservationDetailPage({
           ...(sp.balanceErr !== undefined ? { err: sp.balanceErr } : {}),
           date: sp.date ?? "",
           filter: sp.filter ?? "",
+      view: sp.view === "list" ? "list" : "",
         }}
         {...(actions ? { actions } : {})}
       >
@@ -444,8 +447,12 @@ function BookingFrame({
         list={
           <>
             <CalendarControls data={data} />
-            <CalendarLegend data={data} />
-            <CalendarGrid data={data} selectedReservationId={reservationId} fill />
+            {data.view === "grid" && <CalendarLegend data={data} />}
+            {data.view === "list" ? (
+              <CalendarList data={data} selectedReservationId={reservationId} narrow />
+            ) : (
+              <CalendarGrid data={data} selectedReservationId={reservationId} fill />
+            )}
           </>
         }
         pane={
@@ -471,12 +478,13 @@ function BookingFrame({
  */
 function paneHref(
   reservationId: Reservation["id"],
-  sp: { date?: string | undefined; filter?: string | undefined },
+  sp: { date?: string | undefined; filter?: string | undefined; view?: string | undefined },
   extra: Record<string, string>,
 ): string {
   const p = new URLSearchParams();
   if (sp.date) p.set("date", sp.date);
   if (sp.filter) p.set("filter", sp.filter);
+  if (sp.view === "list") p.set("view", "list");
   for (const [k, val] of Object.entries(extra)) p.set(k, val);
   const q = p.toString();
   return `/admin/calendar/${encodeURIComponent(String(reservationId))}${q ? `?${q}` : ""}#booking-actions`;
@@ -529,6 +537,7 @@ async function PhoneBookingPage({
         unpaid={{
           date: sp.date ?? "",
           filter: sp.filter ?? "",
+      view: sp.view === "list" ? "list" : "",
           justBooked: sp.booked !== undefined,
           confirmingCancel: sp.cancel === "1",
           cancelHref: paneHref(reservation.id, sp, { cancel: "1" }),

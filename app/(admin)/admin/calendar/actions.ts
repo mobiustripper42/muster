@@ -33,10 +33,13 @@ function backTo(formData: FormData, err: CalendarErr | null): string {
   const params = new URLSearchParams();
   const date = String(formData.get("date") ?? "").trim();
   const filter = String(formData.get("filter") ?? "").trim();
+  const view = String(formData.get("view") ?? "").trim();
   // `today` is omitted from the href by the grid's own `calendarHref`; here the date is always
   // explicit, which is harmless (it resolves to the same day) and keeps this glue clock-free.
   if (date) params.set("date", date);
   if (filter && filter !== "all") params.set("filter", filter);
+  // Grid or List (issue #1079) — a write never switches the operator out of the one they were in.
+  if (view === "list") params.set("view", "list");
   if (err) params.set("err", err);
   const q = params.toString();
   return q ? `/admin/calendar?${q}` : "/admin/calendar";

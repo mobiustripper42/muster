@@ -32,7 +32,8 @@ export function PhoneBookingForm({
   initial,
   restored,
 }: {
-  slot: { date: string; time: string; vesselId: string; offeringId: string; guests: number };
+  /** `view` is the calendar's Grid or List (issue #1079), so the booking returns to the one it came from. */
+  slot: { date: string; time: string; vesselId: string; offeringId: string; guests: number; view: string };
   money: CheckoutMoney;
   tiers: TipTier[];
   /** Defaults — the offering's preselected tip, or what the operator typed before a refusal. */
@@ -58,6 +59,7 @@ export function PhoneBookingForm({
       <input type="hidden" name="vesselId" value={slot.vesselId} />
       <input type="hidden" name="offeringId" value={slot.offeringId} />
       <input type="hidden" name="guests" value={slot.guests} />
+      <input type="hidden" name="view" value={slot.view} />
 
       <div className="px-4 pb-4">
         <ContactFields

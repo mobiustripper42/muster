@@ -25,6 +25,8 @@ import { paymentLinkSentMessage } from "./payment-link-message";
 export interface PaneActionState {
   date: string;
   filter: string;
+  /** `list` when the calendar behind the pane is the List (issue #1079). */
+  view: string;
   /** This reservation's detail with the confirm block open. */
   cancelHref: string;
   /** …and with it closed — the "Do Not Cancel" escape. */
@@ -408,7 +410,7 @@ export function ReservationDetailPane({
 }: {
   v: ReservationDetailView;
   /** Balance-link state from the query string (11.2b) — the minted URL, or why not. */
-  balance?: { url?: string | undefined; err?: string | undefined; date: string; filter: string } | undefined;
+  balance?: { url?: string | undefined; err?: string | undefined; date: string; filter: string; view: string } | undefined;
   /** Cancel / refund / resend state (#616) for a Muster booking. Absent ⇒ no such actions. */
   actions?: PaneActionState | undefined;
   /** An unpaid phone booking's state (16.1): the just-booked notice and its cancel. */
@@ -643,7 +645,7 @@ function BalanceLink({
   balance,
 }: {
   v: ReservationDetailView;
-  balance: { url?: string | undefined; err?: string | undefined; date: string; filter: string };
+  balance: { url?: string | undefined; err?: string | undefined; date: string; filter: string; view: string };
 }) {
   const money = v.money;
   const offered =
@@ -677,6 +679,7 @@ function BalanceLink({
       <input type="hidden" name="reservationId" value={v.reservationId} />
       <input type="hidden" name="date" value={balance.date} />
       <input type="hidden" name="filter" value={balance.filter} />
+      <input type="hidden" name="view" value={balance.view} />
       <SubmitButton className="btn-primary min-h-[44px] w-full">Create balance link</SubmitButton>
       {balance.err && <p className="mt-1.5 text-xs text-bad">{balanceErrorMessage(balance.err)}</p>}
     </form>
@@ -700,6 +703,7 @@ function PaneActions({
       <input type="hidden" name="reservationId" value={v.reservationId} />
       <input type="hidden" name="date" value={actions.date} />
       <input type="hidden" name="filter" value={actions.filter} />
+      <input type="hidden" name="view" value={actions.view} />
     </>
   );
   const cancelled = v.status === "cancelled";

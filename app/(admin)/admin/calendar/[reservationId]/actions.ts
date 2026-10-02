@@ -51,11 +51,13 @@ function detailHref(
   reservationId: string,
   date: string,
   filter: string,
+  view: string,
   extra: Record<string, string>,
 ): string {
   const p = new URLSearchParams();
   if (date) p.set("date", date);
   if (filter) p.set("filter", filter);
+  if (view === "list") p.set("view", "list");
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   const q = p.toString();
   // `#booking-actions` so a server action's redirect lands you back at the controls rather than
@@ -75,11 +77,12 @@ function readContext(formData: FormData): {
   const reservationId = String(formData.get("reservationId") ?? "");
   const date = String(formData.get("date") ?? "");
   const filter = String(formData.get("filter") ?? "");
+  const view = String(formData.get("view") ?? "");
   return {
     reservationId,
     date,
     filter,
-    back: (extra) => detailHref(reservationId, date, filter, extra),
+    back: (extra) => detailHref(reservationId, date, filter, view, extra),
   };
 }
 

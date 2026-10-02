@@ -228,12 +228,16 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
 
 function crewLinkOf(s: ReservationDetailInput["shift"]): CrewLink | undefined {
   if (!s) return undefined;
-  const required = s.seats.filter((seat) => seat.kind === "required");
-  return {
-    shiftId: String(s.shift.id),
-    filled: required.filter((seat) => HELD_BY_PERSON.has(seat.state)).length,
-    required: required.length,
-  };
+  return { shiftId: String(s.shift.id), ...crewCount(s.seats) };
+}
+
+/**
+ * Required seats holding a person, out of required seats — the shift view's denominator. Shared
+ * with the calendar's List view (issue #1079) so the two never count crew differently.
+ */
+export function crewCount(seats: readonly Pick<Seat, "kind" | "state">[]): { filled: number; required: number } {
+  const required = seats.filter((seat) => seat.kind === "required");
+  return { filled: required.filter((seat) => HELD_BY_PERSON.has(seat.state)).length, required: required.length };
 }
 
 /** The shift covering an event — matched by `Shift.eventIds`, never by vessel+date guessing

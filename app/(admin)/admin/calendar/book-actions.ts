@@ -74,6 +74,7 @@ export async function bookPhoneReservation(formData: FormData): Promise<void> {
       logSwallowed("admin/calendar:bookPhoneReservation", e, "the payment link was not sent — the booking stands");
     }
     const q = new URLSearchParams({ date, booked: "1", linkSent });
+    if (field("view") === "list") q.set("view", "list");
     redirect(`/admin/calendar/${encodeURIComponent(String(result.reservation.id))}?${q.toString()}`);
   }
 
@@ -91,5 +92,6 @@ export async function bookPhoneReservation(formData: FormData): Promise<void> {
   });
   if (offeringId) q.set("offering", offeringId);
   if (field("guests")) q.set("guests", field("guests"));
+  if (field("view") === "list") q.set("view", "list");
   redirect(`${SURFACE}?${q.toString()}`);
 }

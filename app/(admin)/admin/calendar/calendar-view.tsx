@@ -16,6 +16,7 @@ import {
   type VirtualSlot,
 } from "@core/reservations/availability.js";
 import { candidateTripMinutes } from "@core/reservations/hull-busy.js";
+import { crewCount } from "@core/reservations/calendar-detail.js";
 import {
   DEFAULT_TRIP_MINUTES,
   assignLanes,
@@ -67,8 +68,13 @@ export type Search = {
   release?: string;
   /** `<vesselId>|<HH:MM>` — a slot darkened by a boat-out or closure, whose pane names it (#1091). */
   scoped?: string;
+  /** `list` — the day drawn as one row per departure, to sell from (16.1b, issue #1079). */
+  view?: string;
   err?: string;
 };
+
+/** Grid (the default) or List (16.1b). Every calendar link keeps it, like the filter. */
+export type CalendarView = "grid" | "list";
 
 /**
  * The chip keys, as a literal union rather than `string`.
@@ -173,6 +179,12 @@ export interface CalendarData {
   day: string;
   today: string;
   filter: string;
+  view: CalendarView;
+  /** Location names, for naming a closure on a blocked row (issue #1091, #1079). */
+  locationNameById: Map<string, string>;
+  /** Crew seats filled / needed per booked Event — List view only (issue #1079); empty on the grid,
+   *  which never shows it, so the grid pays for no extra reads. */
+  crewByEventId: Map<string, { filled: number; required: number }>;
   /** The confirm the operator is being shown, resolved from `?hold=`/`?release=` (#703). */
   pending: PendingHold | null;
   err?: string | undefined;
@@ -247,6 +259,7 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
   const today = vesselDateOf(new Date());
   const day = sp.date && ISO_DAY.test(sp.date) ? sp.date : today;
   const filter = sp.filter && FILTERS.some((f) => f.key === sp.filter) ? sp.filter : "all";
+  const view: CalendarView = sp.view === "list" ? "list" : "grid";
 
   // EVERY booked reservation, both sources. It was Muster-only, on the reasoning that a Xola
   // reservation's money lives in Xola (DEC-105) so the detail route is not ours to point at it.
@@ -371,6 +384,8 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     }
   }
 
+  const crewByEventId = view === "list" ? await crewForDay(events, day) : new Map();
+
   return {
     offerings,
     vessels,
@@ -387,9 +402,36 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     day,
     today,
     filter,
+    view,
+    locationNameById: locationName,
+    crewByEventId,
     pending,
     err: sp.err,
   };
+}
+
+/**
+ * Crew seats filled / needed for each of the day's Events (List view, issue #1079), counted the way
+ * the booking pane counts them (`crewCount`). Only the shifts covering this day's Events are read,
+ * one seat read each — a handful per day. A failed read draws no crew column rather than no page:
+ * the list is for selling, and crew is a glance.
+ */
+async function crewForDay(events: readonly Event[], day: string): Promise<Map<string, { filled: number; required: number }>> {
+  const out = new Map<string, { filled: number; required: number }>();
+  const dayEventIds = new Set(events.filter((e) => e.date === day).map((e) => String(e.id)));
+  if (dayEventIds.size === 0) return out;
+  try {
+    const repo = getRepo();
+    const shifts = (await repo.listShifts()).filter((s) => s.eventIds.some((id) => dayEventIds.has(String(id))));
+    const seats = await Promise.all(shifts.map((s) => repo.listSeatsForShift(s.id)));
+    shifts.forEach((s, i) => {
+      const count = crewCount(seats[i] ?? []);
+      for (const id of s.eventIds) if (dayEventIds.has(String(id))) out.set(String(id), count);
+    });
+  } catch (e) {
+    logSwallowed("admin/calendar:list", e, "the crew counts did not load — the list shows none");
+  }
+  return out;
 }
 
 /**
@@ -423,7 +465,7 @@ function scopedBlocksBySlot(
 }
 
 /** The block, named the way /admin/blocks names it: "Brew 3 out of service · Oct 5–7". */
-function describeBlock(
+export function describeBlock(
   b: Block,
   vesselName: (id: string) => string,
   locationName: (id: string) => string,
@@ -438,8 +480,8 @@ function describeBlock(
   }
 }
 
-/** What every calendar href is built from: the day on screen, today, and the filter chip. */
-export type HrefData = Pick<CalendarData, "day" | "today" | "filter">;
+/** What every calendar href is built from: the day on screen, today, the filter chip and the view. */
+export type HrefData = Pick<CalendarData, "day" | "today" | "filter"> & Partial<Pick<CalendarData, "view">>;
 
 /**
  * Build the `/admin/calendar` href preserving the other axis (date ↔ filter).
@@ -454,12 +496,15 @@ export function calendarHref(data: HrefData, o: {
   hold?: string;
   release?: string;
   scoped?: string;
+  view?: CalendarView;
 }): string {
   const d = o.date ?? data.day;
   const f = o.filter ?? data.filter;
+  const v = o.view ?? data.view ?? "grid";
   const params = new URLSearchParams();
   if (d !== data.today) params.set("date", d);
   if (f !== "all") params.set("filter", f);
+  if (v === "list") params.set("view", "list");
   if (o.hold) params.set("hold", o.hold);
   if (o.release) params.set("release", o.release);
   if (o.scoped) params.set("scoped", o.scoped);
@@ -475,6 +520,7 @@ export function detailHref(
   const params = new URLSearchParams();
   if (data.day !== data.today) params.set("date", data.day);
   if (data.filter !== "all") params.set("filter", data.filter);
+  if (data.view === "list") params.set("view", "list");
   // Encode the id — reservation ids carry a colon (`resv-demo-2026-08-13-15:30`); the route
   // decodes it back. Leaving it raw works in a browser but breaks any literal-match consumer.
   const id = encodeURIComponent(reservationId);
@@ -555,6 +601,27 @@ export function CalendarControls({ data }: { data: CalendarData }) {
           Today
         </AppLink>
       )}
+
+      {/* Grid or List (16.1b, issue #1079): the same day, drawn as cards on boats or as one row per
+          departure to sell from. Links, not state — the choice is in the URL and every link keeps it. */}
+      <div className="inline-flex overflow-hidden rounded-lg border border-line bg-card">
+        {(["grid", "list"] as const).map((v) => {
+          const active = data.view === v;
+          return (
+            <AppLink
+              key={v}
+              href={calendarHref(data, { view: v })}
+              aria-current={active ? "page" : undefined}
+              data-testid={`view-${v}`}
+              className={`border-r border-line px-3 py-1.5 text-sm last:border-r-0 ${
+                active ? "bg-ink font-medium text-white" : "text-muted"
+              }`}
+            >
+              {v === "grid" ? "Grid" : "List"}
+            </AppLink>
+          );
+        })}
+      </div>
 
       <span className="flex-1" />
 
@@ -732,6 +799,7 @@ export function SlotPane({ data, bookErr }: { data: CalendarData; bookErr?: stri
           <form action={blocked ? releaseHold : holdSlot} className="flex flex-1">
             <input type="hidden" name="date" value={data.day} />
             <input type="hidden" name="filter" value={data.filter} />
+            <input type="hidden" name="view" value={data.view} />
             {p.action === "release" ? (
               <input type="hidden" name="id" value={p.blockId} />
             ) : (
@@ -816,9 +884,20 @@ function SlotRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** Does a slot pass the filter chip? Shared by the grid and the List (issue #1079). */
+export function slotMatchesFilter(filter: string, s: VirtualSlot): boolean {
+  if (filter === "all") return true;
+  const want = FILTERS.find((f) => f.key === filter)?.status;
+  // "Booked" means "this boat is committed", which includes a hull occupied by an imported
+  // Xola charter. Matching only the literal `booked` status would filter those away and
+  // disagree with the count beside the tab.
+  if (want === "booked") return s.status === "booked" || s.status === "unavailable";
+  return want === s.status;
+}
+
 /** `data-cal-selected` present on the selected card(s), absent elsewhere — what
  *  `RevealSelectedCard` looks for. A helper so the grid's render stays under the complexity ceiling. */
-const selectedAttr = (on: boolean): "" | undefined => (on ? "" : undefined);
+export const selectedAttr =(on: boolean): "" | undefined => (on ? "" : undefined);
 
 /**
  * The grid itself: 52px time gutter + one column per fleet vessel, blocks absolutely
@@ -847,15 +926,7 @@ export function CalendarGrid({
   const p = data.pending;
   const selectedKey =
     selectedReservationId ?? (p ? `${p.action}:${p.vesselId}|${p.time}` : "");
-  const matchesFilter = (s: VirtualSlot) => {
-    if (data.filter === "all") return true;
-    const want = FILTERS.find((f) => f.key === data.filter)?.status;
-    // "Booked" means "this boat is committed", which includes a hull occupied by an imported
-    // Xola charter. Matching only the literal `booked` status would filter those away and
-    // disagree with the count beside the tab.
-    if (want === "booked") return s.status === "booked" || s.status === "unavailable";
-    return want === s.status;
-  };
+  const matchesFilter = (s: VirtualSlot) => slotMatchesFilter(data.filter, s);
 
   const slotsByVessel = new Map<string, VirtualSlot[]>();
   for (const s of data.slots) {

@@ -133,9 +133,9 @@ list.** The list shrinks; when it is empty, everyone who signed is aboard. One t
   no row** — they are in the count and nowhere else.
 - **Empty is a finish line** for the list; the count is confirmed once, before lines off.
 
-Signed-but-absent people (Fred dropped out, Steve signed in his place; five friends signed twice
-after a reminder) simply stay unticked. A leftover row is a no-show or a duplicate, and it costs
-nothing.
+Signed-but-absent people (Fred dropped out, Steve signed in his place) simply stay unticked. A
+leftover row is a no-show, or a duplicate the rule in §6 could not tell, and it costs nothing.
+Someone who signed twice in the same name and date of birth is one row (18.6).
 
 ### Signing at the dock does not tick you
 
@@ -236,9 +236,17 @@ NOT NULL one.
 **Every signing is its own row, and nothing is ever merged or replaced.** Phone and email are *not*
 identity: couples share an email, a family passes one phone down the line at the dock, people sign a
 year early and change numbers before the trip. Blocking or replacing on a matching phone or email
-would silently delete a real person's signature — the one thing the record exists to prove. A
-duplicate costs nothing (it stays unticked, §3). Rows sharing a contact may be **shown grouped** as a
-hint (*"Fred Kowalski ×2"*); the system never decides. Store phone as E.164 and email lowercased.
+would silently delete a real person's signature — the one thing the record exists to prove. Store
+phone as E.164 and email lowercased.
+
+**An obvious duplicate counts once** (operator, 2026-10-02, 18.6 — someone signing twice "happens all
+the time"). It is **the same name, case and spacing ignored, and the same date of birth, within one
+booking**; walk-ups match only walk-ups. Not a shared contact — couples share an email, and grouping
+on it would hide a real person. Not the name alone — Sr. and Jr. sail together. Every surface shows
+it once, *"Fred Kowalski ×2"*, and counts it once: the party page, the success screen, the mate's
+`SIGNED`, and so the reminders' stop. The rows stay separate — this is how they are counted and
+shown, never a merge. If the mate checks in both, it was two people, and both count. The rule is
+`src/checkin/duplicates.ts`.
 
 **Minors do not sign.** One adult signing session produces N rows: the adult with a signature, the
 kids with `guardian_guest_id` pointing at them and null `signed_at`. Coverage math treats a guarded

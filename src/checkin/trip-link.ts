@@ -139,8 +139,14 @@ export async function resolveTripLink(repo: Repository, rawCode: string, now: st
 
   const trip = { eventId: event.id, date: event.date, time: event.time };
   if (event.status === "cancelled") return { state: "cancelled", trip };
-  if (vesselDateOf(new Date(now)) > event.date) return { state: "departed", trip };
+  if (tripDayOver(event.date, now)) return { state: "departed", trip };
   return { state: "open", trip };
+}
+
+/** The trip's day is over on the boat's calendar — the "sailed" both the trip link and the party
+ *  page (18.6) use, so a link never opens on one and reads sailed on the other. */
+export function tripDayOver(eventDate: string, now: string): boolean {
+  return vesselDateOf(new Date(now)) > eventDate;
 }
 
 /**

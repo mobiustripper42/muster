@@ -202,6 +202,42 @@ test.describe("crew check-in", () => {
     await expect(page.getByText(/✓ 3 aboard · counted .* by Quint/)).toBeVisible();
   });
 
+  test("someone who signed twice is one row, ×2; a tap boards one, and +1 aboard the other (18.6)", async ({ page }) => {
+    await plantGuests(EVENT, [
+      { id: "g-fred-1", name: "Fred Kowalski", dob: "1979-08-30" },
+      { id: "g-fred-2", name: "Fred Kowalski", dob: "1979-08-30" },
+      { id: "g-grace", name: "Grace Kim" },
+    ]);
+    await page.goto(PAGE);
+    // Signed counts Fred once.
+    await expect(page.getByText("Signed").locator("..")).toContainText("2");
+    await expect(toBoard(page).getByRole("button")).toHaveText([/^Fred Kowalski ×2/, /^Grace Kim/]);
+
+    // One tap is one Fred: he leaves Still to board, and one seat is taken.
+    await Promise.all([saved(page), clickHydrated(row(page, "Fred Kowalski"))]);
+    await expect(toBoard(page).getByRole("button", { name: /^Fred Kowalski/ })).toHaveCount(0);
+    await expect(page.getByTestId("checked-in-tile")).toContainText("1");
+
+    // It was two Freds after all.
+    await checkedIn(page).locator("summary").click();
+    const another = page.getByRole("button", { name: "Another Fred Kowalski is aboard" });
+    await Promise.all([saved(page), clickHydrated(another)]);
+    await expect(page.getByTestId("checked-in-tile")).toContainText("2");
+    await expect(another).toHaveCount(0);
+
+    await page.reload();
+    await expect(checkedIn(page)).toContainText("Checked in · 2");
+    // Both boarded, so both count as signed.
+    await expect(page.getByText("Signed").locator("..")).toContainText("3");
+
+    // Tapping the row takes the ticks back one at a time.
+    await checkedIn(page).locator("summary").click();
+    await Promise.all([saved(page), clickHydrated(checkedIn(page).getByRole("button", { name: /^Fred Kowalski/ }))]);
+    await expect(page.getByTestId("checked-in-tile")).toContainText("1");
+    await expect(checkedIn(page).getByRole("button", { name: /^Fred Kowalski/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Another Fred Kowalski is aboard" })).toBeVisible();
+  });
+
   test("when the last one boards, the list says everyone's aboard", async ({ page }) => {
     await plantGuests(EVENT, [{ id: "g-grace", name: "Grace Kim" }]);
     await page.goto(PAGE);

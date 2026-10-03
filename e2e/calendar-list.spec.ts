@@ -132,6 +132,19 @@ test.describe("admin calendar — List view (issue #1079)", () => {
     await expect(row).toContainText("Unpaid");
     await expect(row).toContainText("Phone Caller · 2 guests");
     await expect(row).toContainText(`owes ${owes}`);
+
+    // Its own chip (operator, 2026-10-02): the unpaid phone bookings, apart from Booked, in the
+    // List and on the grid alike.
+    await expect(page.getByTestId("filter-unpaid")).toHaveText("Unpaid 1");
+    await page.getByTestId("filter-unpaid").click();
+    await expect(page.getByTestId("cal-row")).toHaveCount(1);
+    await expect(page.getByTestId("cal-row")).toHaveAttribute("data-status", "unpaid");
+    await page.getByTestId("view-grid").click();
+    await expect(page).toHaveURL(/filter=unpaid/);
+    await expect(page.getByTestId("cal-block")).toHaveCount(1);
+    await expect(page.getByTestId("cal-block")).toHaveAttribute("data-status", "awaiting-payment");
+    // Booked still means sold: the unpaid one is not in it.
+    await expect(page.getByTestId("filter-booked")).toHaveText("Booked 1");
   });
 
   test("no sideways scroll (375px layout holds)", async ({ page }) => {

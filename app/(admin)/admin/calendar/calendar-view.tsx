@@ -85,11 +85,17 @@ export type CalendarView = "grid" | "list";
  * at runtime and nothing at all at compile time. Typing both ends off one union makes the next
  * rename a build error. Caught by looking at a screenshot, which is not a durable strategy.
  */
-export type FilterKey = "all" | "booked" | "open" | "blocked";
+export type FilterKey = "all" | "booked" | "unpaid" | "open" | "blocked";
 
-export const FILTERS: { key: FilterKey; label: string; status: VirtualSlot["status"] | "all" }[] = [
+/**
+ * `unpaid` is not a slot status: it is a `held` slot that is the operator's own unpaid phone booking
+ * (16.1), told apart from a customer at the checkout by `phoneBookingBySlot`. Its own chip, apart from
+ * Booked, so Booked keeps meaning sold (operator, 2026-10-02).
+ */
+export const FILTERS: { key: FilterKey; label: string; status: VirtualSlot["status"] | "all" | "unpaid" }[] = [
   { key: "all", label: "All", status: "all" },
   { key: "booked", label: "Booked", status: "booked" },
+  { key: "unpaid", label: "Unpaid", status: "unpaid" },
   { key: "open", label: "Open", status: "available" },
   { key: "blocked", label: "Blocked", status: "blocked" },
 ];
@@ -570,6 +576,7 @@ export function CalendarControls({ data }: { data: CalendarData }) {
   const counts: Record<FilterKey, number> = {
     all: data.slots.length,
     booked: data.slots.filter((s) => s.status === "booked" || s.status === "unavailable").length,
+    unpaid: data.slots.filter((s) => isUnpaidPhoneBooking(data, s)).length,
     open: data.slots.filter((s) => s.status === "available").length,
     blocked: data.slots.filter((s) => s.status === "blocked").length,
   };
@@ -884,9 +891,20 @@ function SlotRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** Is this slot the operator's own unpaid phone booking (16.1) — a `held` slot `phoneBookingBySlot`
+ *  knows, as opposed to a customer at the checkout? What the Unpaid chip counts and keeps. */
+function isUnpaidPhoneBooking(data: Pick<CalendarData, "phoneBookingBySlot">, s: VirtualSlot): boolean {
+  return s.status === "held" && data.phoneBookingBySlot.has(slotKey(String(s.vesselId), s.date, s.time));
+}
+
 /** Does a slot pass the filter chip? Shared by the grid and the List (issue #1079). */
-export function slotMatchesFilter(filter: string, s: VirtualSlot): boolean {
+export function slotMatchesFilter(
+  data: Pick<CalendarData, "filter" | "phoneBookingBySlot">,
+  s: VirtualSlot,
+): boolean {
+  const filter = data.filter;
   if (filter === "all") return true;
+  if (filter === "unpaid") return isUnpaidPhoneBooking(data, s);
   const want = FILTERS.find((f) => f.key === filter)?.status;
   // "Booked" means "this boat is committed", which includes a hull occupied by an imported
   // Xola charter. Matching only the literal `booked` status would filter those away and
@@ -926,7 +944,7 @@ export function CalendarGrid({
   const p = data.pending;
   const selectedKey =
     selectedReservationId ?? (p ? `${p.action}:${p.vesselId}|${p.time}` : "");
-  const matchesFilter = (s: VirtualSlot) => slotMatchesFilter(data.filter, s);
+  const matchesFilter = (s: VirtualSlot) => slotMatchesFilter(data, s);
 
   const slotsByVessel = new Map<string, VirtualSlot[]>();
   for (const s of data.slots) {

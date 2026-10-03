@@ -37,11 +37,15 @@ entry is an unclassified file, which is the state this workflow keeps finding de
 | `@pm` | Sonnet | Session start and end, via skills | Progress, timeline risk, scope cuts |
 | `@ui-reviewer` | Sonnet | After UI work, phase boundaries | Design quality against the project's design system, read from `.claude/ui-context.md` |
 
-All four are `context` class: they arrive as install-time starting points and each project owns its
-copy afterwards. They reason about a project's *substance*, so a good one is necessarily
-project-specific and cannot be derived from a template. The accepted cost is that a good idea
-emerging in one project's reviewer never auto-surfaces for backporting; harvesting it upstream is a
-deliberate act.
+The three reviewers are `context` class: they arrive as install-time starting points and each
+project owns its copy afterwards. They reason about a project's *substance*, so a good one is
+necessarily project-specific and cannot be derived from a template. The accepted cost is that a
+good idea emerging in one project's reviewer never auto-surfaces for backporting; harvesting it
+upstream is a deliberate act.
+
+`@pm` is `logic`, identical everywhere (DEC-J011). It holds no project substance — its facts come
+from the plan, the session files and the retro log — and as `context` it silently fell out of step
+with `/retro`.
 
 **Descriptions are project-agnostic.** An earlier generation carried `[Project]` in the
 `description:` frontmatter, filled in per install, which made every agent permanently differ from

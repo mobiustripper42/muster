@@ -216,7 +216,6 @@ When a recommendation *is* wanted (cold open), grep `docs/PROJECT_PLAN.md`:
 - Deferred: `grep "\[~\]" docs/PROJECT_PLAN.md`
 - Priority: `grep "Next session priority" docs/PROJECT_PLAN.md -A 2`
 - Current phase: `grep -E "^## Phase " docs/PROJECT_PLAN.md | head -3`
-- Velocity: `grep "Velocity baseline" docs/PROJECT_PLAN.md -A 1`
 
 If the project uses phase-rituals: `gh issue list --label "phase:current" --state open --json number,title,labels --limit 50`.
 

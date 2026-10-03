@@ -8,7 +8,7 @@
 
 | File | Purpose |
 |------|---------|
-| `docs/SPEC.md` | What we're building — scope, V1 vs V2 vs V3 |
+| `docs/SPEC.md` | What we're building — scope, and what isn't planned |
 | `docs/decisions/` | Why each choice was made — one decision, one file |
 | `docs/DECISIONS.md` | **Generated** index. Never edit by hand |
 | `docs/PROJECT_PLAN.md` | Phases and scope. Read at planning, written at retro; current tasks are GitHub Issues |
@@ -162,7 +162,7 @@ For every task — bug, feature, or question — explain the plan and wait befor
 
 ## Scope Discipline
 
-Check `docs/SPEC.md` "Not V1" before adding anything. Apply a change only to the surface named — don't propagate it to sibling pages, and never invent or misattribute a rationale that wasn't stated.
+Check the spec's out-of-scope list in `docs/SPEC.md` before adding anything. Apply a change only to the surface named — don't propagate it to sibling pages, and never invent or misattribute a rationale that wasn't stated.
 
 If a task feels bigger than its estimate: stop, re-estimate, update PROJECT_PLAN.md. If it's scope creep, flag it and move on.
 

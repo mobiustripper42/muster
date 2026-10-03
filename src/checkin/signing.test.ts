@@ -18,6 +18,7 @@ import {
   partyChoices,
   partyFor,
   signAndSave,
+  stillToSignLine,
   type SigningContext,
   type SigningForm,
 } from "./signing.js";
@@ -290,16 +291,28 @@ describe("birthYearOptions — the year select, bounded by who the block is for"
 });
 
 describe("groupCoverage — 'Your group: 14 of 16 signed'", () => {
-  it("counts every row on the booking — a guarded child is covered", () => {
+  it("counts the people on the booking (`peopleSigned`) — a guarded minor is covered", () => {
     expect(groupCoverage(16, 14, 16)).toEqual({ covered: 14, of: 16, remaining: 2 });
   });
 
-  it("never shows more signed than the party, however many duplicates", () => {
+  it("never shows more signed than the party", () => {
     expect(groupCoverage(4, 6, 16)).toEqual({ covered: 4, of: 4, remaining: 0 });
   });
 
   it("never shows a number above the boat's passenger limit (the COI rule)", () => {
     expect(groupCoverage(20, 18, 16)).toEqual({ covered: 16, of: 16, remaining: 0 });
+  });
+});
+
+describe("stillToSignLine — the line under the count, on the success screen and the party page", () => {
+  it("says who is left in words, up to ten", () => {
+    expect([0, 1, 2, 10, 11].map(stillToSignLine)).toEqual([
+      "Everyone in your group has signed.",
+      "One person still needs to sign.",
+      "Two people still need to sign.",
+      "Ten people still need to sign.",
+      "11 people still need to sign.",
+    ]);
   });
 });
 

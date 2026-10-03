@@ -3,7 +3,8 @@
  * numbers are real when hand-testing (task 12.10, DEC-125). It materializes:
  *   - the crewed fleet (seedFleet — so vessel-brew-3 exists), a demo Location + a LIVE Offering
  *     (3 daily departures, season scoped to the demo window);
- *   - two MATERIALIZED bookings (Event + booked Reservation) at known slots inside that window.
+ *   - two MATERIALIZED bookings (Event + booked Reservation) at known slots inside that window;
+ *   - waiver signings on the first booking, for the booker's party page (18.6).
  *
  * Then a Vessel block over the printed window, or a Location block on the printed day, shows a
  * non-zero "removes N" AND a booked-trip conflict. **The dates are relative to today (#646)** —
@@ -27,6 +28,7 @@ import {
   reservationDemo,
 } from "../src/reservations/seed-reservation.js";
 import { addDays, vesselDateOf } from "../src/config/tenant.js";
+import { asId } from "../src/domain/ids.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 if (existsSync(".env.local")) {
@@ -101,6 +103,36 @@ try {
     });
   }
 
+  // Signings on the first booking (18.6), so the booker's party page has a state to open: an adult
+  // with a minor, someone who signed twice (one person, "×2"), and one more — 4 of the party of 8.
+  // Through the port, as a signing writes them; skipped when the booking already has signers, so a
+  // re-run adds nothing.
+  const first = world.reservations[0]!;
+  if ((await repo.listGuestsForReservation(first.id)).length === 0) {
+    const at = (hour: number) => `2026-01-05T${String(hour).padStart(2, "0")}:00:00.000Z`;
+    const signer = (id: string, name: string, dob: string, hour: number) => ({
+      id: asId<"GuestId">(`seed-guest-${id}`),
+      eventId: first.eventId!,
+      reservationId: first.id,
+      name,
+      email: `${id}@example.com`,
+      dob,
+      isMinor: false,
+      signedAt: at(hour),
+      signatureName: name,
+      source: "self" as const,
+      createdAt: at(hour),
+    });
+    const marcus = signer("marcus", "Marcus Webb", "1978-02-11", 9);
+    await repo.saveGuests([
+      marcus,
+      { id: asId<"GuestId">("seed-guest-lily"), eventId: first.eventId!, reservationId: first.id, name: "Lily Webb", dob: "2015-05-14", isMinor: true, guardianGuestId: marcus.id, guardianRelation: "parent", source: "self", createdAt: at(9) },
+      signer("fred-1", "Fred Kowalski", "1979-08-30", 10),
+      signer("fred-2", "Fred Kowalski", "1979-08-30", 14),
+      signer("grace", "Grace Kim", "1990-12-01", 11),
+    ]);
+  }
+
   const customers = await repo.listCustomers();
   console.log(`✓ Seeded reservation demo world (db: ${new URL(url).host}).`);
   console.log(`  customers ${customers.length} (${customers.map((c) => `${c.name} ${c.displayCode}`).join(", ")})`);
@@ -128,6 +160,7 @@ try {
     console.log(`  /b/${demoBookingCode(String(r.id))}   ${r.customerName}`);
   }
   console.log(`  /b/${demoRevokedBookingCode(firstId)}   REVOKED — the "link was replaced" state`);
+  console.log(`  /b/${demoBookingCode(firstId)}/party   the party page — 4 of 8 signed, Fred Kowalski ×2, Lily Webb a minor`);
   console.log("");
   console.log("Try it at /admin/blocks:");
   console.log(`  • Vessel block ${demo.vesselName}  ${demo.vesselBlockWindow.start} → ${demo.vesselBlockWindow.end}  → removes slots + 2 booked ($988) conflict`);

@@ -16,6 +16,7 @@ import {
   resolveTripLink,
   TRIP_CODE_LENGTH,
   TRIP_LINK_LIMIT,
+  tripDayOver,
   tripLinkUrl,
 } from "./trip-link.js";
 
@@ -143,6 +144,14 @@ describe("resolveTripLink", () => {
     const repo = await world();
     expect(await resolveTripLink(repo, "ZZZZZZZZ", NOW)).toEqual({ state: "not_found" });
     expect(await resolveTripLink(repo, "../../etc", NOW)).toEqual({ state: "not_found" });
+  });
+});
+
+describe("tripDayOver — the trip link's 'sailed', shared with the party page (18.6)", () => {
+  it("is over at midnight boat time after the trip's day, not at the scheduled minute", () => {
+    expect(tripDayOver("2026-10-10", "2026-10-10T23:00:00.000Z")).toBe(false);
+    expect(tripDayOver("2026-10-10", "2026-10-11T03:59:59.000Z")).toBe(false);
+    expect(tripDayOver("2026-10-10", "2026-10-11T04:00:00.000Z")).toBe(true);
   });
 });
 

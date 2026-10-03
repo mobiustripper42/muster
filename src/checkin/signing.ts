@@ -239,19 +239,29 @@ export function birthYearOptions(kind: "adult" | "child", today: string, ageOfMa
 }
 
 /**
- * "Your group: 14 of 16 signed." Every row on the booking counts: a signed adult, and a child
- * covered by one. Duplicates can push the rows past the party, so the count stops at the party
- * size — and both numbers stop at the boat's passenger limit, because nothing the module shows
- * may exceed it (spec §4a).
+ * "Your group: 14 of 16 signed." `peopleForBooking` is `peopleSigned` (`duplicates.ts`): a signed
+ * adult and a minor covered by one each count, and an obvious duplicate counts once (18.6). More
+ * people than the party can still have signed, so the count stops at the party size — and both
+ * numbers stop at the boat's passenger limit, because nothing the module shows may exceed it
+ * (spec §4a).
  */
 export function groupCoverage(
   partySize: number,
-  rowsForBooking: number,
+  peopleForBooking: number,
   coiMaxPax: number,
 ): { covered: number; of: number; remaining: number } {
   const of = Math.max(0, Math.min(partySize, coiMaxPax));
-  const covered = Math.min(rowsForBooking, of);
+  const covered = Math.min(peopleForBooking, of);
   return { covered, of, remaining: of - covered };
+}
+
+const WORDS = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
+
+/** The line under the count — the success screen's and the party page's, so they read alike. */
+export function stillToSignLine(remaining: number): string {
+  if (remaining === 0) return "Everyone in your group has signed.";
+  if (remaining === 1) return "One person still needs to sign.";
+  return `${WORDS[remaining] ?? remaining} people still need to sign.`;
 }
 
 /** "Who are you here with?" — booked parties by surname only, alphabetically (spec §A2). */

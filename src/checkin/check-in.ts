@@ -18,17 +18,23 @@
  */
 import type { CrewMemberId, EventId, GuestId, ShiftId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
+import { groupSignings, peopleSigned, type RowSigning } from "./duplicates.js";
 import type { DepartureCount, Guest } from "./entities.js";
 import { ageOn } from "./signing.js";
 
-/** One person on the list. */
+/** One person on the list — one row however many times they signed (18.6, `duplicates.ts`). */
 export interface CheckInRow {
+  /** The row's key: its earliest signing. */
   guestId: string;
-  /** The name as typed. */
+  /** The name as typed, on the earliest signing. */
   name: string;
   /** A minor's age and who they came with — "(12) · w/ Robert". Absent on an adult. */
   detail?: string;
+  /** Any of its signings is ticked. */
   checkedIn: boolean;
+  /** Its signings, earliest first. Two or more is a likely duplicate, shown "×2"; a tap ticks one,
+   *  and **Check in again** ticks the next when it was two people after all. */
+  signings: RowSigning[];
 }
 
 /** What the mate's screen shows for one departure. */
@@ -39,9 +45,10 @@ export interface CheckInScreen {
   toBoard: CheckInRow[];
   /** Checked in, alphabetical. */
   aboard: CheckInRow[];
-  /** "6 CHECKED IN" — capped at the limit. */
+  /** "6 CHECKED IN": signings ticked, so a ×2 ticked twice is two — capped at the limit. */
   checkedIn: number;
-  /** "16 SIGNED": every row is a person on a signed waiver, a guarded minor included. Capped. */
+  /** "16 SIGNED": people on a signed waiver, a guarded minor included and a duplicate once
+   *  (`peopleSigned`). Capped. */
   signed: number;
   /** The boat's passenger limit (COI max). */
   limit: number;
@@ -60,22 +67,34 @@ export function buildCheckInScreen(
   today: string,
 ): CheckInScreen {
   const byId = new Map(guests.map((g) => [String(g.id), g]));
-  const rows = [...guests]
-    .sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || String(a.id).localeCompare(String(b.id)))
-    .map((g): CheckInRow => {
-      const detail = minorDetail(g, byId, today);
-      return { guestId: String(g.id), name: g.name, ...(detail ? { detail } : {}), checkedIn: Boolean(g.checkedIn) };
+  const rows = groupSignings(guests)
+    .sort(
+      (a, b) =>
+        a[0]!.name.localeCompare(b[0]!.name, "en", { sensitivity: "base" }) || String(a[0]!.id).localeCompare(String(b[0]!.id)),
+    )
+    .map((group): CheckInRow => {
+      const first = group[0]!;
+      const detail = minorDetail(first, byId, today);
+      const signings = group.map((g) => ({ guestId: String(g.id), checkedIn: Boolean(g.checkedIn) }));
+      return {
+        guestId: String(first.id),
+        name: first.name,
+        ...(detail ? { detail } : {}),
+        checkedIn: signings.some((s) => s.checkedIn),
+        signings,
+      };
     });
-  const checkedIn = rows.filter((r) => r.checkedIn).length;
+  const checkedIn = guests.filter((g) => g.checkedIn).length;
+  const people = peopleSigned(guests);
   return {
     rows,
     toBoard: rows.filter((r) => !r.checkedIn),
     aboard: rows.filter((r) => r.checkedIn),
     checkedIn: Math.min(checkedIn, limit),
-    signed: Math.min(rows.length, limit),
+    signed: Math.min(people, limit),
     limit,
     full: checkedIn >= limit,
-    startingCount: Math.min(count ? count.pax : rows.length, limit),
+    startingCount: Math.min(count ? count.pax : people, limit),
   };
 }
 

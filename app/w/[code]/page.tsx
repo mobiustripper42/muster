@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { vesselDateOf } from "@core/config/tenant.js";
+import { peopleSigned } from "@core/checkin/duplicates.js";
 import { groupCoverage, loadSigningScene, MAX_CHILDREN, partyChoices, partyFor } from "@core/checkin/signing.js";
 import { normalizeTripCode, openTripLink, tripLinkUrl, type TripLinkTrip } from "@core/checkin/trip-link.js";
 import { limitKeyFor } from "@core/rate-limit/rate-limit.js";
@@ -129,7 +130,7 @@ async function openTrip(trip: TripLinkTrip, rawCode: string, sp: Search, now: st
     if (signer) {
       const booking = scene.reservations.find((r) => r.id === signer.reservationId);
       const coverage = booking
-        ? groupCoverage(booking.partySize, (await repo.listGuestsForReservation(booking.id)).length, scene.coiMaxPax)
+        ? groupCoverage(booking.partySize, peopleSigned(await repo.listGuestsForReservation(booking.id)), scene.coiMaxPax)
         : null;
       return (
         <SuccessView

@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition, type MouseEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
 import type { CheckInRow } from "@core/checkin/check-in.js";
+import { nextToTick, nextToUntick } from "@core/checkin/duplicates.js";
 import { tickGuest, tickGuestForm, type TickOutcome } from "./actions";
 
 /**
@@ -20,6 +21,11 @@ import { tickGuest, tickGuestForm, type TickOutcome } from "./actions";
  *
  * **The boat's limit (§4a)**: at the limit the rows still to board stop taking taps and the header
  * reads "Full · 12 of 12". No message names the limit. Every number shown is capped at it.
+ *
+ * **A likely duplicate is one row, "×2"** (18.6, `duplicates.ts`): a tap ticks one signing, so one
+ * Fred who signed twice never takes two seats. If it was two people after all, the row in Checked in
+ * asks *Count this person twice?* with **Check in again**, which ticks the other signing; tapping the
+ * row takes ticks back one at a time.
  *
  * **New signers appear on their own** (18.5b, DEC-192): every `refreshSeconds` while the page is on
  * screen it re-reads itself (`router.refresh()`), and once straight away on coming back to it. A phone
@@ -99,10 +105,28 @@ export function CheckInList({
     };
   }, [router, refreshSeconds]);
 
-  const shown = rows.map((r) => ({ ...r, checkedIn: local[r.guestId]?.checkedIn ?? r.checkedIn, status: local[r.guestId]?.status }));
+  // Taps are per signing; a row is a person (a ×2 row holds two signings), so it is drawn from its
+  // signings with this phone's taps laid over them.
+  const shown = rows.map((r): ShownRow => {
+    const signings = r.signings.map((s) => ({ ...s, checkedIn: local[s.guestId]?.checkedIn ?? s.checkedIn }));
+    const saving = r.signings.some((s) => local[s.guestId]?.status === "saving");
+    const failed = r.signings.find((s) => local[s.guestId]?.status === "failed");
+    let status: Local["status"] | undefined;
+    if (saving) status = "saving";
+    else if (failed) status = "failed";
+    return {
+      ...r,
+      signings,
+      checkedIn: signings.some((s) => s.checkedIn),
+      status,
+      ...(failed ? { failedId: failed.guestId } : {}),
+    };
+  });
   const toBoard = shown.filter((r) => !r.checkedIn);
   const aboard = shown.filter((r) => r.checkedIn);
-  const full = aboard.length >= limit;
+  // Signings ticked, so a ×2 checked in again is two seats.
+  const ticked = shown.reduce((n, r) => n + r.signings.filter((s) => s.checkedIn).length, 0);
+  const full = ticked >= limit;
 
   async function send(guestId: string, on: boolean) {
     setLocal((l) => ({ ...l, [guestId]: { checkedIn: on, status: "saving" } }));
@@ -139,7 +163,7 @@ export function CheckInList({
         <div className="rounded-card border border-line bg-card px-4 py-3" data-testid="checked-in-tile">
           <div className="text-xs font-semibold uppercase tracking-wide text-muted">{full ? "Full" : "Checked in"}</div>
           <div className="font-mono text-2xl font-semibold text-ink">
-            {full ? `${Math.min(aboard.length, limit)} of ${limit}` : aboard.length}
+            {full ? `${Math.min(ticked, limit)} of ${limit}` : ticked}
           </div>
         </div>
         <div className="rounded-card border border-line bg-card px-4 py-3">
@@ -164,7 +188,7 @@ export function CheckInList({
           // Every name, never "…9 more" (§C1): the list scrolls in its own region.
           <ul className="max-h-[55vh] divide-y divide-line overflow-y-auto rounded-card border border-line bg-card">
             {toBoard.map((r) => (
-              <Row key={r.guestId} row={r} shiftId={shiftId} eventId={eventId} inert={full} fresh={fresh.has(r.guestId)} onTap={tap} onRetry={send} />
+              <Row key={r.guestId} row={r} shiftId={shiftId} eventId={eventId} full={full} fresh={fresh.has(r.guestId)} onTap={tap} onRetry={send} />
             ))}
           </ul>
         )}
@@ -177,13 +201,13 @@ export function CheckInList({
               <span className="text-ok" aria-hidden>
                 ✓{" "}
               </span>
-              Checked in · {Math.min(aboard.length, limit)}
+              Checked in · {Math.min(ticked, limit)}
             </span>
             <span className="text-sm font-normal text-muted">tap a name to undo ›</span>
           </summary>
           <ul className="divide-y divide-line border-t border-line">
             {aboard.map((r) => (
-              <Row key={r.guestId} row={r} shiftId={shiftId} eventId={eventId} inert={false} fresh={false} onTap={tap} onRetry={send} />
+              <Row key={r.guestId} row={r} shiftId={shiftId} eventId={eventId} full={full} fresh={false} onTap={tap} onRetry={send} />
             ))}
           </ul>
         </details>
@@ -192,65 +216,121 @@ export function CheckInList({
   );
 }
 
+type ShownRow = CheckInRow & { status?: Local["status"] | undefined; failedId?: string };
+
 function Row({
   row,
   shiftId,
   eventId,
-  inert,
+  full,
   fresh,
   onTap,
   onRetry,
 }: {
-  row: CheckInRow & { status?: Local["status"] | undefined };
+  row: ShownRow;
   shiftId: string;
   eventId: string;
-  /** At the boat's limit, a row still to board takes no tap. */
-  inert: boolean;
+  /** At the boat's limit nothing more is ticked: a row still to board, and Check in again, take no tap. */
+  full: boolean;
   /** Just arrived on a re-read: highlighted for a moment. */
   fresh: boolean;
   onTap: (guestId: string, on: boolean) => (e: MouseEvent) => void;
   onRetry: (guestId: string, on: boolean) => Promise<void>;
 }) {
+  // Still to board, a tap ticks the earliest signing; checked in, it takes back the latest tick.
   const next = !row.checkedIn;
+  const target = (next ? nextToTick(row.signings) : nextToUntick(row.signings)) ?? row.guestId;
+  // A ×2 already ticked once: the other signing, for when it was two people after all.
+  const another = row.checkedIn ? nextToTick(row.signings) : undefined;
+  const saving = row.status === "saving";
+  const failed = row.failedId ? row.signings.find((s) => s.guestId === row.failedId) : undefined;
   return (
     <li
       data-new={fresh || undefined}
-      className={`flex items-center transition-colors duration-700 motion-reduce:transition-none ${fresh ? "bg-ok-bg" : ""}`}
+      className={`transition-colors duration-700 motion-reduce:transition-none ${fresh ? "bg-ok-bg" : ""}`}
     >
-      <form action={tickGuestForm} className="min-w-0 flex-1">
-        <input type="hidden" name="shiftId" value={shiftId} />
-        <input type="hidden" name="eventId" value={eventId} />
-        <input type="hidden" name="guestId" value={row.guestId} />
-        <input type="hidden" name="aboard" value={next ? "1" : "0"} />
-        {/* eslint-disable-next-line no-restricted-syntax -- a tap moves the row at once; no submit to spin for (header) */}
-        <button type="submit"
-          disabled={inert || row.status === "saving"}
-          onClick={onTap(row.guestId, next)}
-          className="flex min-h-[50px] w-full items-center justify-between gap-3 px-4 py-3 text-left"
-        >
-          <span className="min-w-0">
-            <span className="font-medium text-ink">{row.name}</span>
-            {row.detail && <span className="text-sm text-muted"> {row.detail}</span>}
-            <span className="sr-only">{row.checkedIn ? " — undo check-in" : " — check in"}</span>
-          </span>
-          <span aria-hidden className={row.checkedIn ? "text-ok" : "text-muted"}>
-            {row.checkedIn ? "✓" : "○"}
-          </span>
-        </button>
-      </form>
-      {row.status === "failed" && (
-        <span className="flex shrink-0 items-center gap-2 pr-3 text-sm">
-          <span className="text-bad">Didn’t save</span>
-          <button
-            type="button"
-            onClick={() => void onRetry(row.guestId, row.checkedIn)}
-            aria-label={`Retry ${row.name}`}
-            className="btn-secondary min-h-[44px] px-3"
+      <div className="flex items-center">
+        <TickForm shiftId={shiftId} eventId={eventId} guestId={target} aboard={next} className="min-w-0 flex-1">
+          {/* eslint-disable-next-line no-restricted-syntax -- a tap moves the row at once; no submit to spin for (header) */}
+          <button type="submit"
+            disabled={(next && full) || saving}
+            onClick={onTap(target, next)}
+            className="flex min-h-[50px] w-full items-center justify-between gap-3 px-4 py-3 text-left"
           >
-            Retry
+            <span className="min-w-0">
+              <span className="font-medium text-ink">{row.name}</span>
+              {row.signings.length > 1 && (
+                <span className="font-mono text-sm text-muted" title="Signed more than once">
+                  {" "}×{row.signings.length}
+                </span>
+              )}
+              {row.detail && <span className="text-sm text-muted"> {row.detail}</span>}
+              <span className="sr-only">{row.checkedIn ? " — undo check-in" : " — check in"}</span>
+            </span>
+            <span aria-hidden className={row.checkedIn ? "text-ok" : "text-muted"}>
+              {row.checkedIn ? "✓" : "○"}
+            </span>
           </button>
-        </span>
+        </TickForm>
+        {failed && (
+          <span className="flex shrink-0 items-center gap-2 pr-3 text-sm">
+            <span className="text-bad">Didn’t save</span>
+            <button
+              type="button"
+              onClick={() => void onRetry(failed.guestId, failed.checkedIn)}
+              aria-label={`Retry ${row.name}`}
+              className="btn-secondary min-h-[44px] px-3"
+            >
+              Retry
+            </button>
+          </span>
+        )}
+      </div>
+      {/* The question the mate is answering, on its own line, and a button that says what it does
+          (operator, 2026-10-03 — "+1 aboard" read as neither a button nor an action). */}
+      {another && !failed && (
+        <div className="flex items-center justify-between gap-3 px-4 pb-3">
+          <span className="text-sm text-muted">Count this person twice?</span>
+          <TickForm shiftId={shiftId} eventId={eventId} guestId={another} aboard className="shrink-0">
+            {/* eslint-disable-next-line no-restricted-syntax -- same as the row: a tap ticks at once (header) */}
+            <button type="submit"
+              disabled={full || saving}
+              onClick={onTap(another, true)}
+              aria-label={`Check in again: ${row.name}`}
+              className="btn-secondary min-h-[48px] border-accent px-4 text-accent"
+            >
+              Check in again
+            </button>
+          </TickForm>
+        </div>
       )}
     </li>
+  );
+}
+
+/** One tick as a plain form post, so the list works with no JS (`tickGuestForm`). */
+function TickForm({
+  shiftId,
+  eventId,
+  guestId,
+  aboard,
+  className,
+  children,
+}: {
+  shiftId: string;
+  eventId: string;
+  guestId: string;
+  aboard: boolean;
+  className: string;
+  children: ReactNode;
+}) {
+  return (
+    <form action={tickGuestForm} className={className}>
+      <input type="hidden" name="shiftId" value={shiftId} />
+      <input type="hidden" name="eventId" value={eventId} />
+      <input type="hidden" name="guestId" value={guestId} />
+      <input type="hidden" name="aboard" value={aboard ? "1" : "0"} />
+      {children}
+    </form>
   );
 }

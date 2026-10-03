@@ -12,6 +12,7 @@ import type { CrewMember, Event, Seat, Shift, Vessel } from "../domain/entities.
 import { asId } from "../domain/ids.js";
 import type { DepartureCount, Guest } from "./entities.js";
 import { buildCheckInScreen, checkInTrip, setGuestAboard, setPassengerCount } from "./check-in.js";
+import { nextToTick, nextToUntick } from "./duplicates.js";
 
 const TODAY = "2026-10-10";
 const NOW = "2026-10-10T18:58:00.000Z";
@@ -151,6 +152,63 @@ describe("buildCheckInScreen — what the mate sees", () => {
   it("an empty departure is all zeros", () => {
     const s = buildCheckInScreen([], 16, null, TODAY);
     expect([s.toBoard, s.aboard, s.checkedIn, s.signed, s.startingCount, s.full]).toEqual([[], [], 0, 0, 0, false]);
+  });
+});
+
+describe("buildCheckInScreen — a likely duplicate is one row (18.6)", () => {
+  const fred1 = guest("g-fred-1", "Fred Kowalski", { createdAt: "2026-10-01T09:00:00.000Z" });
+  const fred2 = guest("g-fred-2", "Fred Kowalski", { createdAt: "2026-10-03T09:00:00.000Z" });
+
+  it("one row carrying both signings, earliest first, keyed by the earliest", () => {
+    const s = buildCheckInScreen([fred2, fred1, robert], 16, null, TODAY);
+    expect(s.rows.map((r) => r.name)).toEqual(["Fred Kowalski", "Robert Smith"]);
+    expect(s.rows[0]).toMatchObject({
+      guestId: "g-fred-1",
+      checkedIn: false,
+      signings: [
+        { guestId: "g-fred-1", checkedIn: false },
+        { guestId: "g-fred-2", checkedIn: false },
+      ],
+    });
+  });
+
+  it("signed counts the duplicate once, and the passenger count starts there", () => {
+    const s = buildCheckInScreen([fred1, fred2, robert], 16, null, TODAY);
+    expect([s.signed, s.startingCount]).toEqual([2, 2]);
+  });
+
+  it("one tick puts the row in Checked in; checked in counts the person once", () => {
+    const s = buildCheckInScreen([{ ...fred1, checkedIn: tick }, fred2, robert], 16, null, TODAY);
+    expect(s.aboard.map((r) => r.name)).toEqual(["Fred Kowalski"]);
+    expect(s.toBoard.map((r) => r.name)).toEqual(["Robert Smith"]);
+    expect([s.checkedIn, s.signed]).toEqual([1, 2]);
+  });
+
+  it("both ticked (Check in again) was two people: two checked in, and signed rises with it", () => {
+    const s = buildCheckInScreen([{ ...fred1, checkedIn: tick }, { ...fred2, checkedIn: tick }, robert], 16, null, TODAY);
+    expect([s.checkedIn, s.signed]).toEqual([2, 3]);
+  });
+
+  it("full counts ticks, so Check in again is a seat like any other", () => {
+    const s = buildCheckInScreen([{ ...fred1, checkedIn: tick }, { ...fred2, checkedIn: tick }, robert], 2, null, TODAY);
+    expect(s.full).toBe(true);
+  });
+});
+
+describe("nextToTick and nextToUntick — which signing a tap on a ×2 row acts on", () => {
+  const off = (id: string) => ({ guestId: id, checkedIn: false });
+  const on = (id: string) => ({ guestId: id, checkedIn: true });
+
+  it("a tap ticks the earliest signing not yet ticked", () => {
+    expect(nextToTick([off("a"), off("b")])).toBe("a");
+    expect(nextToTick([on("a"), off("b")])).toBe("b");
+    expect(nextToTick([on("a"), on("b")])).toBeUndefined();
+  });
+
+  it("an undo takes back the latest tick first", () => {
+    expect(nextToUntick([on("a"), on("b")])).toBe("b");
+    expect(nextToUntick([on("a"), off("b")])).toBe("a");
+    expect(nextToUntick([off("a"), off("b")])).toBeUndefined();
   });
 });
 

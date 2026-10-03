@@ -1,10 +1,16 @@
 # Check-In & Waiver — Surfaces
 
-Status: draft v0.7 · Fourteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
+Status: draft v0.8 · Fourteenth design artifact. Working name: **Muster**. Worked example: BrewBoat.
 The **screens only**. Data model, build/buy and rationale live in `check-in-and-waivers.md`;
 patterns copied from shipping products are sourced in `waiver-checkin-market-scan.md` (design chat,
 not in this repo).
 
+> **v0.8 changes — 2026-10-02, operator, speccing 18.6.** **B, A4, C1: an obvious duplicate counts
+> once** and shows *×2* — the same name and date of birth within one booking. The mate's list makes
+> it one row; for when it was two people, the row asks *Count this person twice?* with **Check in
+> again** (2026-10-03, after a hand test: *+1 aboard* read as neither a button nor an action). **B**
+> lives at `/b/<code>/party`.
+>
 > **v0.7 changes — 2026-10-02, operator, speccing 18.5.** **C1:** **Check in** sits in each
 > departure's row on the shift card, and the passenger count starts at the number signed. **C2:** no
 > brightness control until a native app. **C4:** nothing turns read-only after the trip. **A5:** a
@@ -229,7 +235,12 @@ One read-only page. The single highest-leverage screen per hour spent building i
   sets**.
 - **Reminders stop the moment everyone has signed.**
 - The unsigned two are a **number, never a guess at a name**.
-- Duplicates may show grouped (*"Fred Kowalski ×2"*) so the booker can see who signed twice.
+- **Someone who signed twice shows once, *"Fred Kowalski ×2"*, and counts once** (18.6, operator
+  2026-10-02 — the rule is §6 of `check-in-and-waivers.md`). The count is the success screen's
+  (§A4), so the two pages never disagree.
+- **At `/b/<code>/party`**, behind the booking's own code. It shows names, so never the trip link.
+  When the trip's day is over (boat time, the trip link's rule) the names stay and **Share the link**
+  goes; a cancelled booking or departure shows neither.
 - No editing here. The booker chases people; she does not administer records.
 
 ---
@@ -285,6 +296,11 @@ at any time, for confirmed crew on that shift.
   2026-10-02).
 - **Alphabetical by the name as typed.** A just-signed row lands in place with a brief highlight.
 - **Minors are their own row**: `Kyle Smith (12) · w/ Robert`, tapped like anyone else.
+- **Someone who signed twice is one row**, `Fred Kowalski ×2` (18.6 — the rule is §6 of
+  `check-in-and-waivers.md`). A tap ticks one signing, so one Fred never takes two seats, and
+  `SIGNED` counts him once. If it was two people after all, the row in `Checked in` carries
+  *Count this person twice?* with **Check in again**, which ticks the other signing; both then count. Tapping the row takes ticks back one
+  at a time (operator, 2026-10-02).
 - **Rows are ≥50px** with the whole row as the target.
 
 ### C2 — The QR sheet
@@ -311,7 +327,7 @@ the list, unticked, on the next re-read.
 |---|---|
 | List empty | List replaced by *"Everyone's aboard"* and a check. |
 | Nobody signed yet | Empty list, and the QR button is the biggest thing on the screen. |
-| Some never show | Rows just stay. The mate departs with them unticked; they are no-shows or duplicates. |
+| Some never show | Rows just stay. The mate departs with them unticked; they are no-shows, or duplicates too different to group (a retyped birth date). |
 | Checked in reaches the COI max | Remaining rows go inert; the header reads *"Full · 16 of 16."* No warning text. Unticking frees a spot. The stepper also stops at the max. |
 | A tap fails (no connection) | The row shows it didn't save, with a retry. A tap never silently vanishes. |
 | After confirming | §C4. |

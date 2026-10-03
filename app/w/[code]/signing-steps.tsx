@@ -1,3 +1,4 @@
+import { stillToSignLine } from "@core/checkin/signing.js";
 import { AppLink } from "../../../components/ui/app-link";
 import { CopyButton } from "../../../components/ui/copy-button";
 
@@ -70,14 +71,6 @@ export function PartyStep({
   );
 }
 
-const WORDS = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
-
-function stillToSign(remaining: number): string {
-  if (remaining === 0) return "Everyone in your group has signed.";
-  if (remaining === 1) return "One person still needs to sign.";
-  return `${WORDS[remaining] ?? remaining} people still need to sign.`;
-}
-
 /**
  * §A4 — the success screen. The group line shows only for a guest with a booking; a walk-up has
  * no group to count. Numbers come from `groupCoverage`, so they never pass the party size or the
@@ -105,7 +98,7 @@ export function SuccessView({
           <p className="font-medium text-ink">
             Your group: {coverage.covered} of {coverage.of} signed
           </p>
-          <p className="text-sm text-muted">{stillToSign(coverage.remaining)}</p>
+          <p className="text-sm text-muted">{stillToSignLine(coverage.remaining)}</p>
         </div>
       )}
       <div className="flex flex-col gap-3">

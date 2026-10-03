@@ -7,7 +7,9 @@ not in this repo).
 
 > **v0.8 changes — 2026-10-02, operator, speccing 18.6.** **B, A4, C1: an obvious duplicate counts
 > once** and shows *×2* — the same name and date of birth within one booking. The mate's list makes
-> it one row, with **+1 aboard** for when it was two people. **B** lives at `/b/<code>/party`.
+> it one row; for when it was two people, the row asks *Count this person twice?* with **Check in
+> again** (2026-10-03, after a hand test: *+1 aboard* read as neither a button nor an action). **B**
+> lives at `/b/<code>/party`.
 >
 > **v0.7 changes — 2026-10-02, operator, speccing 18.5.** **C1:** **Check in** sits in each
 > departure's row on the shift card, and the passenger count starts at the number signed. **C2:** no
@@ -297,7 +299,7 @@ at any time, for confirmed crew on that shift.
 - **Someone who signed twice is one row**, `Fred Kowalski ×2` (18.6 — the rule is §6 of
   `check-in-and-waivers.md`). A tap ticks one signing, so one Fred never takes two seats, and
   `SIGNED` counts him once. If it was two people after all, the row in `Checked in` carries
-  **+1 aboard**, which ticks the other signing; both then count. Tapping the row takes ticks back one
+  *Count this person twice?* with **Check in again**, which ticks the other signing; both then count. Tapping the row takes ticks back one
   at a time (operator, 2026-10-02).
 - **Rows are ≥50px** with the whole row as the target.
 

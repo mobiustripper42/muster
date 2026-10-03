@@ -24,7 +24,8 @@ import { tickGuest, tickGuestForm, type TickOutcome } from "./actions";
  *
  * **A likely duplicate is one row, "×2"** (18.6, `duplicates.ts`): a tap ticks one signing, so one
  * Fred who signed twice never takes two seats. If it was two people after all, the row in Checked in
- * carries **+1 aboard**, which ticks the other signing; tapping the row takes ticks back one at a time.
+ * asks *Count this person twice?* with **Check in again**, which ticks the other signing; tapping the
+ * row takes ticks back one at a time.
  *
  * **New signers appear on their own** (18.5b, DEC-192): every `refreshSeconds` while the page is on
  * screen it re-reads itself (`router.refresh()`), and once straight away on coming back to it. A phone
@@ -123,7 +124,7 @@ export function CheckInList({
   });
   const toBoard = shown.filter((r) => !r.checkedIn);
   const aboard = shown.filter((r) => r.checkedIn);
-  // Signings ticked, so a ×2 boarded twice (+1 aboard) is two seats.
+  // Signings ticked, so a ×2 checked in again is two seats.
   const ticked = shown.reduce((n, r) => n + r.signings.filter((s) => s.checkedIn).length, 0);
   const full = ticked >= limit;
 
@@ -229,7 +230,7 @@ function Row({
   row: ShownRow;
   shiftId: string;
   eventId: string;
-  /** At the boat's limit nothing more is ticked: a row still to board, and +1 aboard, take no tap. */
+  /** At the boat's limit nothing more is ticked: a row still to board, and Check in again, take no tap. */
   full: boolean;
   /** Just arrived on a re-read: highlighted for a moment. */
   fresh: boolean;
@@ -246,55 +247,62 @@ function Row({
   return (
     <li
       data-new={fresh || undefined}
-      className={`flex items-center transition-colors duration-700 motion-reduce:transition-none ${fresh ? "bg-ok-bg" : ""}`}
+      className={`transition-colors duration-700 motion-reduce:transition-none ${fresh ? "bg-ok-bg" : ""}`}
     >
-      <TickForm shiftId={shiftId} eventId={eventId} guestId={target} aboard={next} className="min-w-0 flex-1">
-        {/* eslint-disable-next-line no-restricted-syntax -- a tap moves the row at once; no submit to spin for (header) */}
-        <button type="submit"
-          disabled={(next && full) || saving}
-          onClick={onTap(target, next)}
-          className="flex min-h-[50px] w-full items-center justify-between gap-3 px-4 py-3 text-left"
-        >
-          <span className="min-w-0">
-            <span className="font-medium text-ink">{row.name}</span>
-            {row.signings.length > 1 && (
-              <span className="font-mono text-sm text-muted" title="Signed more than once">
-                {" "}×{row.signings.length}
-              </span>
-            )}
-            {row.detail && <span className="text-sm text-muted"> {row.detail}</span>}
-            <span className="sr-only">{row.checkedIn ? " — undo check-in" : " — check in"}</span>
-          </span>
-          <span aria-hidden className={row.checkedIn ? "text-ok" : "text-muted"}>
-            {row.checkedIn ? "✓" : "○"}
-          </span>
-        </button>
-      </TickForm>
-      {another && !failed && (
-        <TickForm shiftId={shiftId} eventId={eventId} guestId={another} aboard className="shrink-0 pr-3">
-          {/* eslint-disable-next-line no-restricted-syntax -- same as the row: a tap ticks at once (header) */}
+      <div className="flex items-center">
+        <TickForm shiftId={shiftId} eventId={eventId} guestId={target} aboard={next} className="min-w-0 flex-1">
+          {/* eslint-disable-next-line no-restricted-syntax -- a tap moves the row at once; no submit to spin for (header) */}
           <button type="submit"
-            disabled={full || saving}
-            onClick={onTap(another, true)}
-            aria-label={`Another ${row.name} is aboard`}
-            className="btn-secondary min-h-[48px] px-3"
+            disabled={(next && full) || saving}
+            onClick={onTap(target, next)}
+            className="flex min-h-[50px] w-full items-center justify-between gap-3 px-4 py-3 text-left"
           >
-            +1 aboard
+            <span className="min-w-0">
+              <span className="font-medium text-ink">{row.name}</span>
+              {row.signings.length > 1 && (
+                <span className="font-mono text-sm text-muted" title="Signed more than once">
+                  {" "}×{row.signings.length}
+                </span>
+              )}
+              {row.detail && <span className="text-sm text-muted"> {row.detail}</span>}
+              <span className="sr-only">{row.checkedIn ? " — undo check-in" : " — check in"}</span>
+            </span>
+            <span aria-hidden className={row.checkedIn ? "text-ok" : "text-muted"}>
+              {row.checkedIn ? "✓" : "○"}
+            </span>
           </button>
         </TickForm>
-      )}
-      {failed && (
-        <span className="flex shrink-0 items-center gap-2 pr-3 text-sm">
-          <span className="text-bad">Didn’t save</span>
-          <button
-            type="button"
-            onClick={() => void onRetry(failed.guestId, failed.checkedIn)}
-            aria-label={`Retry ${row.name}`}
-            className="btn-secondary min-h-[44px] px-3"
-          >
-            Retry
-          </button>
-        </span>
+        {failed && (
+          <span className="flex shrink-0 items-center gap-2 pr-3 text-sm">
+            <span className="text-bad">Didn’t save</span>
+            <button
+              type="button"
+              onClick={() => void onRetry(failed.guestId, failed.checkedIn)}
+              aria-label={`Retry ${row.name}`}
+              className="btn-secondary min-h-[44px] px-3"
+            >
+              Retry
+            </button>
+          </span>
+        )}
+      </div>
+      {/* The question the mate is answering, on its own line, and a button that says what it does
+          (operator, 2026-10-03 — "+1 aboard" read as neither a button nor an action). */}
+      {another && !failed && (
+        <div className="flex items-center justify-between gap-3 px-4 pb-3">
+          <span className="text-sm text-muted">Count this person twice?</span>
+          <TickForm shiftId={shiftId} eventId={eventId} guestId={another} aboard className="shrink-0">
+            {/* eslint-disable-next-line no-restricted-syntax -- same as the row: a tap ticks at once (header) */}
+            <button type="submit"
+              disabled={full || saving}
+              onClick={onTap(another, true)}
+              aria-label={`Check in again: ${row.name}`}
+              className="btn-secondary min-h-[48px] border-accent px-4 text-accent"
+            >
+              Check in again
+            </button>
+          </TickForm>
+        </div>
       )}
     </li>
   );

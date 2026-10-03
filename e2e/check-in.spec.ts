@@ -202,7 +202,7 @@ test.describe("crew check-in", () => {
     await expect(page.getByText(/✓ 3 aboard · counted .* by Quint/)).toBeVisible();
   });
 
-  test("someone who signed twice is one row, ×2; a tap boards one, and +1 aboard the other (18.6)", async ({ page }) => {
+  test("someone who signed twice is one row, ×2; a tap boards one, and Check in again the other (18.6)", async ({ page }) => {
     await plantGuests(EVENT, [
       { id: "g-fred-1", name: "Fred Kowalski", dob: "1979-08-30" },
       { id: "g-fred-2", name: "Fred Kowalski", dob: "1979-08-30" },
@@ -218,12 +218,29 @@ test.describe("crew check-in", () => {
     await expect(toBoard(page).getByRole("button", { name: /^Fred Kowalski/ })).toHaveCount(0);
     await expect(page.getByTestId("checked-in-tile")).toContainText("1");
 
-    // It was two Freds after all.
+    // It was two Freds after all. The row asks the question in words, and the answer is a button
+    // that says what it does (operator, 2026-10-03: "+1 aboard" read as neither).
     await checkedIn(page).locator("summary").click();
-    const another = page.getByRole("button", { name: "Another Fred Kowalski is aboard" });
-    await Promise.all([saved(page), clickHydrated(another)]);
+    const question = checkedIn(page).getByText("Count this person twice?");
+    await expect(question).toBeVisible();
+    const again = checkedIn(page).getByRole("button", { name: "Check in again: Fred Kowalski" });
+    await expect(again).toHaveText("Check in again");
+    // A thumb target, and drawn as a button rather than a white box on a white card.
+    expect((await again.boundingBox())!.height).toBeGreaterThanOrEqual(48);
+    const accent = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--color-accent)";
+      document.body.append(probe);
+      const c = getComputedStyle(probe).color;
+      probe.remove();
+      return c;
+    });
+    await expect(again).toHaveCSS("color", accent);
+    await expect(again).toHaveCSS("border-top-color", accent);
+    await Promise.all([saved(page), clickHydrated(again)]);
     await expect(page.getByTestId("checked-in-tile")).toContainText("2");
-    await expect(another).toHaveCount(0);
+    await expect(again).toHaveCount(0);
+    await expect(question).toHaveCount(0);
 
     await page.reload();
     await expect(checkedIn(page)).toContainText("Checked in · 2");
@@ -235,7 +252,7 @@ test.describe("crew check-in", () => {
     await Promise.all([saved(page), clickHydrated(checkedIn(page).getByRole("button", { name: /^Fred Kowalski/ }))]);
     await expect(page.getByTestId("checked-in-tile")).toContainText("1");
     await expect(checkedIn(page).getByRole("button", { name: /^Fred Kowalski/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Another Fred Kowalski is aboard" })).toBeVisible();
+    await expect(checkedIn(page).getByRole("button", { name: "Check in again: Fred Kowalski" })).toBeVisible();
   });
 
   test("when the last one boards, the list says everyone's aboard", async ({ page }) => {

@@ -83,7 +83,7 @@ describe("peopleSigned — the count every surface shows", () => {
     expect(peopleSigned([guest("a", "Fred Kowalski"), guest("b", "Fred Kowalski"), guest("c", "Grace Kim")])).toBe(2);
   });
 
-  it("a 'duplicate' the mate checked in twice was two people, and counts twice (+1 aboard)", () => {
+  it("a 'duplicate' the mate checked in twice was two people, and counts twice (Check in again)", () => {
     const both = [guest("a", "Fred Kowalski", { checkedIn: tick }), guest("b", "Fred Kowalski", { checkedIn: tick })];
     expect(peopleSigned(both)).toBe(2);
   });

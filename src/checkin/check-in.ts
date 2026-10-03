@@ -33,7 +33,7 @@ export interface CheckInRow {
   /** Any of its signings is ticked. */
   checkedIn: boolean;
   /** Its signings, earliest first. Two or more is a likely duplicate, shown "×2"; a tap ticks one,
-   *  and **+1 aboard** ticks the next when it was two people after all. */
+   *  and **Check in again** ticks the next when it was two people after all. */
   signings: RowSigning[];
 }
 

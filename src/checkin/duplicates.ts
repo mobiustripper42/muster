@@ -9,7 +9,7 @@
  * still has to sign; a missed one overcounts by one, which is the cheaper mistake.
  *
  * **Every signing is still its own row.** Nothing is merged or deleted; a duplicate is grouped where
- * it is shown and counted once. If the mate ticks both signings (**+1 aboard**), it was two people
+ * it is shown and counted once. If the mate ticks both signings (**Check in again**), it was two people
  * after all, and both count.
  *
  * Imports types only, so the mate's list island can use it in the browser.
@@ -51,7 +51,7 @@ export interface RowSigning {
   checkedIn: boolean;
 }
 
-/** A tap (or **+1 aboard**) ticks the earliest signing not yet ticked. */
+/** A tap (or **Check in again**) ticks the earliest signing not yet ticked. */
 export function nextToTick(signings: readonly RowSigning[]): string | undefined {
   return signings.find((s) => !s.checkedIn)?.guestId;
 }

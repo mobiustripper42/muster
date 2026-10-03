@@ -184,12 +184,12 @@ describe("buildCheckInScreen — a likely duplicate is one row (18.6)", () => {
     expect([s.checkedIn, s.signed]).toEqual([1, 2]);
   });
 
-  it("both ticked (+1 aboard) was two people: two checked in, and signed rises with it", () => {
+  it("both ticked (Check in again) was two people: two checked in, and signed rises with it", () => {
     const s = buildCheckInScreen([{ ...fred1, checkedIn: tick }, { ...fred2, checkedIn: tick }, robert], 16, null, TODAY);
     expect([s.checkedIn, s.signed]).toEqual([2, 3]);
   });
 
-  it("full counts ticks, so +1 aboard is a seat like any other", () => {
+  it("full counts ticks, so Check in again is a seat like any other", () => {
     const s = buildCheckInScreen([{ ...fred1, checkedIn: tick }, { ...fred2, checkedIn: tick }, robert], 2, null, TODAY);
     expect(s.full).toBe(true);
   });

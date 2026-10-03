@@ -17,6 +17,7 @@ import {
   deleteGuestRow,
   isHydrated,
   plantGuests,
+  plantSlotDeparture,
   resetAndSeed,
   signInAsCrew,
   untickGuestRow,
@@ -38,6 +39,13 @@ async function smiths(): Promise<void> {
 const row = (page: Page, name: string) => page.getByRole("button", { name: new RegExp(`^${name}`) });
 const toBoard = (page: Page) => page.locator("section", { has: page.getByRole("heading", { name: /still to board/i }) });
 const checkedIn = (page: Page) => page.locator("details", { has: page.locator("summary", { hasText: /checked in ·/i }) });
+/**
+ * A tick's save answering. The save posts to the check-in page's own address; "any POST" is not
+ * enough, because the crew layout's presence ping (`ActivityBeacon`) posts to /crew/activity on
+ * every arrival, and a late answer to it read as the save sent a reload in before the save landed.
+ */
+const saved = (page: Page) =>
+  page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname.includes("/check-in/"));
 
 test.describe("crew check-in", () => {
   test.beforeEach(async ({ page }) => {
@@ -60,6 +68,21 @@ test.describe("crew check-in", () => {
     await page.goForward();
     await expect(page.getByTestId("checked-in-tile")).toContainText("0");
     await expect(toBoard(page).getByRole("button")).toHaveText([/^Grace Kim/, /^Kyle Smith \(\d+\) · w\/ Robert/, /^Robert Smith/]);
+  });
+
+  test("a departure whose id carries | and : (a Muster slot) opens from its Check in button", async ({ page }) => {
+    // Muster's own departures are `slot_<boat>|<date>|<HH:MM>`; the address carries them encoded
+    // (%7C, %3A) and the page must look the decoded id up (the 5:30 PM bug, operator 2026-10-02).
+    const slot = await plantSlotDeparture(SHIFT, "19:00");
+    await plantGuests(slot, [{ id: "g-sam", name: "Sam Slot" }]);
+    await page.goto(`/crew/shift/${SHIFT}`);
+    await page.getByRole("link", { name: "Check in the 7:00 PM trip" }).click();
+    await expect(page.getByText(/Hops · .* · 7:00 PM/)).toBeVisible();
+    // The save must have answered before the reload, or the reload cuts it off.
+    await Promise.all([saved(page), clickHydrated(row(page, "Sam Slot"))]);
+    await expect(checkedIn(page)).toContainText("Checked in · 1");
+    await page.reload();
+    await expect(checkedIn(page)).toContainText("Checked in · 1");
   });
 
   test("a tap moves the row before the server answers, and Checked in takes it back", async ({ page }) => {
@@ -103,10 +126,7 @@ test.describe("crew check-in", () => {
     ]);
     await page.goto(PAGE);
     // The tick lands — the server has answered — before anything changes behind it.
-    await Promise.all([
-      page.waitForResponse((r) => r.request().method() === "POST"),
-      clickHydrated(row(page, "Grace Kim")),
-    ]);
+    await Promise.all([saved(page), clickHydrated(row(page, "Grace Kim"))]);
     await expect(checkedIn(page)).toContainText("Checked in · 1");
 
     // Another phone takes Grace back off, and Zed's row goes away.
@@ -162,10 +182,7 @@ test.describe("crew check-in", () => {
     await page.unroute(`**${PAGE}`);
     // Wait for the save itself: "Didn't save" goes the moment the retry starts, and a reload
     // before the answer would cut the retry off.
-    await Promise.all([
-      page.waitForResponse((r) => r.request().method() === "POST"),
-      page.getByRole("button", { name: "Retry Grace Kim" }).click(),
-    ]);
+    await Promise.all([saved(page), page.getByRole("button", { name: "Retry Grace Kim" }).click()]);
     await expect(page.getByText("Didn’t save")).toHaveCount(0);
     await page.reload();
     await expect(checkedIn(page)).toContainText("Checked in · 1");
@@ -217,7 +234,14 @@ test.describe("crew check-in", () => {
     await expect(code).toBeVisible();
     const link = (await code.getAttribute("aria-label"))!.replace(/^QR code for /, "");
 
-    await page.locator("summary", { hasText: "Done" }).click();
+    // Done sits on the sheet, no wider than it, and on the screen (operator: it ran off the edge).
+    const done = page.locator("summary", { hasText: "Done" });
+    const [d, panel] = [(await done.boundingBox())!, (await sheet.boundingBox())!];
+    expect(d.x).toBeGreaterThanOrEqual(panel.x);
+    expect(d.x + d.width).toBeLessThanOrEqual(panel.x + panel.width);
+    expect(d.x + d.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+
+    await done.click();
     await expect(sheet).toBeHidden();
 
     // Escape closes it too, once the page's script is running.

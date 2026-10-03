@@ -65,6 +65,18 @@ function fmtDate(iso: string): string {
   });
 }
 
+/** Decode a path segment, tolerating a malformed `%` rather than throwing a 500 at the crew. */
+function safeDecode(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+    // NOT a fault (#854), as in the admin twins: `segment` is a URL a person can type, and a stray
+    // `%` is bad input with a defined answer — it then matches no trip.
+    // eslint-disable-next-line no-restricted-syntax -- malformed URL input, not a fault
+  } catch {
+    return segment;
+  }
+}
+
 /** "2:58 PM" on the boat's clock. */
 function clockOf(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TENANT_TIMEZONE });
@@ -77,7 +89,12 @@ export default async function CheckInPage({
   params: Promise<{ shiftId: string; eventId: string }>;
   searchParams: Promise<{ err?: string }>;
 }) {
-  const { shiftId, eventId } = await params;
+  // Next hands path segments over still encoded. Muster's own departures are
+  // `slot_<boat>|<date>|<HH:MM>`, so `|` and `:` arrive as %7C and %3A and the encoded id matches
+  // nothing (the 5:30 PM bug, operator 2026-10-02). The admin pages decode the same way.
+  const raw = await params;
+  const shiftId = safeDecode(raw.shiftId);
+  const eventId = safeDecode(raw.eventId);
   const sp = await searchParams;
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") redirect("/crew"); // /crew owns the login UI

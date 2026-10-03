@@ -308,6 +308,33 @@ export async function plantGuests(
 }
 
 /**
+ * Add a Muster departure to a seeded shift, with the id Muster's own slots carry —
+ * `slot_<vessel>|<date>|<HH:MM>`, `|` and `:` included — so a page that takes the id from its URL
+ * meets the characters a real one does (the 5:30 PM check-in bug, 18.5b). Returns the id.
+ */
+export async function plantSlotDeparture(shiftId: string, time: string): Promise<string> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const shift = await repo.getShift(shiftId as never);
+    if (!shift) throw new Error(`plantSlotDeparture: no shift ${shiftId}`);
+    const id = `slot_${shift.vesselId}|${shift.date}|${time}`;
+    await repo.saveEvent({
+      id: id as never,
+      vesselId: shift.vesselId,
+      date: shift.date,
+      time,
+      capacity: 12,
+      status: "scheduled",
+      source: "muster",
+    });
+    await repo.saveShift({ ...shift, eventIds: [...shift.eventIds, id as never] });
+    return id;
+  } finally {
+    await repo.close();
+  }
+}
+
+/**
  * Change a guest row behind the page's back (Phase 18.5a) — what another crew phone, or a guest
  * row going away, does while this phone's list is open. A bare row write, not the check-in path:
  * the test is about what the open list shows next.

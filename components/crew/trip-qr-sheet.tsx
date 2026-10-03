@@ -8,7 +8,8 @@ import { TripQr } from "./trip-qr";
  *
  * **A `<details>`, so it opens and closes with no JS** — the crew drawer's pattern (`crew-menu.tsx`).
  * Open, the summary moves to the foot of the screen and reads **Done**, so the way out is always on
- * top of the sheet. `CrewMenuModal` adds Escape, tap-outside and an inert page behind.
+ * top of the sheet — centred and no wider than the sheet, which keeps to the app's column (operator,
+ * 2026-10-02: it ran off the right edge). `CrewMenuModal` adds Escape, tap-outside and an inert page behind.
  *
  * **One element, whatever the state.** With nobody signed, the same summary is simply bigger (§C3:
  * the QR button is the biggest thing on the screen). Two elements would swap when the first signer
@@ -36,7 +37,7 @@ export function TripQrSheet({
       className="group open:before:fixed open:before:inset-0 open:before:z-30 open:before:bg-ink/40 open:before:content-['']"
     >
       <summary
-        className={`${big ? "btn-primary min-h-[120px] text-2xl" : "btn-secondary min-h-[52px] text-base"} relative z-50 flex w-full list-none items-center justify-center gap-2 font-semibold group-open:fixed group-open:inset-x-4 group-open:bottom-4 group-open:min-h-[52px] group-open:text-base [&::-webkit-details-marker]:hidden`}
+        className={`${big ? "btn-primary min-h-[120px] text-2xl" : "btn-secondary min-h-[52px] text-base"} relative z-50 flex w-full list-none items-center justify-center gap-2 font-semibold group-open:fixed group-open:bottom-4 group-open:left-1/2 group-open:w-[calc(100%-2rem)] group-open:max-w-[26rem] group-open:-translate-x-1/2 group-open:min-h-[52px] group-open:text-base [&::-webkit-details-marker]:hidden`}
       >
         <span className="group-open:hidden">{big ? "Show the QR to sign" : "QR · scan to sign"}</span>
         <span className="hidden group-open:inline">Done</span>
@@ -46,7 +47,7 @@ export function TripQrSheet({
         role="dialog"
         aria-modal="true"
         aria-label="Scan to sign"
-        className="fixed inset-x-0 bottom-0 z-40 flex flex-col items-center gap-4 rounded-t-card bg-white px-6 pb-24 pt-6 text-center"
+        className="fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md flex-col items-center gap-4 rounded-t-card bg-white px-6 pb-24 pt-6 text-center"
       >
         {url ? (
           <TripQr url={url} className="w-full max-w-[320px]" />

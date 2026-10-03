@@ -200,6 +200,7 @@ cross-reference left, and it points at the spec, never at another decision.
 ### Check-in & waivers
 - DEC-187 — Check-in & waivers is in scope, specced in its own files that SPEC.md indexes
 - DEC-190 — Trip links are 8-character codes, one per departure, stored plain, not revocable
+- DEC-191 — The check-in QR is drawn on the server from uqr
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred
@@ -215,6 +216,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-152 — Two clock buttons that never move, one disabled — a control that vanishes moves its neighbour under the thumb
 - DEC-160 — An unsaved form asks before you leave, and "dirty" is a comparison against the server's defaults
 - DEC-178 — `faint` is not a text colour
+- DEC-192 — Check-in re-reads with router.refresh() while visible — the first poller
 
 ### Deployment, infra & versioning
 - DEC-013 — Stack & infrastructure deferred to ~M4

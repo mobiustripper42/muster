@@ -371,8 +371,8 @@ screen, one gesture per person.
   walk-ons. It stops at the COI max (§4a). It starts at the number signed until a count is
   confirmed (§14).
 - **Ordered alphabetically by the name as typed.** People walk up saying "I'm Fred."
-- **New signers appear without a refresh.** The screen re-checks the server while open (polling;
-  interval chosen in the build).
+- **New signers appear without a refresh.** The page re-reads itself while it is on screen, every
+  20 seconds by default (`CHECKIN_REFRESH_SECONDS`, set from a dock test — DEC-192).
 - **At the COI max** the remaining rows go inert and the header reads *"Full · 16 of 16."* No
   warning names the limit (§4a).
 - **Empty list is a finish line** — *"Everyone's aboard."*

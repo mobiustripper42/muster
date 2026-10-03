@@ -28,12 +28,17 @@ import { useEffect } from "react";
  * Inerting is per-sibling rather than on `<main>` itself, because the drawer lives inside the
  * header inside main: inerting main would inert the drawer too, and `inert` cannot be lifted from
  * a subtree once an ancestor sets it.
+ *
+ * **Shared with the check-in QR sheet** (Phase 18.5b): the same `<details>` sheet, so the same
+ * three gaps. `name` picks the sheet — `details[data-<name>]`, its `[data-<name>-panel]`, and the
+ * `data-<name>-ready` mark; it defaults to the drawer's. The sheet is a direct child of `<main>`,
+ * so "behind" is everything else on the page.
  */
-export function CrewMenuModal() {
+export function CrewMenuModal({ name = "crew-menu" }: { name?: string } = {}) {
   useEffect(() => {
-    const details = document.querySelector<HTMLDetailsElement>("details[data-crew-menu]");
+    const details = document.querySelector<HTMLDetailsElement>(`details[data-${name}]`);
     if (!details) return;
-    const panel = details.querySelector<HTMLElement>("[data-crew-menu-panel]");
+    const panel = details.querySelector<HTMLElement>(`[data-${name}-panel]`);
     const summary = details.querySelector<HTMLElement>("summary");
     const main = details.closest("main");
 
@@ -89,7 +94,7 @@ export function CrewMenuModal() {
 
     // Tells the e2e suite the enhancement is live. Without it a test can click faster than
     // hydration and conclude that Escape or `inert` is broken when it simply had not attached.
-    details.setAttribute("data-crew-menu-ready", "");
+    details.setAttribute(`data-${name}-ready`, "");
     details.addEventListener("toggle", onToggle);
     document.addEventListener("keydown", onKey);
     document.addEventListener("click", onClick);
@@ -98,10 +103,10 @@ export function CrewMenuModal() {
       details.removeEventListener("toggle", onToggle);
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("click", onClick);
-      details.removeAttribute("data-crew-menu-ready");
+      details.removeAttribute(`data-${name}-ready`);
       for (const el of behind()) el.inert = false;
     };
-  }, []);
+  }, [name]);
 
   return null;
 }

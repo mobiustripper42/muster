@@ -206,3 +206,17 @@
 - term: AA
   says: the WCAG conformance level we hold to — in practice a 4.5:1 contrast ratio for body text and 3:1 for large text and controls
   not: []
+
+# ── The check-in QR (DEC-191) ───────────────────────────────────────────────────
+
+- term: QR
+  says: a square barcode a phone camera reads to open a web link — here, a trip's signing page
+  not: []
+
+- term: SVG
+  says: a picture the browser draws from shapes rather than pixels, so it stays sharp at any size
+  not: []
+
+- term: MIT
+  says: a short open-source licence that lets anyone use, change and ship the code, keeping only its notice
+  not: []

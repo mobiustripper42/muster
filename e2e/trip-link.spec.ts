@@ -5,6 +5,7 @@
  */
 import { test, expect, exhaustRateLimit, plantTripLink, resetAndSeed } from "./fixtures.js";
 import { TRIP_LINK_LIMIT } from "../src/checkin/trip-link.js";
+import { vesselDateOf } from "../src/config/tenant.js";
 
 test.describe("trip links /w/<code>", () => {
   test.beforeEach(async () => {
@@ -25,6 +26,14 @@ test.describe("trip links /w/<code>", () => {
     await plantTripLink({ code: "SA11ED00", date: "2026-01-10", time: "15:00" });
     await page.goto("/w/SA11ED00");
     await expect(page.getByRole("heading", { name: "This trip has already sailed" })).toBeVisible();
+  });
+
+  test("a trip whose time has passed today is still open — a boat held for weather still takes signatures", async ({ page }) => {
+    // Midnight today on the boat's calendar has always passed; the day has not ended.
+    await plantTripLink({ code: "HE1DT0DY", date: vesselDateOf(new Date()), time: "00:00" });
+    await page.goto("/w/HE1DT0DY");
+    await expect(page.getByRole("heading", { name: "Waivers aren’t open for this trip yet" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "This trip has already sailed" })).toHaveCount(0);
   });
 
   test("a cancelled trip says so", async ({ page }) => {

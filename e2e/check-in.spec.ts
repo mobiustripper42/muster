@@ -15,7 +15,9 @@ import {
   expect,
   clickHydrated,
   deleteGuestRow,
+  isHydrated,
   plantGuests,
+  plantSlotDeparture,
   resetAndSeed,
   signInAsCrew,
   untickGuestRow,
@@ -37,6 +39,13 @@ async function smiths(): Promise<void> {
 const row = (page: Page, name: string) => page.getByRole("button", { name: new RegExp(`^${name}`) });
 const toBoard = (page: Page) => page.locator("section", { has: page.getByRole("heading", { name: /still to board/i }) });
 const checkedIn = (page: Page) => page.locator("details", { has: page.locator("summary", { hasText: /checked in ·/i }) });
+/**
+ * A tick's save answering. The save posts to the check-in page's own address; "any POST" is not
+ * enough, because the crew layout's presence ping (`ActivityBeacon`) posts to /crew/activity on
+ * every arrival, and a late answer to it read as the save sent a reload in before the save landed.
+ */
+const saved = (page: Page) =>
+  page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname.includes("/check-in/"));
 
 test.describe("crew check-in", () => {
   test.beforeEach(async ({ page }) => {
@@ -59,6 +68,21 @@ test.describe("crew check-in", () => {
     await page.goForward();
     await expect(page.getByTestId("checked-in-tile")).toContainText("0");
     await expect(toBoard(page).getByRole("button")).toHaveText([/^Grace Kim/, /^Kyle Smith \(\d+\) · w\/ Robert/, /^Robert Smith/]);
+  });
+
+  test("a departure whose id carries | and : (a Muster slot) opens from its Check in button", async ({ page }) => {
+    // Muster's own departures are `slot_<boat>|<date>|<HH:MM>`; the address carries them encoded
+    // (%7C, %3A) and the page must look the decoded id up (the 5:30 PM bug, operator 2026-10-02).
+    const slot = await plantSlotDeparture(SHIFT, "19:00");
+    await plantGuests(slot, [{ id: "g-sam", name: "Sam Slot" }]);
+    await page.goto(`/crew/shift/${SHIFT}`);
+    await page.getByRole("link", { name: "Check in the 7:00 PM trip" }).click();
+    await expect(page.getByText(/Hops · .* · 7:00 PM/)).toBeVisible();
+    // The save must have answered before the reload, or the reload cuts it off.
+    await Promise.all([saved(page), clickHydrated(row(page, "Sam Slot"))]);
+    await expect(checkedIn(page)).toContainText("Checked in · 1");
+    await page.reload();
+    await expect(checkedIn(page)).toContainText("Checked in · 1");
   });
 
   test("a tap moves the row before the server answers, and Checked in takes it back", async ({ page }) => {
@@ -102,10 +126,7 @@ test.describe("crew check-in", () => {
     ]);
     await page.goto(PAGE);
     // The tick lands — the server has answered — before anything changes behind it.
-    await Promise.all([
-      page.waitForResponse((r) => r.request().method() === "POST"),
-      clickHydrated(row(page, "Grace Kim")),
-    ]);
+    await Promise.all([saved(page), clickHydrated(row(page, "Grace Kim"))]);
     await expect(checkedIn(page)).toContainText("Checked in · 1");
 
     // Another phone takes Grace back off, and Zed's row goes away.
@@ -161,10 +182,7 @@ test.describe("crew check-in", () => {
     await page.unroute(`**${PAGE}`);
     // Wait for the save itself: "Didn't save" goes the moment the retry starts, and a reload
     // before the answer would cut the retry off.
-    await Promise.all([
-      page.waitForResponse((r) => r.request().method() === "POST"),
-      page.getByRole("button", { name: "Retry Grace Kim" }).click(),
-    ]);
+    await Promise.all([saved(page), page.getByRole("button", { name: "Retry Grace Kim" }).click()]);
     await expect(page.getByText("Didn’t save")).toHaveCount(0);
     await page.reload();
     await expect(checkedIn(page)).toContainText("Checked in · 1");
@@ -202,6 +220,104 @@ test.describe("crew check-in", () => {
     await expect(page.getByText("That trip isn’t on your list.")).toBeVisible();
   });
 
+
+  // ── 18.5b: the QR sheet, and new signers without a reload ──────────────────────────────────
+
+  test("QR opens a sheet holding this trip's signing link; Done and Escape close it", async ({ page }) => {
+    await smiths();
+    await page.goto(PAGE);
+    await page.locator("summary", { hasText: "QR · scan to sign" }).click();
+    const sheet = page.getByRole("dialog", { name: "Scan to sign" });
+    await expect(sheet).toBeVisible();
+    await expect(sheet).toContainText("Scan to sign — BrewBoat 3:00 PM");
+    const code = sheet.getByRole("img", { name: /^QR code for .*\/w\/[0-9A-Z]{8}$/ });
+    await expect(code).toBeVisible();
+    const link = (await code.getAttribute("aria-label"))!.replace(/^QR code for /, "");
+
+    // Done sits on the sheet, no wider than it, and on the screen (operator: it ran off the edge).
+    const done = page.locator("summary", { hasText: "Done" });
+    const [d, panel] = [(await done.boundingBox())!, (await sheet.boundingBox())!];
+    expect(d.x).toBeGreaterThanOrEqual(panel.x);
+    expect(d.x + d.width).toBeLessThanOrEqual(panel.x + panel.width);
+    expect(d.x + d.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+
+    await done.click();
+    await expect(sheet).toBeHidden();
+
+    // Escape closes it too, once the page's script is running.
+    await expect(page.locator("details[data-qr-sheet-ready]")).toBeAttached();
+    await page.locator("summary", { hasText: "QR · scan to sign" }).click();
+    await expect(sheet).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(sheet).toBeHidden();
+
+    // The code is this departure's: its link opens the 3:00 PM trip.
+    await page.goto(new URL(link).pathname);
+    await expect(page.getByText(/3:00 PM/)).toBeVisible();
+  });
+
+  test("with nobody signed the QR is the biggest thing on the screen, and stays open when the first signer arrives", async ({ page }) => {
+    await page.clock.install();
+    await page.goto(PAGE);
+    const qr = page.locator("summary", { hasText: "Show the QR to sign" });
+    await expect(qr).toBeVisible();
+    expect((await qr.boundingBox())!.height).toBeGreaterThanOrEqual(100);
+    await expect.poll(() => isHydrated(page.getByRole("button", { name: "One more passenger" }))).toBe(true);
+
+    await qr.click();
+    await plantGuests(EVENT, [{ id: "g-nina", name: "Nina New" }]);
+    await page.clock.fastForward(21_000);
+
+    // Behind the sheet, the list has her; the sheet never closed.
+    await expect(page.getByText("Nina New")).toBeAttached();
+    await expect(page.locator("details[data-qr-sheet]")).toHaveAttribute("open", "");
+  });
+
+  test("a guest who signs while the list is open appears without a reload; the untouched count follows, a touched one stays", async ({ page }) => {
+    await page.clock.install();
+    await smiths();
+    await page.goto(PAGE);
+    await expect(page.getByLabel("Passengers")).toHaveValue("3");
+    await expect.poll(() => isHydrated(row(page, "Grace Kim"))).toBe(true);
+    await expect.poll(() => isHydrated(page.getByRole("button", { name: "One more passenger" }))).toBe(true);
+
+    await plantGuests(EVENT, [{ id: "g-ann", name: "Ann Able" }]);
+    await page.clock.fastForward(21_000);
+    await expect(toBoard(page).locator("li[data-new]")).toContainText("Ann Able");
+    await expect(toBoard(page).getByRole("button").first()).toHaveText(/^Ann Able/);
+    await expect(page.getByText("Signed").locator("..")).toContainText("4");
+    await expect(page.getByLabel("Passengers")).toHaveValue("4");
+
+    // Once the mate touches it, the number is theirs.
+    await page.getByRole("button", { name: "One more passenger" }).click();
+    await expect(page.getByLabel("Passengers")).toHaveValue("5");
+    await plantGuests(EVENT, [{ id: "g-bo", name: "Bo Bell" }]);
+    await page.clock.fastForward(21_000);
+    await expect(toBoard(page).getByRole("button", { name: /^Bo Bell/ })).toBeVisible();
+    await expect(page.getByLabel("Passengers")).toHaveValue("5");
+  });
+
+  test("a re-read while a tap is saving does not undo the tap", async ({ page }) => {
+    await page.clock.install();
+    await smiths();
+    await page.goto(PAGE);
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    await page.route(`**${PAGE}`, async (route: Route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await held;
+      return route.continue();
+    });
+
+    await clickHydrated(row(page, "Grace Kim"));
+    await page.clock.fastForward(21_000);
+    await expect(toBoard(page).getByRole("button", { name: /^Grace Kim/ })).toHaveCount(0);
+    release();
+    await expect(checkedIn(page)).toContainText("Checked in · 1");
+    await page.clock.fastForward(21_000);
+    await expect(toBoard(page).getByRole("button", { name: /^Grace Kim/ })).toHaveCount(0);
+  });
+
   test.describe("with JavaScript off", () => {
     test.use({ javaScriptEnabled: false });
 
@@ -214,6 +330,13 @@ test.describe("crew check-in", () => {
       await page.getByLabel("Passengers").fill("5");
       await page.getByRole("button", { name: "Confirm and depart" }).click();
       await expect(page.getByText(/✓ 5 aboard · counted .* by Quint/)).toBeVisible();
+    });
+
+    test("the QR sheet still opens", async ({ page }) => {
+      await smiths();
+      await page.goto(PAGE);
+      await page.locator("summary", { hasText: "QR · scan to sign" }).click();
+      await expect(page.getByRole("img", { name: /^QR code for / })).toBeVisible();
     });
   });
 });

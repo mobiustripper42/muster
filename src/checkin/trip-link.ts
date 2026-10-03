@@ -15,10 +15,10 @@
 import { randomBytes } from "node:crypto";
 import type { Buffer } from "node:buffer";
 import { stripTrailingSlashes } from "../config/base-url.js";
+import { vesselDateOf } from "../config/tenant.js";
 import type { EventId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { takeRateLimit, type RateLimitDeps, type RateLimitPolicy } from "../rate-limit/rate-limit.js";
-import { hasDeparted } from "../reservations/availability.js";
 import { BOOKING_CODE_ALPHABET } from "../reservations/booking-code.js";
 
 export const TRIP_CODE_LENGTH = 8;
@@ -122,7 +122,12 @@ export type TripLinkView =
 
 /**
  * What a code opens, at `now`. Cancelled wins over departed: a cancelled trip never sailed.
- * "Departed" is `hasDeparted`, the same rule the booking side uses, from the departure time on.
+ *
+ * **"Departed" is the day being over, on the boat's calendar — not the scheduled minute.** A boat
+ * held for weather still takes signatures at the gangway, and a QR shown at 3:01 for a late 3:00
+ * must not tell the guest the trip has sailed (operator, 2026-10-02). So the link is good until
+ * midnight boat time. Booking keeps its own minute-exact rule (`hasDeparted`); signing is not
+ * selling a seat.
  */
 export async function resolveTripLink(repo: Repository, rawCode: string, now: string): Promise<TripLinkView> {
   const code = normalizeTripCode(rawCode);
@@ -134,7 +139,7 @@ export async function resolveTripLink(repo: Repository, rawCode: string, now: st
 
   const trip = { eventId: event.id, date: event.date, time: event.time };
   if (event.status === "cancelled") return { state: "cancelled", trip };
-  if (hasDeparted(event.date, event.time, now)) return { state: "departed", trip };
+  if (vesselDateOf(new Date(now)) > event.date) return { state: "departed", trip };
   return { state: "open", trip };
 }
 

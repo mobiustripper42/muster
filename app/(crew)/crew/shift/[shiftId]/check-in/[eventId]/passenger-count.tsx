@@ -12,6 +12,11 @@ import { confirmCount } from "./actions";
  * **Why this is an island (DEC-147 rule 2).** One hand on a moving deck: [–] and [+] beside a big
  * number beat a keyboard, and the button says the number it will record. Without JS the number is
  * a plain field and the button says "Confirm and depart"; the form posts the same either way.
+ *
+ * **It follows the page until the mate touches it** (operator, 2026-10-02). The page re-reads itself
+ * (18.5b), so `start` climbs as people sign at the rail; an untouched stepper climbs with it, so the
+ * one-tap button never says "Confirm 4" when sixteen have signed. Once the mate taps –/+ or types,
+ * the number is theirs and a re-read leaves it alone.
  */
 export function PassengerCount({
   shiftId,
@@ -29,6 +34,12 @@ export function PassengerCount({
   counted: boolean;
 }) {
   const [text, setText] = useState(String(start));
+  const [touched, setTouched] = useState(false);
+  const [seenStart, setSeenStart] = useState(start);
+  if (start !== seenStart) {
+    setSeenStart(start);
+    if (!touched) setText(String(start));
+  }
   // The [–]/[+] buttons and the number in the button label need JS; until it runs, the plain field
   // and a label without a number are what a phone without JS keeps.
   const [ready, setReady] = useState(false);
@@ -36,7 +47,10 @@ export function PassengerCount({
 
   const n = Number(text);
   const valid = text.trim() !== "" && Number.isInteger(n) && n >= 0 && n <= limit;
-  const step = (d: number) => setText(String(Math.max(0, Math.min(limit, (valid ? n : start) + d))));
+  const step = (d: number) => {
+    setTouched(true);
+    setText(String(Math.max(0, Math.min(limit, (valid ? n : start) + d))));
+  };
 
   let label = "Confirm and depart";
   if (counted) label = "Update count";
@@ -72,7 +86,10 @@ export function PassengerCount({
             step={1}
             required
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setTouched(true);
+              setText(e.target.value);
+            }}
             className="min-h-[48px] w-20 rounded-card border border-line bg-bg text-center font-mono text-2xl text-ink"
           />
           {ready && (

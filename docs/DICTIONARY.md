@@ -7,19 +7,21 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-32 terms.
+34 terms.
 
 | Term | Says | Not |
 |---|---|---|
 | **3DS** | the bank's extra check at checkout, where the customer confirms the payment in their banking app or by a texted code | — |
 | **AA** | the WCAG conformance level we hold to — in practice a 4.5:1 contrast ratio for body text and 3:1 for large text and controls | — |
 | **blocked** | a slot an operator block covers | — |
+| **booking cutoff** | how long before a trip the public site stops selling it, in hours. The operator can still book it by phone. Zero means no cutoff. | `online cutoff`, `sales cutoff` |
 | **booking invoice** | the frozen record of what a customer was quoted — every charged component and the rate behind it, kept on the booking and never recomputed | — |
 | **bps** | hundredths of a percent, so 800 bps is 8 percent — used for rates so nothing has to store a fraction | `basis points` |
 | **busy** | a slot nobody bought, on a boat that is out on another trip overlapping it. The code calls it unavailable. | `unavailable` |
 | **CA** | a certificate authority root — the public half that proves a server is who it claims. Crunchy's is self-signed per team and committed at src/config/db-ssl.ts | — |
 | **CAS** | write a row only if it still holds the value you read, so two people racing for the same seat cannot both win | `compare-and-swap` |
 | **COI** | the Coast Guard inspection certificate that sets a boat's legal passenger limit and the crew it must carry | — |
+| **cutoff** | a slot inside the booking cutoff — not for sale online, but the operator can still book it by phone | — |
 | **held** | a slot somebody is at the checkout for — a live pending reservation on it | — |
 | **hold minutes** | the whole time a boat is committed to one trip — on the water, then back at the dock ready for the next | `hold time`, `lock time`, `occupied minutes` |
 | **idempotency key** | a label sent with a charge so that repeating the same request does the same thing once, instead of charging twice | — |

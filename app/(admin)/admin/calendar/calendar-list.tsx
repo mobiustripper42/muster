@@ -69,7 +69,7 @@ const guests = (n: number) => `${n} ${n === 1 ? "guest" : "guests"}`;
 export function listRows(data: CalendarData, selectedReservationId?: string): ListRow[] {
   const groups = new Map<string, typeof data.slots>();
   for (const s of data.slots) {
-    if (!slotMatchesFilter(data.filter, s)) continue;
+    if (!slotMatchesFilter(data, s)) continue;
     const k = slotKey(String(s.vesselId), s.date, s.time);
     (groups.get(k) ?? groups.set(k, []).get(k)!).push(s);
   }

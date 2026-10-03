@@ -7,7 +7,10 @@ not in this repo).
 
 > **v0.7 changes — 2026-10-02, operator, speccing 18.5.** **C1:** **Check in** sits in each
 > departure's row on the shift card, and the passenger count starts at the number signed. **C2:** no
-> brightness control until a native app. **C4:** nothing turns read-only after the trip.
+> brightness control until a native app. **C4:** nothing turns read-only after the trip. **A5:** a
+> trip link stays good until the trip's day ends, boat time, not the scheduled minute — a boat held
+> for weather still takes signatures (18.5b). **C1:** the untouched passenger stepper follows the
+> signed count as it climbs (18.5b).
 >
 > **v0.6 changes — 2026-10-01, operator, after using 18.4.** **A1, A3: one form.** The *who are
 > you signing for?* and *how many kids?* steps are gone. The page opens on the guest's details, and
@@ -186,7 +189,7 @@ passing one phone down the line at the dock.
 | State | What the guest sees |
 |---|---|
 | Someone already signed on this phone or email | Nothing different — **a fresh form, every time.** Each signing is its own record; a shared phone or email is normal (couples, families). |
-| Event departed | *"This trip has already sailed."* + operator phone. No form. |
+| Event departed — **the trip's day is over, boat time** (operator, 2026-10-02: not the scheduled minute; a boat held for weather still takes signatures at the gangway) | *"This trip has already sailed."* + operator phone. No form. |
 | Event cancelled | Same shape, cancellation wording. |
 | Bad or expired link | *"We can't find that trip."* + operator phone. Never a stack trace, never a login. |
 | No waiver posted yet | *"Waivers aren't open for this trip yet."* No form (18.4). |
@@ -276,7 +279,10 @@ is confirmed, then at that count (operator, 2026-10-02).
 at any time, for confirmed crew on that shift.
 
 - **Every signed name is shown. Never a "…9 more."** The list scrolls inside its own region.
-- **`SIGNED` is read-only and climbs on its own** as people scan at the rail (the screen polls).
+- **`SIGNED` is read-only and climbs on its own** as people scan at the rail: the page re-reads
+  itself while it is on screen, every 20 seconds by default, set from a dock test (DEC-192). An
+  untouched passenger stepper climbs with it; once the mate touches it, it is theirs (operator,
+  2026-10-02).
 - **Alphabetical by the name as typed.** A just-signed row lands in place with a brief highlight.
 - **Minors are their own row**: `Kyle Smith (12) · w/ Robert`, tapped like anyone else.
 - **Rows are ≥50px** with the whole row as the target.
@@ -292,9 +298,12 @@ at any time, for confirmed crew on that shift.
               [ Done ]
 ```
 
-A large black-on-white code. **No brightness control**: a web page cannot set the screen's
-brightness, so that waits for a native app (operator, 2026-10-02). The guest scans with their own phone and signs
-there. Behind the sheet, `SIGNED` climbs and their name appears in the list, unticked.
+A large black-on-white code, drawn on the server (DEC-191), so it is on screen even if the signal
+drops. **No brightness control**: a web page cannot set the screen's brightness, so that waits for
+a native app (operator, 2026-10-02). Open, the `QR` button moves to the foot of the sheet and reads
+`Done`; Escape and a tap outside close it too, and it opens and closes with no JS. The guest scans
+with their own phone and signs there. Behind the sheet, `SIGNED` climbs and their name appears in
+the list, unticked, on the next re-read.
 
 ### C3 — States
 

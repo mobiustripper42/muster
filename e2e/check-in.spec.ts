@@ -15,6 +15,7 @@ import {
   expect,
   clickHydrated,
   deleteGuestRow,
+  isHydrated,
   plantGuests,
   resetAndSeed,
   signInAsCrew,
@@ -202,6 +203,97 @@ test.describe("crew check-in", () => {
     await expect(page.getByText("That trip isn’t on your list.")).toBeVisible();
   });
 
+
+  // ── 18.5b: the QR sheet, and new signers without a reload ──────────────────────────────────
+
+  test("QR opens a sheet holding this trip's signing link; Done and Escape close it", async ({ page }) => {
+    await smiths();
+    await page.goto(PAGE);
+    await page.locator("summary", { hasText: "QR · scan to sign" }).click();
+    const sheet = page.getByRole("dialog", { name: "Scan to sign" });
+    await expect(sheet).toBeVisible();
+    await expect(sheet).toContainText("Scan to sign — BrewBoat 3:00 PM");
+    const code = sheet.getByRole("img", { name: /^QR code for .*\/w\/[0-9A-Z]{8}$/ });
+    await expect(code).toBeVisible();
+    const link = (await code.getAttribute("aria-label"))!.replace(/^QR code for /, "");
+
+    await page.locator("summary", { hasText: "Done" }).click();
+    await expect(sheet).toBeHidden();
+
+    // Escape closes it too, once the page's script is running.
+    await expect(page.locator("details[data-qr-sheet-ready]")).toBeAttached();
+    await page.locator("summary", { hasText: "QR · scan to sign" }).click();
+    await expect(sheet).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(sheet).toBeHidden();
+
+    // The code is this departure's: its link opens the 3:00 PM trip.
+    await page.goto(new URL(link).pathname);
+    await expect(page.getByText(/3:00 PM/)).toBeVisible();
+  });
+
+  test("with nobody signed the QR is the biggest thing on the screen, and stays open when the first signer arrives", async ({ page }) => {
+    await page.clock.install();
+    await page.goto(PAGE);
+    const qr = page.locator("summary", { hasText: "Show the QR to sign" });
+    await expect(qr).toBeVisible();
+    expect((await qr.boundingBox())!.height).toBeGreaterThanOrEqual(100);
+    await expect.poll(() => isHydrated(page.getByRole("button", { name: "One more passenger" }))).toBe(true);
+
+    await qr.click();
+    await plantGuests(EVENT, [{ id: "g-nina", name: "Nina New" }]);
+    await page.clock.fastForward(21_000);
+
+    // Behind the sheet, the list has her; the sheet never closed.
+    await expect(page.getByText("Nina New")).toBeAttached();
+    await expect(page.locator("details[data-qr-sheet]")).toHaveAttribute("open", "");
+  });
+
+  test("a guest who signs while the list is open appears without a reload; the untouched count follows, a touched one stays", async ({ page }) => {
+    await page.clock.install();
+    await smiths();
+    await page.goto(PAGE);
+    await expect(page.getByLabel("Passengers")).toHaveValue("3");
+    await expect.poll(() => isHydrated(row(page, "Grace Kim"))).toBe(true);
+    await expect.poll(() => isHydrated(page.getByRole("button", { name: "One more passenger" }))).toBe(true);
+
+    await plantGuests(EVENT, [{ id: "g-ann", name: "Ann Able" }]);
+    await page.clock.fastForward(21_000);
+    await expect(toBoard(page).locator("li[data-new]")).toContainText("Ann Able");
+    await expect(toBoard(page).getByRole("button").first()).toHaveText(/^Ann Able/);
+    await expect(page.getByText("Signed").locator("..")).toContainText("4");
+    await expect(page.getByLabel("Passengers")).toHaveValue("4");
+
+    // Once the mate touches it, the number is theirs.
+    await page.getByRole("button", { name: "One more passenger" }).click();
+    await expect(page.getByLabel("Passengers")).toHaveValue("5");
+    await plantGuests(EVENT, [{ id: "g-bo", name: "Bo Bell" }]);
+    await page.clock.fastForward(21_000);
+    await expect(toBoard(page).getByRole("button", { name: /^Bo Bell/ })).toBeVisible();
+    await expect(page.getByLabel("Passengers")).toHaveValue("5");
+  });
+
+  test("a re-read while a tap is saving does not undo the tap", async ({ page }) => {
+    await page.clock.install();
+    await smiths();
+    await page.goto(PAGE);
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    await page.route(`**${PAGE}`, async (route: Route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await held;
+      return route.continue();
+    });
+
+    await clickHydrated(row(page, "Grace Kim"));
+    await page.clock.fastForward(21_000);
+    await expect(toBoard(page).getByRole("button", { name: /^Grace Kim/ })).toHaveCount(0);
+    release();
+    await expect(checkedIn(page)).toContainText("Checked in · 1");
+    await page.clock.fastForward(21_000);
+    await expect(toBoard(page).getByRole("button", { name: /^Grace Kim/ })).toHaveCount(0);
+  });
+
   test.describe("with JavaScript off", () => {
     test.use({ javaScriptEnabled: false });
 
@@ -214,6 +306,13 @@ test.describe("crew check-in", () => {
       await page.getByLabel("Passengers").fill("5");
       await page.getByRole("button", { name: "Confirm and depart" }).click();
       await expect(page.getByText(/✓ 5 aboard · counted .* by Quint/)).toBeVisible();
+    });
+
+    test("the QR sheet still opens", async ({ page }) => {
+      await smiths();
+      await page.goto(PAGE);
+      await page.locator("summary", { hasText: "QR · scan to sign" }).click();
+      await expect(page.getByRole("img", { name: /^QR code for / })).toBeVisible();
     });
   });
 });

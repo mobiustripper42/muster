@@ -165,6 +165,24 @@
   says: a slot an operator block covers
   not: []
 
+- term: cutoff
+  says: a slot inside the booking cutoff — not for sale online, but the operator can still book it by phone
+  not: []
+
+# ── The booking cutoff (DEC-193) ────────────────────────────────────────────────
+#
+# Three things sit on one axis — how far ahead of a trip — and are easy to run together. The
+# booking cutoff is the near end, for the public site only. The far end is how far ahead a trip
+# can be sold at all, and the staffing lead time is when crew get committed. The operator picks the
+# cutoff with crew notice in mind, which is exactly why it gets confused with the staffing one; it
+# is not tied to it. The "lead-time cutoff" §1.3 rejected refused every short-notice booking; when
+# it was rejected the public site was the only way to book. None of those can go in `not`: each is
+# a real, separate phrase the corpus uses correctly.
+
+- term: booking cutoff
+  says: how long before a trip the public site stops selling it, in hours. The operator can still book it by phone. Zero means no cutoff.
+  not: [online cutoff, sales cutoff]
+
 # ── The frozen quote ────────────────────────────────────────────────────────────
 #
 # Registered ahead of the issue #812 build, same reason as the payments block above: a term

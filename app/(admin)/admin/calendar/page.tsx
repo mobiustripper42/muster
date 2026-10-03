@@ -16,6 +16,7 @@ import {
   type Search,
 } from "./calendar-view";
 import { BookPane, type BookSearch } from "./book-pane";
+import { CalendarList } from "./calendar-list";
 
 /**
  * /admin/calendar (task 12.11, #464) — the Day·Grid reservation calendar: one day as a grid of
@@ -51,13 +52,19 @@ export default async function AdminCalendar({
   }
 
   // `fill` with a pane open: the grid's box scrolls under pinned controls (issue #1128).
+  // The List (16.1b, issue #1079) draws the same day as rows; it has no legend because its rows say
+  // their state in words.
   const calendar = (fill: boolean) => (
     <>
       <CalendarError err={data.err} />
       <CalendarControls data={data} />
-      <CalendarLegend data={data} />
+      {data.view === "grid" && <CalendarLegend data={data} />}
       {data.slots.length === 0 && <CalendarEmptyNotice day={data.day} />}
-      <CalendarGrid data={data} fill={fill} />
+      {data.view === "list" ? (
+        <CalendarList data={data} narrow={fill} />
+      ) : (
+        <CalendarGrid data={data} fill={fill} />
+      )}
     </>
   );
 

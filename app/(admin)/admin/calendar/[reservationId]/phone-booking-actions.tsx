@@ -26,6 +26,8 @@ export interface UnpaidActionState {
   /** The grid's day and filter, carried through the cancel so Back returns to the same view. */
   date: string;
   filter: string;
+  /** `list` when the calendar behind the pane is the List (issue #1079). */
+  view: string;
   /** The render right after the operator booked this by phone. */
   justBooked: boolean;
   confirmingCancel: boolean;
@@ -93,6 +95,7 @@ function PaymentLinkControls({ reservationId, state }: { reservationId: string; 
         <input type="hidden" name="reservationId" value={reservationId} />
         <input type="hidden" name="date" value={state.date} />
         <input type="hidden" name="filter" value={state.filter} />
+        <input type="hidden" name="view" value={state.view} />
         <SubmitButton className="btn-primary min-h-[44px] w-full">Send payment link</SubmitButton>
       </form>
       {state.payLinkUrl ? (
@@ -121,6 +124,7 @@ function CancelControl({ reservationId, state }: { reservationId: string; state:
       <input type="hidden" name="reservationId" value={reservationId} />
       <input type="hidden" name="date" value={state.date} />
       <input type="hidden" name="filter" value={state.filter} />
+      <input type="hidden" name="view" value={state.view} />
       <p className="text-sm font-medium text-ink">Cancel this booking and free the boat?</p>
       <p className="text-xs text-muted">Nothing was paid, so nothing is refunded.</p>
       <fieldset>

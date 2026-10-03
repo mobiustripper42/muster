@@ -174,6 +174,33 @@ export async function plantVesselBlock(b: {
 }
 
 /**
+ * Put a crew shift on a booking's trip (issue #1079): `required` required seats, none filled. The
+ * `reservation` seed books trips but forms no shifts, so this is the only way to reach the calendar
+ * List's Crew column with real shift and seat rows behind it.
+ */
+export async function plantShiftForBooking(b: { reservationId: string; required: number }): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const r = await repo.getReservation(b.reservationId as never);
+    const event = r?.eventId ? await repo.getEvent(r.eventId) : null;
+    if (!event) throw new Error(`no trip behind ${b.reservationId}`);
+    const shiftId = `shift-e2e-${b.reservationId}` as never;
+    await repo.saveShift({ id: shiftId, vesselId: event.vesselId, date: event.date, state: "Filling", eventIds: [event.id] });
+    for (let i = 0; i < b.required; i++) {
+      await repo.saveSeat({
+        id: `seat-e2e-${b.reservationId}-${i}` as never,
+        shiftId,
+        role: "role-captain" as never,
+        kind: "required",
+        state: "Open",
+      });
+    }
+  } finally {
+    await repo.close();
+  }
+}
+
+/**
  * Use up a rate limit for one address (Phase 18.3a) — the same `takeRateLimit` the app calls, so
  * the window arithmetic cannot drift from production's. Pair with a request carrying that address
  * in `x-forwarded-for` (`page.setExtraHTTPHeaders`): local runs have no Vercel in front, so without

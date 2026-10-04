@@ -91,9 +91,11 @@ test.describe("the booking cutoff (DEC-193)", () => {
     await expect(slot(page, EARLY)).toContainText("Call to book");
     await expect(slot(page, MIDDLE)).toContainText("Call to book");
     await expect(slot(page, LATE)).toContainText("3 boats open");
-    // No notice and no legend key: the rows say which is which.
+    await expect(slot(page, LATE)).not.toContainText("Call to book");
+    // No notice: the rows say which is which. Asserted per row, not as a page-wide count of
+    // "Call to book" — whenever TODAY still has trips ahead, today is inside the cutoff too, its
+    // cell is amber, and the legend rightly adds the key (CI, PR #1167: a count of 2 read 3).
     await expect(page.getByText("Too late to book")).toHaveCount(0);
-    await expect(page.getByText("Call to book", { exact: true })).toHaveCount(2);
     // The late trip is auto-selected and Continue carries it.
     const href = await page.getByTestId("continue").getAttribute("href");
     expect(href).toContain(`time=${encodeURIComponent(LATE)}`);

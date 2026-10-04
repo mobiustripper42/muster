@@ -74,7 +74,14 @@ import type { PaymentConfig } from "../reservations/payment-config.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { ThreadId } from "../domain/ids.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
-import type { CheckInConfig, DepartureCount, Guest, TripLink, WaiverTemplate } from "../checkin/entities.js";
+import type {
+  CheckInConfig,
+  DepartureCount,
+  Guest,
+  TripLink,
+  WaiverReminder,
+  WaiverTemplate,
+} from "../checkin/entities.js";
 import type { RateLimitRefusal } from "../rate-limit/entities.js";
 
 /**
@@ -1028,6 +1035,19 @@ export interface Repository {
    *  Stored on the `events` row but written only here: `saveEvent` never touches it. */
   setDepartureCount(eventId: EventId, count: DepartureCount): Promise<void>;
   getDepartureCount(eventId: EventId): Promise<DepartureCount | null>;
+
+  /**
+   * Claim one reminder window (18.7) before sending it — `claimConfirmationSend`'s shape, for its
+   * reason: two ticks that overlap must not both send. True only for the caller whose insert
+   * landed; a window already claimed (same booking, trip date and day count) returns false and
+   * writes nothing.
+   */
+  claimWaiverReminder(reminder: WaiverReminder): Promise<boolean>;
+  /** Give back a claimed window whose send told nobody, so a later tick can try again. Without
+   *  it a failed send reads as a reminder sent. */
+  releaseWaiverReminder(reservationId: ReservationId, tripDate: string, daysBefore: number): Promise<void>;
+  /** One booking's reminders sent, oldest first — the trail's `waiver_reminder_sent` reads these. */
+  listWaiverRemindersForReservation(reservationId: ReservationId): Promise<WaiverReminder[]>;
 
   /** The module's settings, backed by `checkin.*` keys in `app_settings`; an absent key falls
    *  to `CHECK_IN_CONFIG_DEFAULTS` per field (the `getPaymentConfig` pattern). */

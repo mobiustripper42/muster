@@ -2,7 +2,7 @@
  * `db:seed:trail` — put one row of every event type in front of the booking audit (issue #1049),
  * so `/admin/booking-audit` and a booking's History panel can actually be looked at.
  *
- * **Why this exists: the surface cannot otherwise be reviewed.** Most of the 33 types are error
+ * **Why this exists: the surface cannot otherwise be reviewed.** Most of the types are error
  * paths nobody can trigger on a dev box on demand — a dispute arriving in a state the pinned
  * Stripe SDK cannot name, a refund failing partway through its second charge, the residual-race
  * loser, a charge that matches no booking at all. Without a seed the page gets eyeballed against
@@ -112,6 +112,8 @@ try {
   for (const p of seeded.payments) await repo.savePayment(p);
   await repo.saveGratuity(seeded.gratuity);
   await repo.saveImportRun(seeded.importRun.run, seeded.importRun.items);
+  // A claim, so a re-run finds the window taken and leaves the first row as it is.
+  await repo.claimWaiverReminder(seeded.reminder);
   for (const e of seeded.events) await repo.appendTrailEvent(e);
 
   // ── Verify with the REAL readers, not by counting what we just wrote ───────

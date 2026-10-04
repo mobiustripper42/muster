@@ -138,6 +138,14 @@ export const EMITTED_TRAIL_TYPES = [
    *  told is silent by construction. */
   "sold_out_notice_sent",
   "sold_out_notice_failed",
+  /**
+   * A waiver reminder (18.7, issue #1121) that did not reach the booker on every channel. Emitted,
+   * because a reminder that told nobody gives its window back and leaves no row in
+   * `waiver_reminders` to read — without this, a booker never reminded and a booker nobody tried
+   * to remind would look the same. `metadata.reason` is the per-channel outcome, never the
+   * provider's message (it can echo the phone number). One row per window, not per tick.
+   */
+  "waiver_reminder_failed",
 
   // ── The slot (issue #1052) ──────────────────────────────────────────────────
   /** The operator takes a departure off the market and puts it back. The release
@@ -193,6 +201,7 @@ export const DERIVED_TRAIL_TYPES = [
    */
   "dispute_opened",
   "gratuity_added", //       gratuity.created_at
+  "waiver_reminder_sent", // waiver_reminders.sent_at (18.7) — a row there means the booker was told
 ] as const;
 export type DerivedTrailType = (typeof DERIVED_TRAIL_TYPES)[number];
 

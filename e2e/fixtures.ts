@@ -255,6 +255,9 @@ export async function plantBookedReservation(r: {
   eventId: string;
   customerName: string;
   partySize: number;
+  /** The booker's contacts — what a reminder (18.7) is sent to. */
+  phone?: string;
+  email?: string;
 }): Promise<void> {
   const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
   try {
@@ -265,7 +268,22 @@ export async function plantBookedReservation(r: {
       partySize: r.partySize,
       status: "booked",
       source: "muster",
+      ...(r.phone ? { phone: r.phone } : {}),
+      ...(r.email ? { email: r.email } : {}),
     });
+  } finally {
+    await repo.close();
+  }
+}
+
+/** One booking's trail rows as the database holds them (18.7) — what a cron tick left behind. */
+export async function readTrailFor(reservationId: string): Promise<{ type: string; reason?: string }[]> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    return (await repo.listTrailEventsFor(reservationId as never, [])).map((e) => ({
+      type: e.type,
+      ...(e.metadata.reason !== undefined ? { reason: e.metadata.reason } : {}),
+    }));
   } finally {
     await repo.close();
   }

@@ -309,6 +309,25 @@ test.describe("crew check-in", () => {
     await expect(page.getByText(/3:00 PM/)).toBeVisible();
   });
 
+  test("Copy link on the QR sheet puts the same signing link on the clipboard, for a guest who can't scan (18.7)", async ({ page }) => {
+    await smiths();
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto(PAGE);
+    await page.locator("summary", { hasText: "QR · scan to sign" }).click();
+    const sheet = page.getByRole("dialog", { name: "Scan to sign" });
+    const code = sheet.getByRole("img", { name: /^QR code for / });
+    const link = (await code.getAttribute("aria-label"))!.replace(/^QR code for /, "");
+
+    await clickHydrated(sheet.getByRole("button", { name: "Copy link" }));
+    await expect(sheet.getByRole("button", { name: "Copied ✓" })).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
+    // The link is on the sheet as text too, for reading out, and it fits the sheet at 375px.
+    const shown = sheet.getByTestId("qr-sheet-link");
+    await expect(shown).toHaveText(link);
+    const [s, panel] = [(await shown.boundingBox())!, (await sheet.boundingBox())!];
+    expect(s.x + s.width).toBeLessThanOrEqual(panel.x + panel.width);
+  });
+
   test("with nobody signed the QR is the biggest thing on the screen, and stays open when the first signer arrives", async ({ page }) => {
     await page.clock.install();
     await page.goto(PAGE);

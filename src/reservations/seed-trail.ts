@@ -4,7 +4,7 @@
  *
  * ## What a green run of `db:seed:trail` proves, and what it does not
  *
- * **It proves the SURFACE renders.** Every one of the 33 types gets a row, so
+ * **It proves the SURFACE renders.** Every type gets a row, so
  * `/admin/booking-audit` and a booking's History panel can be looked at with a realistic amount
  * of material in them — labels that wrap, a 40-character id, a borrowed timestamp, the two rows
  * that belong to no booking at all. That is worth having, because most of these types are error
@@ -23,13 +23,15 @@
  *
  * ## Why the derived half needs more than trail rows
  *
- * Seven of the 33 are not stored; they are worked out from `reservations`, `payments`,
- * `gratuity` and `import_run_items` at read time (`reservation-trail-view.ts`). So this returns
- * those supporting facts too — a paid payment, a disputed one, a tip, an import run — and the
+ * `DERIVED_TRAIL_TYPES` are not stored; they are worked out from `reservations`, `payments`,
+ * `gratuity`, `import_run_items` and `waiver_reminders` at read time (`reservation-trail-view.ts`).
+ * So this returns those supporting facts too — a paid payment, a disputed one, a tip, an import
+ * run, a reminder sent — and the
  * script writes them. Seeding a `payment_succeeded` trail row instead would produce a page that
  * looks right and exercises none of the union.
  */
 
+import type { WaiverReminder } from "../checkin/entities.js";
 import type { Gratuity, Payment, Reservation } from "../domain/entities.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ReservationId, TrailEventId } from "../domain/ids.js";
@@ -48,6 +50,9 @@ export interface SeededTrail {
   payments: Payment[];
   gratuity: Gratuity;
   importRun: { run: ImportRun; items: ImportRunItem[] };
+  /** A waiver reminder sent (18.7), which `waiver_reminder_sent` reads. Its trip date is the demo
+   *  world's first slot, which is only a label here — nothing joins on it. */
+  reminder: WaiverReminder;
   /** Fields the seed sets on the booking itself so `checkout_started` and `confirmation_sent`
    *  have something to project from. */
   reservationPatch: Pick<Reservation, "reservedAt" | "confirmationSentAt" | "checkoutAttempts">;
@@ -57,7 +62,7 @@ export interface SeededTrail {
    * `checkout_lapsed` is the one type that cannot appear on the main row: the deriver only emits
    * it for a `pending` row past its payment window, and a booked row did not lapse whatever its
    * dates say. The demo world builds only `booked` reservations, so without this the seed
-   * covers 32 of 33 and the missing one is the abandoned-checkout story `/admin/abandonment`
+   * covers all but one and the missing one is the abandoned-checkout story `/admin/abandonment`
    * exists for.
    *
    * **The script's verify step is what found this**, by running the real union read over what it
@@ -148,6 +153,9 @@ export function buildSeededTrail(input: {
       metadata: { reason: "email" } },
     { type: "sold_out_notice_failed", minutesAgo: 2 * DAY - 4, actorKind: "engine",
       metadata: { reason: "sms — the carrier rejected the number" } },
+    // A waiver reminder whose text did not go, beside the one the `reminder` record below shows sent.
+    { type: "waiver_reminder_failed", minutesAgo: 2 * DAY - 240, actorKind: "engine",
+      metadata: { reason: "email=sent sms=failed" } },
 
     // ── Yesterday: the chargeback, all four states ────────────────────────
     { type: "dispute_inquiry", minutesAgo: DAY + 180, actorKind: "stripe",
@@ -266,6 +274,12 @@ export function buildSeededTrail(input: {
           label: customerName,
         },
       ],
+    },
+    reminder: {
+      reservationId,
+      tripDate: slot.date,
+      daysBefore: 3,
+      sentAt: at(2 * DAY - 240),
     },
     reservationPatch: {
       reservedAt: at(6 * DAY - 60),

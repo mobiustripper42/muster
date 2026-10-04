@@ -8,6 +8,7 @@ import { getRepo } from "../../../lib/repo";
 import { forwardFormNotices, relayAsks } from "../../../lib/channel";
 import { alertMoneyProblem, forwardBoardAlerts, forwardFormationFailures } from "../../../lib/alert";
 import { appBaseUrl } from "../../../lib/base-url";
+import { runWaiverReminders } from "../../../lib/waiver-reminders";
 
 /**
  * The engine tick, on a schedule — the DEC-023 "explicit clock op" trigger, fired
@@ -164,6 +165,22 @@ export async function GET(req: Request) {
     }
   }
 
+  // **Waiver reminders (18.7, issue #1121)** — the booker of each party still signing, on the
+  // admin's reminder days, inside the civil send window. `sendWaiverReminders` holds the rules.
+  //
+  // ABOVE the pause gate: DEC-054's pause stops the engine asking crew to work, and a reminder is a
+  // customer's message, not an ask. Reminders have their own off switch — an empty reminder-days
+  // list in /admin/waivers. Best-effort like every leg here: it must never cost the tick its asks.
+  let remindersSent = 0;
+  let remindersFailed = 0;
+  try {
+    const reminders = await runWaiverReminders();
+    remindersSent = reminders.sent;
+    remindersFailed = reminders.failed;
+  } catch (e) {
+    console.error("tick: waiver reminders could not run — no booker was reminded this tick", e);
+  }
+
   if (await repo.isEnginePaused()) {
     return NextResponse.json({
       ok: true,
@@ -171,6 +188,8 @@ export async function GET(req: Request) {
       shiftsFormed,
       webhookChecked,
       webhookHealthy,
+      remindersSent,
+      remindersFailed,
       at: now.toISOString(),
     });
   }
@@ -248,6 +267,8 @@ export async function GET(req: Request) {
     // already texted the admins.
     webhookChecked,
     webhookHealthy,
+    remindersSent,
+    remindersFailed,
     shiftsFormed,
     formFailures,
     formFailuresAlerted,

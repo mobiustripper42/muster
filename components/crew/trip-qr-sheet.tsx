@@ -1,10 +1,12 @@
+import { CopyButton } from "../ui/copy-button";
 import { CrewMenuModal } from "./crew-menu-modal";
 import { TripQr } from "./trip-qr";
 
 /**
- * The check-in QR sheet (Phase 18.5b; surfaces §C2, §C3): **QR** opens a half-sheet with nothing
- * on it but the departure's signing code and "Scan to sign — BrewBoat 3:00 PM". The guest scans with
- * their own phone; behind the sheet, the list picks up their name on its next re-read.
+ * The check-in QR sheet (Phase 18.5b; surfaces §C2, §C3): **QR** opens a half-sheet with the
+ * departure's signing code and "Scan to sign — BrewBoat 3:00 PM", and under it **Copy link** (18.7)
+ * with the link as text. The guest scans with their own phone; behind the sheet, the list picks up
+ * their name on its next re-read.
  *
  * **A `<details>`, so it opens and closes with no JS** — the crew drawer's pattern (`crew-menu.tsx`).
  * Open, the summary moves to the foot of the screen and reads **Done**, so the way out is always on
@@ -55,6 +57,16 @@ export function TripQrSheet({
           <p className="py-10 text-sm text-muted">The code didn’t load. Close this and open check-in again.</p>
         )}
         <p className="text-lg font-semibold text-ink">Scan to sign — {label}</p>
+        {url && (
+          // For a guest whose phone won't scan, or a booker who texts the mate for the link (18.7):
+          // the same link as the code, to paste or read out.
+          <div className="flex w-full flex-col items-center gap-1">
+            <CopyButton value={url} label="Copy link" className="btn-secondary min-h-[44px] w-full max-w-[320px]" />
+            <p data-testid="qr-sheet-link" className="max-w-full select-all break-all text-xs text-muted">
+              {url}
+            </p>
+          </div>
+        )}
       </div>
       <CrewMenuModal name="qr-sheet" />
     </details>

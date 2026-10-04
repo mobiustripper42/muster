@@ -104,6 +104,8 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
     kind: "fk",
     refs: ["event_id", "reservation_id", "guardian_guest_id", "waiver_template_id", "checked_in_by"],
   },
+  // Reminders (Phase 18.7): the send record's one reference is an inline foreign key.
+  waiver_reminders: { kind: "fk", refs: ["reservation_id"] },
   recovery_throttle: {
     kind: "exempt",
     reason:

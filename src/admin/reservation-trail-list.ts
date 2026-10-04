@@ -102,6 +102,8 @@ export const TRAIL_TYPE_LABEL: Record<TrailEventType, string> = {
   payment_link_sent: "Payment link sent",
   sold_out_notice_sent: "Sold-out notice sent",
   sold_out_notice_failed: "Sold-out notice failed",
+  waiver_reminder_sent: "Waiver reminder sent",
+  waiver_reminder_failed: "Waiver reminder not delivered",
 
   // ── The slot, and the rest ───────────────────────────────────────────────
   slot_held: "Slot held",

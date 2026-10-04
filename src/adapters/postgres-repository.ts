@@ -104,7 +104,14 @@ import { XOLA_TRIP_MINUTES, minutesOfDay } from "../reservations/hull-busy.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { FailureWindow, Repository, ShiftChangeRow } from "../ports/repository.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
-import type { CheckInConfig, DepartureCount, Guest, TripLink, WaiverTemplate } from "../checkin/entities.js";
+import type {
+  CheckInConfig,
+  DepartureCount,
+  Guest,
+  TripLink,
+  WaiverReminder,
+  WaiverTemplate,
+} from "../checkin/entities.js";
 import { normalizeCheckInConfig } from "../checkin/entities.js";
 import type { RateLimitRefusal } from "../rate-limit/entities.js";
 
@@ -2994,6 +3001,38 @@ export class PostgresRepository implements Repository {
       countedAt: r.counted_at,
       countedBy: asId<"CrewMemberId">(r.counted_by),
     };
+  }
+
+  // ── Reminder send records (Phase 18.7, migration 20261003185242) ───────────
+  async claimWaiverReminder(reminder: WaiverReminder): Promise<boolean> {
+    // The claim is the primary key: of two ticks inserting the same window, one gets the row and
+    // `returning` tells it so; the other gets nothing and must not send.
+    const { rowCount } = await this.#pool.query(
+      `insert into waiver_reminders (reservation_id, trip_date, days_before, sent_at)
+       values ($1,$2,$3,$4)
+       on conflict do nothing
+       returning reservation_id`,
+      [reminder.reservationId, reminder.tripDate, reminder.daysBefore, reminder.sentAt],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+  async releaseWaiverReminder(reservationId: ReservationId, tripDate: string, daysBefore: number): Promise<void> {
+    await this.#pool.query(
+      "delete from waiver_reminders where reservation_id=$1 and trip_date=$2 and days_before=$3",
+      [reservationId, tripDate, daysBefore],
+    );
+  }
+  async listWaiverRemindersForReservation(reservationId: ReservationId): Promise<WaiverReminder[]> {
+    const { rows } = await this.#pool.query(
+      "select * from waiver_reminders where reservation_id=$1 order by sent_at",
+      [reservationId],
+    );
+    return rows.map((r) => ({
+      reservationId: asId<"ReservationId">(r.reservation_id),
+      tripDate: r.trip_date,
+      daysBefore: r.days_before,
+      sentAt: r.sent_at,
+    }));
   }
 
   async getCheckInConfig(): Promise<CheckInConfig> {

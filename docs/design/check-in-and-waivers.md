@@ -188,6 +188,24 @@ a gangway has. Anything unresolved at the dock is then a gap of one or two, not 
 **Reminders stop once everyone has signed.** A nudge that keeps arriving after the party is done is
 how the booker learns to ignore Muster's messages, including the one that matters.
 
+**Built in 18.7** (`src/checkin/reminders.ts`, run from the cron tick):
+
+- **A reminder day is the boat's calendar day N days before the trip**, for each N in the admin's
+  reminder days. A day the tick never reached is not made up later.
+- **Only inside the civil send window** (`withinCivilWindow`, `src/config/tenant.ts`) — the hours
+  the staffing engine already keeps for its own asks — so a reminder goes out when the window opens
+  and a retry never lands at night. Not gated by the engine pause: that stops asks to crew.
+- **Never twice for one window** (booking, trip date, day count). `waiver_reminders` is claimed
+  before the send and given back when nobody was told, so a later tick that day tries again.
+- **Everyone has signed** is the party page's count: a guarded minor is covered, someone who signed
+  twice counts once.
+- **A text every time there is a phone, an email when there is an address.** The message carries
+  the count and the booking's party page (`/b/<code>/party`) — it asks the booker to look, never
+  to forward: that link opens the booking. The group's link is on the page, behind **Share the link**.
+- **Nothing while no waiver is in effect.** Posting the first waiver turns reminders on; an empty
+  reminder-days list turns them off.
+- The booking's history shows each reminder sent, and a reminder that missed a channel.
+
 For public-ticketed operators the booker role is thinner (one or two people per booking), but the
 same page works — it is per reservation either way.
 

@@ -242,15 +242,17 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
   let events: Event[];
   let reservations: Reservation[];
   let locations: Location[];
+  let bookingCutoffHours: number;
   try {
     const repo = getRepo();
-    [offerings, vessels, blocks, events, reservations, locations] = await Promise.all([
+    [offerings, vessels, blocks, events, reservations, locations, bookingCutoffHours] = await Promise.all([
       repo.listOfferings(),
       repo.listVessels(),
       repo.listBlocks(),
       repo.listEvents(),
       repo.listAllReservations(),
       repo.listLocations(),
+      repo.getBookingCutoffHours(),
     ]);
   } catch (e) {
     // Returning `null` hands each route a bare "couldn't load" with no cause, and
@@ -311,6 +313,9 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
       // One instant for the whole render — it decides both which pending rows are live and which
       // departures have gone, so the two cannot disagree about what time it is (issue #713).
       asOf: new Date().toISOString(),
+      // DEC-193: a slot inside the cutoff stays `available` — counted open, bookable here — and
+      // carries `phoneOnly`, which the open card names so the operator knows the website won't.
+      bookingCutoffHours,
     }).filter((s) => drawsOnCalendar(s, events)),
   );
 
@@ -1276,7 +1281,7 @@ export function CalendarGrid({
                       // name of its own a screen reader announces the state and hides the action.
                       aria-label={`Book or block ${shortTime(s.time)}, ${
                         data.vesselById.get(String(s.vesselId))?.name ?? String(s.vesselId)
-                      }`}
+                      }${s.phoneOnly ? ", phone only" : ""}`}
                       data-testid="cal-block"
                       data-vessel={String(s.vesselId)}
                       data-status="available"
@@ -1289,7 +1294,9 @@ export function CalendarGrid({
                       )}${ring}`}
                       style={pos}
                     >
+                      {/* Inside the booking cutoff (DEC-193, §2.10.2): drawn as open, marked. */}
                       open · {shortTime(s.time)}
+                      {s.phoneOnly && " · phone only"}
                     </AppLink>
                   );
                 })}

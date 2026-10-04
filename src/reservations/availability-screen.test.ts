@@ -106,6 +106,21 @@ describe("dayState", () => {
     const slots = [slot({ status: "booked", capacity: 12 }), slot({ status: "available", capacity: 16 })];
     expect(dayState(slots, "2026-07-18", today, 15)).toBe("avail");
   });
+
+  // Issue #1071 (DEC-193). Inside the booking cutoff the boats are free but the website can't sell
+  // them, so the day is neither avail nor sold out: it has a next step, and the step is to call.
+  it("is phone when every fitting open boat is inside the booking cutoff", () => {
+    const slots = [slot({ status: "available", phoneOnly: true }), slot({ status: "booked" })];
+    expect(dayState(slots, "2026-07-18", today, 1)).toBe("phone");
+  });
+  it("is avail, NOT phone, when any fitting boat still sells online", () => {
+    const slots = [slot({ time: "11:30", status: "available", phoneOnly: true }), slot({ time: "17:30", status: "available" })];
+    expect(dayState(slots, "2026-07-18", today, 1)).toBe("avail");
+  });
+  it("is soldout, NOT phone, when the only phone-only boat is too small for the party", () => {
+    const slots = [slot({ status: "available", phoneOnly: true, capacity: 12 }), slot({ status: "booked", capacity: 16 })];
+    expect(dayState(slots, "2026-07-18", today, 15)).toBe("soldout");
+  });
 });
 
 describe("buildMonthCalendar", () => {
@@ -224,6 +239,49 @@ describe("buildSlotRows", () => {
       15,
     );
     expect(rows[0]).toMatchObject({ boatsOpen: 0, fits: false, soldOut: true });
+  });
+
+  // Issue #1071 (DEC-193). A time whose free boats are all inside the booking cutoff is not sold
+  // out — the boats are sitting there — and not bookable online either. It reads "Call to book".
+  it("marks a time whose fitting open boats are all inside the cutoff as phone-only", () => {
+    const rows = buildSlotRows(
+      [
+        slot({ time: "13:30", vesselId: V("a"), status: "available", phoneOnly: true, priceCents: 52900, capacity: 12 }),
+        slot({ time: "13:30", vesselId: V("b"), status: "booked", priceCents: 58900, capacity: 16 }),
+      ],
+      10,
+    );
+    expect(rows[0]).toMatchObject({ phoneOnly: true, soldOut: false, fits: false, boatsOpen: 0, priceCents: 52900 });
+  });
+  it("is not phone-only when a fitting boat at that time still sells online", () => {
+    const rows = buildSlotRows(
+      [
+        slot({ time: "13:30", vesselId: V("a"), status: "available", phoneOnly: true, capacity: 12 }),
+        slot({ time: "13:30", vesselId: V("b"), status: "available", capacity: 16 }),
+      ],
+      10,
+    );
+    expect(rows[0]).toMatchObject({ phoneOnly: false, fits: true, boatsOpen: 1 });
+  });
+  it("keeps the rows of a mixed day apart: phone-only early, bookable later", () => {
+    const rows = buildSlotRows(
+      [
+        slot({ time: "12:00", status: "available", phoneOnly: true }),
+        slot({ time: "18:00", status: "available" }),
+      ],
+      10,
+    );
+    expect(rows.map((r) => [r.time, r.phoneOnly, r.fits])).toEqual([
+      ["12:00", true, false],
+      ["18:00", false, true],
+    ]);
+  });
+  it("a phone-only boat too small for the party is not phone-only — it doesn't fit either way", () => {
+    const rows = buildSlotRows(
+      [slot({ time: "13:30", status: "available", phoneOnly: true, capacity: 12 })],
+      15,
+    );
+    expect(rows[0]).toMatchObject({ phoneOnly: false, fits: false, soldOut: false });
   });
 });
 

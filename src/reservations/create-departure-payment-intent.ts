@@ -69,6 +69,8 @@ export type DeparturePaymentIntentStart =
         | "invalid_guest_count"
         | "off_schedule"
         | "departed"
+        /** Inside the booking cutoff (DEC-193) — the customer is told to call. */
+        | "cutoff"
         /** Operator rules only (16.1) — unreachable here, where the claim runs the customer's.
          *  Typed so the pass-through below stays total rather than hand-mapped. */
         | "over_capacity"

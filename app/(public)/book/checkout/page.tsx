@@ -17,7 +17,7 @@
  */
 import type { Block, Event, Location, Offering, Reservation, Vessel } from "@core/domain/entities.js";
 import { vesselDateOf } from "@core/config/tenant.js";
-import { deriveVirtualAvailability } from "@core/reservations/availability.js";
+import { deriveVirtualAvailability, hasDeparted, insideBookingCutoff } from "@core/reservations/availability.js";
 import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
 import { LockedWhilePaying, PaymentLockProvider } from "../../../../components/checkout/payment-lock";
 import {
@@ -91,9 +91,10 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   let reservations: Reservation[];
   let locations: Location[];
   let config: Awaited<ReturnType<ReturnType<typeof getRepo>["getPaymentConfig"]>>;
+  let bookingCutoffHours: number;
   try {
     const repo = getRepo();
-    [offerings, vessels, blocks, events, reservations, locations, config] = await Promise.all([
+    [offerings, vessels, blocks, events, reservations, locations, config, bookingCutoffHours] = await Promise.all([
       repo.listOfferings(),
       repo.listVessels(),
       repo.listBlocks(),
@@ -101,6 +102,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
       repo.listAllReservations(),
       repo.listLocations(),
       repo.getPaymentConfig(),
+      repo.getBookingCutoffHours(),
     ]);
   } catch (e) {
     // Money path, and the last screen before payment — `getPaymentConfig()` is in
@@ -169,6 +171,33 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
         <p className="mt-2 text-muted">
           {formatShortDay(date)} · {formatClock(time)} sold out or went off the schedule while
           you were deciding. Nothing was charged.
+        </p>
+        <p className="mt-4">
+          <AppLink
+            href={backHref(sp, date, time, guests)}
+            className="btn-primary"
+          >
+            Pick another time
+          </AppLink>
+        </p>
+      </main>
+    );
+  }
+
+  // The booking cutoff (DEC-193) — the checkout's re-check, so a customer who opens this page
+  // inside the cutoff is told to call before typing anything rather than refused on submit. A
+  // direct clock check, because the derivation above deliberately passes no `asOf` (see its
+  // comment) and so cannot flag the slot. A trip that has already LEFT is not sent to the phone:
+  // the claim refuses it as `departed`, which is the true answer.
+  const nowIso = new Date().toISOString();
+  if (!hasDeparted(date, time, nowIso) && insideBookingCutoff(date, time, nowIso, bookingCutoffHours)) {
+    return (
+      <main className="mx-auto max-w-2xl px-4 py-16">
+        <h1 className="text-xl font-semibold">Too late to book online</h1>
+        {/* No number yet — issue #1159 adds the operator's contact phone. A template literal, so
+            the spacing around the date and time can't be lost in JSX text compilation. */}
+        <p className="mt-2 text-muted">
+          {`${formatShortDay(date)} · ${formatClock(time)} is too close to departure to book online. Call us and we’ll book it for you. Nothing was charged.`}
         </p>
         <p className="mt-4">
           <AppLink

@@ -15,6 +15,7 @@ import {
   deriveAvailability,
   deriveVirtualAvailability,
   eventIdForSlot,
+  insideBookingCutoff,
   isActiveMusterClaim,
   isSlotBlocked,
   slotIdentity,
@@ -990,5 +991,135 @@ describe("deriveVirtualAvailability — departed never swallows a real trip", ()
 
   it("…and an EMPTY past slot is `departed` — the case the state is actually for", () => {
     expect(deriveVirtualAvailability({ ...base, asOf: AFTER })[0]!.status).toBe("departed");
+  });
+});
+
+/**
+ * The booking cutoff (DEC-193, `docs/SPEC.md §2.8.4`): a length of time before a departure inside
+ * which the public site stops selling it. Measured the way `departed` is — on the instant, with the
+ * same `<=` boundary — so it is `hasDeparted` asked about a later clock, not a second rule.
+ *
+ * 13:30 local in July is 17:30 UTC, so a 4-hour cutoff starts at 13:30 UTC.
+ */
+describe("insideBookingCutoff — the booking cutoff (DEC-193)", () => {
+  it("is inside at exactly `hours` before the departure — the same `<=` as departed", () => {
+    expect(insideBookingCutoff("2026-07-04", "13:30", "2026-07-04T13:30:00.000Z", 4)).toBe(true);
+  });
+
+  it("is outside a millisecond earlier", () => {
+    expect(insideBookingCutoff("2026-07-04", "13:30", "2026-07-04T13:29:59.999Z", 4)).toBe(false);
+  });
+
+  it("0 hours cuts nothing off — not even a departed trip, which is `departed`'s job", () => {
+    expect(insideBookingCutoff("2026-07-04", "13:30", "2026-07-04T18:00:00.000Z", 0)).toBe(false);
+  });
+});
+
+/**
+ * Inside the cutoff a slot stays `available` and carries `phoneOnly: true` (issue #1071). A flag
+ * rather than a new status, so every operator reader that tests `status === "available"` keeps
+ * counting it open and can still book it; only the customer's readers learn the flag.
+ */
+describe("deriveVirtualAvailability — the booking cutoff flags a slot phone-only (DEC-193)", () => {
+  const INSIDE = "2026-07-04T14:00:00.000Z"; // 10:00 local, 3.5 h before the 13:30 departure
+  const OUTSIDE = "2026-07-04T12:00:00.000Z"; // 08:00 local, 5.5 h before it
+  const AFTER = "2026-07-04T18:00:00.000Z"; // 14:00 local, after it
+
+  it("an open slot inside the cutoff is still `available`, flagged phone-only", () => {
+    const [s] = deriveVirtualAvailability({ ...base, asOf: INSIDE, bookingCutoffHours: 4 });
+    expect(s!.status).toBe("available");
+    expect(s!.phoneOnly).toBe(true);
+  });
+
+  it("outside the cutoff, no flag", () => {
+    const [s] = deriveVirtualAvailability({ ...base, asOf: OUTSIDE, bookingCutoffHours: 4 });
+    expect(s!.status).toBe("available");
+    expect(s!.phoneOnly).toBeUndefined();
+  });
+
+  it("no cutoff given ⇒ no flag — the fallback is no cutoff", () => {
+    expect(deriveVirtualAvailability({ ...base, asOf: INSIDE })[0]!.phoneOnly).toBeUndefined();
+  });
+
+  it("no asOf ⇒ no flag, the same conservative rule `departed` gets", () => {
+    expect(deriveVirtualAvailability({ ...base, bookingCutoffHours: 4 })[0]!.phoneOnly).toBeUndefined();
+  });
+
+  it("a departed slot reads `departed`, never phone-only", () => {
+    const [s] = deriveVirtualAvailability({ ...base, asOf: AFTER, bookingCutoffHours: 4 });
+    expect(s!.status).toBe("departed");
+    expect(s!.phoneOnly).toBeUndefined();
+  });
+
+  it("a booked slot is never flagged", () => {
+    const [s] = deriveVirtualAvailability({
+      ...base,
+      events: [ev("evt-b", { time: "13:30" })],
+      reservations: [res("r1", "evt-b")],
+      asOf: INSIDE,
+      bookingCutoffHours: 4,
+    });
+    expect(s!.status).toBe("booked");
+    expect(s!.phoneOnly).toBeUndefined();
+  });
+
+  it("a blocked slot is never flagged", () => {
+    const [s] = deriveVirtualAvailability({
+      ...base,
+      blocks: [{ id: asId<"BlockId">("blk"), kind: "vesselHold", vesselId: V, date: "2026-07-04", time: "13:30" }],
+      asOf: INSIDE,
+      bookingCutoffHours: 4,
+    });
+    expect(s!.status).toBe("blocked");
+    expect(s!.phoneOnly).toBeUndefined();
+  });
+
+  it("a held slot is never flagged", () => {
+    const [s] = deriveVirtualAvailability({
+      ...base,
+      reservations: [
+        {
+          id: asId<"ReservationId">("p-held"),
+          eventId: null,
+          source: "muster",
+          customerName: "Hooper",
+          partySize: 4,
+          status: "pending",
+          vesselId: V,
+          date: "2026-07-04",
+          time: "13:30",
+          offeringId: asId<"OfferingId">("off-1"),
+          reservedAt: "2026-07-04T13:55:00.000Z", // 5 min before INSIDE — live
+          holdMinutes: 120,
+          tripMinutes: 100,
+        },
+      ],
+      asOf: INSIDE,
+      bookingCutoffHours: 4,
+    });
+    expect(s!.status).toBe("held");
+    expect(s!.phoneOnly).toBeUndefined();
+  });
+
+  it("a busy hull is never flagged", () => {
+    const [s] = deriveVirtualAvailability({
+      ...base,
+      events: [ev("x-1", { source: "xola", time: "13:30" })],
+      asOf: INSIDE,
+      bookingCutoffHours: 4,
+    });
+    expect(s!.status).toBe("unavailable");
+    expect(s!.phoneOnly).toBeUndefined();
+  });
+
+  it("an unbooked override Event inside the cutoff is flagged like a virtual slot", () => {
+    const [s] = deriveVirtualAvailability({
+      ...base,
+      events: [ev("evt-override", { time: "13:30", price: 59900 })],
+      asOf: INSIDE,
+      bookingCutoffHours: 4,
+    });
+    expect(s!.status).toBe("available");
+    expect(s!.phoneOnly).toBe(true);
   });
 });

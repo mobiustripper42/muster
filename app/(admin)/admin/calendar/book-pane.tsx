@@ -58,6 +58,8 @@ const ERR_COPY: Record<BookErr, string> = {
   invalid_guest_count: "Enter how many guests, 1 or more.",
   off_schedule: "That date or time isn’t valid.",
   departed: "That departure has already left.",
+  // Unreachable: the operator passes the booking cutoff (DEC-193). Here because the map is total.
+  cutoff: "That departure is inside the booking cutoff.",
   over_capacity: "That’s more guests than this boat is certified for.",
   vessel_not_offered: "That cruise doesn’t run on this boat.",
   blocked: "This departure is blocked. Unblock it on the calendar first, then book it.",

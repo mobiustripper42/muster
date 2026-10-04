@@ -158,6 +158,8 @@ export class InMemoryRepository implements Repository {
   readonly #payments = new Map<PaymentId, Payment>();
   /** Payment-config overrides (DEC-107); absent fields fall to PAYMENT_CONFIG_DEFAULTS. */
   #paymentConfig: Partial<PaymentConfig> = {};
+  /** `booking.cutoff_hours` (DEC-193). 0 is the fallback — no cutoff. */
+  #bookingCutoffHours = 0;
   readonly #shifts = new Map<ShiftId, Shift>();
   readonly #seats = new Map<SeatId, Seat>();
   readonly #asks = new Map<AskId, Ask>();
@@ -556,6 +558,12 @@ export class InMemoryRepository implements Repository {
   }
   async setPaymentConfig(patch: Partial<PaymentConfig>, _at: string): Promise<void> {
     this.#paymentConfig = { ...this.#paymentConfig, ...patch };
+  }
+  async getBookingCutoffHours(): Promise<number> {
+    return this.#bookingCutoffHours;
+  }
+  async setBookingCutoffHours(hours: number, _at: string): Promise<void> {
+    this.#bookingCutoffHours = hours;
   }
   async savePayment(payment: Payment): Promise<void> {
     // Insert-only (mirrors the postgres `on conflict do nothing`): a payment row is

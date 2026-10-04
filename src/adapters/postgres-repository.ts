@@ -100,6 +100,7 @@ import {
   PAYMENT_CONFIG_DEFAULTS,
   type PaymentConfig,
 } from "../reservations/payment-config.js";
+import { BOOKING_CUTOFF_KEY, parseBookingCutoffHours } from "../reservations/booking-cutoff.js";
 import { XOLA_TRIP_MINUTES, minutesOfDay } from "../reservations/hull-busy.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { FailureWindow, Repository, ShiftChangeRow } from "../ports/repository.js";
@@ -1412,6 +1413,17 @@ export class PostgresRepository implements Repository {
         [key, value, at],
       );
     }
+  }
+  async getBookingCutoffHours(): Promise<number> {
+    const { rows } = await this.#pool.query("select value from app_settings where key=$1", [BOOKING_CUTOFF_KEY]);
+    return parseBookingCutoffHours(rows[0]?.value);
+  }
+  async setBookingCutoffHours(hours: number, at: string): Promise<void> {
+    await this.#pool.query(
+      `insert into app_settings(key, value, updated_at) values ($1,$2,$3)
+       on conflict (key) do update set value=excluded.value, updated_at=excluded.updated_at`,
+      [BOOKING_CUTOFF_KEY, String(hours), at],
+    );
   }
   async savePayment(p: Payment): Promise<void> {
     await this.#pool.query(

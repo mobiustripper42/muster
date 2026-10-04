@@ -1983,6 +1983,14 @@ export function runRepositoryContract(
       expect(cfg.depositPercent).toBe(25); // untouched field keeps its default
     });
 
+    it("booking cutoff: 0 when unset; whole hours round-trip, 0 included (DEC-193)", async () => {
+      expect(await repo.getBookingCutoffHours()).toBe(0);
+      await repo.setBookingCutoffHours(24, "2026-07-12T00:00:00.000Z");
+      expect(await repo.getBookingCutoffHours()).toBe(24);
+      await repo.setBookingCutoffHours(0, "2026-07-12T00:05:00.000Z");
+      expect(await repo.getBookingCutoffHours()).toBe(0);
+    });
+
     it("payments: save/get/listForReservation; idempotent upsert on id; optional stripe ids", async () => {
       // Parent for payments' FK on reservation_id (DEC-131).
       await repo.saveReservation(reservation());

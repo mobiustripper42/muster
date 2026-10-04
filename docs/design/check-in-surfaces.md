@@ -305,14 +305,19 @@ at any time, for confirmed crew on that shift.
 
 ### C2 — The QR sheet
 
-`QR` opens a half-sheet, not a new page. Nothing else on it.
+`QR` opens a half-sheet, not a new page. Nothing else on it but the link the code holds.
 
 ```
         [ ███ QR ███ ]
 
      Scan to sign — BrewBoat 3:00
+          [ Copy link ]
+     https://…/w/K3F9QZ2M
               [ Done ]
 ```
+
+**Copy link** (18.7, operator 2026-10-03) is for a guest whose phone will not scan, or a booker who
+texts the mate for the link: the same `/w/<code>`, to paste or read out.
 
 A large black-on-white code, drawn on the server (DEC-191), so it is on screen even if the signal
 drops. **No brightness control**: a web page cannot set the screen's brightness, so that waits for

@@ -18,6 +18,7 @@
  * | `confirmation_sent` | `reservations.confirmationSentAt` | its own column |
  * | `payment_succeeded` | `payments` | `createdAt` — the row IS the charge |
  * | `gratuity_added` | `gratuity` | `createdAt` |
+ * | `waiver_reminder_sent` | `waiver_reminders` (18.7) | `sentAt` — the claim, a moment before the send |
  * | `imported` | `import_run_items` | the RUN's clock; the item has no timestamp (0007) |
  * | `checkout_lapsed` | computed | `reservedAt + holdMinutes` — exact arithmetic, but no row exists |
  * | `dispute_opened` | `payments.status` | nothing — see its note in `DERIVED_TRAIL_TYPES` |
@@ -49,6 +50,7 @@
  * every row already in the table would still need this.
  */
 
+import type { WaiverReminder } from "../checkin/entities.js";
 import type { Gratuity, Payment, Reservation } from "../domain/entities.js";
 import type { ReservationId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
@@ -101,6 +103,8 @@ export interface TrailInputs {
   imports: readonly ImportItemAtRun[];
   /** From `listTrailEventsFor` — the emitted half, matched on EITHER key. */
   emitted: readonly TrailEvent[];
+  /** From `listWaiverRemindersForReservation` (18.7). Optional: absent reads as none sent. */
+  reminders?: readonly WaiverReminder[];
   /** The reading clock. Decides whether a still-`pending` row has lapsed. */
   asOf: string;
   /**
@@ -128,7 +132,7 @@ export interface TrailInputs {
  *
  * Everything else — every other emitted type — takes `DEFAULT_RANK` and then sorts by id.
  * Emitted rows carry real per-row timestamps, so a tie is rare and arbitrary-but-deterministic
- * is an honest answer for it. Enumerating all 33 types here would be a table nobody could keep
+ * is an honest answer for it. Enumerating every type here would be a table nobody could keep
  * true, to settle ties that do not happen.
  */
 const DEFAULT_RANK = 55;
@@ -325,6 +329,19 @@ export function reservationTrail(input: TrailInputs): TrailEntry[] {
     }
   }
 
+  // ── waiver_reminder_sent (18.7) ─────────────────────────────────────────────
+  // `waiver_reminders` keeps a row only for a reminder that reached the booker — a send that told
+  // nobody gives its row back — so each row is one reminder sent, timed by its own claim.
+  for (const w of input.reminders ?? []) {
+    out.push({
+      id: `waiver_reminder_sent:${String(w.reservationId)}:${w.tripDate}:${w.daysBefore}`,
+      type: "waiver_reminder_sent",
+      when: { kind: "recorded", at: w.sentAt },
+      actorKind: "engine",
+      metadata: { reason: `${w.daysBefore} day${w.daysBefore === 1 ? "" : "s"} before the trip` },
+    });
+  }
+
   // ── gratuity_added ──────────────────────────────────────────────────────────
   for (const g of gratuities) {
     out.push({
@@ -367,15 +384,16 @@ export async function loadReservationTrail(
 ): Promise<TrailEntry[] | null> {
   const reservation = await repo.getReservation(reservationId);
   if (!reservation) return null;
-  const [payments, gratuities, imports, emitted] = await Promise.all([
+  const [payments, gratuities, imports, emitted, reminders] = await Promise.all([
     repo.listPaymentsForReservation(reservationId),
     repo.listGratuitiesForReservation(reservationId),
     repo.listImportItemsForRef(String(reservationId)),
     // §2.8.5 keeps every intent this checkout minted, so a superseded one's rows are this
     // booking's too. Absent on an imported or admin row, where the empty list is correct.
     repo.listTrailEventsFor(reservationId, reservation.paymentIntentIds ?? []),
+    repo.listWaiverRemindersForReservation(reservationId),
   ]);
-  return reservationTrail({ reservation, payments, gratuities, imports, emitted, asOf: now() });
+  return reservationTrail({ reservation, payments, gratuities, imports, emitted, reminders, asOf: now() });
 }
 
 /**

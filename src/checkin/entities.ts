@@ -111,6 +111,23 @@ export interface DepartureCount {
 }
 
 /**
+ * One reminder window used up (Phase 18.7): the booker was reminded about this trip date, this many
+ * days before it. **Never twice for one window**, and the row is what enforces it — it is claimed
+ * before the send, and given back when nobody was told, so a row here means someone was.
+ *
+ * Keyed on the trip date as well as the day count, so a booking moved to another date gets its
+ * reminders for the new one.
+ */
+export interface WaiverReminder {
+  reservationId: ReservationId;
+  /** The departure's vessel-local `YYYY-MM-DD` when this was sent. */
+  tripDate: string;
+  daysBefore: number;
+  /** ISO-8601 UTC — when the window was claimed, a moment before the send. */
+  sentAt: string;
+}
+
+/**
  * The module's operator settings, stored as `checkin.*` keys in `app_settings` and read through a
  * typed port — the `getPaymentConfig` pattern. An absent key falls to the default below.
  */

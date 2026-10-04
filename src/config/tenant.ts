@@ -269,6 +269,9 @@ if (civilInverted) {
  * the engine's OWN initiative defers its ask sends (tick drip/blast/escalate,
  * bail/vacate re-asks). Half-open [start, end) per the DEC-083 precedent —
  * 08:00 fires, 20:00 doesn't. Operator-explicit sends are never gated.
+ *
+ * Waiver reminders keep the same hours (18.7, `docs/design/check-in-and-waivers.md §5`):
+ * they are Muster's own initiative too, to a customer.
  */
 export const CIVIL_SEND_START: string = civilInverted
   ? CIVIL_DEFAULT_START

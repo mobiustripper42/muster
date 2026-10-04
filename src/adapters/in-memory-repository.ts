@@ -88,7 +88,14 @@ import {
 import type { FailureWindow, Repository } from "../ports/repository.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
-import type { CheckInConfig, DepartureCount, Guest, TripLink, WaiverTemplate } from "../checkin/entities.js";
+import type {
+  CheckInConfig,
+  DepartureCount,
+  Guest,
+  TripLink,
+  WaiverReminder,
+  WaiverTemplate,
+} from "../checkin/entities.js";
 import { normalizeCheckInConfig } from "../checkin/entities.js";
 import type { RateLimitRefusal } from "../rate-limit/entities.js";
 
@@ -1489,6 +1496,29 @@ export class InMemoryRepository implements Repository {
   async getDepartureCount(eventId: EventId): Promise<DepartureCount | null> {
     const c = this.#departureCounts.get(eventId);
     return c ? { ...c } : null;
+  }
+
+  // ── Reminder send records (Phase 18.7) ────────────────────────────────────
+  /** Keyed like the Postgres primary key: booking, trip date, day count. */
+  #waiverReminders = new Map<string, WaiverReminder>();
+  #reminderKey = (reservationId: ReservationId, tripDate: string, daysBefore: number): string =>
+    JSON.stringify([reservationId, tripDate, daysBefore]);
+
+  async claimWaiverReminder(reminder: WaiverReminder): Promise<boolean> {
+    // Mirrors `on conflict do nothing … returning`: a window already claimed is not this caller's.
+    const key = this.#reminderKey(reminder.reservationId, reminder.tripDate, reminder.daysBefore);
+    if (this.#waiverReminders.has(key)) return false;
+    this.#waiverReminders.set(key, { ...reminder });
+    return true;
+  }
+  async releaseWaiverReminder(reservationId: ReservationId, tripDate: string, daysBefore: number): Promise<void> {
+    this.#waiverReminders.delete(this.#reminderKey(reservationId, tripDate, daysBefore));
+  }
+  async listWaiverRemindersForReservation(reservationId: ReservationId): Promise<WaiverReminder[]> {
+    return [...this.#waiverReminders.values()]
+      .filter((r) => r.reservationId === reservationId)
+      .sort((a, b) => a.sentAt.localeCompare(b.sentAt))
+      .map((r) => ({ ...r }));
   }
 
   async getCheckInConfig(): Promise<CheckInConfig> {

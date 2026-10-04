@@ -10,7 +10,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { asId } from "../domain/ids.js";
 import type { Admin, CrewMember, Event, Reservation, Vessel } from "../domain/entities.js";
-import type { Guest, TripLink, WaiverTemplate } from "../checkin/entities.js";
+import type { Guest, TripLink, WaiverReminder, WaiverTemplate } from "../checkin/entities.js";
 import { CHECK_IN_CONFIG_DEFAULTS } from "../checkin/entities.js";
 import type { Repository } from "../ports/repository.js";
 
@@ -372,6 +372,50 @@ export function runCheckInContract(
       it("is not part of the departure a normal read returns", async () => {
         await repo.setDepartureCount(EVENT, { pax: 15, countedAt: "2026-10-10T18:58:00.000Z", countedBy: CREW });
         expect(await repo.getEvent(EVENT)).toEqual(event());
+      });
+    });
+
+    describe("reminder send records (18.7)", () => {
+      const reminder = (over: Partial<WaiverReminder> = {}): WaiverReminder => ({
+        reservationId: RESV,
+        tripDate: "2026-10-10",
+        daysBefore: 7,
+        sentAt: "2026-10-03T12:00:00.000Z",
+        ...over,
+      });
+
+      it("the first claim of a window wins; a second claim of the same window does not", async () => {
+        expect(await repo.claimWaiverReminder(reminder())).toBe(true);
+        expect(await repo.claimWaiverReminder(reminder({ sentAt: "2026-10-03T12:15:00.000Z" }))).toBe(false);
+        expect(await repo.listWaiverRemindersForReservation(RESV)).toEqual([reminder()]);
+      });
+
+      it("another reminder day, or the same day before a different trip date, is its own window", async () => {
+        expect(await repo.claimWaiverReminder(reminder())).toBe(true);
+        expect(await repo.claimWaiverReminder(reminder({ daysBefore: 3, sentAt: "2026-10-07T12:00:00.000Z" }))).toBe(true);
+        // The booking moved a week: its 7-day window for the new date has not been used.
+        expect(
+          await repo.claimWaiverReminder(reminder({ tripDate: "2026-10-17", sentAt: "2026-10-10T12:00:00.000Z" })),
+        ).toBe(true);
+        expect(
+          (await repo.listWaiverRemindersForReservation(RESV))
+            .map((r) => `${r.tripDate}/${r.daysBefore}`)
+            .sort(),
+        ).toEqual(["2026-10-10/3", "2026-10-10/7", "2026-10-17/7"]);
+      });
+
+      it("a released claim can be claimed again — a send that never happened is not recorded", async () => {
+        await repo.claimWaiverReminder(reminder());
+        await repo.releaseWaiverReminder(RESV, "2026-10-10", 7);
+        expect(await repo.listWaiverRemindersForReservation(RESV)).toEqual([]);
+        expect(await repo.claimWaiverReminder(reminder({ sentAt: "2026-10-03T12:15:00.000Z" }))).toBe(true);
+      });
+
+      it("releasing one window leaves the others alone", async () => {
+        await repo.claimWaiverReminder(reminder());
+        await repo.claimWaiverReminder(reminder({ daysBefore: 3, sentAt: "2026-10-07T12:00:00.000Z" }));
+        await repo.releaseWaiverReminder(RESV, "2026-10-10", 3);
+        expect(await repo.listWaiverRemindersForReservation(RESV)).toEqual([reminder()]);
       });
     });
 

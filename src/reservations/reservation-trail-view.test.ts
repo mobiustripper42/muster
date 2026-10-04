@@ -189,6 +189,40 @@ describe("reservationTrail — finding the facts", () => {
  * before the emitters shipped. DEC-118's posture on that is explicit: no backfill, capture
  * starts at ship, and the surface says so.
  */
+describe("reservationTrail — waiver reminders (18.7)", () => {
+  it("shows each reminder sent, at its own time, naming the reminder day", () => {
+    const trail = reservationTrail(
+      inputs({
+        reservation: reservation({ status: "booked" }),
+        reminders: [
+          { reservationId: RES, tripDate: "2026-07-11", daysBefore: 7, sentAt: "2026-07-04T12:00:00.000Z" },
+          { reservationId: RES, tripDate: "2026-07-11", daysBefore: 3, sentAt: "2026-07-08T12:00:00.000Z" },
+        ],
+      }),
+    ).filter((e) => e.type === "waiver_reminder_sent");
+    expect(trail).toEqual([
+      {
+        id: "waiver_reminder_sent:resv-1:2026-07-11:7",
+        type: "waiver_reminder_sent",
+        when: { kind: "recorded", at: "2026-07-04T12:00:00.000Z" },
+        actorKind: "engine",
+        metadata: { reason: "7 days before the trip" },
+      },
+      {
+        id: "waiver_reminder_sent:resv-1:2026-07-11:3",
+        type: "waiver_reminder_sent",
+        when: { kind: "recorded", at: "2026-07-08T12:00:00.000Z" },
+        actorKind: "engine",
+        metadata: { reason: "3 days before the trip" },
+      },
+    ]);
+  });
+
+  it("a booking with no reminders shows none, and a caller that passes none still works", () => {
+    expect(types(reservationTrail(inputs())).filter((t) => t === "waiver_reminder_sent")).toEqual([]);
+  });
+});
+
 describe("reservationTrail — booked / cancelled / refunded are NOT projected", () => {
   it("projects nothing for a booked row with no emitted event", () => {
     const rows = reservationTrail(

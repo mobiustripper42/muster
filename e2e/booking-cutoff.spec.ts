@@ -101,6 +101,23 @@ test.describe("the booking cutoff (DEC-193)", () => {
     expect(href).toContain(`time=${encodeURIComponent(LATE)}`);
   });
 
+  test("/book: the guest card keeps its height between a bookable day and a phone-only one", async ({ page }) => {
+    // The pricing line exists only when a departure is selected. When it came and went, the card
+    // grew and shrank and every calendar cell below it moved straight after a tap (operator,
+    // 2026-10-04). Its height is reserved instead.
+    await setCutoff(hoursToCover(LATE));
+    const card = page.getByTestId("guest-card");
+
+    await page.goto(`/book?date=${DAY_AFTER}`);
+    await expect(page.getByText("guests included.")).toBeVisible();
+    const priced = (await card.boundingBox())!.height;
+
+    await page.goto(`/book?date=${TOMORROW}`);
+    await expect(slot(page, EARLY)).toContainText("Call to book");
+    await expect(page.getByText("guests included.")).toHaveCount(0);
+    expect((await card.boundingBox())!.height).toBe(priced);
+  });
+
   test("/book/checkout: a departure inside the cutoff is refused before the form", async ({ page }) => {
     await setCutoff(hoursToCover(LATE));
     await page.goto(`/book/checkout?offering=${DEMO_OFFERING}&date=${TOMORROW}&time=${EARLY}&guests=12`);

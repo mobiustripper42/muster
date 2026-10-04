@@ -183,9 +183,18 @@ export function GuestCard() {
       {/* No copy at the ceiling. The `+` disables and the row already says "up to {cap}" — a
           sentence appearing on the last tap says nothing those two don't, and it grows the card
           mid-interaction, pushing the calendar down the screen (operator, 2026-08-16). */}
-      {baseCents !== null && (
+      {/* The pricing line's height is reserved when there is nothing to price — no day picked, or
+          a day with nothing bookable online (sold out, too big, inside the booking cutoff). The
+          same reason as above: the card sits right over the calendar, and a line that came and went
+          with the selection moved every day cell under the customer's thumb straight after a tap
+          (operator, 2026-10-04). */}
+      {baseCents !== null ? (
         <div className="mt-2.5 text-xs text-muted">
           <b className="text-ink">{included} guests included.</b> Each extra is {money(extraPriceCents)}.
+        </div>
+      ) : (
+        <div className="mt-2.5 text-xs" aria-hidden="true" data-testid="pricing-placeholder">
+          {" "}
         </div>
       )}
     </div>

@@ -16,7 +16,7 @@ grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null
 
 **No match:** STOP and ask the user how to proceed. Do not invent a session file — `/its-alive` creates it, and its absence means the session was never opened.
 
-**More than one match:** another window has a session open. Report the candidates — `session:`, `branch:`, `started:` — and ask which is yours. Do not sort and do not take the first: `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so it silently picks the *stale* file whenever that one opened earlier. Nothing errors.
+**More than one match:** another window has a session open. Narrow by checkout first — keep the file whose `transcript:` line contains `$HOME/.claude/projects/$(pwd | tr '/' '-')/`, the trailing `/` included (the same lookup `/kill-this` uses to find its session file). Exactly one left is `SESSION_FILE`. Zero or several left: report the candidates — `session:`, `branch:`, `started:` — and ask which is yours. Do not sort and do not take the first: `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so it silently picks the *stale* file whenever that one opened earlier. Nothing errors.
 
 Leave the other file alone. Its `ended:` is not knowable from here, and a guess poisons `/retro`'s input more quietly than a blank does. Say in the closing summary that it is still open.
 
@@ -56,6 +56,8 @@ If the two disagree, stop and say so rather than writing a sum. This is here bec
 If no `## Task <N>` blocks exist (a session that ran `/its-alive` and `/its-dead` with no `/kill-this` in between), `points: 0`. No warning — sometimes the work is exploration that didn't ship. **Zero task blocks and zero points is a fact; task blocks with zero points is a bug** — the two used to produce identical output, which is why the undercount was silent.
 
 ## Step 3 — Append session-wide Context (optional)
+
+**If Next Steps holds a `/save-this` save, refresh it first** — run `/save-this`'s gather and replace steps so the closing Next Steps is the end of the window, not the last clear. Its parking lot carries forward unless the user closed an item, and its standing rules word for word; the next session's `/its-alive` reads them as this session's handover.
 
 If the user wants to add session-wide Next Steps or Context notes that aren't per-task, prompt them — as plain lines, not fenced:
 

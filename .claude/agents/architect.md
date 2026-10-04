@@ -24,8 +24,10 @@ This file *summarizes* the decisions. It is not the record, and it goes stale. B
 2. Read the decisions. They live one per file in `docs/decisions/DEC-*.md`; `docs/DECISIONS.md` is a
    generated topic index over them (DEC-141). Skim the index for the areas the proposal touches, then
    read those files — `grep -rl DEC-042 docs/decisions/` resolves any id, and `grep -rl "topic: \"Timing"
-   docs/decisions/` pulls a whole topic. **Read to the bottom of the file** — a decision that has been
-   changed carries dated `## Amendment` sections there, and the last one is the current position.
+   docs/decisions/` pulls a whole topic. A decision changed under the current rule carries
+   `status: superseded` and `superseded_by:` in its frontmatter — read the successor (DEC-J005 in
+   jig: amending in place is retired). Older records may still end in dated `## Amendment` sections;
+   for those, **read to the bottom** — the last one is the current position.
    Some also carry a `**See also**` block near the top pointing at related decisions.
 3. Read the relevant part of `docs/SPEC.md`, especially the "Not V1" list. A section that has been
    amended carries a generated block under its heading naming the decision and the scope (DEC-143);
@@ -42,7 +44,8 @@ prompt needs correcting.
 
 **Allocating a new DEC number:** take the next one after the highest in `docs/decisions/`. A
 collision is no longer silent — `npm run check:decisions` fails on a duplicate id, a dangling
-reference, a backwards amendment, and a spec amendment that never landed.
+reference, a spec amendment that never landed, and a `supersedes` / `superseded_by` pair that does
+not match.
 
 ## What Muster Is
 
@@ -187,11 +190,10 @@ only.
 
 **Owner:** [defer only — the named human who owns this call, and the DEC-TBD it sits under]
 
-**Decision:** [state the `grep -rli "<subject>" docs/decisions/` result FIRST. If it hit, this is an
-amendment: draft the `## Amendment, YYYY-MM-DD (who)` section to append to that decision's own file —
-what changes and what still stands — and do not open a new id. If it did not hit, draft
-`docs/decisions/DEC-<id>-<slug>.md` — frontmatter (`id`, `title`, `topic`, plus `amends_spec` if it
-changes a numbered SPEC section) and the body. Do not hand-write an index row.]
+**Decision:** [state the `grep -rli "<subject>" docs/decisions/` result FIRST. Either way, draft a new
+`docs/decisions/DEC-<id>-<slug>.md` — frontmatter (`id`, `title`, `topic`, `supersedes:` if it hit
+and this changes that decision, plus `amends_spec` if it changes a numbered SPEC section) and the
+body. The superseded record flips to `status: superseded`; never append an amendment to it. Do not hand-write an index row.]
 ```
 
 `defer` exists so a proposal crossing an open question with a named owner has somewhere to go.

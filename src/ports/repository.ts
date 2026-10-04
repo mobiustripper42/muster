@@ -561,6 +561,11 @@ export interface Repository {
    *  `app_settings` KV; an absent key falls to `PAYMENT_CONFIG_DEFAULTS` per field. */
   getPaymentConfig(): Promise<PaymentConfig>;
   setPaymentConfig(patch: Partial<PaymentConfig>, at: string): Promise<void>;
+  /** The booking cutoff in whole hours (DEC-193), backed by the `booking.cutoff_hours` key in
+   *  `app_settings`. Absent ⇒ 0, no cutoff; an unparseable value ⇒ 0 and a log line
+   *  (`parseBookingCutoffHours`). No screen sets it until issue #1166 — SQL and tests do. */
+  getBookingCutoffHours(): Promise<number>;
+  setBookingCutoffHours(hours: number, at: string): Promise<void>;
   /** Idempotent upsert on the deterministic id — a re-delivered webhook can't double-write. */
   savePayment(payment: Payment): Promise<void>;
   getPayment(id: PaymentId): Promise<Payment | null>;

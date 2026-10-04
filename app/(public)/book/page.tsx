@@ -52,6 +52,27 @@ const DOW = ["S", "M", "T", "W", "T", "F", "S"];
 
 type Search = { offering?: string; date?: string; time?: string; guests?: string };
 
+const LABEL_TONE = { open: "text-ok", tight: "text-warn", sold: "text-muted" } as const;
+
+/**
+ * A departure row's status column: its words and their tone.
+ *
+ * - **Inside the booking cutoff** (DEC-193): "Call to book". The boats are free and the website
+ *   can't sell them, so neither "Sold out" nor a boat count is true.
+ * - **Free but too small for this party**: "12 max" rather than "Sold out" — the boats are sitting
+ *   there, and telling a party of 15 they were beaten to it is both false and unactionable; this is
+ *   actionable, drop to 12 and it opens up. "12 max", not "Takes 12" (operator, 2026-08-16): it
+ *   sits in the same column as "1 boat left", so it reads as a status. No seat word (DEC-125): the
+ *   number is the boat's whole-boat capacity, not a count of anything for sale.
+ * - **Otherwise** the boats-open label, in its own tone.
+ */
+function rowStatus(r: SlotRow): { text: string; cls: string } {
+  if (r.phoneOnly) return { text: "Call to book", cls: "text-warn" };
+  if (!r.soldOut && !r.fits) return { text: `${r.capacity} max`, cls: "text-muted" };
+  const label = boatsOpenLabel(r.boatsOpen);
+  return { text: label.text, cls: LABEL_TONE[label.tone] };
+}
+
 export default async function BookPage({ searchParams }: { searchParams: Promise<Search> }) {
   const sp = await searchParams;
   let offerings: Offering[];
@@ -60,19 +81,21 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   let events: Event[];
   let reservations: Reservation[];
   let locations: Location[];
+  let bookingCutoffHours: number;
   // One instant for the whole render, handed to the deriver as `asOf` below — every pending row's
   // liveness is decided against it, so one can't be live for one reader and lapsed for another
   // (issue #713).
   const asOf = new Date().toISOString();
   try {
     const repo = getRepo();
-    [offerings, vessels, blocks, events, reservations, locations] = await Promise.all([
+    [offerings, vessels, blocks, events, reservations, locations, bookingCutoffHours] = await Promise.all([
       repo.listOfferings(),
       repo.listVessels(),
       repo.listBlocks(),
       repo.listEvents(),
       repo.listAllReservations(),
       repo.listLocations(),
+      repo.getBookingCutoffHours(),
     ]);
   } catch (e) {
     // Revenue surface: this is the public booking calendar, and a customer who
@@ -169,6 +192,9 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
     // The SAME instant the reads above ran under (issue #713) — a second `new Date()` here could
     // disagree with the first by however long they took.
     asOf,
+    // DEC-193: a departure inside the cutoff stays open but is flagged `phoneOnly` — this page
+    // offers it as "Call to book", and the claim refuses it by name.
+    bookingCutoffHours,
   });
   const slotsByDate = new Map<string, VirtualSlot[]>();
   for (const s of slots) {
@@ -185,9 +211,17 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   const calendar = buildMonthCalendar(year, month, slotsByDate, selectedDate, today, guests);
 
   const rows: SlotRow[] = selectedDate ? buildSlotRows(slotsByDate.get(selectedDate) ?? [], guests) : [];
-  // Bookable = free AND big enough. `fits` is what changed here: a departure with two open boats
-  // that both seat 12 is not a departure a party of 14 can be auto-selected onto.
+  // Bookable = free AND big enough AND sold online. `fits` is what changed here: a departure with
+  // two open boats that both seat 12 is not a departure a party of 14 can be auto-selected onto,
+  // and a phone-only one (DEC-193) is not one anybody can be auto-selected onto.
   const availRows = rows.filter((r) => !r.soldOut && r.fits);
+  // The picked day has nothing to sell online but something to sell by phone: say so, once, above
+  // the rows. A day with some times still online needs no notice — the rows say which is which.
+  const phoneDay = availRows.length === 0 && rows.some((r) => r.phoneOnly);
+  // The legend's "Call to book" key appears only in a month that has such a day — at the fallback
+  // (no cutoff) it would explain a state that never shows. The picked day draws as `selected`, so
+  // it counts through `phoneDay` rather than its cell.
+  const monthHasPhoneDay = phoneDay || calendar.days.some((d) => d.state === "phone");
   // Selected time: ?time if still bookable for this party, else the first row that is.
   const selectedRow =
     (sp.time && availRows.find((r) => r.time === sp.time)) || availRows[0] || undefined;
@@ -352,6 +386,22 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                           {c.day}
                         </AppLink>
                       );
+                    // Inside the booking cutoff (DEC-193): the boats are free, the website can't
+                    // sell them. A link, so the customer can open the day and see which times to
+                    // call about; warn-tinted, so it never reads as Available.
+                    if (c.state === "phone")
+                      return (
+                        <AppLink
+                          key={i}
+                          href={bookHref({ offering: sp.offering, date: c.date, guests: hrefGuests })}
+                          scroll={false}
+                          spinner="none"
+                          data-day-state="phone"
+                          className={`${base} border border-warn-line bg-warn-bg font-semibold text-warn hover:border-warn`}
+                        >
+                          {c.day}
+                        </AppLink>
+                      );
                     if (c.state === "selected")
                       return (
                         // eslint-disable-next-line no-restricted-syntax -- selected day in the date picker, not an action button (#1103)
@@ -406,6 +456,12 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                     <i className="h-2.5 w-2.5 rounded-[3px] border border-dashed border-line bg-bg" />
                     Too big for {guests}
                   </span>
+                  {monthHasPhoneDay && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <i className="h-2.5 w-2.5 rounded-[3px] border border-warn-line bg-warn-bg" />
+                      Call to book
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -417,43 +473,42 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       {formatShortDay(selectedDate)} — choose a start time
                     </div>
                     {rows.length === 0 && <Notice>No departures on this day.</Notice>}
-                    {rows.length > 0 && availRows.length === 0 && (
+                    {/* DEC-193. No number yet — issue #1159 adds the operator's contact phone.
+                        One template literal, not JSX text around `{…}`: written that way the
+                        compiled output dropped the space after the date ("Oct 4online"). */}
+                    {phoneDay && (
+                      <Notice>
+                        {`Too late to book ${formatShortDay(selectedDate)} online. Call us and we’ll book it for you.`}
+                      </Notice>
+                    )}
+                    {rows.length > 0 && availRows.length === 0 && !phoneDay && (
                       <Notice>
                         Nothing on {formatShortDay(selectedDate)} takes {guests}. Try another day, or fewer guests.
                       </Notice>
                     )}
                     {rows.map((r) => {
-                      const label = boatsOpenLabel(r.boatsOpen);
+                      const status = rowStatus(r);
                       const selected = selectedRow?.time === r.time;
                       const inner = (
                         <>
                           <span className="min-w-[74px] text-[15px] font-semibold tabular-nums">{shortClock(r.time)}</span>
-                          {/* A departure that IS free but can't take this party gets its own line
-                              rather than "Sold out" — the boats are sitting there, and telling a
-                              party of 15 they were beaten to it is both false and unactionable.
-                              This one is actionable: drop to {r.capacity} and it opens up. */}
-                          <span
-                            className={`text-xs font-semibold ${
-                              !r.soldOut && !r.fits
-                                ? "text-muted"
-                                // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-                                : label.tone === "open"
-                                  ? "text-ok"
-                                  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-                                  : label.tone === "tight"
-                                    ? "text-warn"
-                                    : "text-muted"
-                            }`}
-                          >
-                            {/* "12 max", not "Takes 12" (operator, 2026-08-16) — this sits in the
-                                same column as "1 boat left", so it reads as a status, and a limit
-                                is what it is. No seat word (DEC-125): the number is the boat's
-                                whole-boat capacity, not a count of anything for sale. */}
-                            {!r.soldOut && !r.fits ? `${r.capacity} max` : label.text}
-                          </span>
+                          <span className={`text-xs font-semibold ${status.cls}`}>{status.text}</span>
                           <span className="ml-auto font-mono text-sm font-semibold">{formatCents(r.priceCents)}</span>
                         </>
                       );
+                      // Inside the booking cutoff (DEC-193): not a link, and NOT dimmed — the row
+                      // carries an instruction, and halving the warn text's opacity would cost it
+                      // the contrast #951 fixed.
+                      if (r.phoneOnly)
+                        return (
+                          <div
+                            key={r.time}
+                            data-testid={`slot-${r.time}`}
+                            className="mb-2.5 flex items-center gap-3 rounded-xl border border-warn-line bg-card px-3.5 py-3"
+                          >
+                            {inner}
+                          </div>
+                        );
                       if (r.soldOut || !r.fits)
                         return (
                           <div

@@ -775,7 +775,8 @@ describe("the calendar and the write refuse the same set (criterion 5)", () => {
     return repo;
   }
 
-  /** The times `/book` would not sell — a departure with no `available` boat at that time. */
+  /** The times `/book` would not sell — a departure with no boat it can sell online at that time.
+   *  A phone-only boat (inside the booking cutoff) is open to the operator, not to `/book`. */
   async function refusedByCalendar(repo: InMemoryRepository): Promise<string[]> {
     const slots = deriveVirtualAvailability({
       offerings: [(await repo.getOffering(OFF))!],
@@ -785,8 +786,9 @@ describe("the calendar and the write refuse the same set (criterion 5)", () => {
       events: await repo.listEvents(),
       reservations: await repo.listAllReservations(),
       asOf: AT,
+      bookingCutoffHours: await repo.getBookingCutoffHours(),
     });
-    return TIMES.filter((t) => !slots.some((s) => s.time === t && s.status === "available"));
+    return TIMES.filter((t) => !slots.some((s) => s.time === t && s.status === "available" && !s.phoneOnly));
   }
 
   /** The times the write would not sell. Each asked on its own repo copy, because a claim that
@@ -895,6 +897,50 @@ describe("the calendar and the write refuse the same set (criterion 5)", () => {
     const byCalendar = await refusedByCalendar(repo);
     expect(byCalendar).toEqual(["08:00", "13:30", "16:00"]);
     expect(byCalendar).toEqual(await refusedByWrite(seed));
+  });
+
+  it("agree inside the booking cutoff (DEC-193)", async () => {
+    // 4 hours from 08:00 local is noon: 08:00 has departed and 10:00 is inside the cutoff.
+    const seed = async (repo: InMemoryRepository) => {
+      await repo.setBookingCutoffHours(4, AT);
+    };
+    const repo = await world();
+    await seed(repo);
+    const byCalendar = await refusedByCalendar(repo);
+    expect(byCalendar).toEqual(["08:00", "10:00"]);
+    expect(byCalendar).toEqual(await refusedByWrite(seed));
+  });
+});
+
+/**
+ * The booking cutoff at the write (DEC-193, `docs/SPEC.md §2.8.4`): a named refusal beside
+ * `departed`, so the customer is told to call rather than "sold out". NOW is 08:00 local and the
+ * departure 13:30 local — five and a half hours out.
+ */
+describe("claimDepartureSlot — the booking cutoff refuses the customer (DEC-193)", () => {
+  it("refuses a departure inside the cutoff by name, and writes no row", async () => {
+    const repo = await seededRepo();
+    await repo.setBookingCutoffHours(6, NOW);
+    expect(await claim(repo, {})).toEqual({ unbookable: "cutoff" });
+    expect(await repo.listAllReservations()).toHaveLength(0);
+  });
+
+  it("claims a departure outside the cutoff", async () => {
+    const repo = await seededRepo();
+    await repo.setBookingCutoffHours(5, NOW);
+    expect(claimedVessel(await claim(repo, {}))).toBe("v-small");
+  });
+
+  it("with no cutoff set, nothing is cut off", async () => {
+    const repo = await seededRepo();
+    expect(claimedVessel(await claim(repo, {}))).toBe("v-small");
+  });
+
+  it("a departed trip still reads `departed`, not `cutoff`", async () => {
+    const repo = await seededRepo();
+    await repo.setBookingCutoffHours(6, NOW);
+    const after = () => "2026-07-04T18:00:00.000Z"; // 14:00 local — the 13:30 has left
+    expect(await claim(repo, {}, after)).toEqual({ unbookable: "departed" });
   });
 });
 
@@ -1030,8 +1076,16 @@ describe("claimDepartureSlot — the operator's rules (§2.10.6, 16.1)", () => {
   const smallHold = { id: asId<"BlockId">("b-small"), kind: "vesselHold" as const, vesselId: SMALL, date: DATE, time: TIME };
 
   it("customer rules are the default — an existing caller is unchanged", () => {
-    expect(CUSTOMER_RULES).toMatchObject({ grid: "refuse", blocks: "refuse", vessel: "smallest_fit" });
-    expect(OPERATOR_RULES).toMatchObject({ grid: "pass", blocks: "refuse", vessel: "requested" });
+    expect(CUSTOMER_RULES).toMatchObject({ grid: "refuse", blocks: "refuse", cutoff: "refuse", vessel: "smallest_fit" });
+    expect(OPERATOR_RULES).toMatchObject({ grid: "pass", blocks: "refuse", cutoff: "pass", vessel: "requested" });
+  });
+
+  it("the booking cutoff: the customer is refused, the operator passes (DEC-193)", async () => {
+    // NOW is 08:00 local and TIME is 13:30 local, so a 6-hour cutoff covers it.
+    const repo = await seededRepo();
+    await repo.setBookingCutoffHours(6, NOW);
+    expect(await claim(repo, {})).toEqual({ unbookable: "cutoff" });
+    expect(claimedVessel(await operatorClaim(repo, { vesselId: SMALL }))).toBe("v-small");
   });
 
   it("books the boat the operator clicked, not the smallest that fits", async () => {

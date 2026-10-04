@@ -52,6 +52,9 @@ interface ListRow {
   label: string;
   bookHref: string | undefined;
   selected: boolean;
+  /** Open, but every open cruise at this boat-time is inside the booking cutoff (DEC-193): the
+   *  operator can book it, the website won't. The pill says so. */
+  phoneOnly?: boolean;
 }
 
 const PILL: Record<RowState, { label: string; cls: string }> = {
@@ -154,6 +157,7 @@ function rowOf(
   // behind the cruise that can't run. The booking steps only offer the open cruise.
   const open = slots.filter((s) => s.status === "available");
   if (open.length > 0) {
+    const phoneOnly = open.every((s) => s.phoneOnly);
     return {
       ...base,
       state: "open",
@@ -161,8 +165,9 @@ function rowOf(
       who: `Takes ${guests(vessel?.coiMaxPax ?? first.capacity)}`,
       href: calendarHref(data, { hold: `${vesselId}|${time}` }),
       bookHref: bookHref(data, { vesselId, time }, {}),
-      label: `Book or block ${where}`,
+      label: `Book or block ${where}${phoneOnly ? ", phone only" : ""}`,
       selected: paneOnThis && p.action === "hold",
+      phoneOnly,
     };
   }
 
@@ -273,6 +278,7 @@ export function CalendarList({
               <span>
                 <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${pill.cls}`}>
                   {pill.label}
+                  {r.phoneOnly && " · phone only"}
                 </span>
               </span>
               {r.bookHref ? (

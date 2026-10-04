@@ -81,7 +81,7 @@ export function shiftMonth(year: number, month: number, delta: number): { year: 
   return { year: y, month: mo, first: `${y}-${String(mo).padStart(2, "0")}-01` };
 }
 
-export type DayState = "blank" | "off" | "avail" | "soldout" | "toobig" | "selected";
+export type DayState = "blank" | "off" | "avail" | "phone" | "soldout" | "toobig" | "selected";
 
 export interface DayCell {
   /** The day-of-month number, or null for a leading blank pad cell. */
@@ -94,7 +94,8 @@ export interface DayCell {
 /**
  * Aggregate a day's slots to one calendar state **for a party of `guestCount`**:
  *  - no slots at all ⇒ `off` (not scheduled / off-season)
- *  - any `available` slot that FITS the party ⇒ `avail`
+ *  - any `available` slot that FITS the party and sells online ⇒ `avail`
+ *  - else any fitting `available` slot inside the booking cutoff ⇒ `phone` (DEC-193)
  *  - a fitting boat runs that day but isn't free ⇒ `soldout`
  *  - no boat that day fits the party at all ⇒ `toobig`
  * A past day is always `off` regardless of slots (you can't book yesterday).
@@ -103,7 +104,7 @@ export interface DayCell {
  * "sold out" on a day whose boats are all empty and all too small — the customer then browses on,
  * looking for a day that will never exist. The operator's standard is **never show a customer
  * something they cannot buy**, and its corollary is that when you can't, say which of the two
- * reasons it is.
+ * reasons it is. `phone` is the third reason, and the only one with a next step: call (§2.10.2).
  */
 export function dayState(
   slots: readonly VirtualSlot[],
@@ -115,7 +116,9 @@ export function dayState(
   if (slots.length === 0) return "off";
   const fitting = slots.filter((s) => s.capacity >= guestCount);
   if (fitting.length === 0) return "toobig";
-  return fitting.some((s) => s.status === "available") ? "avail" : "soldout";
+  const open = fitting.filter((s) => s.status === "available");
+  if (open.some((s) => !s.phoneOnly)) return "avail";
+  return open.length > 0 ? "phone" : "soldout";
 }
 
 export interface MonthCalendar {
@@ -179,10 +182,20 @@ export interface SlotRow {
   boatCapacity: number;
   /** No boat at this time is free — regardless of party size. */
   soldOut: boolean;
-  /** A free boat at this time takes the party. `false` with `soldOut: false` is the #715 case:
-   *  boats are open, none of them fits you. The two read differently to a customer and the row
-   *  renders them differently. */
+  /** A free boat at this time takes the party **and sells online**. `false` with `soldOut: false`
+   *  is the #715 case — boats are open, none of them fits you — or the cutoff case below. They
+   *  read differently to a customer and the row renders them differently. */
   fits: boolean;
+  /** No boat at this time takes the party online, but one that fits is open inside the booking
+   *  cutoff (DEC-193): the row reads "Call to book". Not `soldOut` — the boats are sitting there —
+   *  and not `fits`, because the website cannot sell them. */
+  phoneOnly: boolean;
+}
+
+/** The first non-empty list — a row prices and caps from the best boats it has rather than
+ *  reducing an empty array. */
+function firstNonEmpty(...lists: VirtualSlot[][]): VirtualSlot[] {
+  return lists.find((l) => l.length > 0) ?? [];
 }
 
 /**
@@ -206,12 +219,12 @@ export function buildSlotRows(slotsForDate: readonly VirtualSlot[], guestCount: 
   const rows: SlotRow[] = [];
   for (const [time, arr] of byTime) {
     const open = arr.filter((s) => s.status === "available");
-    const bookable = open.filter((s) => s.capacity >= guestCount);
+    const bookable = open.filter((s) => !s.phoneOnly && s.capacity >= guestCount);
+    const byPhone = open.filter((s) => s.phoneOnly && s.capacity >= guestCount);
     // Price + capacity come from the boats this customer can actually book; failing that the
-    // open ones, failing that all of the time's boats — so a sold-out or too-small row still
-    // prices and caps rather than reducing an empty array.
-    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-    const pool = bookable.length > 0 ? bookable : open.length > 0 ? open : arr;
+    // ones they could book by phone, failing that the open ones, failing that all of the time's
+    // boats — so a sold-out or too-small row still prices and caps.
+    const pool = firstNonEmpty(bookable, byPhone, open, arr);
     rows.push({
       time,
       boatsOpen: bookable.length,
@@ -220,6 +233,7 @@ export function buildSlotRows(slotsForDate: readonly VirtualSlot[], guestCount: 
       boatCapacity: Math.min(...pool.map((s) => s.capacity)),
       soldOut: open.length === 0,
       fits: bookable.length > 0,
+      phoneOnly: bookable.length === 0 && byPhone.length > 0,
     });
   }
   return rows.sort((a, b) => a.time.localeCompare(b.time));

@@ -171,6 +171,23 @@ export function hasDeparted(date: string, time: string, asOf: string): boolean {
   return zonedWallClockToInstant(date, time).getTime() <= Date.parse(asOf);
 }
 
+/**
+ * Is this departure inside the booking cutoff at `asOf` (DEC-193, `docs/SPEC.md §2.8.4`)? Inside
+ * it the public site does not sell the departure; the operator still can.
+ *
+ * **`hasDeparted` asked about a later clock** — `asOf + hours` — so it is measured the way
+ * `departed` is, on the instant, with the same `<=` boundary, and cannot drift from it. 0 hours (the
+ * fallback) cuts nothing off, not even a trip that has left: that is `departed`'s answer to give,
+ * and it outranks this one everywhere.
+ *
+ * Shared by the deriver (the `phoneOnly` flag), the checkout page's re-check and the claim's named
+ * refusal, for the reason `hasDeparted` is: the calendar and the write refuse the same set.
+ */
+export function insideBookingCutoff(date: string, time: string, asOf: string, hours: number): boolean {
+  if (!(hours > 0)) return false;
+  return hasDeparted(date, time, new Date(Date.parse(asOf) + hours * 3_600_000).toISOString());
+}
+
 /** The physical boat-slot identity for a Muster event (DEC-125 guardrail). ONE Brew 3
  *  can hold exactly one departure at a given day+time — `source='muster'` is implicit
  *  (only Muster slots virtualize; Xola keeps its money in Xola, DEC-105). This is the
@@ -230,6 +247,17 @@ export interface VirtualSlot {
    *    `booked` put phantom bookings on the operator's calendar — two cards on one hull where
    *    one trip was sold. */
   status: "available" | "held" | "departed" | "booked" | "blocked" | "unavailable";
+  /**
+   * `true` on an `available` slot inside the booking cutoff (DEC-193): the public site cannot
+   * sell it, the operator can. Absent otherwise — never set on any other status.
+   *
+   * **A flag on an open slot, not a seventh status** (issue #1071). The operator's readers
+   * (`book-pane.tsx`, `calendar-view.tsx`, `calendar-list.tsx`, `block-impact.ts`) all test
+   * `status === "available"`, and §2.10.2 says they count this slot open and can book it — a new
+   * status value would have dropped it from every one of them in silence. Only the customer's
+   * readers (`availability-screen.ts`) have to learn it, and the claim refuses whatever they miss.
+   */
+  phoneOnly?: true;
   /** Set when a materialized `Event` backs this slot (an override or a booking). */
   eventId?: EventId;
 }
@@ -248,6 +276,10 @@ export interface DeriveVirtualAvailabilityInput {
    *  prevents oversell). A `holds` input sat beside this until 14.7; the `checkout_holds` table
    *  is gone and a customer at Stripe is a `pending` reservation, which `reservations` carries. */
   asOf?: string;
+  /** The booking cutoff in hours (DEC-193), read from `getBookingCutoffHours`. Absent or 0 ⇒ no
+   *  cutoff. Applied only with `asOf`, the same conservative rule `departed` gets: without a
+   *  clock the deriver cannot know, and guessing would hide slots. */
+  bookingCutoffHours?: number;
 }
 
 /**
@@ -285,6 +317,18 @@ function slotStatus(f: {
   // (/security-review's non-security note). A trip that ran is still a trip that ran.
   if (f.departed) return "departed";
   return "available";
+}
+
+/**
+ * Flag an open slot inside the booking cutoff `phoneOnly` (DEC-193); every other slot passes
+ * through untouched. Applied AFTER the status is settled, so it can only ever land on a slot that
+ * would otherwise be for sale — §2.10.2's "every other state outranks it, `departed` included".
+ * Outside `deriveVirtualAvailability` so the cutoff adds no branches to a function already on the
+ * complexity refactor list (#909).
+ */
+function markPhoneOnly(slot: VirtualSlot, asOf: string | undefined, hours: number | undefined): VirtualSlot {
+  if (slot.status !== "available" || asOf === undefined || hours === undefined) return slot;
+  return insideBookingCutoff(slot.date, slot.time, asOf, hours) ? { ...slot, phoneOnly: true } : slot;
 }
 
 /** Mon=0…Sun=6 for an ISO `yyyy-mm-dd`, read at UTC midnight (DST-safe). */
@@ -406,6 +450,8 @@ function livePendingOccupancy(
  *     nothing runs at, so ranking the other way made a blackout vanish from the grid.
  *  4. A **live checkout-hold** (`expiresAt > asOf`) on a surviving slot → `held` (12.1).
  *  5. Everything surviving is `available`.
+ *  6. An `available` slot inside the booking cutoff is flagged `phoneOnly` (DEC-193) — still
+ *     open to the operator, not sold online. See {@link markPhoneOnly}.
  *
  * **The offering says when; blocks say what's off. Nothing else gates (#688).** There used
  * to be an owned-day mask here — an allowlist requiring a hand-typed row per boat per date
@@ -527,21 +573,27 @@ export function deriveVirtualAvailability(
               materialized.durationMinutes ?? offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
             );
             const booked = bookedEventIds.has(String(materialized.id));
-            slots.push({
-              offeringId: offering.id,
-              vesselId,
-              date,
-              time,
-              capacity: materialized.capacity,
-              priceCents: materialized.price ?? basePrice,
-              status: slotStatus({
-                booked,
-                departed: departedAt(date, time),
-                held: heldSlots.has(slotIdentity(vesselId, date, time)),
-                occupied: collides,
-              }),
-              eventId: materialized.id,
-            });
+            slots.push(
+              markPhoneOnly(
+                {
+                  offeringId: offering.id,
+                  vesselId,
+                  date,
+                  time,
+                  capacity: materialized.capacity,
+                  priceCents: materialized.price ?? basePrice,
+                  status: slotStatus({
+                    booked,
+                    departed: departedAt(date, time),
+                    held: heldSlots.has(slotIdentity(vesselId, date, time)),
+                    occupied: collides,
+                  }),
+                  eventId: materialized.id,
+                },
+                input.asOf,
+                input.bookingCutoffHours,
+              ),
+            );
             continue;
           }
           const identity = slotIdentity(vesselId, date, time);
@@ -567,20 +619,26 @@ export function deriveVirtualAvailability(
             time,
             candidateTripMinutes(offering),
           );
-          slots.push({
-            offeringId: offering.id,
-            vesselId,
-            date,
-            time,
-            capacity: vessel.coiMaxPax,
-            priceCents: basePrice,
-            status: slotStatus({
-              departed: departedAt(date, time),
-              blocked,
-              held: heldSlots.has(identity),
-              occupied,
-            }),
-          });
+          slots.push(
+            markPhoneOnly(
+              {
+                offeringId: offering.id,
+                vesselId,
+                date,
+                time,
+                capacity: vessel.coiMaxPax,
+                priceCents: basePrice,
+                status: slotStatus({
+                  departed: departedAt(date, time),
+                  blocked,
+                  held: heldSlots.has(identity),
+                  occupied,
+                }),
+              },
+              input.asOf,
+              input.bookingCutoffHours,
+            ),
+          );
         }
       }
     }

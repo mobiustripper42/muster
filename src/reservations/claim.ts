@@ -36,7 +36,14 @@ import { randomUUID } from "node:crypto";
 import { asId, type OfferingId, type VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { recordTrail } from "./trail.js";
-import { hasDeparted, isActiveMusterClaim, isOnScheduleGrid, isSlotBlocked, slotIdentity } from "./availability.js";
+import {
+  hasDeparted,
+  insideBookingCutoff,
+  isActiveMusterClaim,
+  isOnScheduleGrid,
+  isSlotBlocked,
+  slotIdentity,
+} from "./availability.js";
 import {
   busyIntervalsFor,
   candidateHoldMinutes,
@@ -102,8 +109,8 @@ export function candidateVessels(input: {
  * unblock it on the calendar, then book. `blocks` stays a rule rather than a constant because the
  * two sets happen to agree today, not because they must.
  *
- * The booking cutoff joins this when it exists (16.2/16.3): the customer refuses it, the operator
- * passes it.
+ * **The booking cutoff** (DEC-193, 16.3): the customer refuses it, the operator passes it — the
+ * cutoff protects the operator's own notice, and they are the one giving it up (§2.10.6).
  */
 export interface ClaimRules {
   /** Who is claiming — the trail's actor. */
@@ -112,6 +119,8 @@ export interface ClaimRules {
   grid: "refuse" | "pass";
   /** An operator block on the slot. */
   blocks: "refuse" | "pass";
+  /** The booking cutoff (DEC-193). `refuse` reads the setting and refuses by name, `cutoff`. */
+  cutoff: "refuse" | "pass";
   /** Fit-and-fallback across the offering's boats, or exactly `req.vesselId`. */
   vessel: "smallest_fit" | "requested";
 }
@@ -121,6 +130,7 @@ export const CUSTOMER_RULES: ClaimRules = {
   actor: "customer",
   grid: "refuse",
   blocks: "refuse",
+  cutoff: "refuse",
   vessel: "smallest_fit",
 };
 
@@ -129,6 +139,7 @@ export const OPERATOR_RULES: ClaimRules = {
   actor: "admin",
   grid: "pass",
   blocks: "refuse",
+  cutoff: "pass",
   vessel: "requested",
 };
 
@@ -191,6 +202,9 @@ export type DepartureClaimResult =
         | "invalid_guest_count"
         | "off_schedule"
         | "departed"
+        /** `cutoff: "refuse"` only — inside the booking cutoff (DEC-193). Named rather than an
+         *  empty boat list, so the customer is told to call, never "sold out". */
+        | "cutoff"
         /** `vessel: "requested"` only — the named boat cannot take the party. */
         | "over_capacity"
         /** `vessel: "requested"` only — the named boat is not one this offering runs on. */
@@ -319,6 +333,15 @@ export async function claimDepartureSlot(
   // cost one comparison, not a fleet read.
   if (hasDeparted(req.date, req.time, at)) {
     return { unbookable: "departed" };
+  }
+
+  // The booking cutoff (DEC-193, `docs/SPEC.md §2.8.4`): beside `departed`, on the same instant,
+  // and before the fleet read — one setting read and one comparison. A named refusal rather than
+  // an empty `candidateVessels` list, which the caller would report as "sold out" when the truth
+  // is "call us". The predicate is the deriver's, so `/book` and this refuse the same set.
+  // It gates the CLAIM only: a row claimed before the cutoff confirms as any other does.
+  if (rules.cutoff === "refuse" && insideBookingCutoff(req.date, req.time, at, await repo.getBookingCutoffHours())) {
+    return { unbookable: "cutoff" };
   }
   const liveSince = pendingLiveSince(at);
 

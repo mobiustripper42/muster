@@ -135,6 +135,24 @@ describe("confirmBookingByPaymentIntent — the success page books without a web
     expect(await repo.listAllReservations()).toHaveLength(1);
   });
 
+  it("the booking cutoff gates the claim only — a row claimed before it confirms inside it (DEC-193)", async () => {
+    // At NOW the 07-04 departure is well inside a 24-hour cutoff. The customer claimed before it
+    // and paid; the confirm must not re-ask a question the claim already answered.
+    const repo = await seeded();
+    await repo.setBookingCutoffHours(24, NOW());
+    await seedPending(repo, "pi_cutoff_1");
+    const payments = new FakePaymentPort();
+    payments.succeededIntents.set("pi_cutoff_1", {
+      paymentIntentId: "pi_cutoff_1",
+      amountReceivedCents: 53625,
+      currency: "usd",
+      metadata: SLOT_METADATA,
+    });
+    const { deps } = makeDeps(repo, payments);
+
+    expect(outcomeOf(await confirmBookingByPaymentIntent(deps, "pi_cutoff_1"))).toBe("booked");
+  });
+
   it("the booked trail row says `via: success_page` (issue #1048)", async () => {
     // **The dimension that could never be filled while `booked` was a projection.** A row
     // records that it IS booked; nothing on it says which of §2.8.6's three confirms won the

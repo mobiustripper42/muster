@@ -54,6 +54,9 @@ export type OperatorBookingResult =
         | "invalid_guest_count"
         | "off_schedule"
         | "departed"
+        /** Customer rules only (DEC-193) — unreachable here, where `OPERATOR_RULES` pass the
+         *  cutoff. Typed so the pass-through stays total rather than hand-mapped. */
+        | "cutoff"
         | "over_capacity"
         | "vessel_not_offered"
         /** An operator block covers the slot — unblock it on the calendar first. */

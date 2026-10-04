@@ -293,5 +293,6 @@ Stop. Do not begin work until the user confirms.
 
 - One Claude window opens **one** session. `/its-dead` runs **once** at the end.
 - `/kill-this` may run multiple times — one per task — each opens its own PR and appends a `## Task <N>` block to this session file (on the sessions branch).
+- Between tasks: `/save-this`, then `/clear`. The save writes what the clear would lose into this file's Next Steps, and the cleared context reads it back.
 - Time math happens at `/retro`, not at close. `/its-dead` displays wall_clock to screen for gut-check but writes no time field.
 - Once `/its-dead` writes `ended:` and `status: closed`, this file is never modified again. Atomic.

@@ -16,7 +16,14 @@ BRANCH=$(git branch --show-current)
 
 **No match:** STOP. The user must run `/its-alive` first.
 
-**More than one match:** another window has a session open. Report the candidates — `session:`, `branch:`, `started:` — and ask which is yours. Do not sort and do not take the first: `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so it silently picks the *stale* file whenever that one opened earlier. Nothing errors.
+**More than one match:** another window has a session open. Narrow by checkout before asking. `/its-alive` records the transcript path, and that path is built from the directory the session was opened in (`/its-alive`'s transcript-path step), so it names the checkout:
+
+```
+HERE="$HOME/.claude/projects/$(pwd | tr '/' '-')/"
+grep -lF "transcript: $HERE" <each open file>
+```
+
+The trailing `/` is what keeps `~/muster` from matching `~/muster-s91`'s sessions. **Exactly one file left:** that is `SESSION_FILE`. Two lanes in two checkouts settle here without a question — which matters because a window that began with `/clear` has no memory of which file it opened, and asking every task is the symptom. **Zero or several left** (two windows in one checkout, or a file opened with no transcript path): report the candidates — `session:`, `branch:`, `started:` — and ask which is yours. Do not sort and do not take the first: `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so it silently picks the *stale* file whenever that one opened earlier. Nothing errors.
 
 `BRANCH` is read from the current directory, and that is correct by construction: a session starts in the checkout its work lives in and stays there. If that stops being true, fix the session, not this skill — every wrong-tree symptom downstream is that one broken assumption wearing a different hat.
 

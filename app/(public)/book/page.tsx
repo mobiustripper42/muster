@@ -476,10 +476,14 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                     {/* DEC-193. No number yet — issue #1159 adds the operator's contact phone.
                         One template literal, not JSX text around `{…}`: written that way the
                         compiled output dropped the space after the date ("Oct 4online"). */}
+                    {/* `mb-2.5`, the rows' own spacing — the Notice carries no margin, so without
+                        the wrapper it sat flush against the first row. */}
                     {phoneDay && (
-                      <Notice>
-                        {`Too late to book ${formatShortDay(selectedDate)} online. Call us and we’ll book it for you.`}
-                      </Notice>
+                      <div className="mb-2.5">
+                        <Notice>
+                          {`Too late to book ${formatShortDay(selectedDate)} online. Call us and we’ll book it for you.`}
+                        </Notice>
+                      </div>
                     )}
                     {rows.length > 0 && availRows.length === 0 && !phoneDay && (
                       <Notice>

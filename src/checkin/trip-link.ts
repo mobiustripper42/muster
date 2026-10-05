@@ -17,6 +17,7 @@ import type { Buffer } from "node:buffer";
 import { stripTrailingSlashes } from "../config/base-url.js";
 import { vesselDateOf } from "../config/tenant.js";
 import type { EventId } from "../domain/ids.js";
+import { logSwallowed } from "../log.js";
 import type { Repository } from "../ports/repository.js";
 import { takeRateLimit, type RateLimitDeps, type RateLimitPolicy } from "../rate-limit/rate-limit.js";
 import { BOOKING_CODE_ALPHABET } from "../reservations/booking-code.js";
@@ -101,6 +102,27 @@ export async function ensureTripLink(
     }
   }
   throw lastError;
+}
+
+/**
+ * The code a booking confirmation carries for "Sign yours" (18.10, issue #1124), or null for
+ * none. Null when no waiver is in effect — nobody could sign, and reminders pick the booking up
+ * once one is posted — and null rather than a throw when minting fails: the booking is paid and
+ * the confirmation must go out without the line.
+ */
+export async function confirmationTripCode(
+  repo: Repository,
+  eventId: EventId,
+  now: () => string,
+  bytes?: (n: number) => Buffer,
+): Promise<string | null> {
+  try {
+    if (!(await repo.getCurrentWaiverTemplate(now()))) return null;
+    return await ensureTripLink(repo, eventId, now, bytes);
+  } catch (e) {
+    logSwallowed("checkin:confirmation-trip-code", e, "the confirmation went without its signing link");
+    return null;
+  }
 }
 
 function isDuplicate(e: unknown): boolean {

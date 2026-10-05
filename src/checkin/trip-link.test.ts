@@ -9,6 +9,7 @@ import type { Event, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { BOOKING_CODE_ALPHABET } from "../reservations/booking-code.js";
 import {
+  confirmationTripCode,
   ensureTripLink,
   mintTripCode,
   normalizeTripCode,
@@ -176,5 +177,37 @@ describe("openTripLink — limited before it looks anything up", () => {
     for (let i = 0; i <= TRIP_LINK_LIMIT.limit; i++) {
       expect((await openTripLink({ repo, now: () => NOW }, "K3F9QZ2M", null)).state).toBe("open");
     }
+  });
+});
+
+describe("the code a booking confirmation carries (18.10, issue #1124)", () => {
+  const waiver = {
+    id: asId<"WaiverTemplateId">("wt-1"),
+    version: "brewboat-2026-v1",
+    body: "I accept the risks.",
+    effectiveFrom: "2026-09-01T04:00:00.000Z",
+    postedAt: "2026-09-01T04:00:00.000Z",
+    postedBy: "crew-admin",
+  };
+
+  it("is the departure's one code when a waiver is in effect — the same one the party page shares", async () => {
+    const repo = await world();
+    await repo.postWaiverTemplate(waiver);
+    const code = await confirmationTripCode(repo, EVENT, () => NOW, bytesFor("K3F9QZ2M"));
+    expect(code).toBe("K3F9QZ2M");
+    expect(await ensureTripLink(repo, EVENT, () => NOW)).toBe("K3F9QZ2M");
+  });
+
+  it("is null with no waiver in effect — nobody could sign, so no link, and none minted", async () => {
+    const repo = await world();
+    expect(await confirmationTripCode(repo, EVENT, () => NOW)).toBeNull();
+    expect(await repo.getTripLinkForEvent(EVENT)).toBeNull();
+  });
+
+  it("is null, never a throw, when minting fails — the confirmation must still go out", async () => {
+    const repo = await world();
+    await repo.postWaiverTemplate(waiver);
+    repo.insertTripLink = () => Promise.reject(new Error("pool exhausted"));
+    await expect(confirmationTripCode(repo, EVENT, () => NOW)).resolves.toBeNull();
   });
 });

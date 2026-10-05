@@ -11,7 +11,16 @@
  * in this file — the old spec re-implemented the server's HMAC here, which could drift from the
  * implementation with every test still green.
  */
-import { test, expect, resetAndSeed } from "./fixtures.js";
+import type { Page } from "@playwright/test";
+import {
+  test,
+  expect,
+  cancelReservationRow,
+  eventIdOfReservation,
+  moveEventDate,
+  plantWaiverTemplate,
+  resetAndSeed,
+} from "./fixtures.js";
 import { BOOKED, demoBookingCode, demoRevokedBookingCode, demoReservationId } from "./reservation-demo.js";
 
 const RID = demoReservationId(BOOKED.date, BOOKED.time);
@@ -115,6 +124,56 @@ test.describe("public /b/<code>", () => {
     // format the page won't render.
     const res = await request.get(`/b/${REVOKED}/calendar`);
     expect(res.status()).toBe(404);
+  });
+
+  test.describe("Waivers (18.10, issue #1124)", () => {
+    const WAIVER = {
+      id: "wt-manage",
+      version: "brewboat-2026-v1",
+      body: "I accept the risks.",
+      effectiveFrom: "2026-01-01T05:00:00.000Z",
+    };
+    const waivers = (page: Page) => page.getByRole("region", { name: "Waivers" });
+
+    test("Sign the waiver opens the trip's signing page; See who's signed opens the party page", async ({ page }) => {
+      await plantWaiverTemplate(WAIVER);
+      await page.goto(manageUrl());
+
+      await expect(waivers(page)).toBeVisible();
+      await expect(waivers(page).getByText("Everyone aboard signs before the trip.")).toBeVisible();
+      const sign = waivers(page).getByRole("link", { name: /Sign the waiver/ });
+      await expect(sign).toHaveAttribute("href", /^\/w\/[0-9A-Z]{8}$/);
+      await expect(waivers(page).getByRole("link", { name: /See who’s signed/ })).toHaveAttribute(
+        "href",
+        `/b/${CODE}/party`,
+      );
+
+      await sign.click();
+      await expect(page.getByText("Your details")).toBeVisible();
+    });
+
+    test("no waiver in effect ⇒ no Waivers section — nobody could sign", async ({ page }) => {
+      await page.goto(manageUrl());
+      await expect(page.getByText("Book again")).toBeVisible();
+      await expect(waivers(page)).toHaveCount(0);
+    });
+
+    test("a cancelled booking has no Waivers section", async ({ page }) => {
+      await plantWaiverTemplate(WAIVER);
+      await cancelReservationRow(RID);
+      await page.goto(manageUrl());
+      await expect(page.getByText("Cancelled", { exact: true })).toBeVisible();
+      await expect(waivers(page)).toHaveCount(0);
+    });
+
+    test("once the trip's day is over, only See who's signed remains", async ({ page }) => {
+      await plantWaiverTemplate(WAIVER);
+      await moveEventDate(await eventIdOfReservation(RID), "2026-01-02");
+      await page.goto(manageUrl());
+      await expect(waivers(page).getByRole("link", { name: /See who’s signed/ })).toBeVisible();
+      await expect(waivers(page).getByRole("link", { name: /Sign the waiver/ })).toHaveCount(0);
+      await expect(waivers(page).getByText("Everyone aboard signs before the trip.")).toHaveCount(0);
+    });
   });
 
   test("requesting a cancellation acknowledges the out-of-band request", async ({ page }) => {

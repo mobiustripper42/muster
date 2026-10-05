@@ -158,6 +158,39 @@ describe("sendBookingConfirmation", () => {
     expect(sms.sent).toHaveLength(0);
   });
 
+  describe("the waiver paragraph (18.10, issue #1124)", () => {
+    const TRIP = "7K3MX9QA";
+    const PARAGRAPH = `Everyone aboard signs a waiver before the trip. Sign yours, then send the link to your group: ${BASE}/w/${TRIP}`;
+
+    it("with a trip code, both channels carry the signing link, before the manage link", async () => {
+      const email = capturing();
+      const sms = capturing();
+      await sendBookingConfirmation({ email, sms, linkBase: BASE }, reservation(), CODE, TRIP);
+
+      for (const chan of [email, sms]) {
+        const body = chan.sent[0]!.body;
+        expect(body).toContain(PARAGRAPH);
+        expect(body.indexOf(PARAGRAPH)).toBeLessThan(body.indexOf(`Manage your booking: ${BASE}/b/${CODE}`));
+        expect(body.indexOf(CANCELLATION_TERMS_SHORT)).toBeLessThan(body.indexOf(PARAGRAPH));
+      }
+    });
+
+    it("without a trip code, the confirmation is exactly as before — no waiver line", async () => {
+      const sms = capturing();
+      await sendBookingConfirmation({ sms, linkBase: BASE }, reservation(), CODE, null);
+      expect(sms.sent[0]!.body).not.toContain("waiver");
+      expect(sms.sent[0]!.body).not.toContain("/w/");
+    });
+
+    it("the paragraph stays inside GSM-7", async () => {
+      const sms = capturing();
+      const res = reservation();
+      await sendBookingConfirmation({ sms, linkBase: BASE }, res, CODE, TRIP);
+      expect(sms.sent[0]!.body).toContain("/w/");
+      expect(nonGsm7Chars(sms.sent[0]!.body, [res.customerName ?? ""])).toEqual([]);
+    });
+  });
+
   it("best-effort: a failing channel is swallowed + surfaced, the other still sends", async () => {
     const email = capturing(true); // throws
     const sms = capturing();

@@ -527,6 +527,18 @@ export async function reopenEvent(date: string, time: string): Promise<void> {
   }
 }
 
+/** Move a departure to another day (18.10) — a seeded booking whose trip day is already over. */
+export async function moveEventDate(eventId: string, date: string): Promise<void> {
+  const client = new pg.Client(pgConnectionConfig(TEST_DATABASE_URL));
+  await client.connect();
+  try {
+    const res = await client.query("update events set date = $2 where id = $1", [eventId, date]);
+    if (res.rowCount !== 1) throw new Error(`no event ${eventId}`);
+  } finally {
+    await client.end();
+  }
+}
+
 /** Flip an admin's `active` flag — the per-person revoke lever (DEC-092). */
 export async function setAdminActive(handle: string, active: boolean): Promise<void> {
   const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);

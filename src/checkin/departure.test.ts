@@ -355,6 +355,23 @@ describe("the integrity page's list", () => {
     ]);
   });
 
+  it("never names a number above the boat's limit, even after the limit was lowered", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveVessel({ ...vessel, coiMaxPax: 4 }); // lowered after the trip was counted at 6
+    await repo.saveCrewMember(mike);
+    await repo.saveEvent(event);
+    const ticked = (n: number) => adult(`g-t${n}`, `Ticked ${n}`, tickedBy("2026-10-10T18:50:00.000Z"));
+    await repo.saveGuests([ticked(1), ticked(2)]);
+    await repo.setDepartureCount(EVENT, count(6));
+    expect((await loadCountedAboveCheckedIn(repo)).map((r) => r.label)).toEqual([
+      "Hops · Sat, Oct 10 · 3:00 PM — counted 4, checked in 2",
+    ]);
+
+    // Capped, the two can meet: then nothing is above, and the departure page shows no warning.
+    await repo.saveGuests([ticked(3), ticked(4), ticked(5)]);
+    expect(await loadCountedAboveCheckedIn(repo)).toEqual([]);
+  });
+
   it("heads the list with how many", () => {
     expect(countedAboveHeadline(1)).toBe("One departure counted more people than were checked in.");
     expect(countedAboveHeadline(3)).toBe("3 departures counted more people than were checked in.");

@@ -19,8 +19,8 @@
  */
 import { formatClock, formatShortDay } from "../reservations/availability-screen.js";
 import { vesselClockOf, vesselDateOf } from "../config/tenant.js";
-import type { CrewMember, Event, Reservation, Vessel } from "../domain/entities.js";
-import type { EventId } from "../domain/ids.js";
+import type { Event, Reservation, Vessel } from "../domain/entities.js";
+import { asId, type EventId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { buildCheckInScreen } from "./check-in.js";
 import type { DepartureCount, Guest, WaiverTemplate } from "./entities.js";
@@ -243,8 +243,8 @@ export async function loadDepartureView(repo: Repository, eventId: EventId): Pro
   const templateIds = new Set(guests.flatMap((g) => (g.waiverTemplateId ? [String(g.waiverTemplateId)] : [])));
   const offeringId = reservations.find((r) => r.status !== "cancelled" && r.offeringId)?.offeringId;
   const [crew, templates, offering] = await Promise.all([
-    Promise.all([...crewIds].map((id) => repo.getCrewMember(id as CrewMember["id"]))),
-    Promise.all([...templateIds].map((id) => repo.getWaiverTemplate(id as WaiverTemplate["id"]))),
+    Promise.all([...crewIds].map((id) => repo.getCrewMember(asId<"CrewMemberId">(id)))),
+    Promise.all([...templateIds].map((id) => repo.getWaiverTemplate(asId<"WaiverTemplateId">(id)))),
     offeringId ? repo.getOffering(offeringId) : Promise.resolve(null),
   ]);
   return buildDepartureView({
@@ -318,18 +318,29 @@ export function countedAboveHeadline(n: number): string {
     : `${n} departures counted more people than were checked in.`;
 }
 
-/** Every departure counted above its checked-in guests, latest first, named and linked. */
+/**
+ * Every departure counted above its checked-in guests, latest first, named and linked.
+ *
+ * **Both numbers are capped at the boat's limit as it stands now** (spec §4a), as the departure page
+ * caps them. A limit is editable after a trip was counted, so a stored count can sit above it; once
+ * capped, the two can meet, and then the departure is not above — the page shows no warning either.
+ */
 export async function loadCountedAboveCheckedIn(repo: Repository): Promise<CountedAboveRow[]> {
   const rows = await repo.listDeparturesCountedAboveCheckedIn();
-  return Promise.all(
+  const named = await Promise.all(
     rows.map(async (r) => {
       const event = await repo.getEvent(r.eventId);
       const vessel = event ? await repo.getVessel(event.vesselId) : null;
+      const limit = vessel?.coiMaxPax ?? event?.capacity ?? Infinity;
+      const counted = Math.min(r.count.pax, limit);
+      const checkedIn = Math.min(r.checkedIn, limit);
+      if (counted <= checkedIn) return null;
       const trip = event ? tripLabel(event, vessel?.name ?? String(event.vesselId)) : String(r.eventId);
       return {
-        label: `${trip} — counted ${r.count.pax}, checked in ${r.checkedIn}`,
+        label: `${trip} — counted ${counted}, checked in ${checkedIn}`,
         href: departureHref(r.eventId),
       };
     }),
   );
+  return named.filter((r): r is CountedAboveRow => r !== null);
 }

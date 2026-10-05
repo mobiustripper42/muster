@@ -47,13 +47,17 @@ export default async function AdminIntegrity({
   const requested = sp.run === "1";
 
   let view: IntegrityView | null = null;
-  let countedAbove: CountedAboveRow[] = [];
+  // Null when the departures' list failed: its own failure, so it never hides the structural scan.
+  let countedAbove: CountedAboveRow[] | null = null;
   let failed = false;
   if (requested) {
     try {
-      const repo = getRepo();
-      view = buildIntegrityView(await checkIntegrity(repo));
-      countedAbove = await loadCountedAboveCheckedIn(repo);
+      countedAbove = await loadCountedAboveCheckedIn(getRepo());
+    } catch (e) {
+      logSwallowed("admin/integrity:counted", e, "the counted-above-checked-in list did not run");
+    }
+    try {
+      view = buildIntegrityView(await checkIntegrity(getRepo()));
     } catch (e) {
       // The diagnostic screen itself. `failed` renders "couldn't run" with no
       // reason, which is a poor showing for the page whose job is finding faults.
@@ -111,36 +115,44 @@ export default async function AdminIntegrity({
  * is the same kind of look: run when wanted, read, follow a link. In the shape the payroll page's
  * missing days use (#638): `warn`, never blocking — the boat sailed, and only a person can say why.
  */
-function CountedAbove({ rows }: { rows: CountedAboveRow[] }) {
+function CountedAbove({ rows }: { rows: CountedAboveRow[] | null }) {
   return (
     <section aria-label="Counted above checked in" className="flex flex-col gap-2">
       <h2 className="text-sm font-semibold text-ink">Counted above checked in</h2>
-      {rows.length === 0 ? (
-        <Notice tone="ok">No departure counted more people than were checked in.</Notice>
-      ) : (
-        <Notice tone="warn">
-          <p className="font-semibold">{countedAboveHeadline(rows.length)}</p>
-          <p>
-            Nothing was blocked; the boat sailed. The difference is people aboard who were never
-            checked in, either unsigned or not ticked. Check each trip.
-          </p>
-          <ul className="mt-1 list-disc pl-4">
-            {rows.map((r) => (
-              <li key={r.href}>
-                <a className="underline" href={r.href}>
-                  {r.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </Notice>
-      )}
+      <CountedAboveVerdict rows={rows} />
     </section>
   );
 }
 
+function CountedAboveVerdict({ rows }: { rows: CountedAboveRow[] | null }) {
+  if (rows === null) {
+    return <Notice tone="bad">Couldn’t check the departures’ counts just now. Run it again in a moment.</Notice>;
+  }
+  if (rows.length === 0) {
+    return <Notice tone="ok">No departure counted more people than were checked in.</Notice>;
+  }
+  return (
+    <Notice tone="warn">
+      <p className="font-semibold">{countedAboveHeadline(rows.length)}</p>
+      <p>
+        Nothing was blocked; the boat sailed. The difference is people aboard who were never
+        checked in, either unsigned or not ticked. Check each trip.
+      </p>
+      <ul className="mt-1 list-disc pl-4">
+        {rows.map((r) => (
+          <li key={r.href}>
+            <a className="underline" href={r.href}>
+              {r.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </Notice>
+  );
+}
+
 /** The verdict, the violations, and the proof it actually walked the tables. */
-function Result({ view, countedAbove }: { view: IntegrityView; countedAbove: CountedAboveRow[] }) {
+function Result({ view, countedAbove }: { view: IntegrityView; countedAbove: CountedAboveRow[] | null }) {
   return (
     <>
       {view.ok ? (

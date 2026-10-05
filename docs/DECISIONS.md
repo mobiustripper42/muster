@@ -197,6 +197,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-186 — RESERVATIONS is deleted — Stripe keys are the gate
 - DEC-188 — The checkout box is the cancellation terms: it gates payment, records nothing
 - DEC-193 — The public site stops selling inside the booking cutoff; the phone still books
+- DEC-194 — A discount is dollars off the fare; a comp confirms by name, without a payment
 
 ### Check-in & waivers
 - DEC-187 — Check-in & waivers is in scope, specced in its own files that SPEC.md indexes

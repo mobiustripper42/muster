@@ -31,7 +31,7 @@ The trailing `/` is what keeps `~/muster` from matching `~/muster-s91`'s session
 
 Read the file first. If Next Steps already holds a save, it is the starting point for every list below — not memory.
 
-- **Next task:** what the user said comes next, if they said it. If they did not, write "Not named" — never infer one from the plan.
+- **Next task:** what the user said comes next. If they did not say, name the one you'd do next and mark it proposed — from the previous save's Next task, the open phase's issues, or what this conversation pointed at — so the user corrects it before /clear instead of the next context starting blind. "Not named" only when there is no reasonable candidate.
 - **Open pull requests:** for each number in the frontmatter's `pr_numbers:`, check its state (`gh pr view <N> --json state,statusCheckRollup,reviewDecision`). List only the ones still open, each with its CI state and any review waiting. Then one line: "The rest of `pr_numbers` is merged." Do not list merged pull requests one by one.
 - **Standing rules:** constraints in force until something ends them — "nothing to production until Phase 16 ends", "issue #1080 goes last". Not parking-lot items: nobody closes them, so they do not belong under a seven-item cap. Carry every rule from the previous save **word for word**, add any the user set in this conversation, and drop one only when the user retired it or its own end condition has been met — say which, in the reply.
 - **Parking lot:** start from the previous save's parking lot. Keep every item the user did not close in this conversation, then add the new items this conversation raised, in order, one line each. **An item leaves only when the user closed it.** A context that lost track of a thread must not be able to delete it by saving. Standing rules never go here.
@@ -48,7 +48,7 @@ A replace, not an append: Next Steps always says what is open now. The section's
 
 _Saved <ISO 8601 timestamp> by /save-this._
 
-**Next task:** <named task, or "Not named">
+**Next task:** <named task, or "<task> (proposed)", or "Not named">
 
 **Open pull requests:**
 - PR #<N> — <title> — CI <green / red: check name / pending> — <review state>
@@ -80,7 +80,7 @@ git -C .sessions-worktree checkout sessions 2>/dev/null || true
 
 ## Step 4 — Tell the user
 
-Say that it is saved and safe to `/clear`, name the next task if there is one, and name any standing rule dropped and why. The reply keeps its usual shape; the parking lot can print after as usual.
+Say that it is saved and safe to `/clear`, name the next task if there is one — saying so when it is proposed, so the user can correct it before `/clear` — and name any standing rule dropped and why. The reply keeps its usual shape; the parking lot can print after as usual.
 
 You cannot run `/clear`. It is a built-in command, and only the user types it.
 

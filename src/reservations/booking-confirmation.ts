@@ -26,6 +26,7 @@
 
 import type { Reservation } from "../domain/entities.js";
 import type { ChannelPort } from "../ports/channel.js";
+import { tripLinkUrl } from "../checkin/trip-link.js";
 import { bookingUrl } from "./booking-code.js";
 import { CANCELLATION_TERMS_SHORT } from "./refund-terms.js";
 
@@ -58,11 +59,18 @@ export interface ConfirmationDeps {
 export function bookingConfirmationBody(
   reservation: Reservation,
   manageUrl: string,
+  signUrl?: string | null,
 ): string {
   const who = reservation.customerName?.trim() || "there";
+  // 18.10: the booker signs first, then the signing page's success screen offers the link for the
+  // group (`check-in-and-waivers.md` §7). The trip link, not the party page — this is for signing.
+  const waiver = signUrl
+    ? `Everyone aboard signs a waiver before the trip. Sign yours, then send the link to your group: ${signUrl}\n\n`
+    : "";
   return (
     `Hi ${who}, your Muster booking is confirmed for a party of ${reservation.partySize}.\n\n` +
     `${CANCELLATION_TERMS_SHORT}\n\n` +
+    waiver +
     `Manage your booking: ${manageUrl}\n\n` +
     `- Muster`
   );
@@ -83,9 +91,15 @@ export async function sendBookingConfirmation(
   deps: ConfirmationDeps,
   reservation: Reservation,
   bookingCode: string,
+  /** The departure's trip-link code (18.10), or null/absent for no waiver line. */
+  tripCode?: string | null,
 ): Promise<void> {
   const url = bookingUrl(deps.linkBase, bookingCode);
-  const body = bookingConfirmationBody(reservation, url);
+  const body = bookingConfirmationBody(
+    reservation,
+    url,
+    tripCode ? tripLinkUrl(deps.linkBase, tripCode) : null,
+  );
 
   if (reservation.email && deps.email) {
     try {

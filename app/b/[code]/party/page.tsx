@@ -24,8 +24,8 @@ import { loadBookingByCode } from "../load";
  * Read-only: the booker chases people, she does not administer records. Every signed name, never
  * folded; an obvious duplicate once, "×2", and counted once (`buildPartyView`). **Share the link**
  * copies the departure's trip link (`/w/<code>`), made the first time it is needed — the crew QR
- * page's rule. Nothing links here yet: 18.10 (issue #1124) adds the links from `/b/[code]` and the
- * confirmation.
+ * page's rule. Reached from **See who’s signed ›** on `/b/[code]` (18.10, issue #1124) and from
+ * waiver reminders.
  *
  * The boat is never named to a customer. **Never logs the code**, and is not indexed.
  */

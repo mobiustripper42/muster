@@ -11,7 +11,9 @@
  * flagged: crew NAMES (view model gives counts), the guest waiver roster (no per-attendee
  * roster, DEC-110), leave-a-review, email-receipt.
  */
+import { ensureTripLink, tripDayOver } from "@core/checkin/trip-link.js";
 import { vesselClockOf, vesselDateOf } from "@core/config/tenant.js";
+import type { EventId } from "@core/domain/ids.js";
 import { formatCents } from "@core/reservations/calendar-detail.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
 import { buildManageView } from "@core/reservations/manage-view.js";
@@ -19,6 +21,8 @@ import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
 import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { SubmitButton } from "../../../components/ui/submit-button";
+import { getRepo } from "../../lib/repo";
+import { logSwallowed } from "../../lib/swallowed";
 import { requestBookingChange } from "./actions";
 import { loadBookingByCode } from "./load";
 
@@ -121,6 +125,8 @@ export default async function ManagePage({
   const cancelled = detail.status === "cancelled";
   // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
   const statusLabel = cancelled ? "Cancelled" : phase === "completed" ? "Completed" : "Confirmed";
+  const waivers =
+    cancelled || booking.event.status === "cancelled" ? null : await waiverLinks(booking.event.id, booking.event.date);
 
   return (
     <main className="mx-auto max-w-lg px-3 py-6 sm:px-4 sm:py-8">
@@ -200,6 +206,31 @@ export default async function ManagePage({
             />
             <Row label="Guests" value={`${detail.guestCount} — whole boat`} />
           </Section>
+
+          {/* waivers (18.10) — the booker signs here, then shares from the signing page's success
+              screen; the party page shows who has. No section on a cancelled trip or with no waiver
+              in effect; once the trip's day is over, only who signed. */}
+          {waivers && (
+            <Section title="Waivers" named>
+              {waivers.signHref && (
+                <>
+                  <p className="pb-1 text-[12.5px] text-muted">Everyone aboard signs before the trip.</p>
+                  <AppLink
+                    href={waivers.signHref}
+                    className="btn-quiet flex items-center gap-2 border-b border-line-soft py-3 text-[13.5px]"
+                  >
+                    ✍ Sign the waiver ›
+                  </AppLink>
+                </>
+              )}
+              <AppLink
+                href={`/b/${code}/party`}
+                className="btn-quiet flex items-center gap-2 py-3 text-[13.5px]"
+              >
+                See who’s signed ›
+              </AppLink>
+            </Section>
+          )}
 
           {/* money */}
           <Section title={phase === "completed" ? "Receipt" : "Payment"}>
@@ -329,9 +360,33 @@ export default async function ManagePage({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * The Waivers section's links (18.10, issue #1124), or null for no section: none while no waiver is
+ * in effect, since nobody could sign. The sign link is the departure's trip link, made the first
+ * time it is needed (the party page's rule) and dropped once the trip's day is over. Best-effort:
+ * a failure costs the sign link or the section, never the booking page.
+ */
+async function waiverLinks(eventId: EventId, eventDate: string): Promise<{ signHref: string | null } | null> {
+  const now = new Date().toISOString();
+  try {
+    const repo = getRepo();
+    if (!(await repo.getCurrentWaiverTemplate(now))) return null;
+    if (tripDayOver(eventDate, now)) return { signHref: null };
+    try {
+      return { signHref: `/w/${await ensureTripLink(repo, eventId, () => new Date().toISOString())}` };
+    } catch (e) {
+      logSwallowed("b/[code]:waivers", e, "the manage page had no trip link to sign with");
+      return { signHref: null };
+    }
+  } catch (e) {
+    logSwallowed("b/[code]:waivers", e, "the manage page could not tell whether a waiver is in effect");
+    return null;
+  }
+}
+
+function Section({ title, named, children }: { title: string; named?: boolean; children: React.ReactNode }) {
   return (
-    <section className="mb-5 last:mb-0">
+    <section className="mb-5 last:mb-0" {...(named ? { "aria-label": title } : {})}>
       <h2 className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">{title}</h2>
       {children}
     </section>

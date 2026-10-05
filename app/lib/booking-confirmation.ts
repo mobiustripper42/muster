@@ -1,4 +1,5 @@
 import { EmailChannel } from "@core/adapters/email-channel.js";
+import { confirmationTripCode } from "@core/checkin/trip-link.js";
 import type { Reservation } from "@core/domain/entities.js";
 import { sendBookingConfirmation } from "@core/reservations/booking-confirmation.js";
 import { ensureBookingCode } from "@core/reservations/ensure-booking-code.js";
@@ -77,6 +78,11 @@ export async function sendReservationConfirmation(
     // committed and paid, so it must never reach the webhook as a throw (Stripe would retry the
     // whole event). The operator's resend recovers it.
     const bookingCode = await ensureBookingCode(repo, reservation.id, () => new Date().toISOString());
+    // 18.10: the signing link, when a waiver is in effect. Null on any failure — never a throw —
+    // so a waiver problem can only drop the line, never the confirmation.
+    const tripCode = reservation.eventId
+      ? await confirmationTripCode(repo, reservation.eventId, () => new Date().toISOString())
+      : null;
 
     await sendBookingConfirmation(
       {
@@ -90,6 +96,7 @@ export async function sendReservationConfirmation(
       },
       reservation,
       bookingCode,
+      tripCode,
     );
     // **The #955/#971 seam, and the one place this merge was not mechanical.** 15.3 made this
     // return whether the customer was actually TOLD, and the caller records that on the

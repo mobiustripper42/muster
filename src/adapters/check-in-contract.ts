@@ -375,6 +375,51 @@ export function runCheckInContract(
       });
     });
 
+    describe("departures counted above their checked-in guests (18.8)", () => {
+      const count = (pax: number) => ({ pax, countedAt: "2026-10-10T18:58:00.000Z", countedBy: CREW });
+      const signing = (n: number, eventId = EVENT, ticked = true): Guest =>
+        adult({
+          id: asId<"GuestId">(`guest-${String(eventId)}-${n}`),
+          eventId,
+          name: `Guest ${n}`,
+          ...(ticked ? { checkedIn: { at: "2026-10-10T18:50:00.000Z", by: CREW } } : {}),
+        });
+
+      it("lists nothing when no departure has a count", async () => {
+        await repo.saveGuests([signing(1)]);
+        expect(await repo.listDeparturesCountedAboveCheckedIn()).toEqual([]);
+      });
+
+      it("lists a departure counted above its ticks, with both numbers", async () => {
+        await repo.saveGuests([signing(1), signing(2), signing(3, EVENT, false)]);
+        await repo.setDepartureCount(EVENT, count(5));
+        expect(await repo.listDeparturesCountedAboveCheckedIn()).toEqual([
+          { eventId: EVENT, count: count(5), checkedIn: 2 },
+        ]);
+      });
+
+      it("leaves out a departure counted at or below its ticks", async () => {
+        await repo.saveGuests([signing(1), signing(2), signing(1, EVENT_2)]);
+        await repo.setDepartureCount(EVENT, count(2));
+        await repo.setDepartureCount(EVENT_2, count(0));
+        expect(await repo.listDeparturesCountedAboveCheckedIn()).toEqual([]);
+      });
+
+      it("counts a departure nobody signed for as zero checked in", async () => {
+        await repo.setDepartureCount(EVENT_2, count(4));
+        expect(await repo.listDeparturesCountedAboveCheckedIn()).toEqual([
+          { eventId: EVENT_2, count: count(4), checkedIn: 0 },
+        ]);
+      });
+
+      it("puts the latest departure first", async () => {
+        // Same day: EVENT sails at 3:00 PM, EVENT_2 at 5:00 PM.
+        await repo.setDepartureCount(EVENT, count(1));
+        await repo.setDepartureCount(EVENT_2, count(1));
+        expect((await repo.listDeparturesCountedAboveCheckedIn()).map((r) => r.eventId)).toEqual([EVENT_2, EVENT]);
+      });
+    });
+
     describe("reminder send records (18.7)", () => {
       const reminder = (over: Partial<WaiverReminder> = {}): WaiverReminder => ({
         reservationId: RESV,

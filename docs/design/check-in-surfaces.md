@@ -361,7 +361,11 @@ count stay editable; the captain's official log, when it is designed, is the rec
 
 Thin.
 
-- **Per-event** — count, signed coverage, who counted and when, exceptions. Reached from the event.
+- **Per-event** — count, signed coverage, who counted and when, exceptions. **Built in 18.8 as the
+  departure page**, `/admin/departure/<event>`: every signer with their signing's details, and the
+  exact words of each waiver version signed on that trip (operator, 2026-10-04 — the use is a claim
+  from a past cruise). Reached from **See waivers ›** on the calendar's booking pane, and from a
+  flagged departure on `/admin/integrity`.
 - **Day / week rollup** — counts by departure, and the no-show delta (`pax_counted` < booked).
 - **Templates** — post new agreement text as a new version. A scheduled version has an Edit button
   until it takes effect; a version in effect has none.

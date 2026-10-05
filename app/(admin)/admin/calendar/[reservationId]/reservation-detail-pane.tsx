@@ -406,6 +406,7 @@ export function ReservationDetailPane({
   balance,
   actions,
   unpaid,
+  waivers,
   children,
 }: {
   v: ReservationDetailView;
@@ -415,6 +416,10 @@ export function ReservationDetailPane({
   actions?: PaneActionState | undefined;
   /** An unpaid phone booking's state (16.1): the just-booked notice and its cancel. */
   unpaid?: UnpaidActionState | undefined;
+  /** The departure's waivers, check-in and count (18.8). Absent ⇒ no card: an unpaid phone
+   *  booking has no departure yet, and a card that failed to load is left out rather than shown
+   *  wrong. */
+  waivers?: WaiverCardView | undefined;
   /** What follows the actions (the booking's history). Inside the pane rather than after it, so
    *  the pinned title block stays up for the whole scroll (issue #1128): a sticky element only
    *  sticks while its own container is on screen. */
@@ -443,6 +448,8 @@ export function ReservationDetailPane({
 
       {/* A cancelled booking keeps only what is still useful: money, contact and history. */}
       {cancelled ? null : <TripCard v={v} />}
+
+      {cancelled || !waivers ? null : <WaiversCard w={waivers} />}
 
       <Card title="Contact">
         <Row label="Mobile">
@@ -500,6 +507,32 @@ function TripCard({ v }: { v: ReservationDetailView }) {
           </AppLink>
         </Row>
       )}
+    </Card>
+  );
+}
+
+/** What the Waivers card shows (18.8) — the departure's lines, from `loadWaiverCard`. */
+export interface WaiverCardView {
+  signed: string;
+  counted: string;
+  href: string;
+}
+
+/**
+ * The departure's waivers, check-in and count (18.8, issue #1122), with the way into the departure
+ * page — where the signers, their details and the words they accepted are. The numbers are the
+ * whole departure's; on a private charter that is this booking.
+ */
+function WaiversCard({ w }: { w: WaiverCardView }) {
+  return (
+    <Card title="Waivers">
+      <Row label="Signed">{w.signed}</Row>
+      <Row label="Counted">{w.counted}</Row>
+      <div className="pt-1">
+        <AppLink href={w.href} className="btn-quiet">
+          See waivers ›
+        </AppLink>
+      </div>
     </Card>
   );
 }

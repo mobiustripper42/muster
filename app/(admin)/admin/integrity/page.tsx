@@ -7,6 +7,11 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
+import {
+  countedAboveHeadline,
+  loadCountedAboveCheckedIn,
+  type CountedAboveRow,
+} from "@core/checkin/departure.js";
 
 /**
  * /admin/integrity (#501) — the detective control the no-FK schema is predicated on.
@@ -42,8 +47,15 @@ export default async function AdminIntegrity({
   const requested = sp.run === "1";
 
   let view: IntegrityView | null = null;
+  // Null when the departures' list failed: its own failure, so it never hides the structural scan.
+  let countedAbove: CountedAboveRow[] | null = null;
   let failed = false;
   if (requested) {
+    try {
+      countedAbove = await loadCountedAboveCheckedIn(getRepo());
+    } catch (e) {
+      logSwallowed("admin/integrity:counted", e, "the counted-above-checked-in list did not run");
+    }
     try {
       view = buildIntegrityView(await checkIntegrity(getRepo()));
     } catch (e) {
@@ -63,7 +75,8 @@ export default async function AdminIntegrity({
         that isn’t there. The database enforces almost none of this itself
         (DEC-131), so this check is how orphans from a backfill, a migration, or a
         hand-run query get found. It reads every table — run it when you want it,
-        not on a schedule.
+        not on a schedule. It also lists departures that counted more people than
+        were checked in.
       </p>
 
       {failed && (
@@ -77,7 +90,7 @@ export default async function AdminIntegrity({
         <Notice>Not run yet. Nothing has been scanned on this page load.</Notice>
       )}
 
-      {view && <Result view={view} />}
+      {view && <Result view={view} countedAbove={countedAbove} />}
 
       <div>
         {/* `prefetch={false}` is load-bearing, not hygiene: this route is
@@ -96,8 +109,50 @@ export default async function AdminIntegrity({
   );
 }
 
+/**
+ * Departures counted above their checked-in guests (18.8, spec §8): people were aboard who were
+ * never ticked — unsigned, or signed and missed. Not structural like the rest of this page, but it
+ * is the same kind of look: run when wanted, read, follow a link. In the shape the payroll page's
+ * missing days use (#638): `warn`, never blocking — the boat sailed, and only a person can say why.
+ */
+function CountedAbove({ rows }: { rows: CountedAboveRow[] | null }) {
+  return (
+    <section aria-label="Counted above checked in" className="flex flex-col gap-2">
+      <h2 className="text-sm font-semibold text-ink">Counted above checked in</h2>
+      <CountedAboveVerdict rows={rows} />
+    </section>
+  );
+}
+
+function CountedAboveVerdict({ rows }: { rows: CountedAboveRow[] | null }) {
+  if (rows === null) {
+    return <Notice tone="bad">Couldn’t check the departures’ counts just now. Run it again in a moment.</Notice>;
+  }
+  if (rows.length === 0) {
+    return <Notice tone="ok">No departure counted more people than were checked in.</Notice>;
+  }
+  return (
+    <Notice tone="warn">
+      <p className="font-semibold">{countedAboveHeadline(rows.length)}</p>
+      <p>
+        Nothing was blocked; the boat sailed. The difference is people aboard who were never
+        checked in, either unsigned or not ticked. Check each trip.
+      </p>
+      <ul className="mt-1 list-disc pl-4">
+        {rows.map((r) => (
+          <li key={r.href}>
+            <a className="underline" href={r.href}>
+              {r.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </Notice>
+  );
+}
+
 /** The verdict, the violations, and the proof it actually walked the tables. */
-function Result({ view }: { view: IntegrityView }) {
+function Result({ view, countedAbove }: { view: IntegrityView; countedAbove: CountedAboveRow[] | null }) {
   return (
     <>
       {view.ok ? (
@@ -148,6 +203,8 @@ function Result({ view }: { view: IntegrityView }) {
           </div>
         </section>
       ))}
+
+      <CountedAbove rows={countedAbove} />
 
       {/* Always rendered, clean or not: "no violations" and "it didn't run" look
           identical without these numbers. */}

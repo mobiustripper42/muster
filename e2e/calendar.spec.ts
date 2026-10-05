@@ -109,9 +109,10 @@ test.describe("admin /admin/calendar", () => {
     await expect(pane).toContainText("8");
     await expect(pane).toContainText("of 12");
 
-    // No Waiver row (#1112): the checkout box it read was never a waiver, and it is no longer
-    // stored. The real waiver is its own module.
-    await expect(pane).not.toContainText("Waiver");
+    // No Waiver row on the Trip card (#1112): the checkout box it read was never a waiver, and it
+    // is no longer stored. The real waivers are their own card (18.8), tested in
+    // `departure-page.spec.ts`.
+    await expect(pane.getByRole("region", { name: "Trip" })).not.toContainText("Waiver");
     await expect(pane).not.toContainText("Add-on"); // no per-reservation add-ons exist
 
     // Money: fare + tax, nothing paid, balance still due. No service fee (Xola's, unmodelled).

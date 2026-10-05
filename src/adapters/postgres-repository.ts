@@ -107,6 +107,7 @@ import type { FailureWindow, Repository, ShiftChangeRow } from "../ports/reposit
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
 import type {
   CheckInConfig,
+  CountedAboveCheckedIn,
   DepartureCount,
   Guest,
   TripLink,
@@ -3013,6 +3014,24 @@ export class PostgresRepository implements Repository {
       countedAt: r.counted_at,
       countedBy: asId<"CrewMemberId">(r.counted_by),
     };
+  }
+  async listDeparturesCountedAboveCheckedIn(): Promise<CountedAboveCheckedIn[]> {
+    // The comparison is in SQL so only the exceptions leave the database (18.8). A departure
+    // nobody signed for has no guest rows: the left join counts it as zero checked in.
+    const { rows } = await this.#pool.query(
+      `select e.id, e.pax_counted, e.counted_at, e.counted_by, coalesce(t.n, 0)::int as checked_in
+         from events e
+         left join (
+           select event_id, count(*) as n from guests where checked_in_at is not null group by event_id
+         ) t on t.event_id = e.id
+        where e.pax_counted is not null and e.pax_counted > coalesce(t.n, 0)
+        order by e.date desc, e.time desc, e.id`,
+    );
+    return rows.map((r) => ({
+      eventId: asId<"EventId">(r.id),
+      count: { pax: r.pax_counted, countedAt: r.counted_at, countedBy: asId<"CrewMemberId">(r.counted_by) },
+      checkedIn: r.checked_in,
+    }));
   }
 
   // ── Reminder send records (Phase 18.7, migration 20261003185242) ───────────

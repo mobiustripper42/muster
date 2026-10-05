@@ -55,10 +55,17 @@ const nextConfig: NextConfig = {
   // `next dev` is actively reading — that shared-manifest corruption is exactly the
   // coexistence footgun the prod-server switch exists to avoid. Only the e2e build
   // subprocess sets E2E_PROD; a normal `next dev`/`next build`/Vercel build sees `.next`.
+  //
+  // The e2e `next dev` server (the iPhone project, #1169) gets a third dir for a different reason:
+  // Next's dev lock is `<distDir>/lock` (setup-dev-bundler), so a dev server on its own dir starts
+  // beside the operator's `npm run dev` instead of refusing with "already running". Only the
+  // harness sets E2E_DEV.
   distDir:
-    process.env.E2E_PROD === "1" || process.env.E2E_PROD === "true"
-      ? ".next-e2e"
-      : ".next",
+    process.env.E2E_DEV === "1"
+      ? ".next-e2e-dev"
+      : process.env.E2E_PROD === "1" || process.env.E2E_PROD === "true"
+        ? ".next-e2e"
+        : ".next",
   experimental: {
     extensionAlias: {
       ".js": [".ts", ".tsx", ".js", ".jsx"],

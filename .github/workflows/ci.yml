@@ -57,9 +57,12 @@ jobs:
           TEST_DATABASE_URL: postgres://muster:muster@localhost:5432/muster_test
 
   # The browser harness (#65, Phase 5.5). Separate job, NOT part of `verify` —
-  # `verify` stays Docker-free, and this is the "first to cut" surface. It boots
-  # `next dev` against the test DB (Playwright's webServer) and drives the crew +
-  # admin flows. Make it a required check in branch protection only once trusted.
+  # `verify` stays Docker-free, and this is the "first to cut" surface. Playwright's
+  # webServer boots two servers against the test DB (#1169): a `next build` +
+  # `next start` for nearly every test, and a small `next dev` for the iPhone
+  # project (playwright.config.ts says why). The build here is separate from
+  # `verify`'s — the jobs share no files. Make it a required check in branch
+  # protection only once trusted.
   e2e:
     runs-on: ubuntu-latest
 

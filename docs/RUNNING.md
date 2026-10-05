@@ -327,11 +327,15 @@ constant exists to bound. Previews still honour it, so a reviewer can exercise t
   while `db:up` is running) exercises the in-memory↔Postgres equivalence suite instead of skipping it.
   CI always runs this against a Postgres service container.
 - **The e2e harness (#65):** Playwright over the crew + admin flows. Needs the DB up; it drives its
-  own app server (`next dev` on **:3100**, pointed at `muster_test`) and resets+seeds the test DB
-  per spec, so it never touches your dev data or the `:3000` server.
+  own two app servers, both pointed at `muster_test` (#1169): a prebuilt `next start` on **:3100**
+  for nearly every test, and a `next dev` on **:3101** for the iPhone (WebKit) project only —
+  `playwright.config.ts`'s header says why. It resets+seeds the test DB per spec, so it never
+  touches your dev data or the `:3000` server, and both run beside your own `npm run dev`.
+  `E2E_PORT` moves the pair (`E2E_PORT=3200` → :3200 and :3201), which keeps two lanes apart.
   ```bash
-  npm run db:up               # if not already running
-  ./node_modules/.bin/playwright install chromium   # one-time, installs the browser
+  npm run db:up               # if not already running; in a linked worktree use
+                              # `docker start muster-postgres` (db:up there collides on the name)
+  ./node_modules/.bin/playwright install chromium webkit   # one-time, installs the browsers
   npm run test:e2e            # headless run
   npm run test:e2e:ui         # interactive runner
   ```

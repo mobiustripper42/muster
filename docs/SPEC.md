@@ -2714,7 +2714,7 @@ settles the payment the link may already have started, because a customer's open
 payment at the old amount: an unpaid one is lowered to the new amount, and a comp cancels it. **The
 guard is the reservation's status, `pending` versus `booked`, not whether a payment exists** — a
 comp is booked with none. And the save resolves the payment's state the way the link's own reuse does
-(2.8.5): read it, act on it, and treat a payment that settled in between as the booking being paid,
+(`attachPaymentIntent`): read it, act on it, and treat a payment that settled in between as the booking being paid,
 which refuses the discount. Three outcomes read once and acted on later is the race that path already
 had to close. A discount that makes a comp confirms the booking there and
 then, through 2.8.6's comp confirm, and no link is sent. Deposits are out of scope while they are

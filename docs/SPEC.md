@@ -1534,6 +1534,7 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > **Amended by DEC-169 — 2.8.6's steps after the flip are ordered — formation and the confirmation precede the payment record — and are idempotent, not transactional**
 > **Amended by DEC-188 — 2.8.4's checkout step: the box is the cancellation terms, not waiver consent, and it is not recorded**
 > **Amended by DEC-193 — 2.8.4: a departure inside the booking cutoff is not offered and is refused at checkout**
+> **Amended by DEC-194 — 2.8.4a gains a discount component and the $2 comp floor; 2.8.6 gains a second, named confirm for a comp**
 <!-- /amended-by-dec -->
 
 > **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
@@ -1694,6 +1695,7 @@ section before it is a change to any code.
 | **Tax** | fare + extras | — | **no** | yes |
 | **Service fee** | fare + extras | **no** | — | yes |
 | **Tip** | fare + extras (a tier percentage) | **no** | **no** | yes |
+| **Discount** | off fare + extras, in dollars, set by the operator (2.10.6) | lowers the taxed base | lowers the fee base | — what was paid is what returns |
 
 **Tax is a configured rate, not a constant.** It lives in payment configuration because it is a
 jurisdiction's rate, and it is **8%** where BrewBoat operates. There is no admin surface to change it
@@ -1714,6 +1716,19 @@ checkout falls back to the default tiers when an offering has no tip configurati
 be tip-free. This was previously filed as waiting on a zero-crew rental to force it; there is no such
 vessel and will not be (every vessel has manning — see the manning note above), so the gap stands on
 its own until an offering needs to be tip-free for some other reason.
+
+**A discount comes off fare plus extras, and everything charged on that base follows it** (DEC-194).
+Tax, the service fee and the tip are recomputed on the discounted base, at the rates already frozen
+on the invoice — the rates the customer was quoted do not move, only the base does. The discount is
+a dollar amount, capped at fare plus extras. The invoice keeps the fare and extras undiscounted and
+stores the discount as its own line, so a receipt can say what came off.
+
+**Under $2 due is a comp.** If a discount would leave less than $2 to pay, it is raised to the whole
+of fare plus extras and everything recomputes to $0. The box says so before it saves. The $2 is a code
+constant, not a setting, and sits above Stripe's own $0.50 minimum charge: collecting a dollar or
+two is not worth anyone's time. **A comp zeroes the tip** — a free cruise that bills the crew's
+share is not free. Crew on a comped trip get no tip through Muster, and the payroll report showing
+$0 for it is correct, not a fault.
 
 **Muster charges the full amount at booking** — fare, extras, tax, service fee and gratuity, in one
 payment, with nothing collected later. That whole total is the **amount due now**, frozen with
@@ -1847,6 +1862,15 @@ It is called from **the success page** the customer lands on after paying, **the
 `payment_intent.succeeded` webhook**, and **the reconciler** (2.8.9). All three run the same function.
 Stripe re-delivers events already handled elsewhere, so any second path that writes bookings its own
 way books the same sale twice.
+
+**A comp has no payment id, so it has a second, named way in** (DEC-194). A booking discounted to $0
+(2.8.4a) is never paid, and step 1 has nothing to look it up by. The comp confirm finds the row by
+its reservation id instead, and refuses unless the row is pending, sold by the operator, and has $0
+due. **Only the lookup is second; the flip is the same one** — steps 2 to 7 are shared code, not a
+copy, so every future guard on the flip covers both. A row already booked reports `already booked`,
+the trail records the confirm as a comp beside the webhook and the success page, and step 6 records
+no payment because none was taken. Faking a $0 payment to reuse step 1 was the alternative, and it
+would put a payment on the ledger that never happened.
 
 **The order after step 3 is people first, bookkeeping last, and that is a rule rather than a
 preference** (DEC-169). Only steps 2 and 3 need the transaction — they arbitrate the hull, which is
@@ -2494,6 +2518,7 @@ your hours, and setting it on your own correction would make the surface lie abo
 > **Amended by DEC-163 — 2.10.6 gives an operator's booking no expiry, and marks it with `admin` as its reservation source**
 > **Amended by DEC-184 — 2.10.6's operator table: a block refuses instead of passing with a warning, and a departed trip and a non-live offering refuse**
 > **Amended by DEC-193 — 2.10.2 gains the cutoff state; 2.10.6 points at it**
+> **Amended by DEC-194 — 2.10.6 gains the discount box on an unpaid operator booking**
 <!-- /amended-by-dec -->
 
 §2.8 is the customer's ninety seconds. This is the other side of it: the catalog the boats are
@@ -2681,6 +2706,19 @@ goes near it.
 **The payment link is not the booking link.** §2.8.11's `/b/<code>` is the customer's durable
 credential for managing their booking, and it is minted at confirm like any other. The payment link
 is a one-shot address for money that is still owed.
+
+**The operator can discount a booking that has not been paid** (DEC-194). One box, a dollar amount
+off; the money it changes is in 2.8.4a. It exists only while the booking is unpaid — after payment,
+money back is a refund (2.8.4c), not a discount. Saving it re-freezes the invoice, and it also
+settles the payment the link may already have started, because a customer's open tab holds that
+payment at the old amount: an unpaid one is lowered to the new amount, and a comp cancels it. **The
+guard is the reservation's status, `pending` versus `booked`, not whether a payment exists** — a
+comp is booked with none. And the save resolves the payment's state the way the link's own reuse does
+(`attachPaymentIntent`): read it, act on it, and treat a payment that settled in between as the booking being paid,
+which refuses the discount. Three outcomes read once and acted on later is the race that path already
+had to close. A discount that makes a comp confirms the booking there and
+then, through 2.8.6's comp confirm, and no link is sent. Deposits are out of scope while they are
+not in use (2.8.4a): the amount due is the new total.
 
 **What the operator may pass, and what refuses them anyway.**
 

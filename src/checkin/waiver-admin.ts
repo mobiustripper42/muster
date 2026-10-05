@@ -98,7 +98,7 @@ export async function postWaiverVersion(
   const r = await resolve(repo, input, ctx);
   if (!r.ok) return r;
   const id = asId<"WaiverTemplateId">(ctx.id);
-  await repo.postWaiverTemplate({
+  const stored = await repo.postWaiverTemplate({
     id,
     version: r.version,
     body: r.body,
@@ -106,6 +106,9 @@ export async function postWaiverVersion(
     postedAt: ctx.now,
     postedBy: ctx.by,
   });
+  // The check above read the list before writing; a post landing between the two is caught by
+  // the store's one-version-per-instant rule (issue #1137).
+  if (stored === "date_taken") return { ok: false, code: "date_taken" };
   return { ok: true, id };
 }
 
@@ -127,8 +130,10 @@ export async function editWaiverVersion(
     { id, version: r.version, body: r.body, effectiveFrom: r.effectiveFrom, postedAt: ctx.now, postedBy: ctx.by },
     ctx.now,
   );
-  // False here means it took effect between the read above and the write — the lock won.
-  return updated ? { ok: true, id } : { ok: false, code: "locked" };
+  // `locked` here means it took effect between the read above and the write — the lock won.
+  // `date_taken` means another version took the new instant in the same gap (issue #1137).
+  if (updated === "updated") return { ok: true, id };
+  return { ok: false, code: updated };
 }
 
 // ── Settings ────────────────────────────────────────────────────────────────

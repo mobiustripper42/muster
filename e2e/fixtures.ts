@@ -452,7 +452,7 @@ export async function plantWaiverTemplate(t: {
 }): Promise<void> {
   const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
   try {
-    await repo.postWaiverTemplate({
+    const posted = await repo.postWaiverTemplate({
       id: t.id as never,
       version: t.version,
       body: t.body,
@@ -460,6 +460,8 @@ export async function plantWaiverTemplate(t: {
       postedAt: t.effectiveFrom,
       postedBy: "crew-eric-stoffer",
     });
+    // One version per instant (issue #1137): a colliding plant is a setup error, not a later mystery.
+    if (posted === "date_taken") throw new Error(`plantWaiverTemplate: ${t.effectiveFrom} already holds a version`);
   } finally {
     await repo.close();
   }

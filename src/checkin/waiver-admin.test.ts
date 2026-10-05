@@ -115,6 +115,18 @@ describe("posting a waiver version", () => {
     });
     expect(await post(repo, { effectiveDate: "2026-10-06" }, { id: "wt-c" })).toEqual({ ok: true, id: "wt-c" });
   });
+
+  it("a post that passes the check but loses the race at the store is still refused (issue #1137)", async () => {
+    // The racer's up-front check read the list before the winner's row landed; the store says no.
+    const repo = new InMemoryRepository();
+    await post(repo, { effectiveDate: "2026-10-05" }, { id: "wt-a" });
+    repo.listWaiverTemplates = () => Promise.resolve([]);
+    expect(await post(repo, { effectiveDate: "2026-10-05" }, { id: "wt-b" })).toEqual({
+      ok: false,
+      code: "date_taken",
+    });
+    expect(await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-b"))).toBeNull();
+  });
 });
 
 describe("editing a waiver version", () => {
@@ -177,6 +189,17 @@ describe("editing a waiver version", () => {
     await post(repo, { effectiveDate: "2026-10-06" }, { id: "wt-b" });
     expect(await edit(repo, "wt-a", { effectiveDate: "2026-10-05" })).toEqual({ ok: true, id: "wt-a" });
     expect(await edit(repo, "wt-a", { effectiveDate: "2026-10-06" })).toEqual({ ok: false, code: "date_taken" });
+  });
+
+  it("an edit that passes the check but loses the race at the store is refused, not an error (issue #1137)", async () => {
+    const repo = new InMemoryRepository();
+    await post(repo, { effectiveDate: "2026-10-05" }, { id: "wt-a" });
+    await post(repo, { effectiveDate: "2026-10-06" }, { id: "wt-b" });
+    repo.listWaiverTemplates = () => Promise.resolve([]);
+    expect(await edit(repo, "wt-a", { effectiveDate: "2026-10-06" })).toEqual({ ok: false, code: "date_taken" });
+    expect((await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-a")))?.effectiveFrom).toBe(
+      "2026-10-05T04:00:00.000Z",
+    );
   });
 
   it("applies the same checks as posting", async () => {

@@ -127,8 +127,36 @@ export function runCheckInContract(
       });
 
       it("is insert-only: posting the same id again changes nothing", async () => {
-        await repo.postWaiverTemplate(template({ body: "rewritten", version: "tampered" }));
+        expect(await repo.postWaiverTemplate(template({ body: "rewritten", version: "tampered" }))).toBe("ok");
         expect(await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-1"))).toEqual(template());
+      });
+
+      it("refuses a second version at the same instant — one per day, held by the store (issue #1137)", async () => {
+        const midnight = "2026-10-05T04:00:00.000Z";
+        const first = template({ id: asId<"WaiverTemplateId">("wt-2"), effectiveFrom: midnight });
+        expect(await repo.postWaiverTemplate(first)).toBe("ok");
+        const racer = template({ id: asId<"WaiverTemplateId">("wt-3"), body: "Other words.", effectiveFrom: midnight });
+        expect(await repo.postWaiverTemplate(racer)).toBe("date_taken");
+        expect(await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-3"))).toBeNull();
+        expect(await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-2"))).toEqual(first);
+      });
+
+      it("keeps two same-day versions posted at different instants — a typo fix is not a duplicate", async () => {
+        const morning = template({ id: asId<"WaiverTemplateId">("wt-2"), effectiveFrom: "2026-10-05T14:00:00.000Z" });
+        const fix = template({ id: asId<"WaiverTemplateId">("wt-3"), effectiveFrom: "2026-10-05T14:00:01.000Z" });
+        expect(await repo.postWaiverTemplate(morning)).toBe("ok");
+        expect(await repo.postWaiverTemplate(fix)).toBe("ok");
+        expect((await repo.listWaiverTemplates()).map((t) => t.id)).toEqual(["wt-3", "wt-2", "wt-1"]);
+      });
+
+      it("refuses an edit onto another version's instant, and leaves the row as it was (issue #1137)", async () => {
+        const a = template({ id: asId<"WaiverTemplateId">("wt-2"), effectiveFrom: "2026-10-05T04:00:00.000Z" });
+        const b = template({ id: asId<"WaiverTemplateId">("wt-3"), effectiveFrom: "2026-10-07T04:00:00.000Z" });
+        await repo.postWaiverTemplate(a);
+        await repo.postWaiverTemplate(b);
+        const moved = { ...a, body: "Moved.", effectiveFrom: b.effectiveFrom };
+        expect(await repo.updateWaiverTemplate(moved, "2026-09-29T18:14:00.000Z")).toBe("date_taken");
+        expect(await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-2"))).toEqual(a);
       });
 
       it("the current version is the latest one that has taken effect, never a future one", async () => {
@@ -178,20 +206,20 @@ export function runCheckInContract(
           effectiveFrom: "2026-10-07T04:00:00.000Z",
           postedAt: "2026-09-29T18:14:00.000Z",
         };
-        expect(await repo.updateWaiverTemplate(edited, "2026-09-29T18:14:00.000Z")).toBe(true);
+        expect(await repo.updateWaiverTemplate(edited, "2026-09-29T18:14:00.000Z")).toBe("updated");
         expect(await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-2"))).toEqual(edited);
       });
 
       it("refuses to update a version that has taken effect, from its first moment on", async () => {
         // wt-1 took effect 2026-09-01T00:00Z; an update stamped that exact instant is already late.
         const attempt = template({ body: "rewritten", effectiveFrom: "2026-12-01T00:00:00.000Z" });
-        expect(await repo.updateWaiverTemplate(attempt, "2026-09-01T00:00:00.000Z")).toBe(false);
+        expect(await repo.updateWaiverTemplate(attempt, "2026-09-01T00:00:00.000Z")).toBe("locked");
         expect(await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-1"))).toEqual(template());
       });
 
       it("reports an unknown version as not updated", async () => {
         const ghost = template({ id: asId<"WaiverTemplateId">("wt-ghost") });
-        expect(await repo.updateWaiverTemplate(ghost, "2026-08-01T00:00:00.000Z")).toBe(false);
+        expect(await repo.updateWaiverTemplate(ghost, "2026-08-01T00:00:00.000Z")).toBe("locked");
         expect(await repo.getWaiverTemplate(asId<"WaiverTemplateId">("wt-ghost"))).toBeNull();
       });
     });

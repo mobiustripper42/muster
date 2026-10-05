@@ -78,7 +78,9 @@ try {
   }
 
   if (!(await repo.getWaiverTemplate(WAIVER))) {
-    await repo.postWaiverTemplate({
+    // One version per instant (issue #1137): if another version already holds this midnight, say
+    // so here rather than fail later on the signers that point at WAIVER.
+    const posted = await repo.postWaiverTemplate({
       id: WAIVER,
       version: "seed-departure-v1",
       body:
@@ -88,6 +90,10 @@ try {
       postedAt: new Date().toISOString(),
       postedBy: String(admin.id),
     });
+    if (posted === "date_taken") {
+      console.error("Another waiver version already takes effect at 2026-01-01 midnight — remove it or reset the database.");
+      process.exit(1);
+    }
   }
   // A signing is insert-only through the port; the version a seeded signer accepted is set here,
   // and only where none is, so a real signature is never relabelled.

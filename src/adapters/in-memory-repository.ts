@@ -1413,16 +1413,27 @@ export class InMemoryRepository implements Repository {
   #departureCounts = new Map<string, DepartureCount>();
   #checkInConfig: Partial<CheckInConfig> = {};
 
-  async postWaiverTemplate(template: WaiverTemplate): Promise<void> {
+  async postWaiverTemplate(template: WaiverTemplate): Promise<"ok" | "date_taken"> {
     // An insert never overwrites, mirroring the Postgres `on conflict do nothing`.
-    if (!this.#waiverTemplates.has(template.id)) this.#waiverTemplates.set(template.id, clone(template));
+    if (this.#waiverTemplates.has(template.id)) return "ok";
+    // Mirrors the unique index on effective_from (issue #1137).
+    if (this.#waiverInstantTaken(template.effectiveFrom, template.id)) return "date_taken";
+    this.#waiverTemplates.set(template.id, clone(template));
+    return "ok";
   }
-  async updateWaiverTemplate(template: WaiverTemplate, now: string): Promise<boolean> {
+  async updateWaiverTemplate(
+    template: WaiverTemplate,
+    now: string,
+  ): Promise<"updated" | "locked" | "date_taken"> {
     // Mirrors the Postgres `where effective_from > $now`: the STORED version decides the lock.
     const stored = this.#waiverTemplates.get(template.id);
-    if (!stored || stored.effectiveFrom <= now) return false;
+    if (!stored || stored.effectiveFrom <= now) return "locked";
+    if (this.#waiverInstantTaken(template.effectiveFrom, template.id)) return "date_taken";
     this.#waiverTemplates.set(template.id, clone(template));
-    return true;
+    return "updated";
+  }
+  #waiverInstantTaken(effectiveFrom: string, except: WaiverTemplateId): boolean {
+    return [...this.#waiverTemplates.values()].some((t) => t.id !== except && t.effectiveFrom === effectiveFrom);
   }
   async getWaiverTemplate(id: WaiverTemplateId): Promise<WaiverTemplate | null> {
     const t = this.#waiverTemplates.get(id);

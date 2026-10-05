@@ -47,7 +47,10 @@ export function needsDevServer(argv: readonly string[]): boolean {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a.startsWith("--project=")) named.push(a.slice("--project=".length));
-    else if (a === "--project" && argv[i + 1] != null) named.push(argv[++i]!);
+    else if (a === "--project") {
+      // Variadic (`--project <project-name...>`): it takes every token up to the next flag.
+      while (argv[i + 1] != null && !argv[i + 1]!.startsWith("-")) named.push(argv[++i]!);
+    }
   }
   if (named.length === 0) return true;
   // Playwright matches `--project` case-insensitively, so this does too.

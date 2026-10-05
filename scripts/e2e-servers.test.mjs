@@ -53,5 +53,8 @@ describe("e2e servers (#1169)", () => {
     expect(needsDevServer(["test", "--project=iphone"])).toBe(true);
     expect(needsDevServer(["test", "--project", "desktop", "--project", "iphone"])).toBe(true);
     expect(needsDevServer(["test", "--project=*"])).toBe(true);
+    // `--project <project-name...>` is variadic: one flag, several names.
+    expect(needsDevServer(["test", "--project", "desktop", "iphone"])).toBe(true);
+    expect(needsDevServer(["test", "--project", "desktop", "mobile", "--headed"])).toBe(false);
   });
 });

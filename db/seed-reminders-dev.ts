@@ -61,7 +61,7 @@ try {
   if (!(await repo.getCurrentWaiverTemplate(nowIso))) {
     // Midnight at the start of today, boat time — how /admin/waivers dates a version posted today.
     const effectiveFrom = zonedWallClockToInstant(today, "00:00").toISOString();
-    await repo.postWaiverTemplate({
+    const posted = await repo.postWaiverTemplate({
       id: asId<"WaiverTemplateId">("wt-seed-reminders"),
       version: "seed-reminders-v1",
       body: "I understand the risks of being on the water, and I accept them.",
@@ -69,6 +69,11 @@ try {
       postedAt: nowIso,
       postedBy: String(admin.id),
     });
+    // One version per instant (issue #1137) — say so rather than fail on the line below.
+    if (posted === "date_taken") {
+      console.error(`Another waiver version already takes effect at ${effectiveFrom} — remove it or reset the database.`);
+      process.exit(1);
+    }
   }
   const waiver = (await repo.getCurrentWaiverTemplate(nowIso))!;
 

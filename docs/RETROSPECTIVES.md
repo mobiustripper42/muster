@@ -3,6 +3,18 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 18 — 2026-10-05 — Check-in & waivers
+
+**Numbers:** 64 / 52 pts · 7 days · 7 re-estimated, drift +17 · 32 PRs
+
+**What happened:** Lane A built the whole waiver and check-in module: schema, waiver admin, trip links behind the app's first rate limiter, the signing page, crew check-in with a QR sheet, the party page, reminders, the departure page, and signing links on lane B's pages. Seven tasks ran bigger than pointed, and two split. 18.9's export was deferred to a Reports idea.
+
+**Operator:** overall, this phase went really well. the design was close to correct and any additions were just unforseen. i think there we some pivots at departure that were handled well enough. Maybe i would have designed the whole thing in 2 pieces? maybe.
+
+**PM read:** "Went really well" holds for the deliverable; less for the numbers — +17 drift on 47 (36% over) exceeds Phase 13's 25%, and like 13, every re-estimate ran the same direction, up, spread across a rate limiter, two splits, a QR sheet, reminders, not one bad guess. The departure pivot worked because it landed at spec time, not mid-build: 18.8 moved from a shift-cockpit block to its own page before code existed — the discipline this file keeps preaching. The "two pieces" instinct already happened too, reactively — 18.3 and 18.5 split mid-build once each turned out to be two things. Deferring 18.9 for an unasked-for export is sound. Next time: split foreseeable two-part tasks at poker, not after building into them.
+
+**Notes:** 52 is the original pokered total, 18.9's 5 included; drift is the shipped tasks against their own originals (47 → 64). 18.9 (issue #1123) closed as not planned and is not counted. 32 PRs is every merge in the window across both lanes; 16 were Phase 18's. Follow-ups #1171, #1147, #1140, #1137, #1136 had `phase:18` removed at the retro, not moved.
+
 ## Phase 15 — 2026-09-22 — Reservations: the money on our row
 
 **Points:** 73 shipped / 81 originally pokered (90%)

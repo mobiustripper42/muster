@@ -914,8 +914,9 @@ unsold-slots-only slice is not the shape wanted. Not pokered. Not before Phase 1
 
 The module in `docs/design/check-in-and-waivers.md` (model, rationale) and
 `docs/design/check-in-surfaces.md` (screens), scoped in by DEC-187. **Build, not buy** (spec §2a;
-issue #466 closed on it). Lane A, alongside lane B's Phase 16; **18.10 waits for Phase 16 to close**,
-because it edits lane B's confirmation and `/b/[code]`. **Goes live when Xola goes dark** — there is
+issue #466 closed on it). Lane A, alongside lane B's Phase 16; 18.10 edits lane B's confirmation and
+`/b/[code]`, so it was held for Phase 16 to close; **unblocked 2026-10-05** (operator), since 16.4
+is spec-only — land it before 16.5's discount build reaches the confirmation. **Goes live when Xola goes dark** — there is
 no coexistence period. Two rules bind every task: nothing recorded or shown exceeds the boat's COI
 passenger limit, and nothing blocks departure.
 
@@ -933,12 +934,12 @@ it, spec §6); renaming today's checkout checkbox off "waiver", which issue #111
 | 18.6 | **The booker's party page.** Every signed name, the count, likely duplicates grouped, **Share the link** (18.4's piece). Behind the booking's own code, not the public trip link, since it shows names | 3 | — | [ ] [#1120](https://github.com/mobiustripper42/muster/issues/1120) |
 | 18.7 | **Reminders.** From the cron tick at the admin's frequency; stop once signers (guarded minors counted) reach the party size; never twice for one window, so a send record. **Text every time** (the booker's phone is required), email when on file; the message carries the booking's `/b/<code>` link | 5 | — | [ ] [#1121](https://github.com/mobiustripper42/muster/issues/1121) |
 | 18.8 | **Per-trip view and exceptions.** Count, signed, checked in, who counted and when, on the page the operator already opens for a departure. A **new** check on `/admin/integrity` — which today holds only structural checks — for departures counted above their signed-and-checked-in guests: named, linked, warns, never blocks. The shape is #638's, which lives on `/admin/payroll` (`src/admin/payroll-reconcile.ts`), not on the integrity page | 3 | — | [ ] [#1122](https://github.com/mobiustripper42/muster/issues/1122) |
-| 18.9 | **Rollup and export.** Counts by departure with the no-show delta; Summary / Roster / Waivers as **three CSV downloads** (a `.xlsx` would be a new dependency); ranges bounded in SQL. **May be deferred** when reached | 5 | — | [ ] [#1123](https://github.com/mobiustripper42/muster/issues/1123) |
-| 18.10 | **Signing links on lane B's pages.** "Sign the waiver" on the booking confirmation (email and text) and on `/b/[code]`, to the signing page and the party page. **After Phase 16 closes** | 2 | — | [ ] [#1124](https://github.com/mobiustripper42/muster/issues/1124) |
+| 18.9 | **Rollup and export.** Counts by departure with the no-show delta; Summary / Roster / Waivers as **three CSV downloads** (a `.xlsx` would be a new dependency); ranges bounded in SQL. **Deferred 2026-10-05** to the Reports idea in `docs/FUTURE_IDEAS.md` (sales and accounting reports, waivers an add-on); not counted in the total | 5 | — | deferred [#1123](https://github.com/mobiustripper42/muster/issues/1123) |
+| 18.10 | **Signing links on lane B's pages.** "Sign the waiver" on the booking confirmation (email and text) and on `/b/[code]`, to the signing page and the party page. **Unblocked 2026-10-05; land before 16.5** | 2 | — | [ ] [#1124](https://github.com/mobiustripper42/muster/issues/1124) |
 
-**Phase 18 total: 11 tasks, 52 points.** Pokered task by task with the operator, 2026-09-28.
-Materialized the same day as issues #1114–#1124, all `lane:a`; 18.10 (issue #1124) also carries
-`blocked` until Phase 16 closes.
+**Phase 18 total: 10 tasks, 47 points** (52 as pokered; 18.9 deferred 2026-10-05). Pokered task by task with the operator, 2026-09-28.
+Materialized the same day as issues #1114–#1124, all `lane:a`; 18.10 (issue #1124) also carried
+`blocked`, waiting on Phase 16; the label came off 2026-10-05.
 
 ---
 

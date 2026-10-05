@@ -3,10 +3,10 @@
  * production.
  *
  * A pure function taking `isProd` rather than reading it, so the gate is testable. The e2e cannot
- * cover this one: `E2E_PROD` defaults to `!CI`, so the suite runs `next start` locally
- * (NODE_ENV=production ⇒ `isProdDeploy()` true, no link) and `next dev` in CI (link present). A
- * spec asserting either would pass in one place and fail in the other. Same constraint that made
- * `app/lib/time-clock-gate.test.ts` assert its wiring structurally instead.
+ * cover the production side: every server it drives is a non-production deploy (`next dev`, or
+ * `next start` with `VERCEL_ENV=preview` — `playwright.config.ts`), so it only ever sees the link.
+ * Same constraint that made `app/lib/time-clock-gate.test.ts` assert its wiring structurally
+ * instead.
  *
  * **The gate is CONDITIONAL as of 2026-08-15 (operator), not absolute.** Off production the link
  * always renders. On production it renders **only in the moment after a reissue**

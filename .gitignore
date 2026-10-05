@@ -12,6 +12,7 @@ coverage/
 # Next.js (M4 — DEC-020)
 .next/
 .next-e2e/
+.next-e2e-dev/
 next-env.d.ts
 .vercel
 

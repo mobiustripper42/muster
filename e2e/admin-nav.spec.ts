@@ -4,8 +4,8 @@
  * operator chrome. Responsive — desktop inline links, mobile hamburger → slide-in
  * drawer. Runs at desktop + 375px (the mobile drawer is exercised at 375).
  */
-import { SLOW_PATH } from "./slow-path.js";
 import {
+  slowPath,
   test,
   expect,
   resetAndSeed,
@@ -51,7 +51,7 @@ function crewGroup(page: import("@playwright/test").Page) {
 async function openGroupHydrated(page: import("@playwright/test").Page): Promise<void> {
   const nav = page.getByRole("navigation", { name: "Admin" });
   await expect
-    .poll(() => isHydrated(nav), { timeout: 15_000 * SLOW_PATH, message: "admin nav never hydrated" })
+    .poll(() => isHydrated(nav), { timeout: 15_000 * slowPath(), message: "admin nav never hydrated" })
     .toBe(true);
   const group = crewGroup(page);
   await group.locator("summary:visible").click();

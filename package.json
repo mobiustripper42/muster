@@ -43,8 +43,6 @@
     "test:stripe": "vitest run --config vitest.sandbox.config.ts --reporter=verbose",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:prod": "E2E_PROD=1 playwright test",
-    "test:e2e:dev": "E2E_PROD=0 playwright test",
     "test:e2e:ui": "playwright test --ui",
     "typecheck": "tsc -p tsconfig.core.json",
     "typecheck:app": "tsc -p tsconfig.json",

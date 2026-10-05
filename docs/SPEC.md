@@ -2711,8 +2711,12 @@ is a one-shot address for money that is still owed.
 off; the money it changes is in 2.8.4a. It exists only while the booking is unpaid — after payment,
 money back is a refund (2.8.4c), not a discount. Saving it re-freezes the invoice, and it also
 settles the payment the link may already have started, because a customer's open tab holds that
-payment at the old amount: an unpaid one is lowered to the new amount, a comp cancels it, and one
-already paid refuses the discount. A discount that makes a comp confirms the booking there and
+payment at the old amount: an unpaid one is lowered to the new amount, and a comp cancels it. **The
+guard is the reservation's status, `pending` versus `booked`, not whether a payment exists** — a
+comp is booked with none. And the save resolves the payment's state the way the link's own reuse does
+(2.8.5): read it, act on it, and treat a payment that settled in between as the booking being paid,
+which refuses the discount. Three outcomes read once and acted on later is the race that path already
+had to close. A discount that makes a comp confirms the booking there and
 then, through 2.8.6's comp confirm, and no link is sent. Deposits are out of scope while they are
 not in use (2.8.4a): the amount due is the new total.
 

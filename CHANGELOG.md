@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.4.0] - 2026-10-05 — Phase 18: Check-in & waivers
+- 64 pts shipped across 32 PRs (both lanes in the window; 16 Phase 18's)
+- See `docs/RETROSPECTIVES.md` for the retro
+
 ## [1.3.0] - 2026-09-22 — Phase 15: Reservations — the money on our row
 - 73 pts shipped across 4 sessions (throughput 43.6 pts/calendar-week; 6 tasks re-estimated, net drift −8)
 - The booking charge is a raw PaymentIntent, pinned to one API version, reusing one intent per row

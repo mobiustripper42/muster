@@ -90,6 +90,7 @@ import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
 import type {
   CheckInConfig,
+  CountedAboveCheckedIn,
   DepartureCount,
   Guest,
   TripLink,
@@ -1504,6 +1505,22 @@ export class InMemoryRepository implements Repository {
   async getDepartureCount(eventId: EventId): Promise<DepartureCount | null> {
     const c = this.#departureCounts.get(eventId);
     return c ? { ...c } : null;
+  }
+  async listDeparturesCountedAboveCheckedIn(): Promise<CountedAboveCheckedIn[]> {
+    const ticked = new Map<string, number>();
+    for (const g of this.#guests.values()) {
+      if (g.checkedIn) ticked.set(g.eventId, (ticked.get(g.eventId) ?? 0) + 1);
+    }
+    // Postgres orders by the events row (`date desc, time desc, id`); a count with no events row
+    // cannot exist there, and sorts last here.
+    const sortKey = (id: string): string => {
+      const e = this.#events.get(id as EventId);
+      return e ? `${e.date} ${e.time}` : "";
+    };
+    return [...this.#departureCounts.entries()]
+      .filter(([id, c]) => c.pax > (ticked.get(id) ?? 0))
+      .sort(([a], [b]) => sortKey(b).localeCompare(sortKey(a)) || a.localeCompare(b))
+      .map(([id, c]) => ({ eventId: id as EventId, count: { ...c }, checkedIn: ticked.get(id) ?? 0 }));
   }
 
   // ── Reminder send records (Phase 18.7) ────────────────────────────────────

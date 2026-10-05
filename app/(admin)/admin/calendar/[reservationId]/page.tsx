@@ -39,10 +39,12 @@ import {
 } from "../calendar-view";
 import { CalendarList } from "../calendar-list";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
+import { loadWaiverCard } from "@core/checkin/departure.js";
 import {
   ReservationDetailPane,
   actionMessage,
   type PaneActionState,
+  type WaiverCardView,
 } from "./reservation-detail-pane";
 
 /**
@@ -239,6 +241,15 @@ export default async function ReservationDetailPage({
     logSwallowed("admin/reservation:trail", e, `the history panel did not load for ${reservation.id}`);
   }
 
+  // The departure's waivers, check-in and count (18.8). Best-effort, like the history: context
+  // for this booking, not its money or its actions, so a failed read costs the card and nothing else.
+  let waivers: WaiverCardView | undefined;
+  try {
+    waivers = await loadWaiverCard(getRepo(), event);
+  } catch (e) {
+    logSwallowed("admin/reservation:waivers", e, `the Waivers card did not load for ${reservation.id}`);
+  }
+
   // Cancel / refund / resend state (#616). Assembled here rather than inside
   // `buildReservationDetail` because the refund quotes need a CLOCK — how much notice the
   // cancellation gives decides whether the $50 fee applies — and that view model is pure.
@@ -411,6 +422,7 @@ export default async function ReservationDetailPage({
           view: sp.view === "list" ? "list" : "",
         }}
         {...(actions ? { actions } : {})}
+        waivers={waivers}
       >
         <BookingHistory trail={trail} />
       </ReservationDetailPane>

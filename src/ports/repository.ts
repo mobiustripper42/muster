@@ -76,6 +76,7 @@ import type { ThreadId } from "../domain/ids.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
 import type {
   CheckInConfig,
+  CountedAboveCheckedIn,
   DepartureCount,
   Guest,
   TripLink,
@@ -1040,6 +1041,12 @@ export interface Repository {
    *  Stored on the `events` row but written only here: `saveEvent` never touches it. */
   setDepartureCount(eventId: EventId, count: DepartureCount): Promise<void>;
   getDepartureCount(eventId: EventId): Promise<DepartureCount | null>;
+  /**
+   * Every departure whose count is above its checked-in signings (18.8) — the integrity page's
+   * exception list: people were aboard who were never ticked. Filtered here, not by the caller,
+   * and latest departure first. `checkedIn` counts ticked signings, as the mate's screen does.
+   */
+  listDeparturesCountedAboveCheckedIn(): Promise<CountedAboveCheckedIn[]>;
 
   /**
    * Claim one reminder window (18.7) before sending it — `claimConfirmationSend`'s shape, for its

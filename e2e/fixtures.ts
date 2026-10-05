@@ -367,6 +367,54 @@ export async function untickGuestRow(id: string): Promise<void> {
   }
 }
 
+/**
+ * The departure page's world (Phase 18.8): the departure a seeded booking sails on, a count and a
+ * tick the mate made, and the waiver version the seeded signers accepted. Through the port where
+ * one exists; bare row writes for the two the port has no writer for outside the check-in path.
+ */
+export async function eventIdOfReservation(reservationId: string): Promise<string> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const r = await repo.getReservation(reservationId as never);
+    if (!r?.eventId) throw new Error(`eventIdOfReservation: ${reservationId} has no departure`);
+    return String(r.eventId);
+  } finally {
+    await repo.close();
+  }
+}
+
+/** `by` is a crew member's id — a real foreign key (`on delete restrict`), so it must exist. */
+export async function plantDepartureCount(eventId: string, pax: number, countedAt: string, by: string): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    await repo.setDepartureCount(eventId as never, { pax, countedAt, countedBy: by as never });
+  } finally {
+    await repo.close();
+  }
+}
+
+export async function tickGuestRow(id: string, at: string, by: string): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    await repo.setGuestCheckIn(id as never, { at, by: by as never });
+  } finally {
+    await repo.close();
+  }
+}
+
+export async function setSignedWaiverVersion(reservationId: string, templateId: string): Promise<void> {
+  const client = new pg.Client(pgConnectionConfig(TEST_DATABASE_URL));
+  await client.connect();
+  try {
+    await client.query(
+      "update guests set waiver_template_id = $2 where reservation_id = $1 and signed_at is not null",
+      [reservationId, templateId],
+    );
+  } finally {
+    await client.end();
+  }
+}
+
 export async function deleteGuestRow(id: string): Promise<void> {
   const client = new pg.Client(pgConnectionConfig(TEST_DATABASE_URL));
   await client.connect();

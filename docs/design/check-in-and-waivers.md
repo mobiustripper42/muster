@@ -441,7 +441,8 @@ so the decision is on the record and cross-references do not shift.
 
 Thin, because most of the value is on the crew screen.
 
-- Per-event: count, signed coverage, exceptions, who counted and when.
+- Per-event: count, signed coverage, exceptions, who counted and when — the departure page (18.8,
+  `src/checkin/departure.ts`).
 - Per-day / per-week rollup of counts by departure, with the no-show delta (`pax_counted` vs
   `party_size`).
 - **Template management:** post new text → a new version. A scheduled version can be edited until it

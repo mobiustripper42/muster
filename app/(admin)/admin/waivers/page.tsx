@@ -9,6 +9,7 @@ import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
+import { WaiverVersionDisclosure, WaiverVersionText } from "../../../../components/admin/waiver-version";
 import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
@@ -130,7 +131,11 @@ export default async function AdminWaivers({ searchParams }: { searchParams: Pro
 
         <Card title="In effect now">
           {current ? (
-            <VersionDetail version={current} meta={`In effect since ${fmtRunWhen(current.effectiveFrom)} · posted by ${posterOf(current)}`} />
+            <WaiverVersionText
+              version={current.version}
+              body={current.body}
+              meta={`In effect since ${fmtRunWhen(current.effectiveFrom)} · posted by ${posterOf(current)}`}
+            />
           ) : (
             <p className="py-2 text-sm text-muted">No waiver posted yet.</p>
           )}
@@ -171,24 +176,17 @@ export default async function AdminWaivers({ searchParams }: { searchParams: Pro
             <ul className="flex flex-col divide-y divide-line">
               {past.map((t) => (
                 <li key={t.id} className="py-2">
-                  {/* The summary is a flex row, which drops the browser's own ▸ marker — so it says
-                      what a tap does ("Show text") and carries the house caret (`/crew/open`). */}
-                  <details className="group">
-                    <summary className="flex min-h-[44px] items-center gap-3 text-sm text-ink [&::-webkit-details-marker]:hidden">
-                      <span className="min-w-0 flex-1">
+                  <WaiverVersionDisclosure
+                    summary={
+                      <>
                         {t.version}
                         <span className="ml-2 text-xs text-muted">from {fmtRunWhen(t.effectiveFrom)}</span>
-                      </span>
-                      <span className="flex shrink-0 items-center gap-1.5 text-accent">
-                        <span className="group-open:hidden">Show text</span>
-                        <span className="hidden group-open:inline">Hide text</span>
-                        <span aria-hidden className="transition-transform group-open:rotate-90">
-                          ›
-                        </span>
-                      </span>
-                    </summary>
-                    <VersionDetail version={t} meta={`Posted by ${posterOf(t)}, ${fmtRunWhen(t.postedAt)}`} />
-                  </details>
+                      </>
+                    }
+                    version={t.version}
+                    body={t.body}
+                    meta={`Posted by ${posterOf(t)}, ${fmtRunWhen(t.postedAt)}`}
+                  />
                 </li>
               ))}
             </ul>
@@ -211,19 +209,6 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
       </div>
       <div className="px-4 py-1">{children}</div>
     </section>
-  );
-}
-
-/** A version's words exactly as stored — line breaks kept, nothing rendered as markup. */
-function VersionDetail({ version, meta }: { version: WaiverTemplate; meta: string }) {
-  return (
-    <div className="flex flex-col gap-2 py-3">
-      <p className="text-sm font-medium text-ink">{version.version}</p>
-      <p className="text-xs text-muted">{meta}</p>
-      <div className="max-h-[420px] overflow-y-auto whitespace-pre-wrap break-words rounded-card border border-line bg-bg p-3 text-sm text-ink">
-        {version.body}
-      </div>
-    </div>
   );
 }
 

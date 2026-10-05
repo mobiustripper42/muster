@@ -110,6 +110,14 @@ export interface DepartureCount {
   countedBy: CrewMemberId;
 }
 
+/** A departure counted above its checked-in signings (18.8): people aboard who were never ticked. */
+export interface CountedAboveCheckedIn {
+  eventId: EventId;
+  count: DepartureCount;
+  /** Signings ticked aboard. */
+  checkedIn: number;
+}
+
 /**
  * One reminder window used up (Phase 18.7): the booker was reminded about this trip date, this many
  * days before it. **Never twice for one window**, and the row is what enforces it — it is claimed

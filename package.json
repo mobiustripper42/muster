@@ -29,6 +29,7 @@
     "db:seed:booking-cutoff": "tsx db/seed-booking-cutoff-dev.ts",
     "db:seed:trail": "tsx db/seed-trail-dev.ts",
     "db:seed:reminders": "tsx db/seed-reminders-dev.ts",
+    "db:seed:departure": "tsx db/seed-departure-dev.ts",
     "db:seed:xola": "tsx db/seed-xola-dev.ts",
     "db:seed:overlap": "tsx db/seed-overlap-dev.ts",
     "db:seed:concurrent": "tsx db/seed-concurrent-dev.ts",

@@ -453,6 +453,10 @@ Thin, because most of the value is on the crew screen.
   template version · checked in), *Waivers* (name · email). Range pushed into SQL, not filtered in
   JS; append-only with no reaper, so this is the table that grows.
 
+**The rollup and the CSV export are deferred (2026-10-05)** to the Reports idea in
+`docs/FUTURE_IDEAS.md`: sales and accounting reports first, waiver data an add-on. Nobody has yet
+asked for this data, so its columns are unknown; the two bullets above are a sketch, not a spec.
+
 ---
 
 ## 11. Dock connectivity

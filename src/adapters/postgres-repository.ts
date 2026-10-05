@@ -2826,23 +2826,36 @@ export class PostgresRepository implements Repository {
   }
 
   // ── Check-in & waivers (Phase 18.1, migration 20260929183642) ──────────────
-  async postWaiverTemplate(t: WaiverTemplate): Promise<void> {
+  async postWaiverTemplate(t: WaiverTemplate): Promise<"ok" | "date_taken"> {
     // An insert never overwrites: rewriting a scheduled version is `updateWaiverTemplate`'s job.
-    await this.#pool.query(
+    // No conflict target, so the unique effective_from (issue #1137) is absorbed too; which of the
+    // two refused it is read back by id — our own row means a repeat post, anyone else's a race.
+    const { rowCount } = await this.#pool.query(
       `insert into waiver_templates(id, version, body, effective_from, posted_at, posted_by)
-       values ($1,$2,$3,$4,$5,$6) on conflict (id) do nothing`,
+       values ($1,$2,$3,$4,$5,$6) on conflict do nothing`,
       [t.id, t.version, t.body, t.effectiveFrom, t.postedAt, t.postedBy],
     );
+    if (rowCount === 1) return "ok";
+    const { rowCount: mine } = await this.#pool.query("select 1 from waiver_templates where id=$1", [t.id]);
+    return mine === 1 ? "ok" : "date_taken";
   }
-  async updateWaiverTemplate(t: WaiverTemplate, now: string): Promise<boolean> {
+  async updateWaiverTemplate(t: WaiverTemplate, now: string): Promise<"updated" | "locked" | "date_taken"> {
     // The lock is part of the write: a version whose stored effective_from has arrived is not
     // matched, so an edit racing midnight is refused rather than rewriting signed words.
-    const { rowCount } = await this.#pool.query(
-      `update waiver_templates set version=$2, body=$3, effective_from=$4, posted_at=$5, posted_by=$6
-       where id=$1 and effective_from > $7`,
-      [t.id, t.version, t.body, t.effectiveFrom, t.postedAt, t.postedBy, now],
-    );
-    return rowCount === 1;
+    try {
+      const { rowCount } = await this.#pool.query(
+        `update waiver_templates set version=$2, body=$3, effective_from=$4, posted_at=$5, posted_by=$6
+         where id=$1 and effective_from > $7`,
+        [t.id, t.version, t.body, t.effectiveFrom, t.postedAt, t.postedBy, now],
+      );
+      return rowCount === 1 ? "updated" : "locked";
+    } catch (e) {
+      // Another version holds the new instant (issue #1137): the statement rolled back whole.
+      if ((e as { code?: string; constraint?: string }).constraint === "waiver_templates_effective_from_key") {
+        return "date_taken";
+      }
+      throw e;
+    }
   }
   async getWaiverTemplate(id: WaiverTemplateId): Promise<WaiverTemplate | null> {
     const { rows } = await this.#pool.query("select * from waiver_templates where id=$1", [id]);

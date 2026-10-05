@@ -989,15 +989,20 @@ export interface Repository {
   markShiftChangesSeen(shiftId: ShiftId, crewMemberId: CrewMemberId, at: string): Promise<void>;
 
   // ── Check-in & waivers (Phase 18.1, issue #1115 — docs/design/check-in-and-waivers.md §6) ──
-  /** Insert: a second post of the same id is a no-op, never an edit to the text. */
-  postWaiverTemplate(template: WaiverTemplate): Promise<void>;
   /**
-   * Rewrite a version that has not taken effect yet — every field but the id. True when it was
-   * updated; false when the id is unknown or the STORED version has taken effect by `now`
-   * (`effectiveFrom <= now`), because from then on someone may have signed it. The check is part
-   * of the write, so an edit that arrives a second after midnight is refused, not saved.
+   * Insert: a second post of the same id is a no-op (`ok`), never an edit to the text.
+   * `date_taken` when another version already holds this `effectiveFrom` — one version per
+   * instant, held by the store (issue #1137), so two posts racing for one midnight cannot both land.
    */
-  updateWaiverTemplate(template: WaiverTemplate, now: string): Promise<boolean>;
+  postWaiverTemplate(template: WaiverTemplate): Promise<"ok" | "date_taken">;
+  /**
+   * Rewrite a version that has not taken effect yet — every field but the id. `locked` when the
+   * id is unknown or the STORED version has taken effect by `now` (`effectiveFrom <= now`),
+   * because from then on someone may have signed it. The check is part of the write, so an edit
+   * that arrives a second after midnight is refused, not saved. `date_taken` when the new
+   * `effectiveFrom` is another version's (issue #1137); the row is left as it was.
+   */
+  updateWaiverTemplate(template: WaiverTemplate, now: string): Promise<"updated" | "locked" | "date_taken">;
   getWaiverTemplate(id: WaiverTemplateId): Promise<WaiverTemplate | null>;
   /** Every version, newest `effectiveFrom` first. */
   listWaiverTemplates(): Promise<WaiverTemplate[]>;

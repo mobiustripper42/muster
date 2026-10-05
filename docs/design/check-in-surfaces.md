@@ -367,11 +367,13 @@ Thin.
   from a past cruise). Reached from **See waivers ›** on the calendar's booking pane, and from a
   flagged departure on `/admin/integrity`.
 - **Day / week rollup** — counts by departure, and the no-show delta (`pax_counted` < booked).
+  **Deferred 2026-10-05**, with the export below, to the Reports idea (`check-in-and-waivers.md` §10).
 - **Templates** — post new agreement text as a new version. A scheduled version has an Edit button
   until it takes effect; a version in effect has none.
 - **Settings** — reminder frequency, age of majority.
 
-Export is a date range → CSV, three tabs, per `check-in-and-waivers.md` §10.
+Export is a date range → CSV, three tabs, per `check-in-and-waivers.md` §10 — deferred, a sketch
+not a spec.
 
 ---
 

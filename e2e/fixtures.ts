@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import pg from "pg";
 import { test as base, expect, type Locator, type Page } from "@playwright/test";
 import { resetTestDb, TEST_DATABASE_URL } from "../db/reset-test.js";
-import { SLOW_PATH } from "./slow-path.js";
+import { serverOf, SLOW_PATH_FOR } from "./slow-path.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { pgConnectionConfig } from "../src/config/db-ssl.js";
 import { takeRateLimit, type RateLimitPolicy } from "../src/rate-limit/rate-limit.js";
@@ -601,7 +601,23 @@ async function loadSavedSession(page: Page, file: string): Promise<void> {
         `depends on it (every project in playwright.config.ts does), not with --no-deps.`,
     );
   }
-  await page.context().addCookies(state.cookies);
+  // The setup project signs in on the prebuilt server, where NODE_ENV=production marks every cookie
+  // Secure; WebKit then refuses them over the dev server's plain http (`playwright.config.ts`,
+  // iPhone project). `next dev` itself sets these same cookies without the flag, so loading them
+  // unmarked there is the cookie that server would have issued — the value, and so the session,
+  // is untouched.
+  const onDev = serverOf(base.info().project.metadata) === "dev";
+  await page
+    .context()
+    .addCookies(onDev ? state.cookies.map((c) => ({ ...c, secure: false })) : state.cookies);
+}
+
+/**
+ * The timeout multiplier for the server the running test's project drives (#763, #1169) — read
+ * from the project, not the run, since the two servers run side by side. Call it inside a test.
+ */
+export function slowPath(): number {
+  return SLOW_PATH_FOR[serverOf(base.info().project.metadata)];
 }
 
 const CODE_SENT = /a 6-digit code is on its way/i;
@@ -615,7 +631,7 @@ export async function signInWithCode(page: Page, email: string): Promise<void> {
   // then crew B on the same page) would otherwise land on A's app instead of the sign-in form —
   // the magic link overwrote whatever session was there; the door does not, correctly.
   await page.context().clearCookies();
-  // Reload until the form is there. On the CI path (`next dev`) the first request compiles
+  // Reload until the form is there. On the dev-server path (`next dev`) the first request compiles
   // `/crew`, and that compile sometimes fails with `SyntaxError: Unexpected end of JSON input`
   // from Next's own manifest read — seen on a green lane-B run and on PR #1094's red one. The
   // setup project made this the first request of every run, so it always takes the hit; a
@@ -624,7 +640,7 @@ export async function signInWithCode(page: Page, email: string): Promise<void> {
   await expect(async () => {
     await page.goto("/crew");
     await expect(emailField).toBeVisible({ timeout: 5_000 });
-  }).toPass({ timeout: 60_000 * SLOW_PATH });
+  }).toPass({ timeout: 60_000 * slowPath() });
   await emailField.fill(email);
   await page.getByRole("button", { name: /email me a code/i }).click();
   await expect(page.getByText(CODE_SENT)).toBeVisible();
@@ -757,7 +773,7 @@ export async function isHydrated(locator: Locator): Promise<boolean> {
 /**
  * Block until React owns this element, or fail loudly saying which one didn't.
  *
- * **Scaled by `SLOW_PATH` like every other budget (#763).** This one matters most: hydration is
+ * **Scaled by `slowPath()` like every other budget (#763).** This one matters most: hydration is
  * precisely what compile-on-demand delays, so a fixed ceiling here is tightest exactly when the
  * server is slowest. Left unscaled it was 15s against a 20s `expect` ceiling on the dev path —
  * the guard written to fix a flake class would have become the next flake in it.
@@ -765,7 +781,7 @@ export async function isHydrated(locator: Locator): Promise<boolean> {
 async function waitForHydrated(locator: Locator): Promise<void> {
   await expect
     .poll(() => isHydrated(locator), {
-      timeout: 15_000 * SLOW_PATH,
+      timeout: 15_000 * slowPath(),
       message: `island never hydrated: ${locator}`,
     })
     .toBe(true);
@@ -796,7 +812,7 @@ export async function clickHydrated(locator: Locator): Promise<void> {
  * `setCheckedHydrated`'s reasoning does not obviously apply; the value is clobbered anyway.
  *
  * **It only bites under load.** In an isolated run the page is warm and the fill lands after
- * hydration; in a full suite on the dev-server path (`E2E_PROD=0`, compile-on-demand) hydration
+ * hydration; in a full suite on the dev-server path (`next dev`, compile-on-demand) hydration
  * arrives later than the fill. That is the whole reason #762 reproduced only in a full-suite run
  * and cost ~35 minutes per diagnostic attempt — and why it read as a product defect in the cancel
  * outcome for weeks. It was the refund amount never reaching the server.

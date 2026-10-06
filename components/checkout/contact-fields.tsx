@@ -1,6 +1,6 @@
 "use client";
 
-import { settingsInputClass } from "../admin/settings-field";
+import { Input } from "../ui/input";
 
 export interface ContactValues {
   name: string;
@@ -29,7 +29,6 @@ export function ContactFields({
   values: ContactValues;
   onChange: (field: keyof ContactValues, value: string) => void;
 }) {
-  const inputClass = `${settingsInputClass} w-full text-[15px]`;
   const self = voice === "self";
   return (
     <div className="pt-4">
@@ -40,8 +39,8 @@ export function ContactFields({
           optional and nothing said what skipping it costs — a guest who left it blank got no
           receipt and no warning. Now the trade is stated where the choice is made. */}
       <div className="flex flex-col gap-2">
-        <input
-          className={inputClass}
+        <Input
+          className="w-full"
           name="customerName"
           placeholder={self ? "Full name" : "Guest’s full name"}
           autoComplete={self ? "name" : "off"}
@@ -50,8 +49,8 @@ export function ContactFields({
           onChange={(e) => onChange("name", e.target.value)}
         />
         <div>
-          <input
-            className={inputClass}
+          <Input
+            className="w-full"
             name="phone"
             type="tel"
             // Just "Mobile" (operator, 2026-09-27): the callers are nearly all local, and the longer
@@ -70,8 +69,8 @@ export function ContactFields({
           </div>
         </div>
         <div>
-          <input
-            className={inputClass}
+          <Input
+            className="w-full"
             name="email"
             type="email"
             placeholder="Email"

@@ -11,6 +11,7 @@ import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
+import { Input } from "../../../../components/ui/input";
 
 /**
  * /admin/customers (task 12.12b, #465) — the contact list (DEC-123 §3, DEC-132).
@@ -71,13 +72,14 @@ export default async function AdminCustomers({
 
       {/* Plain GET form — server-rendered search, no client JS. */}
       <form method="get" className="mt-3 flex flex-wrap items-center gap-2">
-        <input
+        <Input
           type="search"
           name="q"
           defaultValue={query}
           placeholder="Search name, phone, email, code…"
           aria-label="Search customers"
-          className="min-w-[240px] flex-1 rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-ink"
+          density="dense"
+          className="min-w-[240px] flex-1"
         />
         <GetFormSubmit className="btn-primary btn-sm">
           Search

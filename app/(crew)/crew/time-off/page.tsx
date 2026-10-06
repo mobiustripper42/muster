@@ -15,6 +15,8 @@ import { fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 import { CREW_UNAVAILABLE, logSwallowed } from "../../../lib/swallowed";
 import { addMyTimeOff, removeMyTimeOff, setMyDaysOff, type CrewTimeOffErr } from "./actions";
+import { Field } from "../../../../components/ui/field";
+import { Input } from "../../../../components/ui/input";
 
 /**
  * /crew/time-off (SPEC §2.1, DEC-009) — the crew member's own time off, two axes on
@@ -185,37 +187,27 @@ function AddForm({
   action: (fd: FormData) => Promise<void>;
   draft: FormDraft | null;
 }) {
-  const inputClass =
-    "min-h-[52px] rounded-card border border-line bg-card px-4 text-ink";
   return (
     <form action={action} className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm">
       <UnsavedGuard restored={draft !== null} />
       <h2 className="text-sm font-semibold text-ink">Add time off</h2>
-      <div className="flex flex-col gap-2">
-        <label htmlFor="start" className="text-sm text-muted">
-          First day off
-        </label>
-        <input
+      <Field label="First day off" htmlFor="start">
+        <Input
           id="start"
           name="start"
           type="date"
           defaultValue={draft?.get("start") ?? ""}
           required
-          className={inputClass}
         />
-      </div>
-      <div className="flex flex-col gap-2">
-        <label htmlFor="end" className="text-sm text-muted">
-          Last day off (leave blank for a single day)
-        </label>
-        <input
+      </Field>
+      <Field label="Last day off (leave blank for a single day)" htmlFor="end">
+        <Input
           id="end"
           name="end"
           type="date"
           defaultValue={draft?.get("end") ?? ""}
-          className={inputClass}
         />
-      </div>
+      </Field>
       <SubmitButton className="btn-primary min-h-[52px] w-full">
         Add
       </SubmitButton>

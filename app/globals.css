@@ -40,6 +40,14 @@
    */
   --color-faint: #93a0b0;
   --color-line: #e7ebf1; /* 1.06:1 — hairlines only, never text */
+  /*
+   * The edge of a form field (issue #484). 3.65:1 on --color-card and 3.25:1 on --color-bg, so
+   * it clears WCAG 1.4.11's 3:1 for a control boundary on either background. --color-line
+   * (1.20:1 on a card) left a white field inside a white card all but invisible, and a gray
+   * fill instead (--color-bg, 1.12:1) vanished the moment a field sat on the page background —
+   * the waiver signing form's bug. Used by <Input> / <Textarea> in components/ui/input.tsx.
+   */
+  --color-line-strong: #7b8796;
 
   /* Brand + roles */
   --color-accent: #2f5d86;

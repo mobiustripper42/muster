@@ -6,7 +6,8 @@ import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
-import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
+import { Field } from "../../../../components/ui/field";
+import { Input } from "../../../../components/ui/input";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
@@ -183,31 +184,31 @@ function AddOnCard({
       </div>
 
       <div className="px-4 py-1">
-        <Field label="Label" sub="what the customer sees">
-          <input
+        <Field layout="row" label="Label" hint="what the customer sees">
+          <Input
             name="label"
             required
             defaultValue={draft?.get("label") ?? addOn?.label ?? ""}
-            className={`${settingsInputClass} w-full max-w-[420px]`}
+            className="w-full max-w-[420px]"
           />
         </Field>
 
-        <Field label="Amount" sub="a flat charge, revenue">
+        <Field layout="row" label="Amount" hint="a flat charge, revenue">
           <span className="flex items-center gap-2">
             <span className="text-xs text-muted">$</span>
-            <input
+            <Input
               name="amount"
               required
               inputMode="decimal"
               defaultValue={
                 draft?.get("amount") ?? (addOn ? (addOn.amountCents / 100).toFixed(2) : "")
               }
-              className={`${settingsInputClass} max-w-[130px] font-mono`}
+              className="max-w-[130px] font-mono"
             />
           </span>
         </Field>
 
-        <Field label="Required" sub="the customer must buy it">
+        <Field layout="row" label="Required" hint="the customer must buy it">
           <label className="flex items-center gap-2 pt-1 text-sm text-ink">
             <input
               type="checkbox"
@@ -218,7 +219,7 @@ function AddOnCard({
           </label>
         </Field>
 
-        <Field label="Active" sub="uncheck to retire">
+        <Field layout="row" label="Active" hint="uncheck to retire">
           <label className="flex items-center gap-2 pt-1 text-sm text-ink">
             {/* Default checked on a new add-on; retired add-ons drop from the offering picker
                 + browse but keep their references (DEC-123 soft-delete). */}

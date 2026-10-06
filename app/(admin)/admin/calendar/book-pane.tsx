@@ -1,7 +1,8 @@
 import type { Offering } from "@core/domain/entities.js";
 import { checkoutQuote } from "@core/reservations/checkout-quote.js";
 import type { PaymentConfig } from "@core/reservations/payment-config.js";
-import { settingsInputClass } from "../../../../components/admin/settings-field";
+import { Field } from "../../../../components/ui/field";
+import { fieldClass, Input } from "../../../../components/ui/input";
 import { AppLink } from "../../../../components/ui/app-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
 import { Notice } from "../../../../components/ui/notice";
@@ -157,7 +158,6 @@ function PassengersStep({
   sp: BookSearch;
   guestsErr: string | null;
 }) {
-  const input = `${settingsInputClass} w-full`;
   return (
     <>
       {guestsErr ? <Notice tone="bad">{guestsErr}</Notice> : null}
@@ -170,16 +170,15 @@ function PassengersStep({
         <input type="hidden" name="book" value="1" />
         <div className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
           {choices.length > 1 ? (
-            <label className="flex flex-col gap-1 text-xs font-medium text-ink">
-              Cruise
-              <select name="offering" defaultValue={String(offering.id)} className={input}>
+            <Field label="Cruise" htmlFor="book-offering">
+              <select id="book-offering" name="offering" defaultValue={String(offering.id)} className={`${fieldClass()} w-full`}>
                 {choices.map((o) => (
                   <option key={String(o.id)} value={String(o.id)}>
                     {o.name}
                   </option>
                 ))}
               </select>
-            </label>
+            </Field>
           ) : (
             <div className="flex items-baseline justify-between gap-3 text-sm">
               <input type="hidden" name="offering" value={String(offering.id)} />
@@ -187,11 +186,9 @@ function PassengersStep({
               <span className="text-right text-ink">{offering.name}</span>
             </div>
           )}
-          <label className="flex flex-col gap-1 text-xs font-medium text-ink">
-            <span>
-              Guests <span className="font-normal text-muted">· this boat takes {cap}</span>
-            </span>
-            <input
+          <Field label="Guests" hint={`this boat takes ${cap}`} htmlFor="book-guests">
+            <Input
+              id="book-guests"
               name="guests"
               type="number"
               inputMode="numeric"
@@ -199,9 +196,9 @@ function PassengersStep({
               max={cap}
               required
               defaultValue={sp.party ?? ""}
-              className={input}
+              className="w-full"
             />
-          </label>
+          </Field>
         </div>
         <div className="flex gap-3">
           <GetFormSubmit className="btn-primary flex-1">Continue</GetFormSubmit>

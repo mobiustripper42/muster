@@ -25,6 +25,7 @@ import { getRepo } from "../../lib/repo";
 import { logSwallowed } from "../../lib/swallowed";
 import { requestBookingChange } from "./actions";
 import { loadBookingByCode } from "./load";
+import { Textarea } from "../../../components/ui/input";
 
 export const dynamic = "force-dynamic";
 
@@ -419,12 +420,12 @@ function RequestForm({ code, kind, placeholder }: { code: string; kind: "cancel"
     <form action={requestBookingChange} className="mt-3 flex flex-col gap-2">
       <input type="hidden" name="code" value={code} />
       <input type="hidden" name="kind" value={kind} />
-      <textarea
+      <Textarea
         name="note"
         rows={2}
         maxLength={500}
         placeholder={placeholder}
-        className="w-full rounded-[10px] border border-line bg-bg px-3 py-2 text-[13px] text-ink placeholder:text-muted"
+        className="w-full"
       />
       <SubmitButton
         className={kind === "cancel" ? "self-start btn-danger" : "self-start btn-primary"}

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { Block, Location, Vessel } from "@core/domain/entities.js";
-import { settingsInputClass } from "../../../../components/admin/settings-field";
+import { Field } from "../../../../components/ui/field";
+import { fieldClass, Input } from "../../../../components/ui/input";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { AppLink } from "../../../../components/ui/app-link";
 import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
@@ -27,8 +28,6 @@ import { saveBlock, liftBlock } from "./actions";
  * picker is a separate design pass across every surface, tracked as a follow-up.
  */
 
-const inputClass = settingsInputClass;
-
 type Choice = "vessel" | "location" | "slot";
 
 const CHOICES: { key: Choice; title: string; sub: string }[] = [
@@ -41,29 +40,6 @@ const TITLE: Record<Choice, string> = Object.fromEntries(CHOICES.map((c) => [c.k
   Choice,
   string
 >;
-
-/** Stacked field — label ON TOP, control below (the mockup's `.fld`), tied to its control by id. */
-function Fld({
-  label,
-  sub,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  sub?: string;
-  htmlFor?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="py-2">
-      <label htmlFor={htmlFor} className="mb-1 block text-xs font-medium text-ink">
-        {label}
-        {sub ? <span className="ml-1 font-normal text-muted">· {sub}</span> : null}
-      </label>
-      {children}
-    </div>
-  );
-}
 
 /** The opening choice a refused create comes back to: the draft's kind, when it is one of ours. */
 function draftChoice(draftValues: Record<string, string> | null): Choice | null {
@@ -166,7 +142,7 @@ export function BlockEditor({
 
           {choice === "location" ? (
             <>
-              <Fld label="Which location" htmlFor="blk-target">
+              <Field className="py-2" label="Which location" htmlFor="blk-target">
                 {editing ? (
                   <>
                     <input type="hidden" name="locationId" value={loc ? String(loc.locationId) : ""} />
@@ -177,7 +153,7 @@ export function BlockEditor({
                     id="blk-target"
                     name="locationId"
                     defaultValue={draftValues?.locationId ?? ""}
-                    className={`${inputClass} w-full`}
+                    className={`${fieldClass()} w-full`}
                   >
                     <option value="">— pick a location —</option>
                     {locations.map((l) => (
@@ -187,40 +163,40 @@ export function BlockEditor({
                     ))}
                   </select>
                 )}
-              </Fld>
-              <Fld label="Date" htmlFor="blk-date">
-                <input
+              </Field>
+              <Field className="py-2" label="Date" htmlFor="blk-date">
+                <Input
                   id="blk-date"
                   name="date"
                   type="date"
                   defaultValue={draftValues?.date ?? loc?.date ?? ""}
-                  className={`${inputClass} w-full font-mono`}
+                  className="w-full font-mono"
                 />
-              </Fld>
+              </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Fld label="From" htmlFor="blk-from">
-                  <input
+                <Field className="py-2" label="From" htmlFor="blk-from">
+                  <Input
                     id="blk-from"
                     name="startTime"
                     type="time"
                     defaultValue={draftValues?.startTime ?? loc?.startTime ?? ""}
-                    className={`${inputClass} w-full font-mono`}
+                    className="w-full font-mono"
                   />
-                </Fld>
-                <Fld label="To" htmlFor="blk-to">
-                  <input
+                </Field>
+                <Field className="py-2" label="To" htmlFor="blk-to">
+                  <Input
                     id="blk-to"
                     name="endTime"
                     type="time"
                     defaultValue={draftValues?.endTime ?? loc?.endTime ?? ""}
-                    className={`${inputClass} w-full font-mono`}
+                    className="w-full font-mono"
                   />
-                </Fld>
+                </Field>
               </div>
             </>
           ) : (
             <>
-              <Fld label="Which boat" htmlFor="blk-target">
+              <Field className="py-2" label="Which boat" htmlFor="blk-target">
                 {editing ? (
                   <>
                     <input type="hidden" name="vesselId" value={ves ? String(ves.vesselId) : ""} />
@@ -231,7 +207,7 @@ export function BlockEditor({
                     id="blk-target"
                     name="vesselId"
                     defaultValue={draftValues?.vesselId ?? ""}
-                    className={`${inputClass} w-full`}
+                    className={`${fieldClass()} w-full`}
                   >
                     <option value="">— pick a boat —</option>
                     {vessels.map((v) => (
@@ -241,39 +217,39 @@ export function BlockEditor({
                     ))}
                   </select>
                 )}
-              </Fld>
+              </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Fld label="From" htmlFor="blk-from">
-                  <input
+                <Field className="py-2" label="From" htmlFor="blk-from">
+                  <Input
                     id="blk-from"
                     name="startDate"
                     type="date"
                     defaultValue={draftValues?.startDate ?? ves?.startDate ?? ""}
-                    className={`${inputClass} w-full font-mono`}
+                    className="w-full font-mono"
                   />
-                </Fld>
-                <Fld label="To" sub="blank = one day" htmlFor="blk-to">
-                  <input
+                </Field>
+                <Field className="py-2" label="To" hint="blank = one day" htmlFor="blk-to">
+                  <Input
                     id="blk-to"
                     name="endDate"
                     type="date"
                     defaultValue={draftValues?.endDate ?? ves?.endDate ?? ""}
-                    className={`${inputClass} w-full font-mono`}
+                    className="w-full font-mono"
                   />
-                </Fld>
+                </Field>
               </div>
             </>
           )}
 
-          <Fld label="Reason" sub="optional" htmlFor="blk-reason">
-            <input
+          <Field className="py-2" label="Reason" hint="optional" htmlFor="blk-reason">
+            <Input
               id="blk-reason"
               name="note"
               defaultValue={draftValues?.note ?? selected?.note ?? ""}
               placeholder={choice === "vessel" ? "e.g. engine service" : "e.g. river closed for a regatta"}
-              className={`${inputClass} w-full`}
+              className="w-full"
             />
-          </Fld>
+          </Field>
 
           <div className="flex gap-3 py-3">
             <SubmitButton className="btn-primary flex-1">{editing ? "Save" : "Block it"}</SubmitButton>

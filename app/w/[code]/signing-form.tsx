@@ -7,7 +7,9 @@ import type { FormDraft } from "../../lib/form-draft";
 import { signWaiver } from "./actions";
 import { ChildCards } from "./child-cards";
 import { DateOfBirth, type DobParts } from "./date-of-birth";
-import { card, input } from "./form-look";
+import { card } from "./form-look";
+import { Field } from "../../../components/ui/field";
+import { Input } from "../../../components/ui/input";
 
 /**
  * The signing form (Phase 18.4): the guest's details, a card for each child they add, then the
@@ -83,10 +85,9 @@ export function SigningFormView({
           <h1 className="text-xl font-semibold">Your details</h1>
           <p className="text-sm text-muted">You must be {ageOfMajority} or older to sign.</p>
         </div>
-        <label className="flex flex-col gap-1">
-          <span className="text-sm text-muted">Full legal name</span>
-          <input name="name" required maxLength={100} autoComplete="name" defaultValue={draft?.get("name") ?? ""} className={input} />
-        </label>
+        <Field label="Full legal name" htmlFor="sign-name">
+          <Input id="sign-name" name="name" required maxLength={100} autoComplete="name" defaultValue={draft?.get("name") ?? ""} className="w-full" />
+        </Field>
         <label className="flex min-h-[44px] items-start gap-3 text-sm text-ink">
           <input
             type="checkbox"
@@ -104,14 +105,12 @@ export function SigningFormView({
           defaults={{ month: draft?.get("dobMonth") ?? "", day: draft?.get("dobDay") ?? "", year: draft?.get("dobYear") ?? "" }}
           label="Date of birth"
         />
-        <label className="flex flex-col gap-1">
-          <span className="text-sm text-muted">Email</span>
-          <input name="email" type="email" required autoComplete="email" inputMode="email" defaultValue={draft?.get("email") ?? ""} className={input} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-sm text-muted">Phone (optional)</span>
-          <input name="phone" type="tel" autoComplete="tel" inputMode="tel" defaultValue={draft?.get("phone") ?? ""} className={input} />
-        </label>
+        <Field label="Email" htmlFor="sign-email">
+          <Input id="sign-email" name="email" type="email" required autoComplete="email" inputMode="email" defaultValue={draft?.get("email") ?? ""} className="w-full" />
+        </Field>
+        <Field label="Phone (optional)" htmlFor="sign-phone">
+          <Input id="sign-phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" defaultValue={draft?.get("phone") ?? ""} className="w-full" />
+        </Field>
       </section>
 
       <ChildCards

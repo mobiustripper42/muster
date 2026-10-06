@@ -13,6 +13,7 @@ import { fmtRunWhen } from "../../../../lib/format";
 import { postOperatorMessage } from "../actions";
 import { messagingEnabled } from "../../../../lib/flags";
 import { notFound } from "next/navigation";
+import { Textarea } from "../../../../../components/ui/input";
 
 /**
  * Operator thread view (#118, §10) — reuses `buildThreadView` with the admin viewer
@@ -98,12 +99,12 @@ export default async function AdminThread({
       {view.canPost ? (
         <form action={postOperatorMessage} className="mt-2 flex flex-col gap-2">
           <input type="hidden" name="threadId" value={view.threadId} />
-          <textarea
+          <Textarea
             name="body"
             required
             rows={2}
             placeholder="Message…"
-            className="w-full resize-none rounded-card border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-muted"
+            className="w-full resize-none"
           />
           <label className="flex items-center gap-2 text-sm text-muted">
             <input type="checkbox" name="priority" className="h-4 w-4" />

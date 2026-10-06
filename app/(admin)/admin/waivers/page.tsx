@@ -10,7 +10,8 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { WaiverVersionDisclosure, WaiverVersionText } from "../../../../components/admin/waiver-version";
-import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
+import { Field } from "../../../../components/ui/field";
+import { Input, Textarea } from "../../../../components/ui/input";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { fmtRunWhen } from "../../../lib/format";
@@ -244,26 +245,26 @@ function VersionForm({
           </p>
         </div>
         <div className="px-4 py-1">
-          <Field label="Label" sub="e.g. brewboat-2026-v2">
-            <input
+          <Field layout="row" label="Label" hint="e.g. brewboat-2026-v2">
+            <Input
               name="version"
               required
               defaultValue={draft?.get("version") ?? editing?.version ?? ""}
-              className={`${settingsInputClass} w-full max-w-[320px]`}
+              className="w-full max-w-[320px]"
             />
           </Field>
-          <Field label="Takes effect">
-            <input
+          <Field layout="row" label="Takes effect">
+            <Input
               name="effectiveDate"
               type="date"
               required
               min={today}
               defaultValue={draft?.get("effectiveDate") ?? (editing ? effectiveDateOf(editing) : today)}
-              className={`${settingsInputClass} max-w-[200px]`}
+              className="max-w-[200px]"
             />
           </Field>
-          <Field label="Waiver text" sub="Exactly what guests agree to" align="start">
-            <textarea
+          <Field layout="row" label="Waiver text" hint="Exactly what guests agree to" align="start">
+            <Textarea
               name="body"
               required
               rows={14}
@@ -271,7 +272,7 @@ function VersionForm({
               // typo fix is why you edit. Also scrolls it into view; `#waiver-form` is the fallback.
               autoFocus={editing !== null}
               defaultValue={draft?.get("body") ?? source?.body ?? ""}
-              className={`${settingsInputClass} w-full py-2`}
+              className="w-full"
             />
           </Field>
         </div>
@@ -311,23 +312,23 @@ function SettingsForm({
           </div>
         )}
         <div className="px-4 py-1">
-          <Field label="Age of majority" sub="Younger guests sign with a parent or guardian">
-            <input
+          <Field layout="row" label="Age of majority" hint="Younger guests sign with a parent or guardian">
+            <Input
               name="ageOfMajority"
               type="number"
               min={1}
               step={1}
               required
               defaultValue={draft?.get("ageOfMajority") ?? config.ageOfMajority}
-              className={`${settingsInputClass} max-w-[110px] font-mono`}
+              className="max-w-[110px] font-mono"
             />
           </Field>
-          <Field label="Reminder days" sub="Days before the trip the booker is reminded">
-            <input
+          <Field layout="row" label="Reminder days" hint="Days before the trip the booker is reminded">
+            <Input
               name="reminderDays"
               defaultValue={draft?.get("reminderDays") ?? config.reminderDaysBefore.join(", ")}
               placeholder="none"
-              className={`${settingsInputClass} w-full max-w-[200px] font-mono`}
+              className="w-full max-w-[200px] font-mono"
             />
           </Field>
         </div>

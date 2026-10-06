@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { SubmitButton } from "../../../../../../../components/ui/submit-button";
 import { confirmCount } from "./actions";
+import { Input } from "../../../../../../../components/ui/input";
 
 /**
  * The passenger count (Phase 18.5a; surfaces §C1, §C4): the mate's number, set separately from the
@@ -76,7 +77,7 @@ export function PassengerCount({
               –
             </button>
           )}
-          <input
+          <Input
             id="pax"
             name="pax"
             type="number"
@@ -90,7 +91,9 @@ export function PassengerCount({
               setTouched(true);
               setText(e.target.value);
             }}
-            className="min-h-[48px] w-20 rounded-card border border-line bg-bg text-center font-mono text-2xl text-ink"
+            // The count is the screen's one number, sized to match the 48px steppers beside it — the one
+            // place a field overrides its text size and floor, so both carry `!` to win over <Input>'s.
+            className="min-h-12! w-20 text-center font-mono text-2xl!"
           />
           {ready && (
             <button

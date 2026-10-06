@@ -27,6 +27,8 @@ import {
   editMyPunch,
   type CrewTimeErr,
 } from "./actions";
+import { Field } from "../../../../components/ui/field";
+import { fieldClass, Input } from "../../../../components/ui/input";
 
 /**
  * /crew/time (SPEC §2.9.7) — the crew member's own clock. **Clock in** when they're
@@ -223,7 +225,7 @@ export default async function CrewTime({
               label: `${fmtDateRange(p.start, p.end)}${p.start === thisPeriod.start ? " — current" : ""}`,
             }))}
             ariaLabel="Pay period"
-            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
+            className={fieldClass()}
           />
         </form>
 
@@ -410,47 +412,35 @@ function PunchForm({
           <input type="hidden" name="punchDay" value={day} />
         </>
       ) : (
-        <div className="flex flex-col gap-1">
-          <label htmlFor="new-day" className="text-sm text-muted">
-            Day
-          </label>
-          <input
+        <Field label="Day" htmlFor="new-day">
+          <Input
             id="new-day"
             name="punchDay"
             type="date"
             defaultValue={mine?.get("punchDay") ?? day}
             required
-            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
-        </div>
+        </Field>
       )}
 
       <div className="flex flex-wrap gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor={`in-${punchId ?? "new"}`} className="text-sm text-muted">
-            In
-          </label>
-          <input
+        <Field label="In" htmlFor={`in-${punchId ?? "new"}`}>
+          <Input
             id={`in-${punchId ?? "new"}`}
             name="inTime"
             type="time"
             defaultValue={mine?.get("inTime") ?? inTime}
             required
-            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor={`out-${punchId ?? "new"}`} className="text-sm text-muted">
-            Out <span className="text-muted">(blank leaves it running)</span>
-          </label>
-          <input
+        </Field>
+        <Field label="Out (blank leaves it running)" htmlFor={`out-${punchId ?? "new"}`}>
+          <Input
             id={`out-${punchId ?? "new"}`}
             name="outTime"
             type="time"
             defaultValue={mine?.get("outTime") ?? outTime ?? ""}
-            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
-        </div>
+        </Field>
       </div>
 
       {/* NO "out is next day" control here (operator, 2026-08-01): BrewBoat doesn't run
@@ -466,20 +456,16 @@ function PunchForm({
       />
 
       {/* Required, and the reason the trail is worth keeping. */}
-      <div className="flex flex-col gap-1">
-        <label htmlFor={`why-${punchId ?? "new"}`} className="text-sm text-muted">
-          Reason
-        </label>
-        <input
+      <Field label="Reason" htmlFor={`why-${punchId ?? "new"}`}>
+        <Input
           id={`why-${punchId ?? "new"}`}
           name="reason"
           type="text"
           // No default before #780: required, prose, and blanked on every refusal.
           defaultValue={mine?.get("reason") ?? ""}
           required
-          className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
         />
-      </div>
+      </Field>
 
       <div className="flex flex-wrap items-center gap-3">
         {/* Disabled until something changes, and guards against navigating away from

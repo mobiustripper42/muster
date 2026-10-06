@@ -13,6 +13,8 @@ import { fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { adminAddTimeOff, adminRemoveTimeOff, type AdminTimeOffErr } from "./actions";
+import { Field } from "../../../../components/ui/field";
+import { fieldClass, Input } from "../../../../components/ui/input";
 
 /**
  * /admin/time-off (#332, SPEC §2.1, DEC-009) — the office's view of everyone's
@@ -131,7 +133,6 @@ export default async function AdminTimeOff({
 /** Put a crew member out — pick who, then the span. Native date inputs, no JS
  *  (DEC-026). The domain enforces `start ≤ end`. */
 function AddForm({ crew, draft }: { crew: CrewMember[]; draft: FormDraft | null }) {
-  const inputClass = "min-h-[48px] rounded-card border border-line bg-card px-3 text-ink";
   return (
     <form
       action={adminAddTimeOff}
@@ -139,15 +140,12 @@ function AddForm({ crew, draft }: { crew: CrewMember[]; draft: FormDraft | null 
     >
       <UnsavedGuard restored={draft !== null} />
       <h2 className="text-sm font-semibold text-ink">Add time off</h2>
-      <div className="flex flex-col gap-2">
-        <label htmlFor="crewMemberId" className="text-sm text-muted">
-          Crew member
-        </label>
+      <Field label="Crew member" htmlFor="crewMemberId">
         <select
           id="crewMemberId"
           name="crewMemberId"
           required
-          className={inputClass}
+          className={fieldClass()}
           defaultValue={draft?.get("crewMemberId") ?? ""}
         >
           <option value="" disabled>
@@ -159,34 +157,26 @@ function AddForm({ crew, draft }: { crew: CrewMember[]; draft: FormDraft | null 
             </option>
           ))}
         </select>
-      </div>
+      </Field>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <div className="flex flex-1 flex-col gap-2">
-          <label htmlFor="start" className="text-sm text-muted">
-            First day off
-          </label>
-          <input
+        <Field label="First day off" htmlFor="start" className="flex-1">
+          <Input
             id="start"
             name="start"
             type="date"
             defaultValue={draft?.get("start") ?? ""}
             required
-            className={inputClass}
           />
-        </div>
-        <div className="flex flex-1 flex-col gap-2">
-          <label htmlFor="end" className="text-sm text-muted">
-            Last day off
-          </label>
-          <input
+        </Field>
+        <Field label="Last day off" htmlFor="end" className="flex-1">
+          <Input
             id="end"
             name="end"
             type="date"
             defaultValue={draft?.get("end") ?? ""}
             required
-            className={inputClass}
           />
-        </div>
+        </Field>
       </div>
       <SubmitButton className="btn-primary min-h-[48px]">
         Add time off

@@ -19,6 +19,8 @@ import { fmt12 } from "../../lib/format";
 import { vesselHueClass } from "../../lib/vessel-hue";
 import { requestLoginCode, respondToAsk, verifyLoginCode } from "./actions";
 import { SubmitButton } from "../../../components/ui/submit-button";
+import { Field } from "../../../components/ui/field";
+import { Input } from "../../../components/ui/input";
 
 /** #161: the Yes/No tap's outcome → a calm /crew notice (codes only, DEC-026).
  *  The `in`/`out` keys are the URL param (DEC-026 keeps prose out of params) —
@@ -270,9 +272,6 @@ function SignedOut({
   );
 }
 
-const inputClass =
-  "min-h-[52px] rounded-card border border-line bg-card px-4 text-ink placeholder:text-muted";
-
 /**
  * SMS opt-in consent block (Twilio 10DLC vetting). A public, visible,
  * UNCHECKED-by-default checkbox with the full disclosure + working policy links.
@@ -331,19 +330,17 @@ function EmailStep() {
   return (
     <div className="flex flex-col gap-3">
       <form action={requestLoginCode} className="flex flex-col gap-3">
-        <label htmlFor="email" className="text-sm text-muted">
-          Sign in with your crew email
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-          required
-          placeholder="you@example.com"
-          className={inputClass}
-        />
+        <Field label="Sign in with your crew email" htmlFor="email">
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            required
+            placeholder="you@example.com"
+          />
+        </Field>
         <SmsConsentBlock />
         <SubmitButton className="btn-primary min-h-[52px] w-full">
           Email me a code
@@ -372,20 +369,19 @@ function CodeStep({ email, err }: { email: string; err?: string }) {
         </Notice>
       )}
       <form action={verifyLoginCode} className="flex flex-col gap-3">
-        <label htmlFor="code" className="text-sm text-muted">
-          Enter your code
-        </label>
-        <input
-          id="code"
-          name="code"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          pattern="[0-9]*"
-          maxLength={6}
-          required
-          placeholder="123456"
-          className={`${inputClass} tracking-[0.5em]`}
-        />
+        <Field label="Enter your code" htmlFor="code">
+          <Input
+            id="code"
+            name="code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]*"
+            maxLength={6}
+            required
+            placeholder="123456"
+            className="tracking-[0.5em]"
+          />
+        </Field>
         <SubmitButton className="btn-primary min-h-[52px] w-full">
           Sign in
         </SubmitButton>

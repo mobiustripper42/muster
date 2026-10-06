@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { PriceVariation } from "@core/domain/entities.js";
+import { fieldClass, Input } from "../../../../components/ui/input";
 
 /**
  * Ordered price-variations editor (12.8, DEC-123) — the one client island on the catalog
@@ -17,9 +18,6 @@ import type { PriceVariation } from "@core/domain/entities.js";
  * accept a leading minus — a discount is a negative adjustment (−$50, −20%). Props are plain
  * data (no functions server→client — RSC rule).
  */
-
-const inputClass =
-  "rounded-lg border border-line bg-bg px-2 py-1.5 text-sm text-ink";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]; // Mon=0…Sun=6
 
@@ -52,12 +50,13 @@ function NumericInput({
 }) {
   const [text, setText] = useState(value === 0 ? "" : String(value));
   return (
-    <input
+    <Input
       type="text"
       inputMode="decimal"
       value={text}
       placeholder={placeholder}
       aria-label={ariaLabel}
+      density="dense"
       onChange={(e) => {
         const t = e.target.value;
         setText(t);
@@ -117,12 +116,13 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
             <span className="cursor-grab select-none font-mono text-xs text-muted" aria-hidden>
               ⠿ {i + 1}
             </span>
-            <input
+            <Input
               aria-label={`Variation ${i + 1} label`}
               placeholder="Label (e.g. July 4th)"
               value={row.label}
               onChange={(e) => update(i, { ...row, label: e.target.value })}
-              className={`${inputClass} w-36`}
+              density="dense"
+              className="w-36"
             />
 
             {/* Applies */}
@@ -142,7 +142,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                         : { kind, start: "", end: "" },
                 });
               }}
-              className={inputClass}
+              className={fieldClass("dense")}
             >
               <option value="weekdays">Weekdays</option>
               <option value="date">Date</option>
@@ -180,17 +180,17 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
               </span>
             )}
             {row.applies.kind === "date" && (
-              <input
+              <Input
                 type="date"
                 aria-label={`Variation ${i + 1} date`}
                 value={row.applies.date}
                 onChange={(e) => update(i, { ...row, applies: { kind: "date", date: e.target.value } })}
-                className={inputClass}
+                density="dense"
               />
             )}
             {row.applies.kind === "dateRange" && (
               <span className="flex items-center gap-1">
-                <input
+                <Input
                   type="date"
                   aria-label={`Variation ${i + 1} range start`}
                   value={row.applies.start}
@@ -200,10 +200,10 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                       applies: { ...(row.applies as { kind: "dateRange"; start: string; end: string }), start: e.target.value },
                     })
                   }
-                  className={inputClass}
+                  density="dense"
                 />
                 <span className="text-xs text-muted">to</span>
-                <input
+                <Input
                   type="date"
                   aria-label={`Variation ${i + 1} range end`}
                   value={row.applies.end}
@@ -213,7 +213,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                       applies: { ...(row.applies as { kind: "dateRange"; start: string; end: string }), end: e.target.value },
                     })
                   }
-                  className={inputClass}
+                  density="dense"
                 />
               </span>
             )}
@@ -231,7 +231,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                       : { kind: "percent", percent: 0 },
                 })
               }
-              className={inputClass}
+              className={fieldClass("dense")}
             >
               <option value="flatCents">± $</option>
               <option value="percent">± %</option>
@@ -244,7 +244,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                 onValue={(dollars) =>
                   update(i, { ...row, adjustment: { kind: "flatCents", deltaCents: Math.round(dollars * 100) } })
                 }
-                className={`${inputClass} w-24 font-mono`}
+                className="w-24 font-mono"
               />
             ) : (
               <NumericInput
@@ -252,7 +252,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                 placeholder="± e.g. -20"
                 value={row.adjustment.percent}
                 onValue={(percent) => update(i, { ...row, adjustment: { kind: "percent", percent } })}
-                className={`${inputClass} w-20 font-mono`}
+                className="w-20 font-mono"
               />
             )}
 

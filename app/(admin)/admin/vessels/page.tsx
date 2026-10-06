@@ -6,7 +6,8 @@ import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
-import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
+import { Field } from "../../../../components/ui/field";
+import { fieldClass, Input, Textarea } from "../../../../components/ui/input";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
@@ -205,8 +206,6 @@ export default async function AdminVessels({
   );
 }
 
-const inputClass = settingsInputClass;
-
 /**
  * The "Vessel" facts card. The Save button lives in the page header (shared form).
  *
@@ -252,11 +251,11 @@ function CrewRows({
   const shown = rows.length > 0 ? rows : [{ roleTypeId: "", count: "1" }];
 
   return (
-    <Field label="Required crew" sub="Who must be aboard to sail" align="start">
+    <Field layout="row" label="Required crew" hint="Who must be aboard to sail" align="start">
       <div className="flex flex-col gap-2 pt-1.5">
         {shown.map((row, i) => (
           <div key={i} className="flex items-center gap-2">
-            <input
+            <Input
               name="crewCount"
               type="number"
               min={1}
@@ -264,14 +263,14 @@ function CrewRows({
               required
               defaultValue={row.count}
               aria-label="How many"
-              className={`${inputClass} max-w-[72px] font-mono`}
+              className="max-w-[72px] font-mono"
             />
             <select
               name="crewRole"
               required
               defaultValue={row.roleTypeId}
               aria-label="Role"
-              className={`${inputClass} max-w-[200px]`}
+              className={`${fieldClass()} max-w-[200px]`}
             >
               <option value="">Pick a role…</option>
               {roleTypes.map((r) => (
@@ -328,30 +327,30 @@ function VesselCard({
       </div>
 
       <div className="px-4 py-1">
-        <Field label="Name">
-          <input
+        <Field layout="row" label="Name">
+          <Input
             name="name"
             required
             defaultValue={draft?.get("name") ?? vessel?.name ?? ""}
-            className={`${inputClass} w-full max-w-[420px]`}
+            className="w-full max-w-[420px]"
           />
         </Field>
 
-        <Field label="Capacity" sub="The maximum number of passengers">
-          <input
+        <Field layout="row" label="Capacity" hint="The maximum number of passengers">
+          <Input
             name="coiMaxPax"
             type="number"
             min={1}
             max={99}
             required
             defaultValue={draft?.get("coiMaxPax") ?? vessel?.coiMaxPax ?? 6}
-            className={`${inputClass} max-w-[110px] font-mono`}
+            className="max-w-[110px] font-mono"
           />
         </Field>
 
         <CrewRows vessel={vessel} draft={draft} roleTypes={roleTypes} />
 
-        <Field label="Color">
+        <Field layout="row" label="Color">
           <fieldset className="flex flex-wrap gap-2 pt-1.5">
             <legend className="sr-only">Color</legend>
             {Array.from({ length: HUE_COUNT }, (_, i) => i + 1).map((h) => (
@@ -376,11 +375,11 @@ function VesselCard({
           </fieldset>
         </Field>
 
-        <Field label="Home location" sub="default launch">
+        <Field layout="row" label="Home location" hint="default launch">
           <select
             name="homeLocationId"
             defaultValue={draft?.get("homeLocationId") ?? vessel?.homeLocationId ?? ""}
-            className={`${inputClass} w-full max-w-[280px]`}
+            className={`${fieldClass()} w-full max-w-[280px]`}
           >
             <option value="">— none —</option>
             {locations.map((l) => (
@@ -391,11 +390,11 @@ function VesselCard({
           </select>
         </Field>
 
-        <Field label="Notes" align="start">
-          <textarea
+        <Field layout="row" label="Notes" align="start">
+          <Textarea
             name="notes"
             defaultValue={draft?.get("notes") ?? vessel?.notes ?? ""}
-            className={`${inputClass} min-h-[64px] w-full py-2`}
+            className="min-h-[64px] w-full"
           />
         </Field>
       </div>

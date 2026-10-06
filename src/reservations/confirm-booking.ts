@@ -15,13 +15,19 @@
  * elsewhere, so a second path that books its own way books the same sale twice. This module is
  * that function; `processBookingWebhook` calls it too.
  */
+import type { ReservationId } from "../domain/ids.js";
+import { asId } from "../domain/ids.js";
 import type { PaymentSucceeded } from "../ports/payment.js";
 import {
+  formAndConfirm,
   processBookingCharge,
+  type CompletionDeps,
   type ConfirmOptions,
   type WebhookDeps,
   type WebhookResult,
 } from "./booking-webhook.js";
+import { recordTrail } from "./trail.js";
+import { confirmCompedRow } from "./write-booking.js";
 
 /**
  * Book from an already-verified PaymentIntent.
@@ -86,4 +92,37 @@ export async function confirmBookingByPaymentIntent(
   // `via: "success_page"` so the `booked` trail row says which of §2.8.6's three confirms won
   // the flip (issue #1048). The webhook's own call sets `webhook`.
   return confirmBookingFromIntent(deps, pi, { notifyOnResidualRaceLoss: false, via: "success_page" });
+}
+
+/**
+ * Confirm an operator's comp (16.5, DEC-194, §2.8.6): the second, named entry, for a booking
+ * discounted to $0 that has no payment to be found by.
+ *
+ * It runs the same steps as a paid confirm — the flip, the `booked` trail row, the shift, the
+ * customer's confirmation — and none of the payment's: no sibling intents to retire (a comp
+ * refuses a row that has any), no gratuity (a comp's tip is $0), and no ledger row, because no
+ * payment was taken. Faking a $0 payment to reuse the intent path would put one on the ledger
+ * that never happened.
+ *
+ * `lost` is unreachable in practice — the operator's own pending row already holds the hull — and
+ * reports as unconfirmable rather than inventing a compensation for money nobody paid.
+ */
+export async function confirmCompedBooking(
+  deps: CompletionDeps,
+  reservationId: ReservationId,
+): Promise<"booked" | "already" | "unconfirmable"> {
+  const result = await confirmCompedRow(deps.repo, reservationId, deps.now);
+  if (result.outcome !== "booked" && result.outcome !== "already") return "unconfirmable";
+  // `booked` only, never `already` — the same load-bearing guard as the payment confirm's.
+  if (result.outcome === "booked") {
+    await recordTrail(deps, {
+      id: asId<"TrailEventId">(`booked:${String(reservationId)}`),
+      reservationId,
+      actorKind: result.soldBy,
+      type: "booked",
+      metadata: { via: "comp" },
+    });
+  }
+  await formAndConfirm(deps, result.reservation);
+  return result.outcome;
 }

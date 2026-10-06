@@ -15,6 +15,7 @@ import { eventIdOfBooked, isBooked } from "../domain/entities.js";
 import type { ReservationId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
+import { bookedFareCents } from "./discount.js";
 import { balanceOwedCents } from "./payment-config.js";
 
 export type BalanceCheckoutStart =
@@ -43,9 +44,10 @@ export async function createBalanceCheckout(
 
   const config = await repo.getPaymentConfig();
   const payments_ = await repo.listPaymentsForReservation(reservationId);
-  // The composed fare (base + frozen extras, #474) — the bare base undercollects the balance.
+  // The composed fare (base + frozen extras, #474) — the bare base undercollects the balance —
+  // less the discount (DEC-194), or a discounted booking paid in full is billed the discount.
   const owed = balanceOwedCents(
-    event.price + (reservation.extrasCents ?? 0),
+    bookedFareCents(event.price, reservation),
     config.taxRateBps,
     payments_,
   );

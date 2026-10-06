@@ -25,6 +25,7 @@ import { readFormDraft } from "../../../../lib/form-draft";
 import { isProdDeploy } from "../../../../lib/flags";
 import { operatorManageLink } from "../../../../lib/manage-link";
 import { mintPaymentLinkUrl } from "../../../../lib/payment-link";
+import { payLinkState } from "@core/reservations/pay-by-link.js";
 import { liveBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { getRepo } from "../../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../../lib/swallowed";
@@ -120,6 +121,8 @@ export default async function ReservationDetailPage({
       booked?: string;
       /** The last payment-link send's per-channel outcome (issue #1082 part B). */
       linkSent?: string;
+      /** The render right after a comp was booked (16.5, DEC-194): `1` or `error`. */
+      comped?: string;
     }
   >;
 }) {
@@ -423,6 +426,7 @@ export default async function ReservationDetailPage({
         }}
         {...(actions ? { actions } : {})}
         waivers={waivers}
+        comped={sp.comped}
       >
         <BookingHistory trail={trail} />
       </ReservationDetailPane>
@@ -519,7 +523,7 @@ async function PhoneBookingPage({
   sp,
 }: {
   reservation: Reservation;
-  sp: Search & { cancel?: string; cancelErr?: string; booked?: string; linkSent?: string };
+  sp: Search & { cancel?: string; cancelErr?: string; booked?: string; linkSent?: string; comped?: string };
 }) {
   const data = await loadCalendarData({ ...sp, date: sp.date ?? reservation.date });
   if (!data) {
@@ -546,6 +550,8 @@ async function PhoneBookingPage({
     <BookingFrame data={data} reservationId={String(reservation.id)}>
       <ReservationDetailPane
         v={view}
+        // A comp that didn't confirm lands here, still pending — the pane says so.
+        comped={sp.comped}
         unpaid={{
           date: sp.date ?? "",
           filter: sp.filter ?? "",
@@ -557,6 +563,7 @@ async function PhoneBookingPage({
           cancelErr: sp.cancelErr,
           linkSent: sp.linkSent,
           payLinkUrl: payLinkUrl(reservation),
+          payable: payLinkState(reservation).kind === "payable",
           phone: reservation.phone,
           email: reservation.email,
         }}
@@ -573,7 +580,8 @@ async function PhoneBookingPage({
  * link shows none rather than failing the pane.
  */
 function payLinkUrl(reservation: Reservation): string | undefined {
-  if (reservation.status !== "pending") return undefined;
+  // The /p page's own test — a $0 comp that never confirmed has no link to copy (DEC-194).
+  if (payLinkState(reservation).kind !== "payable") return undefined;
   try {
     return mintPaymentLinkUrl(String(reservation.id));
   } catch (e) {

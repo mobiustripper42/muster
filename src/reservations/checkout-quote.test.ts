@@ -48,6 +48,8 @@ function oldPageArithmetic(o: Offering, boatCapacity: number, baseCents: number,
   const defaultBps = gratuityKindsFor(o).find((k) => k.kind === "pre")?.defaultBps ?? GRATUITY_DEFAULT_BPS;
   return {
     fareCents: fare.fareCents,
+    // The public checkout never discounts (DEC-194: operator-applied only).
+    discountCents: 0,
     baseCents,
     extraGuests: fare.extraGuests,
     extrasCents: fare.extrasCents,

@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { applyDiscount } from "@core/reservations/discount.js";
+import { parseDollarsToCents } from "@core/reservations/dollars.js";
+import { gratuityCentsFor } from "@core/reservations/pricing.js";
+import { settingsInputClass } from "../../../../components/admin/settings-field";
 import { CheckoutSummary } from "../../../../components/checkout/checkout-summary";
 import { ContactFields, type ContactValues } from "../../../../components/checkout/contact-fields";
 import type { CheckoutMoney, TipTier } from "../../../../components/checkout/money";
@@ -18,6 +22,9 @@ import { bookPhoneReservation } from "./book-actions";
  * **What it leaves out, and why.** No card: the operator never types one (DEC-162; typing it is
  * 16.1c). No terms box: the customer ticks it on the payment link (issue #1082, DEC-188). No promo row and no
  * cancellation terms: this screen is read by the operator, not agreed to by the customer.
+ *
+ * **What it adds: the discount box** (16.5, DEC-194) — the operator's own dollars off, which the
+ * customer's checkout never has. Tax, fee, every tip tile and the total re-price on what is left.
  *
  * **Submits as a plain server-action post**, not the customer's client `onSubmit` into Stripe:
  * `bookPhoneReservation` checks the admin and `bookForCustomer` owns every rule. The tip rides a
@@ -37,7 +44,7 @@ export function PhoneBookingForm({
   money: CheckoutMoney;
   tiers: TipTier[];
   /** Defaults — the offering's preselected tip, or what the operator typed before a refusal. */
-  initial: ContactValues & { gratuityBps: number };
+  initial: ContactValues & { gratuityBps: number; discount: string };
   /** The fields were refilled from a refused submit: already unsaved, so guard from the start. */
   restored: boolean;
 }) {
@@ -49,7 +56,27 @@ export function PhoneBookingForm({
   const [tipBps, setTipBps] = useState(
     tiers.some((t) => t.bps === initial.gratuityBps) ? initial.gratuityBps : tiers[0]!.bps,
   );
-  const tip = tiers.find((t) => t.bps === tipBps) ?? tiers[0]!;
+  const [discount, setDiscount] = useState(initial.discount);
+  // The money on screen, re-totalled as the box is typed in — through `applyDiscount`, the same
+  // function `priceBooking` freezes with, so what is read out on the phone is what is charged.
+  // A value that doesn't parse prices as no discount; the server refuses it by name on Book it.
+  const parsed = discount.trim() === "" ? 0 : parseDollarsToCents(discount);
+  const d = applyDiscount({
+    fareAndExtrasCents: money.fareCents,
+    requestedCents: parsed ?? 0,
+    taxRateBps: money.taxRateBps,
+    serviceFeeBps: money.serviceFeeBps,
+    gratuityBps: tipBps,
+  });
+  const shownTiers = tiers.map((t) => ({ bps: t.bps, tipCents: gratuityCentsFor(d.baseCents, t.bps) }));
+  const tip = shownTiers.find((t) => t.bps === tipBps) ?? shownTiers[0]!;
+  const shown: CheckoutMoney = {
+    ...money,
+    discountCents: d.discountCents,
+    taxCents: d.taxCents,
+    serviceFeeCents: d.serviceFeeCents,
+    dueNowBeforeTipCents: d.baseCents + d.taxCents + d.serviceFeeCents,
+  };
 
   return (
     <form action={bookPhoneReservation} className="flex flex-col">
@@ -67,15 +94,20 @@ export function PhoneBookingForm({
           values={contact}
           onChange={(field, value) => setContact((c) => ({ ...c, [field]: value }))}
         />
-        <TipTiles tiers={tiers} selectedBps={tip.bps} onSelect={setTipBps} inputName="gratuityBps" />
-        <CheckoutSummary m={money} tipBps={tip.bps} tipCents={tip.tipCents} />
+        <TipTiles tiers={shownTiers} selectedBps={tip.bps} onSelect={setTipBps} inputName="gratuityBps" />
+        {/* Deposits are not in use (§2.8.4a), and the box re-totals in full-payment terms only. */}
+        {money.depositMode ? null : (
+          <DiscountBox value={discount} onChange={setDiscount} invalid={parsed === null} comped={d.comped} />
+        )}
+        <CheckoutSummary m={shown} tipBps={tip.bps} tipCents={tip.tipCents} />
         <p className="pt-3 text-xs text-muted">
-          This holds the boat until they pay or you cancel it — it never expires on its own. They
-          agree to the cancellation terms when they pay.
+          {d.comped
+            ? "Nothing to pay, so no payment link is sent. It books straight away and they get their confirmation."
+            : "This holds the boat until they pay or you cancel it — it never expires on its own. They agree to the cancellation terms when they pay."}
         </p>
       </div>
 
-      <PayBar m={money} tipCents={tip.tipCents}>
+      <PayBar m={shown} tipCents={tip.tipCents}>
         <span data-testid="book-phone" className="ml-auto">
           <SubmitButton className="btn-primary btn-lg">
             Book it
@@ -83,5 +115,49 @@ export function PhoneBookingForm({
         </span>
       </PayBar>
     </form>
+  );
+}
+
+/**
+ * The discount box (16.5, DEC-194) — one number, in dollars, off the fare. Blank is none. The
+ * comp line appears the moment what is left due drops under $2, before anything is saved, so the
+ * operator is never surprised by a bigger discount than they typed.
+ */
+function DiscountBox({
+  value,
+  onChange,
+  invalid,
+  comped,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  invalid: boolean;
+  comped: boolean;
+}) {
+  return (
+    <label className="flex flex-col gap-1 pt-5 text-xs font-medium text-ink">
+      <span>
+        Discount <span className="font-normal text-muted">· dollars off the fare</span>
+      </span>
+      <input
+        name="discount"
+        type="text"
+        inputMode="decimal"
+        placeholder="0"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        data-testid="discount"
+        // Right-aligned, so the figure lines up with the money column in the summary below it.
+        className={`${settingsInputClass} w-full text-right font-mono`}
+      />
+      {invalid ? (
+        <span className="font-normal text-bad">Enter dollars, like 50 or 49.99.</span>
+      ) : null}
+      {comped ? (
+        <span className="font-normal text-ok" data-testid="discount-comp">
+          Under $2 due — this will be a comp.
+        </span>
+      ) : null}
+    </label>
   );
 }

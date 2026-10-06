@@ -809,7 +809,14 @@ export interface BookingInvoice {
   fareCents: number;
   /** Extra-guest surcharge, `extraGuests × extraGuestPriceCents`. */
   extrasCents: number;
-  /** On fare + extras. */
+  /**
+   * The operator's dollars off fare + extras (16.5, DEC-194). Absent when there is none. Tax, fee
+   * and tip below are on fare + extras − this; fare and extras above stay undiscounted so the
+   * receipt can show the line. Every reader that composes a fare from this invoice or from the
+   * booked Event must subtract it — `chargedFareCents` is the one way to.
+   */
+  discountCents?: number;
+  /** On fare + extras − discount. */
   taxCents: number;
   taxRateBps: number;
   /** On fare + extras. */

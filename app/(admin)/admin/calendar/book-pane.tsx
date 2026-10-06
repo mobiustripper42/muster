@@ -53,6 +53,7 @@ const ERR_COPY: Record<BookErr, string> = {
   name_required: "Enter the guest’s name.",
   phone_invalid: "That mobile number doesn’t look right — a 10-digit US number, or + and a country code.",
   gratuity_required: "Pick a crew tip.",
+  invalid_discount: "Enter the discount in dollars, like 50 or 49.99 — or leave it blank.",
   offering_missing: "That cruise isn’t in the catalog anymore.",
   not_live: "That cruise isn’t live — publish it before booking it.",
   invalid_guest_count: "Enter how many guests, 1 or more.",
@@ -277,6 +278,7 @@ function CheckoutStep({
             phone: draft?.get("phone") ?? "",
             email: draft?.get("email") ?? "",
             gratuityBps: Number.isInteger(draftTip) && draftTip > 0 ? draftTip : defaultBps,
+            discount: draft?.get("discount") ?? "",
           }}
           restored={draft !== null}
         />

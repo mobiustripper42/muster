@@ -13,8 +13,9 @@
 import type { BookingInvoice, Event, Offering, Vessel } from "../domain/entities.js";
 import type { VesselId } from "../domain/ids.js";
 import { resolveBasePrice, slotIdentity } from "./availability.js";
-import { chargeNowCents, feeCentsFor, taxCentsFor, type PaymentConfig } from "./payment-config.js";
-import { composeFare, effectiveIncludedGuests, gratuityCentsFor } from "./pricing.js";
+import { applyDiscount } from "./discount.js";
+import { chargeNowCents, type PaymentConfig } from "./payment-config.js";
+import { composeFare, effectiveIncludedGuests } from "./pricing.js";
 
 export interface BookingInvoiceInput {
   offering: Offering;
@@ -31,6 +32,9 @@ export interface BookingInvoiceInput {
   guestCount: number;
   /** Chosen gratuity tier in basis points (DEC-124). */
   gratuityBps: number;
+  /** The operator's dollars off, in cents (16.5, DEC-194). Phone bookings only; absent or 0 is
+   *  none. Clamped and floored by `applyDiscount`. */
+  discountCents?: number;
 }
 
 export function priceBooking(input: BookingInvoiceInput): BookingInvoice {
@@ -54,30 +58,37 @@ export function priceBooking(input: BookingInvoiceInput): BookingInvoice {
     includedGuestCount: effectiveIncludedGuests(offering, vessel),
     extraGuestPriceCents: offering.extraGuestPriceCents,
   });
-  const taxCents = taxCentsFor(fare.fareCents, config.taxRateBps);
-  // Service fee (DEC-134): `serviceFeeBps` of the FARE only — independent of tax and tip,
-  // charged IN FULL with the now-charge (like tax), frozen here, netted out of the balance.
-  const serviceFeeCents = feeCentsFor(fare.fareCents, config.serviceFeeBps);
-  // Gratuity (DEC-124): a % of the tip-free fare, added to the charge IN FULL and UNTAXED —
-  // never through `chargeNowCents` (no deposit-split) or `taxCentsFor` (no tax). Crew money.
-  const gratuityCents = gratuityCentsFor(fare.fareCents, gratuityBps);
+  // Tax, service fee (DEC-134: the fare only, never tax or tip) and gratuity (DEC-124: untaxed,
+  // outside the deposit split) — all on the DISCOUNTED base (DEC-194), which is the composed fare
+  // when there is no discount. One computation with the operator's form, which re-totals live.
+  const d = applyDiscount({
+    fareAndExtrasCents: fare.fareCents,
+    requestedCents: input.discountCents ?? 0,
+    taxRateBps: config.taxRateBps,
+    serviceFeeBps: config.serviceFeeBps,
+    gratuityBps,
+  });
   // `totalCents` is the whole quote, not the amount charged now: in deposit mode the charge is
   // `chargeNowCents` and the remainder is collected later against this same invoice.
   return {
+    // Fare and extras stay undiscounted so a receipt can say what came off (§2.8.4a).
     fareCents: priceCents,
     extrasCents: fare.extrasCents,
-    taxCents,
+    // Only when there is one: an undiscounted invoice is byte-for-byte what it was before 16.5.
+    ...(d.discountCents > 0 ? { discountCents: d.discountCents } : {}),
+    taxCents: d.taxCents,
     taxRateBps: config.taxRateBps,
-    serviceFeeCents,
+    serviceFeeCents: d.serviceFeeCents,
     serviceFeeBps: config.serviceFeeBps,
-    gratuityCents,
+    gratuityCents: d.gratuityCents,
     gratuityBps,
-    totalCents: fare.fareCents + taxCents + serviceFeeCents + gratuityCents,
+    totalCents: d.totalCents,
     // What we are about to ask Stripe for, frozen HERE with everything else rather than
     // recomputed at the call site (15.4). It is the one money number the row cannot derive
     // from its own components: the deposit split lives in `config`, which is live and which an
     // operator can move while a card is being typed. Tip is added outside `chargeNowCents` —
     // no deposit-split and no tax on crew money (DEC-124).
-    amountDueNowCents: chargeNowCents(fare.fareCents, taxCents, serviceFeeCents, config) + gratuityCents,
+    amountDueNowCents:
+      chargeNowCents(d.baseCents, d.taxCents, d.serviceFeeCents, config) + d.gratuityCents,
   };
 }

@@ -17,6 +17,7 @@
  */
 
 import type { Event, Payment, Reservation } from "../domain/entities.js";
+import { bookedFareCents, chargedFareCents } from "./discount.js";
 import { balanceDueCents, countsAsPaid, taxCentsFor } from "./payment-config.js";
 
 /**
@@ -142,10 +143,11 @@ function orderTotal(
   taxRateBps: number,
 ): { fareCents: number; totalCents: number; priceKnown: boolean } {
   if (!event && r.invoice) {
-    const fareCents = r.invoice.fareCents + r.invoice.extrasCents;
+    const fareCents = chargedFareCents(r.invoice);
     return { fareCents, totalCents: fareCents + r.invoice.taxCents, priceKnown: true };
   }
-  const fareCents = (event?.price ?? 0) + (r.extrasCents ?? 0);
+  // Less the discount (DEC-194): `Event.price` is the undiscounted fare.
+  const fareCents = bookedFareCents(event?.price ?? 0, r);
   return {
     fareCents,
     totalCents: fareCents + taxCentsFor(fareCents, taxRateBps),

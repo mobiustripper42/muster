@@ -28,7 +28,11 @@ export function payLinkState(r: Reservation | null): PayLinkState {
   if (!r) return { kind: "missing" };
   if (r.status === "booked") return { kind: "paid", reservation: r };
   if (r.status === "cancelled") return { kind: "cancelled", reservation: r };
-  if (r.source === "admin" && r.status === "pending") return { kind: "payable", reservation: r };
+  // Owing nothing is not payable (DEC-194): a comp whose own confirm failed after the write sits
+  // here pending with $0 due, and a $0 payment must never reach the provider.
+  if (r.source === "admin" && r.status === "pending" && (r.invoice?.amountDueNowCents ?? 0) > 0) {
+    return { kind: "payable", reservation: r };
+  }
   return { kind: "missing" };
 }
 
@@ -50,7 +54,9 @@ export function payLinkMoney(inv: BookingInvoice): {
   const depositMode = dueNowBeforeTipCents < pretipTotal;
   return {
     money: {
+      // Undiscounted, with the discount as its own row (DEC-194) — the summary subtracts it.
       fareCents: inv.fareCents + inv.extrasCents,
+      discountCents: inv.discountCents ?? 0,
       baseCents: inv.fareCents,
       extraGuests: 0,
       extrasCents: inv.extrasCents,

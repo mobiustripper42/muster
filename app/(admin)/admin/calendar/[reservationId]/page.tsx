@@ -120,6 +120,8 @@ export default async function ReservationDetailPage({
       booked?: string;
       /** The last payment-link send's per-channel outcome (issue #1082 part B). */
       linkSent?: string;
+      /** The render right after a comp was booked (16.5, DEC-194): `1` or `error`. */
+      comped?: string;
     }
   >;
 }) {
@@ -423,6 +425,7 @@ export default async function ReservationDetailPage({
         }}
         {...(actions ? { actions } : {})}
         waivers={waivers}
+        comped={sp.comped}
       >
         <BookingHistory trail={trail} />
       </ReservationDetailPane>
@@ -519,7 +522,7 @@ async function PhoneBookingPage({
   sp,
 }: {
   reservation: Reservation;
-  sp: Search & { cancel?: string; cancelErr?: string; booked?: string; linkSent?: string };
+  sp: Search & { cancel?: string; cancelErr?: string; booked?: string; linkSent?: string; comped?: string };
 }) {
   const data = await loadCalendarData({ ...sp, date: sp.date ?? reservation.date });
   if (!data) {
@@ -546,6 +549,8 @@ async function PhoneBookingPage({
     <BookingFrame data={data} reservationId={String(reservation.id)}>
       <ReservationDetailPane
         v={view}
+        // A comp that didn't confirm lands here, still pending — the pane says so.
+        comped={sp.comped}
         unpaid={{
           date: sp.date ?? "",
           filter: sp.filter ?? "",

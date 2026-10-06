@@ -24,6 +24,7 @@ export function money(cents: number): string {
 export function totalsWithTip(m: CheckoutMoney, tipCents: number): { dueNowCents: number; totalCents: number } {
   return {
     dueNowCents: m.dueNowBeforeTipCents + tipCents,
-    totalCents: m.fareCents + m.taxCents + m.serviceFeeCents + tipCents,
+    // Less the operator's discount (DEC-194): tax and fee were already computed on what is left.
+    totalCents: m.fareCents - m.discountCents + m.taxCents + m.serviceFeeCents + tipCents,
   };
 }

@@ -39,6 +39,9 @@ export interface OperatorBookingRequest {
   /** Required and canonicalized — the customer's identity key (DEC-132), and where the link goes. */
   phone: string;
   email?: string | undefined;
+  /** Dollars off, in cents (16.5, DEC-194). Absent or 0 is none; capped at fare + extras, and
+   *  anything leaving under $2 due becomes a comp (`applyDiscount`). */
+  discountCents?: number | undefined;
 }
 
 export type OperatorBookingResult =
@@ -49,6 +52,8 @@ export type OperatorBookingResult =
         | "name_required"
         | "phone_invalid"
         | "gratuity_required"
+        /** Not a whole, non-negative number of cents. */
+        | "invalid_discount"
         | "offering_missing"
         | "not_live"
         | "invalid_guest_count"
@@ -75,6 +80,8 @@ export async function bookForCustomer(
   const phone = canonicalizePhone(req.phone);
   if (!phone.ok) return { ok: false, reason: "phone_invalid" };
   const email = req.email?.trim();
+  const discountCents = req.discountCents ?? 0;
+  if (!Number.isInteger(discountCents) || discountCents < 0) return { ok: false, reason: "invalid_discount" };
 
   // Read once; a null offering falls through to the claim's `offering_missing`.
   const offering = await repo.getOffering(req.offeringId);
@@ -125,6 +132,9 @@ export async function bookForCustomer(
           time: req.time,
           guestCount: req.guestCount,
           gratuityBps: req.gratuityBps,
+          // Off the base, with tax, fee and tip on what is left (DEC-194). A comp freezes $0 due
+          // and is confirmed by the caller through §2.8.6's comp confirm, not a payment link.
+          discountCents,
         }),
         phone: phone.phone,
         ...(email ? { email } : {}),

@@ -19,6 +19,7 @@
  * need (audit §Criterion 12, Phase 15.2). Nothing here imports Stripe.
  */
 import type { Event, Reservation } from "../domain/entities.js";
+import type { ReservationId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { eventIdForSlot } from "./availability.js";
 import { pendingLiveSince } from "./pending.js";
@@ -50,7 +51,9 @@ export type ConfirmResult =
   //                  folded into `no_row` — so 15.6's new silence would have swallowed it, money
   //                  moved and nobody told, while `/book/success` said "You're booked!"
   //                  (`/security-review`). Unreachable today; loud if it ever happens.
-  | { outcome: "unconfirmable"; reason: "no_row" | "not_pending" | "unusable_row" };
+  //   `not_comp`     the comp confirm only (DEC-194): the row is pending but is not an operator's
+  //                  booking with $0 due and no payment started. It is the payment's to confirm.
+  | { outcome: "unconfirmable"; reason: "no_row" | "not_pending" | "unusable_row" | "not_comp" };
 
 /**
  * Confirm the pending row that carries `paymentIntentId` (§2.8.6). Idempotent: a second run over
@@ -77,6 +80,45 @@ export async function confirmPendingRow(
   // id on the booked row is the idempotency key now that the reservation id is not derived.
   if (row.status === "booked") return { outcome: "already", reservation: row };
   if (row.status !== "pending") return { outcome: "unconfirmable", reason: "not_pending" };
+  return flipPendingRow(repo, row, now);
+}
+
+/**
+ * Confirm an operator's comp by its reservation id (16.5, DEC-194, §2.8.6). A booking discounted to
+ * $0 is never paid, so it has no payment intent id for {@link confirmPendingRow} to find it by.
+ *
+ * **Only the lookup is second; the flip is the same one.** Everything after finding the row is
+ * {@link flipPendingRow}, shared code rather than a copy, so a future guard on the flip covers both.
+ * Idempotent the same way: a row already `booked` resolves `already`.
+ *
+ * Refuses anything that is not a comp: a row with money due, a customer's checkout row, or one a
+ * payment was already started on — that intent could still be paid, and booking the row out from
+ * under it would take money for a trip recorded as free.
+ */
+export async function confirmCompedRow(
+  repo: Repository,
+  reservationId: ReservationId,
+  now: () => string,
+): Promise<ConfirmResult> {
+  const row = await repo.getReservation(reservationId);
+  if (!row) return { outcome: "unconfirmable", reason: "no_row" };
+  if (row.status === "booked") return { outcome: "already", reservation: row };
+  if (row.status !== "pending") return { outcome: "unconfirmable", reason: "not_pending" };
+  const isComp =
+    row.source === "admin" &&
+    row.invoice?.amountDueNowCents === 0 &&
+    (row.paymentIntentIds ?? []).length === 0;
+  if (!isComp) return { outcome: "unconfirmable", reason: "not_comp" };
+  return flipPendingRow(repo, row, now);
+}
+
+/** Flip a `pending` row already found and proven pending — the one write path, shared by both
+ *  lookups above. */
+async function flipPendingRow(
+  repo: Repository,
+  row: Reservation,
+  now: () => string,
+): Promise<ConfirmResult> {
 
   if (
     row.vesselId === undefined ||

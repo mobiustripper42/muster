@@ -152,3 +152,43 @@ describe("bookForCustomer — the operator's phone booking (16.1)", () => {
     });
   });
 });
+
+describe("bookForCustomer — the operator's discount (16.5, DEC-194)", () => {
+  it("freezes the discount on the invoice, priced by the same model", async () => {
+    const repo = await seededRepo();
+    const res = await bookForCustomer(repo, ask({ discountCents: 10000 }), now);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.reservation.invoice).toEqual(
+      priceBooking({
+        offering: offering(),
+        vessel: vessel(SMALL, 6),
+        vesselId: SMALL,
+        events: [],
+        config: await repo.getPaymentConfig(),
+        date: DATE,
+        time: TIME,
+        guestCount: 4,
+        gratuityBps: 2000,
+        discountCents: 10000,
+      }),
+    );
+    expect(res.reservation.invoice?.discountCents).toBe(10000);
+  });
+
+  it("the whole fare off writes an unpaid row with $0 due — the comp confirm books it", async () => {
+    const repo = await seededRepo();
+    const res = await bookForCustomer(repo, ask({ discountCents: 49900 }), now);
+    expect(res.ok && res.reservation).toMatchObject({ status: "pending", source: "admin" });
+    expect(res.ok && res.reservation.invoice?.amountDueNowCents).toBe(0);
+  });
+
+  it.each([-100, 12.5, Number.NaN])("refuses a discount of %s cents", async (discountCents) => {
+    const repo = await seededRepo();
+    expect(await bookForCustomer(repo, ask({ discountCents }), now)).toEqual({
+      ok: false,
+      reason: "invalid_discount",
+    });
+    expect(await repo.listAllReservations()).toHaveLength(0);
+  });
+});

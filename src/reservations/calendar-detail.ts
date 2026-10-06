@@ -39,6 +39,7 @@ import type {
   Shift,
   Vessel,
 } from "../domain/entities.js";
+import { bookedFareCents, chargedFareCents } from "./discount.js";
 import { balanceDueCents, countsAsPaid, taxCentsFor } from "./payment-config.js";
 
 export interface ReservationDetailInput {
@@ -56,8 +57,12 @@ export interface ReservationDetailInput {
 }
 
 export interface DetailMoney {
-  /** `Event.price` base + frozen `extrasCents` — the taxable, tip-free party fare. */
+  /** `Event.price` base + frozen `extrasCents` − the discount — the taxable, tip-free party
+   *  fare, i.e. what tax was actually charged on (DEC-194). */
   fareCents: number;
+  /** The operator's dollars off (16.5, DEC-194), 0 when none. `fareCents + discountCents` is the
+   *  fare before it — what the pane shows on the Fare line, with this beneath it. */
+  discountCents: number;
   taxCents: number;
   /** Σ gratuity rows — crew money, NOT part of fare+tax and NOT part of the balance. */
   gratuityCents: number;
@@ -158,7 +163,8 @@ export function buildUnpaidBookingDetail(input: {
     capacity: vessel?.coiMaxPax ?? 0,
     gratuityRows: [],
     money: {
-      fareCents: inv ? inv.fareCents + inv.extrasCents : 0,
+      fareCents: inv ? chargedFareCents(inv) : 0,
+      discountCents: inv?.discountCents ?? 0,
       taxCents: inv?.taxCents ?? 0,
       gratuityCents: inv?.gratuityCents ?? 0,
       paidCents: 0,
@@ -179,7 +185,8 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
   const { reservation: r, event, offering, vessel, payments, gratuities, taxRateBps } = input;
 
   const priceKnown = typeof event.price === "number";
-  const fareCents = (event.price ?? 0) + (r.extrasCents ?? 0);
+  // Less the discount (DEC-194): `Event.price` is the undiscounted fare.
+  const fareCents = bookedFareCents(event.price ?? 0, r);
   const taxCents = taxCentsFor(fareCents, taxRateBps);
   const gratuityCents = gratuities.reduce((sum, g) => sum + g.amountCents, 0);
   // `countsAsPaid`, shared with `balanceOwedCents` — a partially refunded row is still
@@ -211,6 +218,7 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
       .map((g) => ({ kind: g.kind, amountCents: g.amountCents, bps: g.bps })),
     money: {
       fareCents,
+      discountCents: r.invoice?.discountCents ?? 0,
       taxCents,
       gratuityCents,
       paidCents,

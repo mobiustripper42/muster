@@ -50,7 +50,9 @@ export function payLinkMoney(inv: BookingInvoice): {
   const depositMode = dueNowBeforeTipCents < pretipTotal;
   return {
     money: {
+      // Undiscounted, with the discount as its own row (DEC-194) — the summary subtracts it.
       fareCents: inv.fareCents + inv.extrasCents,
+      discountCents: inv.discountCents ?? 0,
       baseCents: inv.fareCents,
       extraGuests: 0,
       extrasCents: inv.extrasCents,

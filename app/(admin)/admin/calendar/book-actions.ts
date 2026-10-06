@@ -2,8 +2,11 @@
 
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
+import { confirmCompedBooking } from "@core/reservations/confirm-booking.js";
+import { parseDollarsToCents } from "@core/reservations/dollars.js";
 import { bookForCustomer, type OperatorBookingResult } from "@core/reservations/operator-booking.js";
 import { readSubject } from "../../../lib/auth";
+import { completionDeps } from "../../../lib/booking-deps";
 import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { deliverPaymentLink } from "../../../lib/payment-link";
 import { getRepo } from "../../../lib/repo";
@@ -39,6 +42,11 @@ export async function bookPhoneReservation(formData: FormData): Promise<void> {
   const time = field("time");
   const vesselId = field("vesselId");
   const offeringId = field("offeringId");
+  // The discount box (16.5, DEC-194): blank is none, anything else must parse as dollars exactly as
+  // the refund box does. A value that doesn't parse goes in as NaN so the write refuses it by name
+  // (`invalid_discount`) rather than this glue inventing a second refusal path.
+  const discountRaw = field("discount");
+  const discountCents = discountRaw === "" ? 0 : (parseDollarsToCents(discountRaw) ?? Number.NaN);
 
   let result: OperatorBookingResult | null = null;
   try {
@@ -54,11 +62,30 @@ export async function bookPhoneReservation(formData: FormData): Promise<void> {
         customerName: field("customerName"),
         phone: field("phone"),
         ...(field("email") ? { email: field("email") } : {}),
+        discountCents,
       },
       () => new Date().toISOString(),
     );
   } catch (e) {
     logSwallowed("admin/calendar:bookPhoneReservation", e, "the phone booking was not written");
+  }
+
+  if (result?.ok && result.reservation.invoice?.amountDueNowCents === 0) {
+    await clearFormDraft(SURFACE);
+    // A COMP (DEC-194): nothing to pay, so no payment link — it confirms here and now through
+    // §2.8.6's comp confirm, which forms the shift and sends the customer their confirmation.
+    // Best-effort like the link: the booking is written either way, and a comp that failed to
+    // confirm is said on the pane rather than passed off as booked.
+    let comped = "error";
+    try {
+      const outcome = await confirmCompedBooking(completionDeps(), result.reservation.id);
+      if (outcome !== "unconfirmable") comped = "1";
+    } catch (e) {
+      logSwallowed("admin/calendar:bookPhoneReservation", e, "the comp was written but did not confirm");
+    }
+    const q = new URLSearchParams({ date, comped });
+    if (field("view") === "list") q.set("view", "list");
+    redirect(`/admin/calendar/${encodeURIComponent(String(result.reservation.id))}?${q.toString()}`);
   }
 
   if (result?.ok) {

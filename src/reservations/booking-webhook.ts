@@ -49,6 +49,7 @@ import {
 } from "../domain/ids.js";
 import type { CheckoutCompleted, DisputeUpdated, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
+import { bookedFareCents } from "./discount.js";
 import { balanceOwedCents } from "./payment-config.js";
 import type { SoldOutContact } from "./sold-out-notice.js";
 import { confirmPendingRow, type ConfirmResult } from "./write-booking.js";
@@ -532,7 +533,7 @@ export interface ConfirmOptions {
    * Defaults to `webhook` because that is the only caller which passes no options; both real
    * entry points set it explicitly, so the default is never the answer in production.
    */
-  via?: "webhook" | "success_page" | "reconciler";
+  via?: "webhook" | "success_page" | "reconciler" | "comp";
 }
 
 
@@ -895,150 +896,7 @@ export async function processBookingCharge(
     // of a booking that might then fail to commit.
     await retireSiblingIntents(deps, result.reservation, charge.paymentIntentId);
 
-    // **Form the shift the booking just earned (#614).** `writeSlotBooking` writes the Event and
-    // the Reservation and stops; nothing downstream created a Shift, so a Muster-native booking
-    // produced an event with no seats, no asks and no crew.
-    //
-    // It has worked so far only because the operator keeps pressing "Pull from Xola", which
-    // re-forms shifts from ALL events including Muster-native ones. That inverts the dependency
-    // the docs assume — Muster bookings are crewable BECAUSE Xola is still being polled — and
-    // DEC-126 turns that pull off at cutover. The first Muster-only Saturday would have produced
-    // boats that were sold and uncrewed.
-    //
-    // Here rather than inside `writeSlotBooking` because this is where a completed booking's side
-    // effects already live (`sendConfirmation` below). It used to cover the legacy `writeBooking`
-    // path in the same stroke; there is only one path now (#693). Best-effort by the same
-    // contract: the booking is committed and
-    // PAID, so a formation failure must never 500 — Stripe would retry a booking that already
-    // exists, resolve `already`, and still not form. The cron tick re-forms as the backstop.
-    //
-    // `notifyTripChanges: true` (#765). This used to be off, reasoning "nobody is on this shift
-    // yet — it is being born". True of the shift being born, and it is not the only shift this
-    // booking can touch: `formShifts` groups events by vessel + day, so a booking onto a day that
-    // ALREADY has a crewed shift joins that shift's trip set. Somebody's committed day just grew
-    // a trip and they were told nothing. The gate stays diff-gated in `form-shifts.ts`, so a
-    // newborn shift still notifies nobody and a re-form that changes nothing still sends nothing.
-    //
-    // This is also why the flag cannot stay off "until the import needs it": after DEC-126 turns
-    // off the Xola pull, this webhook and the cron tick are the only formation triggers left, so
-    // "your shift changed" would have stopped firing entirely — dead code, nothing failing.
-    //
-    // **The result must be forwarded, not discarded (@code-review).** The first cut dropped it on
-    // the reasoning that a newborn shift has nobody to notify. That is true of the shift being
-    // born and irrelevant to the call: `formShifts` re-derives EVERY vessel-day, and
-    // `cancelledCrew`/`restoredCrew` are NOT gated by `notifyTripChanges` — they fire whenever
-    // this call is the first to observe a shift collapsing or resurrecting anywhere. Every other
-    // caller relays and audits them (`app/lib/xola.ts`, the split and merge commands). Once
-    // DEC-126 turns off the Xola pull, this and the cron tick are the ONLY `formShifts` triggers
-    // left, so a crew member dropped from an unrelated shift would be told nothing, forever.
-    //
-    // Audit is called here (core); the notice relay rides a dep, because the channel wiring lives
-    // in `app/` and core cannot import it — the same seam `sendConfirmation` uses.
-    try {
-      // #999: the one vessel-day this booking landed on. Read off the EVENT — `Reservation`'s
-      // slot fields are optional (a Xola row carries none) and the event is what formation keys
-      // on. `confirmPendingRow` has already materialised it (§2.8.2), so it is there.
-      //
-      // **This is the call the comment above argued must stay unscoped, and the argument is now
-      // answered elsewhere.** An unscoped re-form here was how a crew member dropped from an
-      // UNRELATED shift got told — real, and no longer this call's job: the cron tick's
-      // `reformWindow` sweeps and relays on the same contract. Narrowing here without that pass
-      // in place WOULD have silently stopped those notices.
-      const bookedEvent = await deps.repo.getEvent(eventIdOfBooked(result.reservation));
-      const form = await formShifts(
-        deps.repo,
-        bookedEvent ? [{ vesselId: bookedEvent.vesselId, date: bookedEvent.date }] : [],
-        { now: new Date(deps.now()), notifyTripChanges: true },
-      );
-      await relayAndAudit(deps, form);
-      // #957: this is the bug's own site. One unmanned vessel six weeks out used to abort the
-      // whole run, so this booking's own vessel-day never formed — sold, paid, no crew, no row
-      // on the board. Those days now land here while every other vessel-day still forms. They
-      // still have no shift, so somebody has to look; making that reach a person is #1001.
-      if (form.failures.length > 0) {
-        console.error(
-          `[reservations] booking ${reservationId}: ${form.failures.length} vessel-day(s) failed to form`,
-          form.failures.map((f) => ({ vesselId: f.vesselId, date: f.date, error: String(f.error) })),
-        );
-      }
-    } catch (e) {
-      // Since #957 only a failure OUTSIDE the per-vessel-day loop reaches here — reading the
-      // event or shift set, not deriving any one day. Nothing formed, so there is nothing to
-      // relay, and the `PartialFormError` branch that used to relay it has no case left.
-      //
-      // The message no longer promises the tick will re-form. It was false about the notices
-      // when written (#766), and it is false about the shifts too: the tick calls this same
-      // function against this same repo and fails the same way.
-      logSwallowed(
-        "reservations:formShifts",
-        e,
-        `booking ${reservationId} is paid and booked, but no vessel-day formed — nobody is rostered`,
-      );
-    }
-    // **A CLAIM on the row, not a check of it (15.3, issue #971).**
-    //
-    // This was `if (result.outcome === "booked")`, whose comment read "never the idempotent
-    // `already` … or the customer gets re-texted on every retry". Avoiding the double send was
-    // right; inferring it from the outcome was not. Any failure between the flip committing and
-    // this line made the provider redeliver, `confirmPendingRow` resolve `already`, and the gate
-    // false FOREVER — charged, booked, never told, nothing alerting.
-    //
-    // The outcome cannot answer "has this customer been told?", because it describes only what
-    // THIS delivery did, and three paths reach here: this webhook, `/book/success` (a public
-    // repeatable GET running the same confirm), and §2.8.9's reconciler.
-    //
-    // **But a read-then-send is not enough either, and the first cut of this got that wrong.**
-    // The webhook and `/book/success` race for every ordinary booking — seconds apart, by design
-    // — so both could read "nobody told" before either wrote, and both would send. The gate this
-    // replaced could not do that: `outcome === "booked"` was true only for the caller that won
-    // the atomic flip. `claimConfirmationSend` restores that guarantee at the send instead of the
-    // flip: one conditional statement, one winner.
-    //
-    // **Claim, send, release on failure.** Releasing matters — a claim held over a send that
-    // never happened records a confirmation nobody received, which is this defect in better
-    // clothes. What release cannot cover is the process dying between the two; that window is
-    // milliseconds where the old one was the whole downstream block.
-    if (await deps.repo.claimConfirmationSend(reservationId, deps.now())) {
-      // Structurally best-effort: the booking is committed, so a confirmation failure — from a
-      // channel OR from anything upstream in the injected dep — must never bubble to a 500 (the
-      // provider would retry the whole webhook).
-      let told = false;
-      try {
-        told = await deps.sendConfirmation(result.reservation);
-      } catch (e) {
-        // The dep's contract says it never throws; this is the belt for a dep that breaks it.
-        // Logged rather than only counted: `told = false` releases the claim so the next
-        // caller retries, which means a dep throwing every time produces an endless quiet
-        // retry loop and a customer who is never told. This line is what distinguishes
-        // that from a channel that is merely down for a minute.
-        logSwallowed(
-          "reservations:sendConfirmation",
-          e,
-          `the confirmation dep threw for booking ${reservationId}, against its own contract`,
-        );
-        told = false;
-      }
-      // **Give the claim back when nobody was told**, so the next caller — a provider redelivery,
-      // the success page, §2.8.9's reconciler — can claim and try. Holding a claim over a send
-      // that did not happen records a confirmation the customer never received, which is this
-      // task's own defect wearing better clothes.
-      // Swallowed deliberately: the booking is committed, and letting a failed
-      // cleanup escape would 500 the webhook and make Stripe redeliver the whole
-      // thing. But it must not be SILENT — if the release fails the claim stays
-      // held, which records a confirmation the customer never received, and that is
-      // precisely the state this claim/release pair exists to prevent.
-      if (!told) {
-        await deps.repo
-          .releaseConfirmationSend(reservationId)
-          .catch((e: unknown) =>
-            logSwallowed(
-              "reservations:releaseConfirmationSend",
-              e,
-              `booking ${reservationId} is marked as confirmed but nobody was told — the claim is stuck`,
-            ),
-          );
-      }
-    }
+    await formAndConfirm(deps, result.reservation);
 
     // Record the PRE-gratuity (DEC-124) — crew money, keyed to the event pool. Slot
     // bookings only carry a tip.
@@ -1129,13 +987,172 @@ export async function processBookingCharge(
   );
 }
 
+/** What the steps after the flip need — no payment port, so the comp (which takes no payment)
+ *  can run them too. */
+export type CompletionDeps = Pick<WebhookDeps, "repo" | "now" | "sendConfirmation" | "relayFormNotices">;
+
+/**
+ * §2.8.6's steps after the flip, shared by every confirm that books (16.5, DEC-194): form the shift
+ * the booking earned, then tell the customer. The payment-side steps — retiring sibling intents,
+ * the gratuity and the ledger — stay with the payment confirm, because a comp has no payment.
+ *
+ * Moved here verbatim from `processBookingCharge`; the reasoning below is that function's.
+ */
+export async function formAndConfirm(deps: CompletionDeps, reservation: Reservation): Promise<void> {
+  const reservationId = reservation.id;
+  // **Form the shift the booking just earned (#614).** `writeSlotBooking` writes the Event and
+  // the Reservation and stops; nothing downstream created a Shift, so a Muster-native booking
+  // produced an event with no seats, no asks and no crew.
+  //
+  // It has worked so far only because the operator keeps pressing "Pull from Xola", which
+  // re-forms shifts from ALL events including Muster-native ones. That inverts the dependency
+  // the docs assume — Muster bookings are crewable BECAUSE Xola is still being polled — and
+  // DEC-126 turns that pull off at cutover. The first Muster-only Saturday would have produced
+  // boats that were sold and uncrewed.
+  //
+  // Here rather than inside `writeSlotBooking` because this is where a completed booking's side
+  // effects already live (`sendConfirmation` below). It used to cover the legacy `writeBooking`
+  // path in the same stroke; there is only one path now (#693). Best-effort by the same
+  // contract: the booking is committed and
+  // PAID, so a formation failure must never 500 — Stripe would retry a booking that already
+  // exists, resolve `already`, and still not form. The cron tick re-forms as the backstop.
+  //
+  // `notifyTripChanges: true` (#765). This used to be off, reasoning "nobody is on this shift
+  // yet — it is being born". True of the shift being born, and it is not the only shift this
+  // booking can touch: `formShifts` groups events by vessel + day, so a booking onto a day that
+  // ALREADY has a crewed shift joins that shift's trip set. Somebody's committed day just grew
+  // a trip and they were told nothing. The gate stays diff-gated in `form-shifts.ts`, so a
+  // newborn shift still notifies nobody and a re-form that changes nothing still sends nothing.
+  //
+  // This is also why the flag cannot stay off "until the import needs it": after DEC-126 turns
+  // off the Xola pull, this webhook and the cron tick are the only formation triggers left, so
+  // "your shift changed" would have stopped firing entirely — dead code, nothing failing.
+  //
+  // **The result must be forwarded, not discarded (@code-review).** The first cut dropped it on
+  // the reasoning that a newborn shift has nobody to notify. That is true of the shift being
+  // born and irrelevant to the call: `formShifts` re-derives EVERY vessel-day, and
+  // `cancelledCrew`/`restoredCrew` are NOT gated by `notifyTripChanges` — they fire whenever
+  // this call is the first to observe a shift collapsing or resurrecting anywhere. Every other
+  // caller relays and audits them (`app/lib/xola.ts`, the split and merge commands). Once
+  // DEC-126 turns off the Xola pull, this and the cron tick are the ONLY `formShifts` triggers
+  // left, so a crew member dropped from an unrelated shift would be told nothing, forever.
+  //
+  // Audit is called here (core); the notice relay rides a dep, because the channel wiring lives
+  // in `app/` and core cannot import it — the same seam `sendConfirmation` uses.
+  try {
+    // #999: the one vessel-day this booking landed on. Read off the EVENT — `Reservation`'s
+    // slot fields are optional (a Xola row carries none) and the event is what formation keys
+    // on. `confirmPendingRow` has already materialised it (§2.8.2), so it is there.
+    //
+    // **This is the call the comment above argued must stay unscoped, and the argument is now
+    // answered elsewhere.** An unscoped re-form here was how a crew member dropped from an
+    // UNRELATED shift got told — real, and no longer this call's job: the cron tick's
+    // `reformWindow` sweeps and relays on the same contract. Narrowing here without that pass
+    // in place WOULD have silently stopped those notices.
+    const bookedEvent = await deps.repo.getEvent(eventIdOfBooked(reservation));
+    const form = await formShifts(
+      deps.repo,
+      bookedEvent ? [{ vesselId: bookedEvent.vesselId, date: bookedEvent.date }] : [],
+      { now: new Date(deps.now()), notifyTripChanges: true },
+    );
+    await relayAndAudit(deps, form);
+    // #957: this is the bug's own site. One unmanned vessel six weeks out used to abort the
+    // whole run, so this booking's own vessel-day never formed — sold, paid, no crew, no row
+    // on the board. Those days now land here while every other vessel-day still forms. They
+    // still have no shift, so somebody has to look; making that reach a person is #1001.
+    if (form.failures.length > 0) {
+      console.error(
+        `[reservations] booking ${reservationId}: ${form.failures.length} vessel-day(s) failed to form`,
+        form.failures.map((f) => ({ vesselId: f.vesselId, date: f.date, error: String(f.error) })),
+      );
+    }
+  } catch (e) {
+    // Since #957 only a failure OUTSIDE the per-vessel-day loop reaches here — reading the
+    // event or shift set, not deriving any one day. Nothing formed, so there is nothing to
+    // relay, and the `PartialFormError` branch that used to relay it has no case left.
+    //
+    // The message no longer promises the tick will re-form. It was false about the notices
+    // when written (#766), and it is false about the shifts too: the tick calls this same
+    // function against this same repo and fails the same way.
+    logSwallowed(
+      "reservations:formShifts",
+      e,
+      `booking ${reservationId} is paid and booked, but no vessel-day formed — nobody is rostered`,
+    );
+  }
+  // **A CLAIM on the row, not a check of it (15.3, issue #971).**
+  //
+  // This was `if (result.outcome === "booked")`, whose comment read "never the idempotent
+  // `already` … or the customer gets re-texted on every retry". Avoiding the double send was
+  // right; inferring it from the outcome was not. Any failure between the flip committing and
+  // this line made the provider redeliver, `confirmPendingRow` resolve `already`, and the gate
+  // false FOREVER — charged, booked, never told, nothing alerting.
+  //
+  // The outcome cannot answer "has this customer been told?", because it describes only what
+  // THIS delivery did, and three paths reach here: this webhook, `/book/success` (a public
+  // repeatable GET running the same confirm), and §2.8.9's reconciler.
+  //
+  // **But a read-then-send is not enough either, and the first cut of this got that wrong.**
+  // The webhook and `/book/success` race for every ordinary booking — seconds apart, by design
+  // — so both could read "nobody told" before either wrote, and both would send. The gate this
+  // replaced could not do that: `outcome === "booked"` was true only for the caller that won
+  // the atomic flip. `claimConfirmationSend` restores that guarantee at the send instead of the
+  // flip: one conditional statement, one winner.
+  //
+  // **Claim, send, release on failure.** Releasing matters — a claim held over a send that
+  // never happened records a confirmation nobody received, which is this defect in better
+  // clothes. What release cannot cover is the process dying between the two; that window is
+  // milliseconds where the old one was the whole downstream block.
+  if (await deps.repo.claimConfirmationSend(reservationId, deps.now())) {
+    // Structurally best-effort: the booking is committed, so a confirmation failure — from a
+    // channel OR from anything upstream in the injected dep — must never bubble to a 500 (the
+    // provider would retry the whole webhook).
+    let told = false;
+    try {
+      told = await deps.sendConfirmation(reservation);
+    } catch (e) {
+      // The dep's contract says it never throws; this is the belt for a dep that breaks it.
+      // Logged rather than only counted: `told = false` releases the claim so the next
+      // caller retries, which means a dep throwing every time produces an endless quiet
+      // retry loop and a customer who is never told. This line is what distinguishes
+      // that from a channel that is merely down for a minute.
+      logSwallowed(
+        "reservations:sendConfirmation",
+        e,
+        `the confirmation dep threw for booking ${reservationId}, against its own contract`,
+      );
+      told = false;
+    }
+    // **Give the claim back when nobody was told**, so the next caller — a provider redelivery,
+    // the success page, §2.8.9's reconciler — can claim and try. Holding a claim over a send
+    // that did not happen records a confirmation the customer never received, which is this
+    // task's own defect wearing better clothes.
+    // Swallowed deliberately: the booking is committed, and letting a failed
+    // cleanup escape would 500 the webhook and make Stripe redeliver the whole
+    // thing. But it must not be SILENT — if the release fails the claim stays
+    // held, which records a confirmation the customer never received, and that is
+    // precisely the state this claim/release pair exists to prevent.
+    if (!told) {
+      await deps.repo
+        .releaseConfirmationSend(reservationId)
+        .catch((e: unknown) =>
+          logSwallowed(
+            "reservations:releaseConfirmationSend",
+            e,
+            `booking ${reservationId} is marked as confirmed but nobody was told — the claim is stuck`,
+          ),
+        );
+    }
+  }
+}
+
 /**
  * Relay + audit a re-form's crew transitions. Each leg is independently best-effort: the booking
  * is committed and PAID, so neither a channel hiccup nor an audit write may 500 the webhook — and
  * a relay failure must not skip the audit, or vice versa. Same posture as the cron edge's
  * `relayAsks` / `forwardBoardAlerts` pair.
  */
-async function relayAndAudit(deps: WebhookDeps, form: FormResult): Promise<void> {
+async function relayAndAudit(deps: CompletionDeps, form: FormResult): Promise<void> {
   try {
     await deps.relayFormNotices?.(form);
   } catch (e) {
@@ -1498,9 +1515,9 @@ async function recordBalancePayment(
   const config = await deps.repo.getPaymentConfig();
   const payments = await deps.repo.listPaymentsForReservation(reservationId);
   // Fare = base + frozen extras (#474): the bare base would trip a false overpay alert on a
-  // genuine extras balance (or mask a real overpay).
+  // genuine extras balance (or mask a real overpay). Less the discount (DEC-194), the same way.
   const owed = balanceOwedCents(
-    event.price + (reservation.extrasCents ?? 0),
+    bookedFareCents(event.price, reservation),
     config.taxRateBps,
     payments,
   );

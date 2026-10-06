@@ -407,9 +407,13 @@ export function ReservationDetailPane({
   actions,
   unpaid,
   waivers,
+  comped,
   children,
 }: {
   v: ReservationDetailView;
+  /** The render right after a comp was booked (16.5): `1` confirmed, `error` written but not
+   *  confirmed. Absent otherwise. */
+  comped?: string | undefined;
   /** Balance-link state from the query string (11.2b) — the minted URL, or why not. */
   balance?: { url?: string | undefined; err?: string | undefined; date: string; filter: string; view: string } | undefined;
   /** Cancel / refund / resend state (#616) for a Muster booking. Absent ⇒ no such actions. */
@@ -445,6 +449,19 @@ export function ReservationDetailPane({
       </div>
 
       {unpaid?.justBooked && !cancelled ? <JustBooked v={v} linkSent={unpaid.linkSent} /> : null}
+      {comped === "1" ? (
+        <Notice tone="ok">
+          {/* Not "they've been sent their confirmation": the send is best-effort and this redirect
+              doesn't know whether it landed. Resend is below if they say it never came. */}
+          Booked as a comp — nothing to pay, so no payment link went out.
+        </Notice>
+      ) : null}
+      {comped === "error" ? (
+        <Notice tone="bad">
+          The comp was saved but didn’t confirm, so it isn’t booked yet. Reload in a moment; if it
+          still reads Awaiting payment, cancel it and book it again.
+        </Notice>
+      ) : null}
 
       {/* A cancelled booking keeps only what is still useful: money, contact and history. */}
       {cancelled ? null : <TripCard v={v} />}
@@ -615,6 +632,7 @@ function ChargeRows({ v }: { v: ReservationDetailView }) {
             <Cents cents={inv.extrasCents} />
           </Row>
         )}
+        <DiscountRow cents={inv.discountCents ?? 0} />
         {inv.gratuityCents > 0 && (
           <Row label={`Tip · ${pct(inv.gratuityBps)}`}>
             <Cents cents={inv.gratuityCents} />
@@ -633,9 +651,12 @@ function ChargeRows({ v }: { v: ReservationDetailView }) {
   }
   return (
     <>
+      {/* `fareCents` is what tax was charged on, after the discount (DEC-194); the Fare line shows
+          it before, so the Discount line beneath it reads as what came off. */}
       <Row label="Fare">
-        <Cents cents={v.money.fareCents} />
+        <Cents cents={v.money.fareCents + v.money.discountCents} />
       </Row>
+      <DiscountRow cents={v.money.discountCents} />
       <Row label="Tax">
         <Cents cents={v.money.taxCents} />
       </Row>
@@ -646,6 +667,16 @@ function ChargeRows({ v }: { v: ReservationDetailView }) {
         </Row>
       ))}
     </>
+  );
+}
+
+/** The operator's dollars off (16.5, DEC-194). Nothing when there is none. */
+function DiscountRow({ cents }: { cents: number }) {
+  if (cents <= 0) return null;
+  return (
+    <Row label="Discount" testId="money-discount">
+      <span className="font-mono">−{formatCents(cents)}</span>
+    </Row>
   );
 }
 

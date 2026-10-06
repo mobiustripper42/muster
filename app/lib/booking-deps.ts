@@ -11,7 +11,11 @@
  * caller can quietly have an older set.
  */
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
-import { alertThatNeverThrows, type WebhookDeps } from "@core/reservations/booking-webhook.js";
+import {
+  alertThatNeverThrows,
+  type CompletionDeps,
+  type WebhookDeps,
+} from "@core/reservations/booking-webhook.js";
 import { alertMoneyProblem } from "./alert";
 import { sendReservationConfirmation } from "./booking-confirmation";
 import { forwardFormNotices } from "./channel";
@@ -27,9 +31,8 @@ import { sendReservationSoldOutNotice } from "./sold-out-notice";
  */
 export function bookingDeps(secretKey: string, webhookSecret?: string): WebhookDeps {
   return {
-    repo: getRepo(),
+    ...completionDeps(),
     payments: new StripePaymentPort(secretKey, webhookSecret ?? ""),
-    now: () => new Date().toISOString(),
     // Texts every active admin AND logs (issue #723). Never throws: a failed alert must not 500
     // the webhook into a Stripe redelivery loop.
     //
@@ -44,10 +47,22 @@ export function bookingDeps(secretKey: string, webhookSecret?: string): WebhookD
     // connected the two. Swapping in an email lane, or assembling a second wiring in a hurry,
     // would have broken all thirteen with no compile error and no test failing.
     alertPaidButUnbooked: alertThatNeverThrows(alertMoneyProblem),
-    // Best-effort email + SMS of the manage link on a fresh booking (11.4, DEC-122).
-    sendConfirmation: sendReservationConfirmation,
     // Best-effort "sold out while you paid — fully refunded" on a residual-race loss (12.1b).
     notifyCustomerSoldOut: sendReservationSoldOutNotice,
+  };
+}
+
+/**
+ * The steps every booking runs after its flip, payment or not — and all a comp needs (16.5,
+ * DEC-194). Shared by `bookingDeps` above, so the comp and the paid confirm cannot drift onto
+ * different confirmation or crew-notice wiring. No Stripe: a comp takes no payment.
+ */
+export function completionDeps(): CompletionDeps {
+  return {
+    repo: getRepo(),
+    now: () => new Date().toISOString(),
+    // Best-effort email + SMS of the manage link on a fresh booking (11.4, DEC-122).
+    sendConfirmation: sendReservationConfirmation,
     // A booking re-forms shifts (#614), and that re-form can be the first to observe a shift
     // collapsing or resurrecting. Without this wire a crew member dropped from a shift is never
     // told (DEC-084, #244) — and it matters MORE now the success page can be the confirming

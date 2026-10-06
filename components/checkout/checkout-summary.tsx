@@ -36,6 +36,11 @@ export function CheckoutSummary({
             value={money(m.extrasCents)}
           />
         )}
+        {/* The operator's dollars off (DEC-194) — on the phone booking's form and the payment link,
+            never on the public checkout, where it is always 0. */}
+        {m.discountCents > 0 && (
+          <SummaryRow label="Discount" value={`−${money(m.discountCents)}`} testId="summary-discount" />
+        )}
         <SummaryRow
           label={`Tip your crew · ${tipBps / 100}% → crew`}
           value={money(tipCents)}

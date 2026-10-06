@@ -16,8 +16,12 @@ import { priceBooking } from "./booking-invoice.js";
 import { effectiveIncludedGuests, GRATUITY_DEFAULT_BPS, gratuityKindsFor, gratuityTiersFor } from "./pricing.js";
 
 export interface CheckoutQuote {
-  /** Base + extras, cents — what tax, fee and every tip tier are a percentage of. */
+  /** Base + extras, cents, undiscounted — what tax, fee and every tip tier are a percentage of
+   *  once `discountCents` is taken off. */
   fareCents: number;
+  /** The operator's dollars off (DEC-194). Always 0 on the public checkout; set by the phone
+   *  booking's form and by the payment link's frozen invoice. */
+  discountCents: number;
   /** The slot's base price: an override Event's, else the offering's for that date. */
   baseCents: number;
   extraGuests: number;
@@ -55,6 +59,7 @@ export function checkoutQuote(input: Omit<BookingInvoiceInput, "gratuityBps">): 
 
   return {
     fareCents,
+    discountCents: 0,
     baseCents: invoice.fareCents,
     extraGuests: Math.max(0, input.guestCount - includedGuests),
     extrasCents: invoice.extrasCents,

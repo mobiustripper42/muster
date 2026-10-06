@@ -191,6 +191,65 @@ test.describe("admin phone booking", () => {
     await expect(page.getByTestId("summary-total")).toHaveCount(0);
   });
 
+  /**
+   * The operator's discount (16.5, DEC-194). Dollars off; tax, fee and tip re-price live on what is
+   * left; the pane's Owes is the discounted total, read off the form rather than pinned.
+   */
+  test("a partial discount re-prices live and is what the booking owes", async ({ page }, info) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto(`${BOOK}&guests=2`);
+    const before = (await page.getByTestId("due-now").textContent())!.trim();
+    await fillHydrated(page.getByTestId("discount"), "100");
+    await expect(page.getByTestId("summary-discount")).toContainText("−$100.00");
+    await expect(page.getByTestId("due-now")).not.toHaveText(before);
+    await expect(page.getByTestId("discount-comp")).toHaveCount(0);
+    const discounted = (await page.getByTestId("due-now").textContent())!.trim();
+    await page.screenshot({ path: info.outputPath("discount-form.png"), fullPage: true });
+
+    await fillHydrated(page.getByPlaceholder("Guest’s full name"), "Phone Caller");
+    await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0199");
+    await page.getByTestId("book-phone").click();
+    await page.waitForURL(/\/admin\/calendar\/resv-/);
+    const pane = page.getByTestId("reservation-detail");
+    await expect(pane.getByTestId("booking-state")).toHaveText("Awaiting payment");
+    await expect(pane.getByTestId("money-discount")).toHaveText("−$100.00");
+    await expect(pane.getByTestId("money-owes")).toHaveText(discounted);
+  });
+
+  test("the whole fare off is a comp: said before saving, booked at once, no payment link", async ({ page }, info) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto(`${BOOK}&guests=2`);
+    await fillHydrated(page.getByTestId("discount"), "99999");
+    await expect(page.getByTestId("discount-comp")).toHaveText("Under $2 due — this will be a comp.");
+    await expect(page.getByTestId("due-now")).toHaveText("$0.00");
+    await page.screenshot({ path: info.outputPath("comp-form.png"), fullPage: true });
+
+    await fillHydrated(page.getByPlaceholder("Guest’s full name"), "Comp Guest");
+    await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0198");
+    await page.getByTestId("book-phone").click();
+    await page.waitForURL(/\/admin\/calendar\/resv-.*comped=1/);
+    const pane = page.getByTestId("reservation-detail");
+    await expect(pane.getByTestId("booking-state")).toHaveText("Booked");
+    await expect(pane).toContainText("Booked as a comp — nothing to pay, so no payment link went out.");
+    await expect(pane.getByTestId("money-owes")).toHaveText("Settled");
+    await expect(pane.getByTestId("payment-link-controls")).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath("comp-pane.png"), fullPage: true });
+  });
+
+  test("a discount that isn't dollars is refused, and the form keeps what was typed", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto(`${BOOK}&guests=2`);
+    await fillHydrated(page.getByPlaceholder("Guest’s full name"), "Kept Name");
+    await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0199");
+    await fillHydrated(page.getByTestId("discount"), "1,50");
+    await expect(page.getByText("Enter dollars, like 50 or 49.99.")).toBeVisible();
+    await page.getByTestId("book-phone").click();
+    const pane = page.getByTestId("book-pane");
+    await expect(pane.getByText("Enter the discount in dollars")).toBeVisible();
+    await expect(pane.getByTestId("discount")).toHaveValue("1,50");
+    await expect(pane.getByPlaceholder("Guest’s full name")).toHaveValue("Kept Name");
+  });
+
   test("no horizontal overflow (375px layout holds)", async ({ page }) => {
     await signInAsAdmin(page, "eric");
     await page.goto(`${BOOK}&guests=2`);

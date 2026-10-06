@@ -24,7 +24,10 @@ philosophy), `docs/design/DESIGN-REFERENCE.md` (how to consume mockups), `docs/d
 ## Design tokens (utilities generated from `app/globals.css`)
 Colors map straight to Tailwind utilities (`bg-*`, `text-*`, `border-*`):
 - **Surfaces/ink:** `bg` (#eef2f6 page), `card` (#fff), `ink` (#101826), `muted` (#5b6675),
-  `faint` (#93a0b0), `line` (#e7ebf1 borders).
+  `faint` (#93a0b0), `line` (#e7ebf1 borders), `line-strong` (#7b8796 — form-field edges only,
+  3:1 on card and page; not from the mockups, issue #484).
+- **Text fields:** `<Input>` / `<Textarea>` (`components/ui/input.tsx`) and `<Field>`
+  (`components/ui/field.tsx`). A raw `<input>`/`<textarea>` fails lint; a page passes layout only.
 - **Brand/roles:** `accent` (#2f5d86), `captain` (#2f5d86), `mate` (#2f7d70).
 - **Status (each has a soft bg + line):** `ok`/`ok-bg`/`ok-line` (green), `warn`/`warn-bg`/`warn-line`
   (amber), `bad`/`bad-bg`/`bad-line` (red).

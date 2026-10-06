@@ -29,6 +29,8 @@ import {
   editPunchAction,
   type TimeClockErr,
 } from "./actions";
+import { Field } from "../../../../components/ui/field";
+import { fieldClass, Input } from "../../../../components/ui/input";
 
 /**
  * /admin/time-clock (#627, SPEC §2.9.5) — the operator's repair bench. Muster never
@@ -245,7 +247,7 @@ export default async function AdminTimeClock({
               ‹
             </AppLink>
             <form method="get" className="flex flex-col gap-1">
-              <label htmlFor="day" className="text-xs text-muted">
+              <label htmlFor="day" className="text-sm text-muted">
                 Day
               </label>
               <AutoSubmitDate
@@ -253,7 +255,6 @@ export default async function AdminTimeClock({
                 name="day"
                 value={day}
                 ariaLabel="Day"
-                className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
               />
             </form>
             <AppLink
@@ -275,7 +276,7 @@ export default async function AdminTimeClock({
         ) : (
           <form method="get" className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
-              <label htmlFor="crew" className="text-xs text-muted">
+              <label htmlFor="crew" className="text-sm text-muted">
                 Crew member
               </label>
               <AutoSubmitSelect
@@ -283,11 +284,11 @@ export default async function AdminTimeClock({
                 value={String(crewView?.crewMemberId ?? "")}
                 options={crewList.map((c) => ({ value: c.id, label: c.name }))}
                 ariaLabel="Crew member"
-                className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
+                className={fieldClass()}
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label htmlFor="period" className="text-xs text-muted">
+              <label htmlFor="period" className="text-sm text-muted">
                 Pay period
               </label>
               <AutoSubmitSelect
@@ -298,7 +299,7 @@ export default async function AdminTimeClock({
                   label: `${periodLabel(p)}${p.start === cur.start ? " — current" : ""}`,
                 }))}
                 ariaLabel="Pay period"
-                className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
+                className={fieldClass()}
               />
             </div>
           </form>
@@ -420,35 +421,27 @@ function PunchCard({
         <ContextFields context={context} />
         <input type="hidden" name="punchId" value={row.id} />
         <input type="hidden" name="punchDay" value={row.day} />
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-muted" htmlFor={`in-${row.id}`}>
-            In
-          </label>
-          <input
+        <Field label="In" htmlFor={`in-${row.id}`}>
+          <Input
             id={`in-${row.id}`}
             name="inTime"
             type="time"
             defaultValue={mine?.get("inTime") ?? row.inTime}
             required
-            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-muted" htmlFor={`out-${row.id}`}>
-            Out
-          </label>
-          <input
+        </Field>
+        <Field label="Out" htmlFor={`out-${row.id}`}>
+          <Input
             id={`out-${row.id}`}
             name="outTime"
             type="time"
             defaultValue={mine?.get("outTime") ?? row.outTime ?? ""}
-            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
-        </div>
+        </Field>
         {/* An evening trip that lands after midnight is ONE punch on the earlier day
             (§2.9.6), so the out time needs to be able to say "next day". Explicit, not
             inferred from out < in — that would turn a typo into a paid 16 hours. */}
-        <label className="flex items-center gap-2 pb-2 text-xs text-muted">
+        <label className="flex items-center gap-2 pb-2 text-sm text-muted">
           <input
             type="checkbox"
             name="outNextDay"
@@ -518,14 +511,14 @@ function AddPunchForm({
           <>
             <input type="hidden" name="punchDay" value={day} />
             <div className="flex flex-col gap-1">
-              <label htmlFor="add-crew" className="text-xs text-muted">
+              <label htmlFor="add-crew" className="text-sm text-muted">
                 Crew member
               </label>
               <select
                 id="add-crew"
                 name="crewMemberId"
                 defaultValue={retry.crew ?? undefined}
-                className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
+                className={fieldClass()}
               >
                 {crewList.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -538,11 +531,8 @@ function AddPunchForm({
         ) : (
           <>
             <input type="hidden" name="crewMemberId" value={String(context.crew)} />
-            <div className="flex flex-col gap-1">
-              <label htmlFor="add-day" className="text-xs text-muted">
-                Day
-              </label>
-              <input
+            <Field label="Day" htmlFor="add-day">
+              <Input
                 id="add-day"
                 name="punchDay"
                 type="date"
@@ -550,37 +540,28 @@ function AddPunchForm({
                 min={period.start}
                 max={period.end}
                 required
-                className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
               />
-            </div>
+            </Field>
           </>
         )}
-        <div className="flex flex-col gap-1">
-          <label htmlFor="add-in" className="text-xs text-muted">
-            In
-          </label>
-          <input
+        <Field label="In" htmlFor="add-in">
+          <Input
             id="add-in"
             name="inTime"
             type="time"
             defaultValue={retry.in}
             required
-            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="add-out" className="text-xs text-muted">
-            Out <span className="text-muted">(blank leaves it running)</span>
-          </label>
-          <input
+        </Field>
+        <Field label="Out (blank leaves it running)" htmlFor="add-out">
+          <Input
             id="add-out"
             name="outTime"
             type="time"
             defaultValue={retry.out}
-            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
-        </div>
-        <label className="flex items-center gap-2 pb-2 text-xs text-muted">
+        </Field>
+        <label className="flex items-center gap-2 pb-2 text-sm text-muted">
           <input
             type="checkbox"
             name="outNextDay"

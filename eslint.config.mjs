@@ -240,8 +240,38 @@ const BUTTON_KIND_SELECTORS = [
   { selector: "TemplateElement[value.raw=/\\b(cursor-(pointer|not-allowed)|disabled:[a-z-]+)/]", message: HAND_STATE_MESSAGE },
 ];
 
+/**
+ * ## One text field, built once (issue #484)
+ *
+ * A raw `<input>` or `<textarea>` is flagged anywhere outside the components that wrap them.
+ * The sweep that opened #484 found the same field styled by four shared class strings and a
+ * dozen one-offs, 28 of them white-on-white behind a near-white border — and the stopgap fix
+ * on the settings screens had to be copied by hand to every page that wanted it, which none did.
+ * `<Input>` and `<Textarea>` (`components/ui/`) carry the one look; a page passes layout only.
+ *
+ * **Unlike the button rule, there is nothing to work out.** A `<button>` can be a link, a toggle
+ * or a submit, so #1103 had to decide which one it was looking at. An `<input>` is always a form
+ * control, so the rule is just "raw element". Two exemptions, both by `type`:
+ *   - `hidden` — never rendered, nothing to style.
+ *   - `checkbox` / `radio` — a different control; the Checkbox task removes this exemption.
+ * Any other type is flagged, including `submit` and `file`, which nothing uses today: one that
+ * appears later should be a decision, not a raw control nobody saw. A `type={expr}` cannot be
+ * read here and is flagged too.
+ */
+const TEXT_CONTROL_MESSAGE =
+  "Use <Input> or <Textarea> from components/ui (issue #484) — one field look for the whole app, so a style change is one edit. Pass layout only (width, font-mono) through className.";
+const RAW_TEXT_CONTROL_SELECTORS = [
+  {
+    selector:
+      "JSXOpeningElement[name.name='input']:not(:has(JSXAttribute[name.name='type'][value.value=/^(hidden|checkbox|radio)$/]))",
+    message: TEXT_CONTROL_MESSAGE,
+  },
+  { selector: "JSXOpeningElement[name.name='textarea']", message: TEXT_CONTROL_MESSAGE },
+];
+
 const APP_SELECTORS = [
   RAW_SUBMIT_SELECTOR,
+  ...RAW_TEXT_CONTROL_SELECTORS,
   ...BUTTON_KIND_SELECTORS,
   APP_CATCH_SELECTOR,
   REDIRECT_IN_TRY_SELECTOR,
@@ -748,6 +778,18 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": "off",
       "no-restricted-syntax": ["error", ...APP_SELECTORS.filter((s) => s !== RAW_SUBMIT_SELECTOR)],
+    },
+  },
+  {
+    // `<Input>` and `<Textarea>` are the raw elements the #484 rule sends everything else to, so
+    // this file alone is exempt from THAT rule — subtracted, the same way the block above
+    // subtracts the submit rule, so every other selector still reaches it.
+    files: ["components/ui/input.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...APP_SELECTORS.filter((s) => !RAW_TEXT_CONTROL_SELECTORS.includes(s)),
+      ],
     },
   },
   {

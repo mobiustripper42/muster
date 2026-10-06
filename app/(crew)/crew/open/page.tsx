@@ -20,6 +20,8 @@ import { CREW_UNAVAILABLE, logSwallowed } from "../../../lib/swallowed";
 import { fmt12 } from "../../../lib/format";
 import { vesselHueClass } from "../../../lib/vessel-hue";
 import { claimSeat } from "./actions";
+import { Field } from "../../../../components/ui/field";
+import { Input } from "../../../../components/ui/input";
 
 /**
  * /crew/open (SPEC §2.7.1, DEC-074) — the crew-facing PULL surface, the 4th crew
@@ -289,26 +291,24 @@ function Filters({
       {/* No-JS date range: a GET form submits ?from&to back to this page. Defaults
           to the next 30 days, so a bare "Show" gives a month. */}
       <form method="get" action="/crew/open" className="flex flex-wrap items-end gap-2 text-sm">
-        <label className="flex flex-col gap-0.5 text-xs text-muted">
-          From
-          <input
+        <Field label="From" htmlFor="open-from">
+          <Input
+            id="open-from"
             type="date"
             name="from"
             defaultValue={label === "range" ? sp.from : today}
             min={today}
-            className="min-h-[44px] rounded-lg border border-line bg-bg px-2 text-ink"
           />
-        </label>
-        <label className="flex flex-col gap-0.5 text-xs text-muted">
-          To
-          <input
+        </Field>
+        <Field label="To" htmlFor="open-to">
+          <Input
+            id="open-to"
             type="date"
             name="to"
             defaultValue={label === "range" ? sp.to : addDays(today, 30)}
             max={addDays(today, 45)}
-            className="min-h-[44px] rounded-lg border border-line bg-bg px-2 text-ink"
           />
-        </label>
+        </Field>
         <GetFormSubmit className="btn-secondary min-h-[44px]">
           Show
         </GetFormSubmit>

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { applyDiscount } from "@core/reservations/discount.js";
 import { parseDollarsToCents } from "@core/reservations/dollars.js";
 import { gratuityCentsFor } from "@core/reservations/pricing.js";
-import { settingsInputClass } from "../../../../components/admin/settings-field";
+import { Field } from "../../../../components/ui/field";
+import { Input } from "../../../../components/ui/input";
 import { CheckoutSummary } from "../../../../components/checkout/checkout-summary";
 import { ContactFields, type ContactValues } from "../../../../components/checkout/contact-fields";
 import type { CheckoutMoney, TipTier } from "../../../../components/checkout/money";
@@ -135,11 +136,9 @@ function DiscountBox({
   comped: boolean;
 }) {
   return (
-    <label className="flex flex-col gap-1 pt-5 text-xs font-medium text-ink">
-      <span>
-        Discount <span className="font-normal text-muted">· dollars off the fare</span>
-      </span>
-      <input
+    <Field label="Discount" hint="dollars off the fare" htmlFor="discount" className="pt-5">
+      <Input
+        id="discount"
         name="discount"
         type="text"
         inputMode="decimal"
@@ -148,16 +147,16 @@ function DiscountBox({
         onChange={(e) => onChange(e.target.value)}
         data-testid="discount"
         // Right-aligned, so the figure lines up with the money column in the summary below it.
-        className={`${settingsInputClass} w-full text-right font-mono`}
+        className="w-full text-right font-mono"
       />
       {invalid ? (
-        <span className="font-normal text-bad">Enter dollars, like 50 or 49.99.</span>
+        <span className="text-xs text-bad">Enter dollars, like 50 or 49.99.</span>
       ) : null}
       {comped ? (
-        <span className="font-normal text-ok" data-testid="discount-comp">
+        <span className="text-xs text-ok" data-testid="discount-comp">
           Under $2 due — this will be a comp.
         </span>
       ) : null}
-    </label>
+    </Field>
   );
 }

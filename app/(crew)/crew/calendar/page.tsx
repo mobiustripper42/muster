@@ -16,6 +16,8 @@ import {
   mintCalendarFeed,
   revokeCalendarFeed,
 } from "./actions";
+import { Input } from "../../../../components/ui/input";
+import { Field } from "../../../../components/ui/field";
 
 /**
  * /crew/calendar (#355, DEC-098) — the crew member's calendar-sync control. Mint a
@@ -69,14 +71,14 @@ export default async function CrewCalendar() {
             Copy this link now — for your security it won’t be shown again. Lost it?
             Just make a new one.
           </Notice>
-          <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
-            Your calendar link
+          <Field label="Your calendar link" htmlFor="feed-url">
             <span className="flex items-stretch gap-2">
-              <input
+              <Input
+                id="feed-url"
                 readOnly
                 value={feedUrl}
                 aria-label="Your calendar feed link"
-                className="w-full min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 py-2 font-mono text-xs text-ink"
+                className="w-full min-w-0 flex-1 font-mono"
               />
               {/* Client-JS island (DEC-098, mirrors DEC-097's progressive-enhancement
                   posture): copying a long URL by hand on a phone is fiddly. No-JS
@@ -84,7 +86,7 @@ export default async function CrewCalendar() {
                   http://mill-dev context where navigator.clipboard is undefined. */}
               <CopyButton value={feedUrl} />
             </span>
-          </label>
+          </Field>
           <AddInstructions />
           <form action={hideCalendarUrl}>
             <SubmitButton className="btn-primary min-h-[44px] w-full">

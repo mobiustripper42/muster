@@ -18,6 +18,7 @@ import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
+import { Input } from "../../../../components/ui/input";
 
 /**
  * /admin/purchases (task 12.12a, #465) — the order list.
@@ -170,13 +171,14 @@ export default async function AdminPurchases({
       </header>
 
       <form method="get" className="mt-3 flex flex-wrap items-center gap-2">
-        <input
+        <Input
           type="search"
           name="q"
           defaultValue={query}
           placeholder="Search name, phone, email…"
           aria-label="Search orders"
-          className="min-w-[220px] flex-1 rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-ink"
+          density="dense"
+          className="min-w-[220px] flex-1"
         />
         {/* Keep the active state filter when searching. */}
         {state !== "all" && <input type="hidden" name="state" value={state} />}

@@ -9,7 +9,8 @@ import type {
 } from "@core/domain/entities.js";
 import { gratuityKindsFor } from "@core/reservations/pricing.js";
 import { AppLink } from "../../../../components/ui/app-link";
-import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
+import { Field } from "../../../../components/ui/field";
+import { fieldClass, Input, Textarea } from "../../../../components/ui/input";
 import type { FormDraft } from "../../../lib/form-draft";
 import { vesselHueClass } from "../../../lib/vessel-hue";
 import { PriceVariationsEditor } from "./price-variations-editor";
@@ -32,7 +33,6 @@ import { DepartureTimesEditor } from "./departure-times-editor";
  *    then lost is the same data loss as a cleared text field.
  */
 
-const inputClass = settingsInputClass;
 const chipClass =
   "select-none rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-ink peer-checked:bg-ink peer-checked:font-medium peer-checked:text-white";
 
@@ -80,7 +80,7 @@ export function DetailsSection({
 }) {
   return (
     <Section id="details" title="Details" hint="what the customer reads">
-      <Field label="Status">
+      <Field layout="row" label="Status">
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {(["draft", "live", "hidden"] as const).map((s) => (
             <label key={s}>
@@ -101,30 +101,30 @@ export function DetailsSection({
         </p>
       </Field>
 
-      <Field label="Name">
-        <input
+      <Field layout="row" label="Name">
+        <Input
           name="name"
           required
           defaultValue={draft?.get("name") ?? offering?.name ?? ""}
-          className={`${inputClass} w-full max-w-[420px]`}
+          className="w-full max-w-[420px]"
         />
       </Field>
 
-      <Field label="Description" sub="markdown" align="start">
-        <textarea
+      <Field layout="row" label="Description" hint="markdown" align="start">
+        <Textarea
           name="description"
           defaultValue={draft?.get("description") ?? offering?.description ?? ""}
-          className={`${inputClass} min-h-[80px] w-full py-2`}
+          className="min-h-[80px] w-full"
         />
       </Field>
 
-      <Field label="Location" sub="launch point">
+      <Field layout="row" label="Location" hint="launch point">
         <span className="flex flex-wrap items-center gap-3">
           <select
             name="locationId"
             required
             defaultValue={draft?.get("locationId") ?? offering?.locationId ?? ""}
-            className={`${inputClass} w-full max-w-[280px]`}
+            className={`${fieldClass()} w-full max-w-[280px]`}
           >
             <option value="" disabled>
               — pick a location —
@@ -141,46 +141,46 @@ export function DetailsSection({
         </span>
       </Field>
 
-      <Field label="Trip length" sub="on the water">
+      <Field layout="row" label="Trip length" hint="on the water">
         <span className="flex items-center gap-2">
-          <input
+          <Input
             name="tripLengthMinutes"
             type="number"
             min={0}
             defaultValue={draft?.get("tripLengthMinutes") ?? offering?.tripLengthMinutes ?? ""}
-            className={`${inputClass} max-w-[110px] font-mono`}
+            className="max-w-[110px] font-mono"
           />
           <span className="text-xs text-muted">minutes</span>
         </span>
       </Field>
 
-      <Field label="Boat held for" sub="turnaround included">
+      <Field layout="row" label="Boat held for" hint="turnaround included">
         <span className="flex items-center gap-2">
-          <input
+          <Input
             name="holdMinutes"
             type="number"
             min={0}
             defaultValue={draft?.get("holdMinutes") ?? offering?.holdMinutes ?? ""}
-            className={`${inputClass} max-w-[110px] font-mono`}
+            className="max-w-[110px] font-mono"
           />
           <span className="text-xs text-muted">minutes</span>
         </span>
       </Field>
 
-      <Field label="Arrive before" sub="guest call time">
+      <Field layout="row" label="Arrive before" hint="guest call time">
         <span className="flex items-center gap-2">
-          <input
+          <Input
             name="arriveBeforeMinutes"
             type="number"
             min={0}
             defaultValue={draft?.get("arriveBeforeMinutes") ?? offering?.arriveBeforeMinutes ?? ""}
-            className={`${inputClass} max-w-[110px] font-mono`}
+            className="max-w-[110px] font-mono"
           />
           <span className="text-xs text-muted">minutes</span>
         </span>
       </Field>
 
-      <Field label="Vessels" sub="which boats run it">
+      <Field layout="row" label="Vessels" hint="which boats run it">
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {vessels.map((v) => (
             <label key={v.id}>
@@ -223,27 +223,27 @@ export function ScheduleSection({
   const schedule = offering?.schedule;
   return (
     <Section id="schedule" title="Schedule" hint="a rule, not rows">
-      <Field label="Season">
+      <Field layout="row" label="Season">
         <span className="flex flex-wrap items-center gap-2">
-          <input
+          <Input
             name="seasonStart"
             type="date"
             required
             defaultValue={draft?.get("seasonStart") ?? schedule?.seasonStart ?? ""}
-            className={`${inputClass} font-mono`}
+            className="font-mono"
           />
           <span className="text-xs text-muted">to</span>
-          <input
+          <Input
             name="seasonEnd"
             type="date"
             required
             defaultValue={draft?.get("seasonEnd") ?? schedule?.seasonEnd ?? ""}
-            className={`${inputClass} font-mono`}
+            className="font-mono"
           />
         </span>
       </Field>
 
-      <Field label="Days">
+      <Field layout="row" label="Days">
         <div className="flex flex-wrap gap-2 pt-1">
           {WEEKDAY_LABELS.map((label, d) => (
             <label key={label}>
@@ -264,7 +264,7 @@ export function ScheduleSection({
         </div>
       </Field>
 
-      <Field label="Departures" sub="add or remove times" align="start">
+      <Field layout="row" label="Departures" hint="add or remove times" align="start">
         <div className="pt-1">
           {/* The island serializes each time to a hidden `departureTime` input, so the draft
               carries the whole list back — including one added and not yet saved. */}
@@ -314,38 +314,38 @@ export function PricingSection({
 }) {
   return (
     <Section id="pricing" title="Pricing" hint="the boat, by the guest">
-      <Field label="Base fare" sub="buys the whole boat">
+      <Field layout="row" label="Base fare" hint="buys the whole boat">
         <span className="flex items-center gap-2">
           <span className="text-xs text-muted">$</span>
-          <input
+          <Input
             name="basePrice"
             required
             inputMode="decimal"
             defaultValue={
               draft?.get("basePrice") ?? (offering ? (offering.basePriceCents / 100).toFixed(2) : "")
             }
-            className={`${inputClass} max-w-[130px] font-mono`}
+            className="max-w-[130px] font-mono"
           />
         </span>
       </Field>
 
-      <Field label="Included guests" sub="the base fare covers">
+      <Field layout="row" label="Included guests" hint="the base fare covers">
         <span className="flex items-center gap-2">
-          <input
+          <Input
             name="includedGuestCount"
             type="number"
             min={1}
             defaultValue={draft?.get("includedGuestCount") ?? offering?.includedGuestCount ?? ""}
-            className={`${inputClass} max-w-[110px] font-mono`}
+            className="max-w-[110px] font-mono"
           />
           <span className="text-xs text-muted">blank = the boat’s full capacity</span>
         </span>
       </Field>
 
-      <Field label="Extra guest" sub="above the included count">
+      <Field layout="row" label="Extra guest" hint="above the included count">
         <span className="flex items-center gap-2">
           <span className="text-xs text-muted">$</span>
-          <input
+          <Input
             name="extraGuestPrice"
             required
             inputMode="decimal"
@@ -353,13 +353,13 @@ export function PricingSection({
               draft?.get("extraGuestPrice") ??
               (offering ? (offering.extraGuestPriceCents / 100).toFixed(2) : "0.00")
             }
-            className={`${inputClass} max-w-[130px] font-mono`}
+            className="max-w-[130px] font-mono"
           />
           <span className="text-xs text-muted">each, up to that boat’s max</span>
         </span>
       </Field>
 
-      <Field label="Variations" sub="first match wins" align="start">
+      <Field layout="row" label="Variations" hint="first match wins" align="start">
         <div className="pt-1">
           <PriceVariationsEditor initial={variationsFor(draft, offering)} />
         </div>
@@ -414,7 +414,7 @@ function GratuityKindRow({
 }) {
   const cap = kind === "pre" ? "Pre" : "Post";
   return (
-    <Field label={label} sub={when}>
+    <Field layout="row" label={label} hint={when}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
         <label className="flex items-center gap-1.5 text-sm text-ink">
           <input
@@ -426,22 +426,22 @@ function GratuityKindRow({
         </label>
         <label className="flex items-center gap-1.5 text-sm text-muted">
           Tiers %
-          <input
+          <Input
             name={`grat${cap}Tiers`}
             defaultValue={
               draft?.get(`grat${cap}Tiers`) ??
               (config?.tiersBps ?? [1500, 2000, 2500]).map((t) => t / 100).join(", ")
             }
-            className={`${inputClass} max-w-[130px] font-mono`}
+            className="max-w-[130px] font-mono"
             aria-label={`${label} gratuity tiers (percent)`}
           />
         </label>
         <label className="flex items-center gap-1.5 text-sm text-muted">
           Default %
-          <input
+          <Input
             name={`grat${cap}Default`}
             defaultValue={draft?.get(`grat${cap}Default`) ?? (config?.defaultBps ?? 2000) / 100}
-            className={`${inputClass} max-w-[70px] font-mono`}
+            className="max-w-[70px] font-mono"
             aria-label={`${label} gratuity default (percent)`}
           />
         </label>

@@ -16,6 +16,7 @@ import {
 } from "./actions";
 import { PhoneBookingActions, type UnpaidActionState } from "./phone-booking-actions";
 import { paymentLinkSentMessage } from "./payment-link-message";
+import { Input } from "../../../../../components/ui/input";
 
 /**
  * Everything the actions block needs, resolved by the route (#616). Passed in rather than
@@ -866,13 +867,13 @@ function PaneActions({
             Refund up to {formatCents(actions.refundableCents)}
           </label>
           <div className="flex gap-2">
-            <input
+            <Input
               id="refund-amount"
               name="amount"
               type="text"
               inputMode="decimal"
               defaultValue={actions.refundPrefill}
-              className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-line bg-bg px-2 font-mono text-sm text-ink"
+              className="min-w-0 flex-1 font-mono"
             />
             <SubmitButton className="btn-primary min-h-[44px]">
               Refund
@@ -953,13 +954,13 @@ function PaneActions({
                 <label className="mb-1 block text-xs text-muted" htmlFor="cancel-refund-amount">
                   Refund amount
                 </label>
-                <input
+                <Input
                   id="cancel-refund-amount"
                   name="amount"
                   type="text"
                   inputMode="decimal"
                   placeholder="blank = the amount for your reason"
-                  className="min-h-[44px] w-full rounded-lg border border-line bg-bg px-2 font-mono text-sm text-ink"
+                  className="w-full font-mono"
                 />
                 {/* The box arrives prefilled with the policy figure, so nothing suggests zero is
                     allowed — and cancelling without refunding is a real choice inside the

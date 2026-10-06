@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useFormStatus } from "react-dom";
 import { ADD_CHILD, REMOVE_CHILD } from "./child-intent";
 import { DateOfBirth, type DobParts } from "./date-of-birth";
-import { card, input } from "./form-look";
+import { card } from "./form-look";
+import { Field } from "../../../components/ui/field";
+import { Input } from "../../../components/ui/input";
 
 /**
  * The minor cards on the waiver form, and "+ Add a minor" under them (Phase 18.4; operator,
@@ -93,11 +95,10 @@ export function ChildCards({
               <span aria-hidden="true">✕</span> Remove<span className="sr-only"> minor {i + 1}</span>
             </button>
           </div>
-          <label className="flex flex-col gap-1">
-            <span className="text-sm text-muted">Minor’s full name</span>
+          <Field label="Minor’s full name" htmlFor={`child-name-${i}`}>
             {/* Only a card just added takes the focus — add, type, add, type. */}
-            <input name="childName" required maxLength={100} defaultValue={c.name} autoFocus={c.added} className={input} />
-          </label>
+            <Input id={`child-name-${i}`} name="childName" required maxLength={100} defaultValue={c.name} autoFocus={c.added} className="w-full" />
+          </Field>
           <DateOfBirth names={CHILD_FIELDS} years={years} defaults={c} label={`Minor ${i + 1}’s date of birth`} />
         </section>
       ))}

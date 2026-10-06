@@ -6,7 +6,8 @@ import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
-import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
+import { Field } from "../../../../components/ui/field";
+import { Input, Textarea } from "../../../../components/ui/input";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
@@ -168,40 +169,40 @@ function LocationCard({ location, draft }: { location: Location | null; draft: F
       </div>
 
       <div className="px-4 py-1">
-        <Field label="Name">
-          <input
+        <Field layout="row" label="Name">
+          <Input
             name="name"
             required
             defaultValue={draft?.get("name") ?? location?.name ?? ""}
-            className={`${settingsInputClass} w-full max-w-[420px]`}
+            className="w-full max-w-[420px]"
           />
         </Field>
 
-        <Field label="Pickup" sub="where guests meet the boat" align="start">
-          <textarea
+        <Field layout="row" label="Pickup" hint="where guests meet the boat" align="start">
+          <Textarea
             name="pickupDescription"
             required
             defaultValue={draft?.get("pickupDescription") ?? location?.pickupDescription ?? ""}
-            className={`${settingsInputClass} min-h-[64px] w-full`}
+            className="min-h-[64px] w-full"
           />
         </Field>
 
-        <Field label="Pickup link" sub="map / directions">
-          <input
+        <Field layout="row" label="Pickup link" hint="map / directions">
+          <Input
             name="pickupLink"
             type="url"
             defaultValue={draft?.get("pickupLink") ?? location?.pickupLink ?? ""}
             placeholder="https://maps.google.com/…"
-            className={`${settingsInputClass} w-full max-w-[420px]`}
+            className="w-full max-w-[420px]"
           />
         </Field>
 
-        <Field label="Route" sub="where the trip goes" align="start">
-          <textarea
+        <Field layout="row" label="Route" hint="where the trip goes" align="start">
+          <Textarea
             name="routeDescription"
             required
             defaultValue={draft?.get("routeDescription") ?? location?.routeDescription ?? ""}
-            className={`${settingsInputClass} min-h-[64px] w-full`}
+            className="min-h-[64px] w-full"
           />
         </Field>
       </div>

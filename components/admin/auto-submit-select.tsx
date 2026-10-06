@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { confirmLeaveIfDirty } from "../ui/dirty-state";
+import { Input } from "../ui/input";
 
 /**
  * Navigate-on-change for filter controls — the mechanism `CrewSelect` introduced for
@@ -113,7 +114,7 @@ export function AutoSubmitDate({
 }) {
   const { pending, navigate } = useFormNavigate();
   return (
-    <input
+    <Input
       type="date"
       id={id}
       name={name}

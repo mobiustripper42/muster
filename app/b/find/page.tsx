@@ -19,6 +19,8 @@ import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { SubmitButton } from "../../../components/ui/submit-button";
 import { requestBookingLink } from "./actions";
+import { Field } from "../../../components/ui/field";
+import { Input } from "../../../components/ui/input";
 
 export const dynamic = "force-dynamic";
 
@@ -61,28 +63,28 @@ export default async function FindBookingPage({
                 booking.
               </p>
               <form action={requestBookingLink} className="flex flex-col gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="text-[12px] font-semibold text-ink">Email or phone</span>
-                  <input
+                <Field label="Email or phone" htmlFor="find-contact">
+                  <Input
+                    id="find-contact"
                     name="contact"
                     required
                     autoComplete="email"
                     placeholder="you@example.com or (216) 555-0148"
-                    className="min-h-[44px] w-full rounded-[10px] border border-line bg-bg px-3 text-[15px] text-ink placeholder:text-muted"
+                    className="w-full"
                   />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[12px] font-semibold text-ink">Last name</span>
+                </Field>
+                <Field label="Last name" htmlFor="find-last-name">
                   {/* No placeholder (operator, 2026-08-15). The contact field's placeholder earns
                       its place by showing two accepted FORMATS; a specimen surname teaches
                       nothing and reads as a value already filled in. */}
-                  <input
+                  <Input
+                    id="find-last-name"
                     name="lastName"
                     required
                     autoComplete="family-name"
-                    className="min-h-[44px] w-full rounded-[10px] border border-line bg-bg px-3 text-[15px] text-ink placeholder:text-muted"
+                    className="w-full"
                   />
-                </label>
+                </Field>
                 <SubmitButton className="btn-primary min-h-[44px]">
                   Send me my link
                 </SubmitButton>

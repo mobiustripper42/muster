@@ -2,6 +2,8 @@ import { AppLink } from "../ui/app-link";
 import { CrewSelect } from "./crew-select";
 import { GetFormSubmit } from "../ui/get-form-submit";
 import type { Mode, Scope } from "./shifts-view-types";
+import { Field } from "../ui/field";
+import { Input } from "../ui/input";
 
 /** Date-range + crew filter — preset links, a no-JS date GET form, and a no-JS
  * crew dropdown (DEC-026 pattern). The active chip reflects the RESOLVED scope
@@ -119,24 +121,24 @@ export function Filter({
           {crew && <input type="hidden" name="crew" value={crew} />}
           {showCancelled && <input type="hidden" name="cancelled" value="1" />}
           {showSplitOnly && <input type="hidden" name="split" value="1" />}
-          <label className="flex flex-col gap-0.5 text-xs text-muted">
-            From
-            <input
+          <Field label="From" htmlFor="filter-from">
+            <Input
+              id="filter-from"
               type="date"
               name="from"
               defaultValue={from}
-              className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+              density="dense"
             />
-          </label>
-          <label className="flex flex-col gap-0.5 text-xs text-muted">
-            To
-            <input
+          </Field>
+          <Field label="To" htmlFor="filter-to">
+            <Input
+              id="filter-to"
               type="date"
               name="to"
               defaultValue={to}
-              className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+              density="dense"
             />
-          </label>
+          </Field>
           <GetFormSubmit className="btn-secondary btn-sm">Show</GetFormSubmit>
         </form>
 

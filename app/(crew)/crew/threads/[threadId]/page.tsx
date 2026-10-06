@@ -12,6 +12,7 @@ import { fmtRunWhen } from "../../../../lib/format";
 import { postMessage } from "../actions";
 import { messagingEnabled } from "../../../../lib/flags";
 import { notFound, redirect } from "next/navigation";
+import { Textarea } from "../../../../../components/ui/input";
 
 /**
  * Crew messaging — one thread: messages + a compose box, nothing else (artifact
@@ -88,13 +89,13 @@ export default async function ThreadPage({
           revalidated re-render (uncontrolled input). */}
       <form action={postMessage} className="mt-2 flex flex-col gap-2">
         <input type="hidden" name="threadId" value={view.threadId} />
-        <textarea
+        <Textarea
           name="body"
           required
           rows={2}
           aria-label="Message"
           placeholder="Message…"
-          className="w-full resize-none rounded-card border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-muted"
+          className="w-full resize-none"
         />
         <SubmitButton className="btn-primary min-h-[44px] w-full">
           Send

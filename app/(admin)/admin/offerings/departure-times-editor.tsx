@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Select } from "../../../../components/ui/input";
 
 /**
  * Departure-times editor (12.8) — a small client island so the operator can add and remove
@@ -31,8 +32,6 @@ export function DepartureTimesEditor({ initial }: { initial: string[] }) {
     setMm("");
   };
 
-  const selectClass = "rounded-lg border border-line bg-bg px-2 py-1.5 font-mono text-sm text-ink";
-
   return (
     <div className="flex flex-col gap-2">
       {/* The serialized list — what the form submits (getAll("departureTime")). */}
@@ -61,11 +60,12 @@ export function DepartureTimesEditor({ initial }: { initial: string[] }) {
       </div>
 
       <div className="flex items-center gap-2">
-        <select
+        <Select
           value={hh}
           onChange={(e) => setHh(e.target.value)}
           aria-label="New departure hour"
-          className={selectClass}
+          density="dense"
+          className="font-mono"
         >
           <option value="">HH</option>
           {HOURS.map((h) => (
@@ -73,13 +73,14 @@ export function DepartureTimesEditor({ initial }: { initial: string[] }) {
               {h}
             </option>
           ))}
-        </select>
+        </Select>
         <span className="font-mono text-sm text-muted">:</span>
-        <select
+        <Select
           value={mm}
           onChange={(e) => setMm(e.target.value)}
           aria-label="New departure minute"
-          className={selectClass}
+          density="dense"
+          className="font-mono"
         >
           <option value="">MM</option>
           {MINUTES.map((m) => (
@@ -87,7 +88,7 @@ export function DepartureTimesEditor({ initial }: { initial: string[] }) {
               {m}
             </option>
           ))}
-        </select>
+        </Select>
         <button
           type="button"
           onClick={add}

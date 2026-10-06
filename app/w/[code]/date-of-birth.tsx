@@ -1,4 +1,4 @@
-import { select } from "./form-look";
+import { Select } from "../../../components/ui/input";
 
 /**
  * A date of birth as three selects — month, day, year (spec §A1). The adult's details and every
@@ -35,30 +35,30 @@ export function DateOfBirth({
     <fieldset className="flex flex-col gap-1">
       <legend className="mb-1 text-sm text-muted">{label}</legend>
       <div className="grid grid-cols-[1.4fr_1fr_1.1fr] gap-2">
-        <select name={names.month} required aria-label={`${label}: month`} defaultValue={defaults.month} className={select}>
+        <Select name={names.month} required aria-label={`${label}: month`} defaultValue={defaults.month}>
           <option value="">Month</option>
           {MONTHS.map((m, i) => (
             <option key={m} value={i + 1}>
               {m}
             </option>
           ))}
-        </select>
-        <select name={names.day} required aria-label={`${label}: day`} defaultValue={defaults.day} className={select}>
+        </Select>
+        <Select name={names.day} required aria-label={`${label}: day`} defaultValue={defaults.day}>
           <option value="">Day</option>
           {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
             <option key={d} value={d}>
               {d}
             </option>
           ))}
-        </select>
-        <select name={names.year} required aria-label={`${label}: year`} defaultValue={defaults.year} className={select}>
+        </Select>
+        <Select name={names.year} required aria-label={`${label}: year`} defaultValue={defaults.year}>
           <option value="">Year</option>
           {years.map((y) => (
             <option key={y} value={y}>
               {y}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
     </fieldset>
   );

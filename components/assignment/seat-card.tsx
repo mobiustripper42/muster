@@ -1,5 +1,6 @@
 import { confirmInto, overrideTo, removeSeat, reportBail } from "../../app/(admin)/admin/shift/[shiftId]/actions";
 import { tel, sms } from "../../app/lib/format";
+import { Select } from "../ui/input";
 import { SubmitButton } from "../ui/submit-button";
 import { HiddenIds } from "./bits";
 import { askedSummary, CandidateRow } from "./candidate-row";
@@ -225,11 +226,12 @@ export function SeatCard({
             <label htmlFor={`override-${vm.seatId}`} className="sr-only">
               Crew to place on this seat
             </label>
-            <select
+            <Select
               id={`override-${vm.seatId}`}
               name="crewMemberId"
               defaultValue=""
-              className="min-h-[36px] min-w-[10rem] rounded-lg border border-line bg-bg px-2 text-sm text-ink"
+              density="dense"
+              className="min-w-[10rem]"
             >
               <option value="">Select crew…</option>
               {roster.map((p) => (
@@ -237,7 +239,7 @@ export function SeatCard({
                   {p.name}
                 </option>
               ))}
-            </select>
+            </Select>
             <SubmitButton className="btn-primary min-h-[36px]">Place</SubmitButton>
           </form>
         )}

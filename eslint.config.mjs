@@ -241,13 +241,15 @@ const BUTTON_KIND_SELECTORS = [
 ];
 
 /**
- * ## One text field, built once (issue #484)
+ * ## One field, built once (issue #484)
  *
- * A raw `<input>` or `<textarea>` is flagged anywhere outside the components that wrap them.
+ * A raw `<input>`, `<textarea>` or `<select>` is flagged anywhere outside the components that
+ * wrap them.
  * The sweep that opened #484 found the same field styled by four shared class strings and a
  * dozen one-offs, 28 of them white-on-white behind a near-white border — and the stopgap fix
  * on the settings screens had to be copied by hand to every page that wanted it, which none did.
- * `<Input>` and `<Textarea>` (`components/ui/`) carry the one look; a page passes layout only.
+ * `<Input>`, `<Textarea>` and `<Select>` (`components/ui/`) carry the one look; a page passes
+ * layout only.
  *
  * **Unlike the button rule, there is nothing to work out.** A `<button>` can be a link, a toggle
  * or a submit, so #1103 had to decide which one it was looking at. An `<input>` is always a form
@@ -260,7 +262,9 @@ const BUTTON_KIND_SELECTORS = [
  */
 const TEXT_CONTROL_MESSAGE =
   "Use <Input> or <Textarea> from components/ui (issue #484) — one field look for the whole app, so a style change is one edit. Pass layout only (width, font-mono) through className.";
-const RAW_TEXT_CONTROL_SELECTORS = [
+const SELECT_MESSAGE =
+  "Use <Select> from components/ui (issue #484) — the same field look as <Input>, so a style change is one edit. Pick a density; pass layout only (width, font-mono) through className.";
+const RAW_FIELD_SELECTORS = [
   {
     selector:
       // `> JSXAttribute`, a direct child: without it `:has` searches every descendant, so an
@@ -270,11 +274,14 @@ const RAW_TEXT_CONTROL_SELECTORS = [
     message: TEXT_CONTROL_MESSAGE,
   },
   { selector: "JSXOpeningElement[name.name='textarea']", message: TEXT_CONTROL_MESSAGE },
+  // A `<select>` has no `type`, so there is nothing to exempt: every one is `<Select>`. The
+  // interim `fieldClass()` string that let pages share the look by hand is gone with it.
+  { selector: "JSXOpeningElement[name.name='select']", message: SELECT_MESSAGE },
 ];
 
 const APP_SELECTORS = [
   RAW_SUBMIT_SELECTOR,
-  ...RAW_TEXT_CONTROL_SELECTORS,
+  ...RAW_FIELD_SELECTORS,
   ...BUTTON_KIND_SELECTORS,
   APP_CATCH_SELECTOR,
   REDIRECT_IN_TRY_SELECTOR,
@@ -784,14 +791,14 @@ export default tseslint.config(
     },
   },
   {
-    // `<Input>` and `<Textarea>` are the raw elements the #484 rule sends everything else to, so
+    // `<Input>`, `<Textarea>` and `<Select>` wrap the raw elements the #484 rule refuses, so
     // this file alone is exempt from THAT rule — subtracted, the same way the block above
     // subtracts the submit rule, so every other selector still reaches it.
     files: ["components/ui/input.tsx"],
     rules: {
       "no-restricted-syntax": [
         "error",
-        ...APP_SELECTORS.filter((s) => !RAW_TEXT_CONTROL_SELECTORS.includes(s)),
+        ...APP_SELECTORS.filter((s) => !RAW_FIELD_SELECTORS.includes(s)),
       ],
     },
   },

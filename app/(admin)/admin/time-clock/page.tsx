@@ -30,7 +30,7 @@ import {
   type TimeClockErr,
 } from "./actions";
 import { Field } from "../../../../components/ui/field";
-import { fieldClass, Input } from "../../../../components/ui/input";
+import { Input, Select } from "../../../../components/ui/input";
 
 /**
  * /admin/time-clock (#627, SPEC §2.9.5) — the operator's repair bench. Muster never
@@ -284,7 +284,6 @@ export default async function AdminTimeClock({
                 value={String(crewView?.crewMemberId ?? "")}
                 options={crewList.map((c) => ({ value: c.id, label: c.name }))}
                 ariaLabel="Crew member"
-                className={fieldClass()}
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -299,7 +298,6 @@ export default async function AdminTimeClock({
                   label: `${periodLabel(p)}${p.start === cur.start ? " — current" : ""}`,
                 }))}
                 ariaLabel="Pay period"
-                className={fieldClass()}
               />
             </div>
           </form>
@@ -514,18 +512,13 @@ function AddPunchForm({
               <label htmlFor="add-crew" className="text-sm text-muted">
                 Crew member
               </label>
-              <select
-                id="add-crew"
-                name="crewMemberId"
-                defaultValue={retry.crew ?? undefined}
-                className={fieldClass()}
-              >
+              <Select id="add-crew" name="crewMemberId" defaultValue={retry.crew ?? undefined}>
                 {crewList.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </>
         ) : (

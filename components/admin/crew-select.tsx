@@ -16,11 +16,9 @@ import { AutoSubmitSelect } from "./auto-submit-select";
 export function CrewSelect({
   crew,
   crewList,
-  className,
 }: {
   crew: string | null;
   crewList: { id: string; name: string }[];
-  className?: string;
 }) {
   return (
     <AutoSubmitSelect
@@ -28,7 +26,7 @@ export function CrewSelect({
       value={crew ?? ""}
       includeEmpty="All crew"
       options={crewList.map((c) => ({ value: c.id, label: c.name }))}
-      className={className}
+      density="dense"
       ariaLabel="Crew"
     />
   );

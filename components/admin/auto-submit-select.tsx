@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { confirmLeaveIfDirty } from "../ui/dirty-state";
-import { Input } from "../ui/input";
+import { Input, Select, type FieldDensity } from "../ui/input";
 
 /**
  * Navigate-on-change for filter controls — the mechanism `CrewSelect` introduced for
@@ -53,6 +53,7 @@ export function AutoSubmitSelect({
   value,
   options,
   includeEmpty,
+  density,
   className,
   ariaLabel,
 }: {
@@ -61,12 +62,14 @@ export function AutoSubmitSelect({
   options: { value: string; label: string }[];
   /** Renders a leading empty option with this label (e.g. "All crew"). */
   includeEmpty?: string;
+  density?: FieldDensity;
+  /** Layout only — the look is `<Select>`'s. */
   className?: string;
   ariaLabel?: string;
 }) {
   const { pending, navigate } = useFormNavigate();
   return (
-    <select
+    <Select
       name={name}
       // `key` forces a remount when the server sends a different value — an
       // uncontrolled control only reads `defaultValue` on mount, so after a
@@ -77,6 +80,7 @@ export function AutoSubmitSelect({
       disabled={pending}
       aria-busy={pending}
       aria-label={ariaLabel}
+      density={density}
       className={className}
       onChange={(e) => {
         // Declined: put the control back to what the page is actually showing, so it
@@ -90,7 +94,7 @@ export function AutoSubmitSelect({
           {o.label}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }
 

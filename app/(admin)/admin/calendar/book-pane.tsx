@@ -2,7 +2,7 @@ import type { Offering } from "@core/domain/entities.js";
 import { checkoutQuote } from "@core/reservations/checkout-quote.js";
 import type { PaymentConfig } from "@core/reservations/payment-config.js";
 import { Field } from "../../../../components/ui/field";
-import { fieldClass, Input } from "../../../../components/ui/input";
+import { Input, Select } from "../../../../components/ui/input";
 import { AppLink } from "../../../../components/ui/app-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
 import { Notice } from "../../../../components/ui/notice";
@@ -171,13 +171,13 @@ function PassengersStep({
         <div className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
           {choices.length > 1 ? (
             <Field label="Cruise" htmlFor="book-offering">
-              <select id="book-offering" name="offering" defaultValue={String(offering.id)} className={`${fieldClass()} w-full`}>
+              <Select id="book-offering" name="offering" defaultValue={String(offering.id)} className="w-full">
                 {choices.map((o) => (
                   <option key={String(o.id)} value={String(o.id)}>
                     {o.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
           ) : (
             <div className="flex items-baseline justify-between gap-3 text-sm">

@@ -263,7 +263,10 @@ const TEXT_CONTROL_MESSAGE =
 const RAW_TEXT_CONTROL_SELECTORS = [
   {
     selector:
-      "JSXOpeningElement[name.name='input']:not(:has(JSXAttribute[name.name='type'][value.value=/^(hidden|checkbox|radio)$/]))",
+      // `> JSXAttribute`, a direct child: without it `:has` searches every descendant, so an
+      // input carrying JSX inside an attribute value (`data-x={<input type="radio" />}`) would
+      // borrow the nested element's exemption (`@code-review`; reproduced with esquery).
+      "JSXOpeningElement[name.name='input']:not(:has(> JSXAttribute[name.name='type'][value.value=/^(hidden|checkbox|radio)$/]))",
     message: TEXT_CONTROL_MESSAGE,
   },
   { selector: "JSXOpeningElement[name.name='textarea']", message: TEXT_CONTROL_MESSAGE },

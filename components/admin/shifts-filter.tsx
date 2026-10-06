@@ -3,7 +3,7 @@ import { CrewSelect } from "./crew-select";
 import { GetFormSubmit } from "../ui/get-form-submit";
 import type { Mode, Scope } from "./shifts-view-types";
 import { Field } from "../ui/field";
-import { Input } from "../ui/input";
+import { fieldClass, Input } from "../ui/input";
 
 /** Date-range + crew filter — preset links, a no-JS date GET form, and a no-JS
  * crew dropdown (DEC-026 pattern). The active chip reflects the RESOLVED scope
@@ -157,12 +157,12 @@ export function Filter({
           {/* Keep Show-cancelled on when the crew select auto-submits (#416). */}
           {showCancelled && <input type="hidden" name="cancelled" value="1" />}
           {showSplitOnly && <input type="hidden" name="split" value="1" />}
-          <label className="flex flex-col gap-0.5 text-xs text-muted">
+          <label className="flex flex-col gap-1 text-sm text-muted">
             Crew
             <CrewSelect
               crew={crew}
               crewList={crewList}
-              className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+              className={fieldClass("dense")}
             />
           </label>
         </form>

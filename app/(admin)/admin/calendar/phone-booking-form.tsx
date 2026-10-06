@@ -147,7 +147,8 @@ function DiscountBox({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         data-testid="discount"
-        className={`${settingsInputClass} w-full font-mono`}
+        // Right-aligned, so the figure lines up with the money column in the summary below it.
+        className={`${settingsInputClass} w-full text-right font-mono`}
       />
       {invalid ? (
         <span className="font-normal text-bad">Enter dollars, like 50 or 49.99.</span>

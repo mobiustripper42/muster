@@ -25,6 +25,7 @@ import { readFormDraft } from "../../../../lib/form-draft";
 import { isProdDeploy } from "../../../../lib/flags";
 import { operatorManageLink } from "../../../../lib/manage-link";
 import { mintPaymentLinkUrl } from "../../../../lib/payment-link";
+import { payLinkState } from "@core/reservations/pay-by-link.js";
 import { liveBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { getRepo } from "../../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../../lib/swallowed";
@@ -562,6 +563,7 @@ async function PhoneBookingPage({
           cancelErr: sp.cancelErr,
           linkSent: sp.linkSent,
           payLinkUrl: payLinkUrl(reservation),
+          payable: payLinkState(reservation).kind === "payable",
           phone: reservation.phone,
           email: reservation.email,
         }}
@@ -578,7 +580,8 @@ async function PhoneBookingPage({
  * link shows none rather than failing the pane.
  */
 function payLinkUrl(reservation: Reservation): string | undefined {
-  if (reservation.status !== "pending") return undefined;
+  // The /p page's own test — a $0 comp that never confirmed has no link to copy (DEC-194).
+  if (payLinkState(reservation).kind !== "payable") return undefined;
   try {
     return mintPaymentLinkUrl(String(reservation.id));
   } catch (e) {

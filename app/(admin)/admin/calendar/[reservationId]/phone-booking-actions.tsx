@@ -39,6 +39,9 @@ export interface UnpaidActionState {
   linkSent?: string | undefined;
   /** A freshly signed link for Copy payment link, or absent when this deploy can't build one. */
   payLinkUrl?: string | undefined;
+  /** Something is owed (`payLinkState`). False on a $0 comp whose confirm failed (DEC-194) — no
+   *  payment-link controls then, only Cancel. */
+  payable: boolean;
   /** The contact the link goes to, for naming it in the send outcome. */
   phone?: string | undefined;
   email?: string | undefined;
@@ -75,7 +78,7 @@ export function PhoneBookingActions({
     <div id="booking-actions" className="flex scroll-mt-4 flex-col gap-2" data-testid="reservation-actions">
       {error ? <Notice tone="bad">{error}</Notice> : null}
       {sent ? <Notice tone={sent.tone}>{sent.text}</Notice> : null}
-      {cancelled ? null : <PaymentLinkControls reservationId={reservationId} state={state} />}
+      {cancelled || !state.payable ? null : <PaymentLinkControls reservationId={reservationId} state={state} />}
       {cancelled ? null : <CancelControl reservationId={reservationId} state={state} />}
     </div>
   );

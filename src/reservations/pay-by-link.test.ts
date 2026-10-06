@@ -191,6 +191,14 @@ describe("payLinkState — what the /p page shows", () => {
     await cancelUnpaidPhoneBooking({ repo, now }, row.id, "customer");
     expect(payLinkState(await repo.getReservation(row.id)).kind).toBe("cancelled");
   });
+
+  it("a comp that never confirmed owes nothing, so it is not payable (DEC-194)", async () => {
+    // The comp's own confirm failed after the write: pending, `admin`, $0 due. There is nothing to
+    // take, and a $0 payment must never reach the provider.
+    const { row } = await phoneBooked();
+    const stuck = { ...row, invoice: { ...row.invoice!, totalCents: 0, amountDueNowCents: 0 } };
+    expect(payLinkState(stuck).kind).toBe("missing");
+  });
 });
 
 describe("payLinkMoney — the summary is the invoice frozen at booking", () => {

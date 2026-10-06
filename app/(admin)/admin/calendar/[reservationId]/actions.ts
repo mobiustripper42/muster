@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { asId } from "@core/domain/ids.js";
 import { createBalanceCheckout } from "@core/reservations/create-balance-checkout.js";
+import { payLinkState } from "@core/reservations/pay-by-link.js";
 import { recordTrail } from "@core/reservations/trail.js";
 import {
   cancelReservation,
@@ -235,7 +236,8 @@ export async function sendPaymentLinkAgain(formData: FormData): Promise<void> {
   let linkSent = "error";
   try {
     reservation = await getRepo().getReservation(asId<"ReservationId">(reservationId));
-    if (reservation?.source === "admin" && reservation.status === "pending") {
+    // The /p page's own test, so the two can't disagree — including a $0 comp (DEC-194).
+    if (payLinkState(reservation).kind === "payable" && reservation) {
       const outcome = await deliverPaymentLink(reservation, { kind: "admin", id: subject.id });
       linkSent = outcome.kind === "skipped" ? "skipped" : `${outcome.result.email}-${outcome.result.sms}`;
     }
@@ -243,7 +245,7 @@ export async function sendPaymentLinkAgain(formData: FormData): Promise<void> {
     logSwallowed("admin/reservation:sendPaymentLinkAgain", e, "the payment link was not sent");
   }
   // `redirect()` throws, so it stays outside the try (house convention).
-  if (reservation && !(reservation.source === "admin" && reservation.status === "pending")) {
+  if (reservation && payLinkState(reservation).kind !== "payable") {
     redirect(back({ linkSent: "not_payable" }));
   }
   redirect(back({ linkSent }));

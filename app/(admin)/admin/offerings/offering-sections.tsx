@@ -10,7 +10,7 @@ import type {
 import { gratuityKindsFor } from "@core/reservations/pricing.js";
 import { AppLink } from "../../../../components/ui/app-link";
 import { Field } from "../../../../components/ui/field";
-import { fieldClass, Input, Textarea } from "../../../../components/ui/input";
+import { Input, Select, Textarea } from "../../../../components/ui/input";
 import type { FormDraft } from "../../../lib/form-draft";
 import { vesselHueClass } from "../../../lib/vessel-hue";
 import { PriceVariationsEditor } from "./price-variations-editor";
@@ -120,11 +120,11 @@ export function DetailsSection({
 
       <Field layout="row" label="Location" hint="launch point">
         <span className="flex flex-wrap items-center gap-3">
-          <select
+          <Select
             name="locationId"
             required
             defaultValue={draft?.get("locationId") ?? offering?.locationId ?? ""}
-            className={`${fieldClass()} w-full max-w-[280px]`}
+            className="w-full max-w-[280px]"
           >
             <option value="" disabled>
               — pick a location —
@@ -134,7 +134,7 @@ export function DetailsSection({
                 {l.name}
               </option>
             ))}
-          </select>
+          </Select>
           <AppLink href="/admin/locations" className="text-xs text-accent">
             Manage locations →
           </AppLink>

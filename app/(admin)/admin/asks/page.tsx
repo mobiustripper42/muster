@@ -8,6 +8,7 @@ import {
 import { asId } from "@core/domain/ids.js";
 import { AppLink } from "../../../../components/ui/app-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
+import { Select } from "../../../../components/ui/input";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
@@ -127,34 +128,33 @@ function KindTag({ kind }: { kind: AuditKind }) {
 
 /** Crew + kind filter — a native GET form (no JS, DEC-026). */
 function FilterForm({ crew, sp }: { crew: { id: string; name: string }[]; sp: Search }) {
-  const inputClass = "min-h-[44px] rounded-card border border-line bg-card px-3 text-ink";
   return (
     <form method="get" className="flex flex-wrap items-end gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
       <div className="flex flex-col gap-1">
         <label htmlFor="crew" className="text-xs text-muted">
           Crew
         </label>
-        <select id="crew" name="crew" defaultValue={sp.crew ?? ""} className={inputClass}>
+        <Select id="crew" name="crew" defaultValue={sp.crew ?? ""}>
           <option value="">Everyone</option>
           {crew.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor="kind" className="text-xs text-muted">
           Kind
         </label>
-        <select id="kind" name="kind" defaultValue={sp.kind ?? ""} className={inputClass}>
+        <Select id="kind" name="kind" defaultValue={sp.kind ?? ""}>
           <option value="">All</option>
           {AUDIT_KINDS.map((k) => (
             <option key={k} value={k}>
               {AUDIT_KIND_LABEL[k]}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <GetFormSubmit className="btn-primary min-h-[44px]">
         Filter

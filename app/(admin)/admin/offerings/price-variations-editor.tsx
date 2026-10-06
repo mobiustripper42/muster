@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { PriceVariation } from "@core/domain/entities.js";
-import { fieldClass, Input } from "../../../../components/ui/input";
+import { Input, Select } from "../../../../components/ui/input";
 
 /**
  * Ordered price-variations editor (12.8, DEC-123) — the one client island on the catalog
@@ -126,7 +126,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
             />
 
             {/* Applies */}
-            <select
+            <Select
               aria-label={`Variation ${i + 1} applies`}
               value={row.applies.kind}
               onChange={(e) => {
@@ -142,12 +142,12 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                         : { kind, start: "", end: "" },
                 });
               }}
-              className={fieldClass("dense")}
+              density="dense"
             >
               <option value="weekdays">Weekdays</option>
               <option value="date">Date</option>
               <option value="dateRange">Date range</option>
-            </select>
+            </Select>
             {row.applies.kind === "weekdays" && (
               <span className="flex flex-wrap gap-1">
                 {WEEKDAY_LABELS.map((label, d) => {
@@ -219,7 +219,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
             )}
 
             {/* Adjustment — a minus makes it a discount. */}
-            <select
+            <Select
               aria-label={`Variation ${i + 1} adjustment kind`}
               value={row.adjustment.kind}
               onChange={(e) =>
@@ -231,11 +231,11 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                       : { kind: "percent", percent: 0 },
                 })
               }
-              className={fieldClass("dense")}
+              density="dense"
             >
               <option value="flatCents">± $</option>
               <option value="percent">± %</option>
-            </select>
+            </Select>
             {row.adjustment.kind === "flatCents" ? (
               <NumericInput
                 ariaLabel={`Variation ${i + 1} dollars`}

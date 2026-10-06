@@ -5,6 +5,7 @@ import {
   staffTrainee,
   unstaffTrainee,
 } from "../../app/(admin)/admin/shift/[shiftId]/actions";
+import { Select } from "../ui/input";
 import { SubmitButton } from "../ui/submit-button";
 
 export interface OverrideSeatVM {
@@ -49,16 +50,13 @@ export function ManningSection({
   const rolePicker = (label: string) => (
     <label className="flex items-center">
       <span className="sr-only">{label}</span>
-      <select
-        name="role"
-        className="min-h-9 rounded-lg border border-line bg-bg px-2 py-1 text-ink"
-      >
+      <Select name="role" density="dense">
         {roleOptions.map((r) => (
           <option key={r.id} value={r.id}>
             {r.name}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
   return (
@@ -120,16 +118,13 @@ export function ManningSection({
                       {hostCtx}
                       <label className="flex items-center">
                         <span className="sr-only">Trainee for this seat</span>
-                        <select
-                          name="crewMemberId"
-                          className="min-h-9 rounded-lg border border-line bg-bg px-2 py-1 text-ink"
-                        >
+                        <Select name="crewMemberId" density="dense">
                           {traineeOptions.map((c) => (
                             <option key={c.id} value={c.id}>
                               {c.name}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       </label>
                       <SubmitButton className="btn-secondary btn-sm min-h-9">Assign</SubmitButton>
                     </form>

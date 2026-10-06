@@ -1,9 +1,10 @@
-import type { InputHTMLAttributes, Ref, TextareaHTMLAttributes } from "react";
+import type { InputHTMLAttributes, Ref, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 /**
- * The one text field (issue #484). Every `<input>` and `<textarea>` a person types into is one
- * of these two, and `no-restricted-syntax` fails the build on a raw one anywhere else — so the
- * look below is the only place it is written, and a change to it is one edit.
+ * The one field (issue #484). Every `<input>` and `<textarea>` a person types into, and every
+ * `<select>` they pick from, is one of these three, and `no-restricted-syntax` fails the build on
+ * a raw one anywhere else — so the look below is the only place it is written, and a change to it
+ * is one edit.
  *
  * **White fill, strong edge.** `--color-line-strong` clears WCAG 1.4.11's 3:1 for a control
  * boundary on a card AND on the page background (`app/globals.css`), so a field reads the same
@@ -38,15 +39,6 @@ function join(...parts: (string | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
 }
 
-/**
- * The field look as a class string, for a `<select>` sitting beside these until the Select task
- * gives it a component of its own. Exported for that one use: an `<input>` that reached for it
- * would still be a raw `<input>`, which lint already refuses.
- */
-export function fieldClass(density: FieldDensity = "touch"): string {
-  return join(LOOK, DENSITY[density]);
-}
-
 export function Input({
   density = "touch",
   className,
@@ -64,4 +56,16 @@ export function Textarea({
   ref?: Ref<HTMLTextAreaElement>;
 }) {
   return <textarea {...props} className={join(LOOK, TEXTAREA_DENSITY[density], className)} />;
+}
+
+/** The browser draws the arrow and the option list; the box around them is the field look. */
+export function Select({
+  density = "touch",
+  className,
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement> & {
+  density?: FieldDensity;
+  ref?: Ref<HTMLSelectElement>;
+}) {
+  return <select {...props} className={join(LOOK, DENSITY[density], className)} />;
 }

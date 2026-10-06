@@ -28,7 +28,7 @@ import {
   type CrewTimeErr,
 } from "./actions";
 import { Field } from "../../../../components/ui/field";
-import { fieldClass, Input } from "../../../../components/ui/input";
+import { Input } from "../../../../components/ui/input";
 
 /**
  * /crew/time (SPEC §2.9.7) — the crew member's own clock. **Clock in** when they're
@@ -225,7 +225,6 @@ export default async function CrewTime({
               label: `${fmtDateRange(p.start, p.end)}${p.start === thisPeriod.start ? " — current" : ""}`,
             }))}
             ariaLabel="Pay period"
-            className={fieldClass()}
           />
         </form>
 

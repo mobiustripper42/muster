@@ -14,7 +14,7 @@ import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { adminAddTimeOff, adminRemoveTimeOff, type AdminTimeOffErr } from "./actions";
 import { Field } from "../../../../components/ui/field";
-import { fieldClass, Input } from "../../../../components/ui/input";
+import { Input, Select } from "../../../../components/ui/input";
 
 /**
  * /admin/time-off (#332, SPEC §2.1, DEC-009) — the office's view of everyone's
@@ -141,11 +141,10 @@ function AddForm({ crew, draft }: { crew: CrewMember[]; draft: FormDraft | null 
       <UnsavedGuard restored={draft !== null} />
       <h2 className="text-sm font-semibold text-ink">Add time off</h2>
       <Field label="Crew member" htmlFor="crewMemberId">
-        <select
+        <Select
           id="crewMemberId"
           name="crewMemberId"
           required
-          className={fieldClass()}
           defaultValue={draft?.get("crewMemberId") ?? ""}
         >
           <option value="" disabled>
@@ -156,7 +155,7 @@ function AddForm({ crew, draft }: { crew: CrewMember[]; draft: FormDraft | null 
               {c.name}
             </option>
           ))}
-        </select>
+        </Select>
       </Field>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Field label="First day off" htmlFor="start" className="flex-1">

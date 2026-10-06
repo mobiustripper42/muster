@@ -3,7 +3,7 @@ import { CrewSelect } from "./crew-select";
 import { GetFormSubmit } from "../ui/get-form-submit";
 import type { Mode, Scope } from "./shifts-view-types";
 import { Field } from "../ui/field";
-import { fieldClass, Input } from "../ui/input";
+import { Input } from "../ui/input";
 
 /** Date-range + crew filter — preset links, a no-JS date GET form, and a no-JS
  * crew dropdown (DEC-026 pattern). The active chip reflects the RESOLVED scope
@@ -159,11 +159,7 @@ export function Filter({
           {showSplitOnly && <input type="hidden" name="split" value="1" />}
           <label className="flex flex-col gap-1 text-sm text-muted">
             Crew
-            <CrewSelect
-              crew={crew}
-              crewList={crewList}
-              className={fieldClass("dense")}
-            />
+            <CrewSelect crew={crew} crewList={crewList} />
           </label>
         </form>
 

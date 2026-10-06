@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Block, Location, Vessel } from "@core/domain/entities.js";
 import { Field } from "../../../../components/ui/field";
-import { fieldClass, Input } from "../../../../components/ui/input";
+import { Input, Select } from "../../../../components/ui/input";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { AppLink } from "../../../../components/ui/app-link";
 import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
@@ -149,11 +149,11 @@ export function BlockEditor({
                     <p className="text-sm text-ink">{locName}</p>
                   </>
                 ) : (
-                  <select
+                  <Select
                     id="blk-target"
                     name="locationId"
                     defaultValue={draftValues?.locationId ?? ""}
-                    className={`${fieldClass()} w-full`}
+                    className="w-full"
                   >
                     <option value="">— pick a location —</option>
                     {locations.map((l) => (
@@ -161,7 +161,7 @@ export function BlockEditor({
                         {l.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 )}
               </Field>
               <Field className="py-2" label="Date" htmlFor="blk-date">
@@ -203,11 +203,11 @@ export function BlockEditor({
                     <p className="text-sm text-ink">{vesName}</p>
                   </>
                 ) : (
-                  <select
+                  <Select
                     id="blk-target"
                     name="vesselId"
                     defaultValue={draftValues?.vesselId ?? ""}
-                    className={`${fieldClass()} w-full`}
+                    className="w-full"
                   >
                     <option value="">— pick a boat —</option>
                     {vessels.map((v) => (
@@ -215,7 +215,7 @@ export function BlockEditor({
                         {v.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 )}
               </Field>
               <div className="grid grid-cols-2 gap-3">

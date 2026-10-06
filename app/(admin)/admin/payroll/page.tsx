@@ -1,4 +1,5 @@
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
+import { Select } from "../../../../components/ui/input";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
@@ -113,12 +114,7 @@ export default async function AdminPayroll({
           <label htmlFor="period" className="text-xs text-muted">
             Pay period
           </label>
-          <select
-            id="period"
-            name="period"
-            defaultValue={selValue}
-            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
-          >
+          <Select id="period" name="period" defaultValue={selValue}>
             {periods.map((p) => {
               const v = `${p.start}|${p.end}`;
               return (
@@ -128,7 +124,7 @@ export default async function AdminPayroll({
                 </option>
               );
             })}
-          </select>
+          </Select>
         </div>
         <GetFormSubmit className="btn-primary min-h-[44px]">
           View

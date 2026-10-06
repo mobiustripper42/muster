@@ -1,4 +1,5 @@
 import { AppLink } from "../ui/app-link";
+import { Select } from "../ui/input";
 import { SubmitButton } from "../ui/submit-button";
 import { SeatPips, AssignedCrew } from "./seat-pips";
 import type { AllShiftsRow } from "@core/admin/all-shifts.js";
@@ -190,17 +191,13 @@ export function ShiftRow({
           <input type="hidden" name="back" value={back} />
           <label className="flex items-center gap-1.5 text-muted">
             Split at
-            <select
-              name="cut"
-              defaultValue={defaultCut}
-              className="rounded-lg border border-line bg-bg px-2 py-1 font-mono text-ink"
-            >
+            <Select name="cut" defaultValue={defaultCut} density="dense" className="font-mono">
               {cutOptions.map((t) => (
                 <option key={t} value={t}>
                   {fmt12(t)}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <SubmitButton className="btn-secondary btn-sm">Split</SubmitButton>
         </form>

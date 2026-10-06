@@ -7,7 +7,7 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { Field } from "../../../../components/ui/field";
-import { fieldClass, Input, Textarea } from "../../../../components/ui/input";
+import { Input, Select, Textarea } from "../../../../components/ui/input";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
@@ -265,12 +265,12 @@ function CrewRows({
               aria-label="How many"
               className="max-w-[72px] font-mono"
             />
-            <select
+            <Select
               name="crewRole"
               required
               defaultValue={row.roleTypeId}
               aria-label="Role"
-              className={`${fieldClass()} max-w-[200px]`}
+              className="max-w-[200px]"
             >
               <option value="">Pick a role…</option>
               {roleTypes.map((r) => (
@@ -278,7 +278,7 @@ function CrewRows({
                   {r.name}
                 </option>
               ))}
-            </select>
+            </Select>
             <SubmitButton
               name="intent"
               value={`remove-crew-${i}`}
@@ -376,10 +376,10 @@ function VesselCard({
         </Field>
 
         <Field layout="row" label="Home location" hint="default launch">
-          <select
+          <Select
             name="homeLocationId"
             defaultValue={draft?.get("homeLocationId") ?? vessel?.homeLocationId ?? ""}
-            className={`${fieldClass()} w-full max-w-[280px]`}
+            className="w-full max-w-[280px]"
           >
             <option value="">— none —</option>
             {locations.map((l) => (
@@ -387,7 +387,7 @@ function VesselCard({
                 {l.name}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
 
         <Field layout="row" label="Notes" align="start">

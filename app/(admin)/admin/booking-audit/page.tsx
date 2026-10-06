@@ -14,6 +14,7 @@ import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
+import { Select } from "../../../../components/ui/input";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { TrailRow } from "../../../../components/admin/trail-row";
@@ -119,7 +120,6 @@ export default async function BookingAudit({
 
 /** Type + actor filter — a native GET form (no JS, DEC-026), same as `/admin/asks`. */
 function FilterForm({ sp }: { sp: Search }) {
-  const inputClass = "min-h-[44px] rounded-card border border-line bg-card px-3 text-ink";
   // Alphabetical by LABEL, not by the union's order — that order is grouped by subsystem for a
   // reader of the source, and is arbitrary to an operator hunting one word in a select.
   const types = [...EMITTED_TRAIL_TYPES].sort((a, b) =>
@@ -134,27 +134,27 @@ function FilterForm({ sp }: { sp: Search }) {
         <label htmlFor="type" className="text-xs text-muted">
           What happened
         </label>
-        <select id="type" name="type" defaultValue={sp.type ?? ""} className={`${inputClass} max-w-full`}>
+        <Select id="type" name="type" defaultValue={sp.type ?? ""} className="max-w-full">
           <option value="">Anything</option>
           {types.map((t) => (
             <option key={t} value={t}>
               {TRAIL_TYPE_LABEL[t]}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor="actor" className="text-xs text-muted">
           Who
         </label>
-        <select id="actor" name="actor" defaultValue={sp.actor ?? ""} className={inputClass}>
+        <Select id="actor" name="actor" defaultValue={sp.actor ?? ""}>
           <option value="">Anyone</option>
           {TRAIL_ACTOR_KINDS.map((a) => (
             <option key={a} value={a}>
               {TRAIL_ACTOR_LABEL[a]}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <GetFormSubmit className="btn-primary min-h-[44px]">
         Filter

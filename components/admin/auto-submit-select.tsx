@@ -51,6 +51,7 @@ function useFormNavigate(): {
 export function AutoSubmitSelect({
   name,
   value,
+  id,
   options,
   includeEmpty,
   density,
@@ -59,6 +60,8 @@ export function AutoSubmitSelect({
 }: {
   name: string;
   value: string;
+  /** For a `<label htmlFor>` beside it — without one the label points at nothing (issue #484). */
+  id?: string;
   options: { value: string; label: string }[];
   /** Renders a leading empty option with this label (e.g. "All crew"). */
   includeEmpty?: string;
@@ -70,6 +73,7 @@ export function AutoSubmitSelect({
   const { pending, navigate } = useFormNavigate();
   return (
     <Select
+      id={id}
       name={name}
       // `key` forces a remount when the server sends a different value — an
       // uncontrolled control only reads `defaultValue` on mount, so after a

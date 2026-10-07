@@ -219,6 +219,7 @@ export default async function CrewTime({
             Pay period
           </label>
           <AutoSubmitSelect
+            id="period"
             name="period"
             value={`${view.period.start}|${view.period.end}`}
             options={periodsForYear(PAY_PERIOD_ANCHOR, Number(today.slice(0, 4))).map((p) => ({

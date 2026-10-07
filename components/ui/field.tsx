@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 /**
  * A label, an optional hint, and the control they describe (issue #484). Moved here from
@@ -11,15 +11,21 @@ import type { ReactNode } from "react";
  *     would drop the label to its middle.
  *   - `layout="stacked"` (default) — label above the control, the shape every narrow form takes.
  *
- * **`htmlFor` makes the label a real `<label>`** pointed at the control's `id`, so tapping it
- * focuses the field and a screen reader announces the field by name. Without it the label is a
- * `<span>`: the right shape when the row holds several controls (a pair of numbers, a checkbox
- * with its own label) and there is no single one to point at.
+ * **Every Field says what its label names, and lint refuses one that doesn't** (issue #484,
+ * part 6 — `UNTIED_LABEL_SELECTORS` in `eslint.config.mjs`):
+ *
+ *   - `htmlFor` — one control. The label is a real `<label>` pointed at the control's `id`, so
+ *     tapping it focuses the field and a screen reader announces the field by name.
+ *   - `group` — several controls, or one that carries its own label: a chip set, a pair of dates,
+ *     a checkbox, an editor island. The row becomes `role="group"` named by the label, so a screen
+ *     reader announces "Days, group" on entering it. Not a `<fieldset>`: its `<legend>` does not
+ *     sit in the row layout's grid.
  */
 export function Field({
   label,
   hint,
   htmlFor,
+  group,
   layout = "stacked",
   align = "baseline",
   className,
@@ -28,46 +34,47 @@ export function Field({
   label: ReactNode;
   hint?: ReactNode;
   htmlFor?: string;
+  group?: boolean;
   layout?: "stacked" | "row";
   align?: "baseline" | "start";
   /** Outer layout only — spacing between fields, a grid column. */
   className?: string;
   children: ReactNode;
 }) {
+  const labelId = useId();
+  const groupProps = group ? { role: "group", "aria-labelledby": labelId } : {};
   const text = (
     <>
       {label}
       {hint && <span className="block text-xs text-muted">{hint}</span>}
     </>
   );
+  const labelClass = `text-sm text-muted ${layout === "row" && align === "start" ? "sm:pt-2" : ""}`;
+  const labelNode = htmlFor ? (
+    <label htmlFor={htmlFor} className={labelClass}>
+      {text}
+    </label>
+  ) : (
+    <span id={group ? labelId : undefined} className={labelClass}>
+      {text}
+    </span>
+  );
   if (layout === "row") {
-    const labelClass = `text-sm text-muted ${align === "start" ? "sm:pt-2" : ""}`;
     return (
       <div
+        {...groupProps}
         className={`grid grid-cols-1 gap-1 border-t border-line py-3 first:border-t-0 sm:grid-cols-[160px_1fr] sm:gap-3 ${
           align === "start" ? "sm:items-start" : "sm:items-baseline"
         } ${className ?? ""}`}
       >
-        {htmlFor ? (
-          <label htmlFor={htmlFor} className={labelClass}>
-            {text}
-          </label>
-        ) : (
-          <span className={labelClass}>{text}</span>
-        )}
+        {labelNode}
         <div>{children}</div>
       </div>
     );
   }
   return (
-    <div className={`flex flex-col gap-1 ${className ?? ""}`}>
-      {htmlFor ? (
-        <label htmlFor={htmlFor} className="text-sm text-muted">
-          {text}
-        </label>
-      ) : (
-        <span className="text-sm text-muted">{text}</span>
-      )}
+    <div {...groupProps} className={`flex flex-col gap-1 ${className ?? ""}`}>
+      {labelNode}
       {children}
     </div>
   );

@@ -9,7 +9,9 @@ import { join } from "./join";
  *
  * `as` and the element's own props pass through (`role="alert"`, a `<details>` that opens);
  * `className` is for layout. Text is 14px in the tone's colour; a child that needs to be louder
- * (a one-line celebration) sets its own size.
+ * (a one-line celebration) sets its own size. `pad="none"` is for a notice whose rows pad
+ * themselves — the crew page's red "Drop this shift" disclosure, which sits inside a card and so
+ * must stay flat: a shadowed card inside a shadowed card reads as two layers (`@ui-reviewer`).
  */
 type NoticeTone = "ok" | "bad" | "warn";
 
@@ -23,11 +25,15 @@ const NOTICE_TONE: Record<NoticeTone | "none", string> = {
 export function Notice<T extends ElementType = "div">({
   as,
   tone,
+  pad = "normal",
   className,
   ...props
-}: Box<T> & { tone?: NoticeTone }) {
+}: Box<T> & { tone?: NoticeTone; pad?: "normal" | "none" }) {
   const Tag: ElementType = as ?? "div";
   return (
-    <Tag {...props} className={join("rounded-card border px-4 py-3 text-sm", NOTICE_TONE[tone ?? "none"], className)} />
+    <Tag
+      {...props}
+      className={join("rounded-card border text-sm", pad === "normal" && "px-4 py-3", NOTICE_TONE[tone ?? "none"], className)}
+    />
   );
 }

@@ -261,12 +261,13 @@ function ttLabel(h: number): string {
   return `${Math.floor(whole / 24)}d ${whole % 24}h to trip`;
 }
 
-// The inner `py-7` on top of the Notice's own `py-3` keeps the empty state roomy: padding added
-// inside, never a second padding class on the box (`components/ui/card.tsx` says why).
+// The inner `px-2 py-7` on top of the Notice's own `px-4 py-3` keeps the empty state roomy (24px
+// and 40px, as it was): padding added inside, never a second padding class on the box
+// (`components/ui/card.tsx` says why).
 function EmptySuccess() {
   return (
     <Notice tone="ok">
-      <div className="flex flex-col items-center gap-2 py-7 text-center">
+      <div className="flex flex-col items-center gap-2 px-2 py-7 text-center">
         <div className="text-2xl text-ok" aria-hidden>
           ✓
         </div>

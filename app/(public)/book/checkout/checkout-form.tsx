@@ -342,10 +342,10 @@ function InnerForm(p: InnerProps) {
               not been charged.
             </Notice>
           ) : (
-            // The inner `py-4` on the well's own `py-2` holds the space the payment form will
-            // take, so the page does not jump when Stripe mounts it.
+            // The inner `px-1 py-4` on the well's own `px-3 py-2` keeps the box as it was and holds
+            // the space the payment form will take, so the page does not jump when Stripe mounts it.
             <Well data-testid="stripe-loading">
-              <div className="flex items-center gap-2 py-4 text-sm text-muted">
+              <div className="flex items-center gap-2 px-1 py-4 text-sm text-muted">
                 <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-accent" />
                 Loading secure payment…
               </div>

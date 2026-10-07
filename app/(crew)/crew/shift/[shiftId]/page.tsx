@@ -313,7 +313,7 @@ function ShiftCard({
             crew member's reliability record (DEC-028), so it sits behind one more
             deliberate tap — the button reveals the confirm rather than dropping.
             No-JS: a nested <details>, same posture as the claim confirm (DEC-077). */}
-        <Card as="details" tone="bad" pad="none">
+        <Notice as="details" tone="bad" pad="none">
           <summary className="btn-quiet flex min-h-[44px] items-center justify-center px-4 text-sm text-bad [&::-webkit-details-marker]:hidden">
             Drop this shift
           </summary>
@@ -329,7 +329,7 @@ function ShiftCard({
               </SubmitButton>
             </form>
           </div>
-        </Card>
+        </Notice>
       </Card>
       )}
     </Shell>

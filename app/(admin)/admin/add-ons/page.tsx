@@ -6,6 +6,7 @@ import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
+import { Checkbox } from "../../../../components/ui/choice";
 import { Field } from "../../../../components/ui/field";
 import { Input } from "../../../../components/ui/input";
 import { readSubject } from "../../../lib/auth";
@@ -209,28 +210,28 @@ function AddOnCard({
         </Field>
 
         <Field layout="row" label="Required" hint="the customer must buy it">
-          <label className="flex items-center gap-2 pt-1 text-sm text-ink">
-            <input
-              type="checkbox"
-              name="required"
-              defaultChecked={draft ? draft.has("required") : addOn?.required ?? false}
-            />
+          <Checkbox
+            density="dense"
+            name="required"
+            defaultChecked={draft ? draft.has("required") : addOn?.required ?? false}
+            className="pt-1"
+          >
             Required at checkout
-          </label>
+          </Checkbox>
         </Field>
 
         <Field layout="row" label="Active" hint="uncheck to retire">
-          <label className="flex items-center gap-2 pt-1 text-sm text-ink">
-            {/* Default checked on a new add-on; retired add-ons drop from the offering picker
-                + browse but keep their references (DEC-123 soft-delete). */}
-            <input
-              type="checkbox"
-              name="active"
-              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-              defaultChecked={draft ? draft.has("active") : isNew ? true : addOn.active}
-            />
+          {/* Default checked on a new add-on; retired add-ons drop from the offering picker
+              + browse but keep their references (DEC-123 soft-delete). */}
+          <Checkbox
+            density="dense"
+            name="active"
+            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
+            defaultChecked={draft ? draft.has("active") : isNew ? true : addOn.active}
+            className="pt-1"
+          >
             Available to attach to offerings
-          </label>
+          </Checkbox>
         </Field>
       </div>
     </section>

@@ -13,6 +13,7 @@ import { fmtRunWhen } from "../../../../lib/format";
 import { postOperatorMessage } from "../actions";
 import { messagingEnabled } from "../../../../lib/flags";
 import { notFound } from "next/navigation";
+import { Checkbox } from "../../../../../components/ui/choice";
 import { Textarea } from "../../../../../components/ui/input";
 
 /**
@@ -106,10 +107,7 @@ export default async function AdminThread({
             placeholder="Message…"
             className="w-full resize-none"
           />
-          <label className="flex items-center gap-2 text-sm text-muted">
-            <input type="checkbox" name="priority" className="h-4 w-4" />
-            Priority — ring now, skip the batch hold
-          </label>
+          <Checkbox name="priority">Priority — ring now, skip the batch hold</Checkbox>
           <SubmitButton className="btn-primary min-h-[44px] w-full">
             Send
           </SubmitButton>

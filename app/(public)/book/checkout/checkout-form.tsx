@@ -35,6 +35,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { Stripe, StripeElements } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { CheckoutSummary } from "../../../../components/checkout/checkout-summary";
+import { Checkbox } from "../../../../components/ui/choice";
 import { ContactFields, type ContactValues } from "../../../../components/checkout/contact-fields";
 import { totalsWithTip, type CheckoutMoney, type TipTier } from "../../../../components/checkout/money";
 import { PayBar } from "../../../../components/checkout/pay-bar";
@@ -372,19 +373,16 @@ function InnerForm(p: InnerProps) {
             Flex insurance is deliberately absent: it is a published term nothing can sell yet
             (#683). */}
         <div className="pb-4 pt-4">
-          <label className="flex items-start gap-2.5 text-[13px] text-muted">
-            <input
-              type="checkbox"
-              data-testid="agree-terms"
-              className="mt-0.5 h-[18px] w-[18px] flex-none"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-            />
+          <Checkbox
+            data-testid="agree-terms"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+          >
             <span>
-              <b className="font-semibold text-ink">I agree to the cancellation terms:</b>{" "}
+              <b className="font-semibold">I agree to the cancellation terms:</b>{" "}
               <span data-testid="cancellation-terms">{p.cancellationTerms}</span>
             </span>
-          </label>
+          </Checkbox>
           {p.pay ? null : (
             <p className="pt-3 text-xs text-muted">
               After you book, your confirmation includes a private booking link to view or manage

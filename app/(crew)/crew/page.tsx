@@ -19,6 +19,7 @@ import { fmt12 } from "../../lib/format";
 import { vesselHueClass } from "../../lib/vessel-hue";
 import { requestLoginCode, respondToAsk, verifyLoginCode } from "./actions";
 import { SubmitButton } from "../../../components/ui/submit-button";
+import { Checkbox } from "../../../components/ui/choice";
 import { Field } from "../../../components/ui/field";
 import { Input } from "../../../components/ui/input";
 
@@ -283,38 +284,33 @@ function SignedOut({
  */
 function SmsConsentBlock() {
   return (
-    <div className="flex items-start gap-2 rounded-card border border-line bg-card px-3 py-2">
-      <input
-        id={SMS_CONSENT_FIELD}
-        name={SMS_CONSENT_FIELD}
-        type="checkbox"
-        value={SMS_CONSENT_FIELD_VALUE}
-        className="mt-0.5 h-4 w-4 shrink-0"
-      />
-      <label htmlFor={SMS_CONSENT_FIELD} className="text-xs leading-snug text-muted">
-        I agree to receive SMS text messages from Cleveland Cycleboats, LLC
-        (BrewBoat) at the mobile number on my crew record about shift availability
-        and scheduling. Message frequency varies. Message and data rates may apply.
-        Reply STOP to opt out, HELP for help. See our{" "}
-        <a
-          href={SMS_CONSENT_POLICY_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-accent underline"
-        >
-          Privacy Policy
-        </a>{" "}
-        and{" "}
-        <a
-          href={SMS_CONSENT_POLICY_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-accent underline"
-        >
-          Terms
-        </a>
-        .
-      </label>
+    <div className="rounded-card border border-line bg-card px-3">
+      <Checkbox id={SMS_CONSENT_FIELD} name={SMS_CONSENT_FIELD} value={SMS_CONSENT_FIELD_VALUE}>
+        <span>
+          I agree to receive SMS text messages from Cleveland Cycleboats, LLC
+          (BrewBoat) at the mobile number on my crew record about shift availability
+          and scheduling. Message frequency varies. Message and data rates may apply.
+          Reply STOP to opt out, HELP for help. See our{" "}
+          <a
+            href={SMS_CONSENT_POLICY_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent underline"
+          >
+            Privacy Policy
+          </a>{" "}
+          and{" "}
+          <a
+            href={SMS_CONSENT_POLICY_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent underline"
+          >
+            Terms
+          </a>
+          .
+        </span>
+      </Checkbox>
     </div>
   );
 }

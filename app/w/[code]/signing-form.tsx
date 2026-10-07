@@ -8,6 +8,7 @@ import { signWaiver } from "./actions";
 import { ChildCards } from "./child-cards";
 import { DateOfBirth, type DobParts } from "./date-of-birth";
 import { card } from "./form-look";
+import { Checkbox } from "../../../components/ui/choice";
 import { Field } from "../../../components/ui/field";
 import { Input } from "../../../components/ui/input";
 
@@ -88,17 +89,9 @@ export function SigningFormView({
         <Field label="Full legal name" htmlFor="sign-name">
           <Input id="sign-name" name="name" required maxLength={100} autoComplete="name" defaultValue={draft?.get("name") ?? ""} className="w-full" />
         </Field>
-        <label className="flex min-h-[44px] items-start gap-3 text-sm text-ink">
-          <input
-            type="checkbox"
-            name="legalName"
-            value="yes"
-            required
-            defaultChecked={draft?.has("legalName") ?? false}
-            className="mt-0.5 h-5 w-5 shrink-0"
-          />
+        <Checkbox name="legalName" value="yes" required defaultChecked={draft?.has("legalName") ?? false}>
           <span>I certify that this is my full legal name</span>
-        </label>
+        </Checkbox>
         <DateOfBirth
           names={ADULT_DOB}
           years={adultYears}
@@ -126,17 +119,9 @@ export function SigningFormView({
         <div className="whitespace-pre-wrap break-words rounded-card border border-line bg-bg p-3 text-sm text-ink">
           {template.body}
         </div>
-        <label className="flex min-h-[44px] items-start gap-3 text-sm text-ink">
-          <input
-            type="checkbox"
-            name="consent"
-            value="yes"
-            required
-            defaultChecked={draft?.has("consent") ?? false}
-            className="mt-0.5 h-5 w-5 shrink-0"
-          />
+        <Checkbox name="consent" value="yes" required defaultChecked={draft?.has("consent") ?? false}>
           <span>{ESIGN_CONSENT_LINE}</span>
-        </label>
+        </Checkbox>
         {/* Outside the label, so opening it never ticks the box. Works with no JS. */}
         <details className="text-sm">
           <summary className="min-h-[44px] text-accent">What does this mean?</summary>

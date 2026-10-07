@@ -10,6 +10,7 @@ import type {
 import { gratuityKindsFor } from "@core/reservations/pricing.js";
 import { AppLink } from "../../../../components/ui/app-link";
 import { Field } from "../../../../components/ui/field";
+import { Chip, Checkbox } from "../../../../components/ui/choice";
 import { Input, Select, Textarea } from "../../../../components/ui/input";
 import type { FormDraft } from "../../../lib/form-draft";
 import { vesselHueClass } from "../../../lib/vessel-hue";
@@ -32,9 +33,6 @@ import { DepartureTimesEditor } from "./departure-times-editor";
  *  - The two islands take their `initial` from the draft as well — a departure time added and
  *    then lost is the same data loss as a cleared text field.
  */
-
-const chipClass =
-  "select-none rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-ink peer-checked:bg-ink peer-checked:font-medium peer-checked:text-white";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]; // Mon=0…Sun=6
 
@@ -83,16 +81,15 @@ export function DetailsSection({
       <Field layout="row" label="Status">
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {(["draft", "live", "hidden"] as const).map((s) => (
-            <label key={s}>
-              <input
-                type="radio"
-                name="status"
-                value={s}
-                defaultChecked={(draft?.get("status") ?? offering?.status ?? "draft") === s}
-                className="peer sr-only"
-              />
-              <span className={chipClass}>{STATUS_COPY[s].label}</span>
-            </label>
+            <Chip
+              key={s}
+              type="radio"
+              name="status"
+              value={s}
+              defaultChecked={(draft?.get("status") ?? offering?.status ?? "draft") === s}
+            >
+              {STATUS_COPY[s].label}
+            </Chip>
           ))}
         </div>
         <p className="pt-1.5 text-xs text-muted">
@@ -183,24 +180,21 @@ export function DetailsSection({
       <Field layout="row" label="Vessels" hint="which boats run it">
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {vessels.map((v) => (
-            <label key={v.id}>
-              <input
-                type="checkbox"
-                name="vesselIds"
-                value={v.id}
-                defaultChecked={
-                  draft ? draft.has("vesselIds", v.id) : offering?.vesselIds.includes(v.id) ?? false
-                }
-                className="peer sr-only"
+            <Chip
+              key={v.id}
+              type="checkbox"
+              name="vesselIds"
+              value={v.id}
+              defaultChecked={
+                draft ? draft.has("vesselIds", v.id) : offering?.vesselIds.includes(v.id) ?? false
+              }
+            >
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${vesselHueClass(v.id, v.hue)}`}
+                aria-hidden
               />
-              <span className="flex select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${vesselHueClass(v.id, v.hue)}`}
-                  aria-hidden
-                />
-                {v.name}
-              </span>
-            </label>
+              {v.name}
+            </Chip>
           ))}
         </div>
         <p className="pt-1.5 text-xs text-muted">
@@ -246,20 +240,19 @@ export function ScheduleSection({
       <Field layout="row" label="Days">
         <div className="flex flex-wrap gap-2 pt-1">
           {WEEKDAY_LABELS.map((label, d) => (
-            <label key={label}>
-              <input
-                type="checkbox"
-                name="weekday"
-                value={d}
-                defaultChecked={
-                  draft
-                    ? draft.has("weekday", String(d))
-                    : schedule?.weekdays.includes(d) ?? false
-                }
-                className="peer sr-only"
-              />
-              <span className={chipClass}>{label}</span>
-            </label>
+            <Chip
+              key={label}
+              type="checkbox"
+              name="weekday"
+              value={d}
+              defaultChecked={
+                draft
+                  ? draft.has("weekday", String(d))
+                  : schedule?.weekdays.includes(d) ?? false
+              }
+            >
+              {label}
+            </Chip>
           ))}
         </div>
       </Field>
@@ -416,14 +409,13 @@ function GratuityKindRow({
   return (
     <Field layout="row" label={label} hint={when}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
-        <label className="flex items-center gap-1.5 text-sm text-ink">
-          <input
-            type="checkbox"
-            name={`grat${cap}`}
-            defaultChecked={draft ? draft.has(`grat${cap}`) : config !== undefined}
-          />
+        <Checkbox
+          density="dense"
+          name={`grat${cap}`}
+          defaultChecked={draft ? draft.has(`grat${cap}`) : config !== undefined}
+        >
           Collect
-        </label>
+        </Checkbox>
         <label className="flex items-center gap-1.5 text-sm text-muted">
           Tiers %
           <Input
@@ -445,16 +437,15 @@ function GratuityKindRow({
             aria-label={`${label} gratuity default (percent)`}
           />
         </label>
-        <label className="flex items-center gap-1.5 text-sm text-muted">
-          <input
-            type="checkbox"
-            name={`grat${cap}Required`}
-            defaultChecked={
-              draft ? draft.has(`grat${cap}Required`) : config?.required ?? kind === "pre"
-            }
-          />
+        <Checkbox
+          density="dense"
+          name={`grat${cap}Required`}
+          defaultChecked={
+            draft ? draft.has(`grat${cap}Required`) : config?.required ?? kind === "pre"
+          }
+        >
           Required
-        </label>
+        </Checkbox>
       </div>
     </Field>
   );
@@ -492,24 +483,23 @@ export function AddOnsSection({
               first cut, #491). */}
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {addOns.map((a) => (
-              <label key={a.id}>
-                <input
-                  type="checkbox"
-                  name="addOnIds"
-                  value={a.id}
-                  defaultChecked={draft ? draft.has("addOnIds", a.id) : attached.has(a.id)}
-                  className="peer sr-only"
-                />
-                <span className="flex select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">
-                  {a.label}
-                  <span className="text-xs text-muted">${(a.amountCents / 100).toFixed(2)}</span>
-                  {a.required && (
-                    <span className="rounded-full bg-warn-bg px-1.5 text-[10px] uppercase tracking-wide text-warn">
-                      Required
-                    </span>
-                  )}
-                </span>
-              </label>
+              <Chip
+                key={a.id}
+                type="checkbox"
+                name="addOnIds"
+                value={a.id}
+                defaultChecked={draft ? draft.has("addOnIds", a.id) : attached.has(a.id)}
+              >
+                {a.label}
+                {/* No colour of its own: it inherits the chip's, which turns white on the dark
+                    "on" fill — `text-muted` here would vanish against it. */}
+                <span className="text-xs">${(a.amountCents / 100).toFixed(2)}</span>
+                {a.required && (
+                  <span className="rounded-full bg-warn-bg px-1.5 text-[10px] uppercase tracking-wide text-warn">
+                    Required
+                  </span>
+                )}
+              </Chip>
             ))}
           </div>
           <p className="text-xs text-muted">

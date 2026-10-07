@@ -15,6 +15,7 @@ import { fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 import { CREW_UNAVAILABLE, logSwallowed } from "../../../lib/swallowed";
 import { addMyTimeOff, removeMyTimeOff, setMyDaysOff, type CrewTimeOffErr } from "./actions";
+import { Checkbox } from "../../../../components/ui/choice";
 import { Field } from "../../../../components/ui/field";
 import { Input } from "../../../../components/ui/input";
 
@@ -148,20 +149,14 @@ export default async function CrewTimeOff({
           <ul className="flex flex-col">
             {WEEKDAYS.map((d) => (
               <li key={d.value} className="border-b border-line last:border-b-0">
-                <label
-                  htmlFor={`day-${d.value}`}
-                  className="flex min-h-[52px] items-center gap-3"
+                <Checkbox
+                  id={`day-${d.value}`}
+                  name="days"
+                  value={d.value}
+                  defaultChecked={offSet.has(d.value)}
                 >
-                  <input
-                    id={`day-${d.value}`}
-                    type="checkbox"
-                    name="days"
-                    value={d.value}
-                    defaultChecked={offSet.has(d.value)}
-                    className="h-5 w-5 accent-accent"
-                  />
-                  <span className="font-medium text-ink">{d.label}</span>
-                </label>
+                  <span className="text-base font-medium">{d.label}</span>
+                </Checkbox>
               </li>
             ))}
           </ul>

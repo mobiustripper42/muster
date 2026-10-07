@@ -6,6 +6,7 @@ import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
+import { Swatch } from "../../../../components/ui/choice";
 import { Field } from "../../../../components/ui/field";
 import { Input, Select, Textarea } from "../../../../components/ui/input";
 import { readSubject } from "../../../lib/auth";
@@ -354,23 +355,18 @@ function VesselCard({
           <fieldset className="flex flex-wrap gap-2 pt-1.5">
             <legend className="sr-only">Color</legend>
             {Array.from({ length: HUE_COUNT }, (_, i) => i + 1).map((h) => (
-              <label key={h}>
-                <input
-                  type="radio"
-                  name="hue"
-                  value={h}
-                  defaultChecked={
-                    draft
-                      ? draft.get("hue") === String(h)
-                      : !isNew && vesselHueIndex(vessel!.id, vessel!.hue) === h
-                  }
-                  className="peer sr-only"
-                />
-                <span
-                  className={`block h-7 w-7 rounded-lg border border-ink/10 ${vesselHueClass("", h)} peer-checked:outline peer-checked:outline-2 peer-checked:outline-offset-2 peer-checked:outline-accent`}
-                  aria-label={`Color ${h}`}
-                />
-              </label>
+              <Swatch
+                key={h}
+                name="hue"
+                value={h}
+                defaultChecked={
+                  draft
+                    ? draft.get("hue") === String(h)
+                    : !isNew && vesselHueIndex(vessel!.id, vessel!.hue) === h
+                }
+                colorClass={vesselHueClass("", h)}
+                label={`Color ${h}`}
+              />
             ))}
           </fieldset>
         </Field>

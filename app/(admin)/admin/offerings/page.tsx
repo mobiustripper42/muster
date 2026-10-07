@@ -20,6 +20,7 @@ import {
   GratuitySection,
   AddOnsSection,
 } from "./offering-sections";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/offerings (task 12.8, DEC-123) — the Offering catalog editor, laid out to
@@ -160,7 +161,7 @@ export default async function AdminOfferings({
           {/* Left column pins while the detail scrolls (desktop only — the mockup's sticky
               sidenav); overflow guard keeps a long offerings list from running off-screen. */}
           <div className="flex flex-col gap-3 self-start min-[900px]:sticky min-[900px]:top-4 min-[900px]:max-h-[calc(100vh-1.5rem)] min-[900px]:overflow-y-auto">
-            <nav className="flex flex-col gap-0.5 rounded-card border border-line bg-card p-1.5">
+            <Card as="nav" pad="none" className="flex flex-col gap-0.5 p-1.5">
               <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
                 Offerings
               </p>
@@ -199,11 +200,11 @@ export default async function AdminOfferings({
                   {showHidden ? "Hide hidden offerings" : `Show hidden (${hiddenCount})`}
                 </AppLink>
               )}
-            </nav>
+            </Card>
 
             {/* Section side-nav — anchor scroll, per the mockup. */}
             {(selected || creating) && (
-              <nav className="hidden flex-col gap-0.5 rounded-card border border-line bg-card p-1.5 min-[900px]:flex">
+              <Card as="nav" pad="none" className="hidden flex-col gap-0.5 min-[900px]:flex p-1.5">
                 <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
                   Offering
                 </p>
@@ -222,7 +223,7 @@ export default async function AdminOfferings({
                     {label}
                   </a>
                 ))}
-              </nav>
+              </Card>
             )}
           </div>
 

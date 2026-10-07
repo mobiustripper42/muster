@@ -7,6 +7,7 @@ import {
 } from "../../app/(admin)/admin/shift/[shiftId]/actions";
 import { Select } from "../ui/input";
 import { SubmitButton } from "../ui/submit-button";
+import { Card } from "../ui/card";
 
 export interface OverrideSeatVM {
   seatId: string;
@@ -60,7 +61,7 @@ export function ManningSection({
     </label>
   );
   return (
-    <section className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
+    <Card as="section" className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
         <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted">
           Manning
@@ -170,6 +171,6 @@ export function ManningSection({
           <SubmitButton className="btn-secondary btn-sm min-h-9">+ Trainee seat</SubmitButton>
         </form>
       </div>
-    </section>
+    </Card>
   );
 }

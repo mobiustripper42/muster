@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import type { PriceVariation } from "@core/domain/entities.js";
 import { Input, Select } from "../../../../components/ui/input";
+import { Well } from "../../../../components/ui/card";
 
 /**
  * Ordered price-variations editor (12.8, DEC-123) — the one client island on the catalog
@@ -99,7 +100,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
       )}
       <ol className="flex flex-col gap-2">
         {rows.map(({ key, row }, i) => (
-          <li
+          <Well
             key={key}
             draggable
             onDragStart={() => setDragIndex(i)}
@@ -108,7 +109,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
               if (dragIndex !== null && dragIndex !== i) move(dragIndex, i);
               setDragIndex(null);
             }}
-            className="flex flex-wrap items-center gap-2 rounded-card border border-line bg-bg/50 p-2"
+            as="li" className="flex flex-wrap items-center gap-2"
           >
             {/* `text-muted`, not `text-faint` (#951): the ⠿ is decoration but the index
                 beside it is not — it is how a sighted operator reads the ordering they
@@ -284,7 +285,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                 Remove
               </button>
             </span>
-          </li>
+          </Well>
         ))}
       </ol>
       <button

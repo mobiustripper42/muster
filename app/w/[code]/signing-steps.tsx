@@ -1,6 +1,7 @@
 import { stillToSignLine } from "@core/checkin/signing.js";
 import { AppLink } from "../../../components/ui/app-link";
 import { CopyButton } from "../../../components/ui/copy-button";
+import { Card } from "../../../components/ui/card";
 
 /**
  * The signing page's screens around the form (Phase 18.4, `docs/design/check-in-surfaces.md` §A):
@@ -27,8 +28,7 @@ export function stepHref(s: StepState): string {
 // A whole-row link: `spinner="overlay"` (AppLink's mode for a card or row) renders the children
 // straight into the link — the default inline mode wraps them in a shrink-to-fit span, which pulled
 // the › in beside the text — and spreads the loading spinner over the card, which is `relative`.
-const choice =
-  "relative flex min-h-[56px] w-full items-center rounded-card border border-line bg-card px-4 py-3 text-left text-ink shadow-sm";
+const choice = "relative flex min-h-[56px] w-full items-center text-left text-ink";
 const choiceRow = "flex w-full items-center justify-between gap-3";
 
 /**
@@ -51,21 +51,21 @@ export function PartyStep({
       {refused && <p className="mb-3 text-sm text-bad">Pick who you’re here with.</p>}
       <div className="flex flex-col gap-3">
         {parties.map((p) => (
-          <AppLink key={p.reservationId} href={stepHref({ code, party: p.reservationId, restore: refused })} className={choice} spinner="overlay">
+          <Card as={AppLink} key={p.reservationId} href={stepHref({ code, party: p.reservationId, restore: refused })} className={choice} spinner="overlay">
             <span className={choiceRow}>
               <span>
                 {p.surname} · party of {p.partySize}
               </span>
               <span aria-hidden>›</span>
             </span>
-          </AppLink>
+          </Card>
         ))}
-        <AppLink href={stepHref({ code, party: "walkup", restore: refused })} className={choice} spinner="overlay">
+        <Card as={AppLink} href={stepHref({ code, party: "walkup", restore: refused })} className={choice} spinner="overlay">
           <span className={choiceRow}>
             <span>I’m a walk-up</span>
             <span aria-hidden>›</span>
           </span>
-        </AppLink>
+        </Card>
       </div>
     </>
   );
@@ -94,12 +94,12 @@ export function SuccessView({
       </p>
       <h1 className="mb-4 text-xl font-semibold">You’re all set, {firstName}</h1>
       {coverage && (
-        <div className="mb-6 rounded-card border border-line bg-card px-4 py-3">
+        <Card className="mb-6">
           <p className="font-medium text-ink">
             Your group: {coverage.covered} of {coverage.of} signed
           </p>
           <p className="text-sm text-muted">{stillToSignLine(coverage.remaining)}</p>
-        </div>
+        </Card>
       )}
       <div className="flex flex-col gap-3">
         <CopyButton value={shareUrl} label="Share with your party" className="btn-primary min-h-[48px] w-full" />

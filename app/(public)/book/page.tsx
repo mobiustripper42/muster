@@ -44,6 +44,7 @@ import { Notice } from "../../../components/ui/notice";
 import { getRepo } from "../../lib/repo";
 import { logSwallowed } from "../../lib/swallowed";
 import { BookingProvider, Footer, GuestCard } from "./book-controls";
+import { Card } from "../../../components/ui/card";
 
 export const dynamic = "force-dynamic";
 
@@ -127,14 +128,14 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
         <h1 className="mb-4 text-xl font-semibold">Choose a cruise</h1>
         <div className="flex flex-col gap-3">
           {live.map((o) => (
-            <AppLink
+            <Card
               key={String(o.id)}
               href={bookHref({ offering: String(o.id) })}
-              className="rounded-card border border-line bg-card px-4 py-3 hover:border-accent"
+              as={AppLink} edge="link"
             >
               <div className="font-semibold">{o.name}</div>
               {o.description && <div className="mt-1 text-sm text-muted line-clamp-2">{o.description}</div>}
-            </AppLink>
+            </Card>
           ))}
         </div>
       </main>
@@ -255,7 +256,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
 
   return (
     <main className="min-h-screen bg-bg px-3 py-6 sm:px-4 sm:py-8">
-      <div className="mx-auto flex w-full max-w-[900px] flex-col overflow-hidden rounded-[18px] border border-line bg-card shadow-sm">
+      <Card pad="none" className="mx-auto flex w-full max-w-[900px] flex-col overflow-hidden">
         {/* header */}
         <div className="flex flex-none items-center gap-2.5 border-b border-line px-4 py-3">
           {live.length > 1 && (
@@ -550,7 +551,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
             <Footer dateTimeLabel={dateTimeLabel} continueBase={continueBase} />
           </div>
         </BookingProvider>
-      </div>
+      </Card>
 
     </main>
   );

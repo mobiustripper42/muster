@@ -29,6 +29,7 @@ import {
 } from "./actions";
 import { Field } from "../../../../components/ui/field";
 import { Input } from "../../../../components/ui/input";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /crew/time (SPEC §2.9.7) — the crew member's own clock. **Clock in** when they're
@@ -149,7 +150,7 @@ export default async function CrewTime({
           notices moved down. Nothing above a button may vary in height; that is the whole rule
           and it is measured in `crew-time.spec.ts` ("neither clock button moves across a
           punch") rather than eyeballed. */}
-      <section className="overflow-hidden rounded-card border border-line bg-card shadow-sm">
+      <Card as="section" pad="none" className="overflow-hidden">
         <div className="border-b border-line px-4 py-3">
           <span className="font-semibold text-ink">
             {onTheClock ? `On the clock since ${fmt12(onTheClock.sinceTime)}` : "Not on the clock"}
@@ -196,7 +197,7 @@ export default async function CrewTime({
           </p>
         )}
         {anyOpen && <ClockBusy />}
-      </section>
+      </Card>
 
       {/* BELOW the card since #718. These appear and disappear on every punch and change
           length between "You’re on the clock." and "Clocked out — your hours are below." — so
@@ -235,12 +236,10 @@ export default async function CrewTime({
             {view.punches.map((p) => {
               const open = editing === String(p.id);
               return (
-                <div
+                <Card
                   key={p.id}
                   id={`punch-${p.id}`}
-                  className={`flex flex-col rounded-card border bg-card shadow-sm ${
-                    open ? "border-accent" : "border-line"
-                  }`}
+                  pad="none" edge={open ? "accent" : "line"} className="flex flex-col"
                 >
                   {/* The row. Tapping it opens THIS one for editing — and because the
                       open editor is keyed to `?edit=<id>`, opening one closes any other
@@ -283,7 +282,7 @@ export default async function CrewTime({
                       draft={draft}
                     />
                   )}
-                </div>
+                </Card>
               );
             })}
 
@@ -307,18 +306,18 @@ export default async function CrewTime({
             of dozen rows, so it's already reachable, and a sticky bar would cost a
             permanent strip of a 375px screen and crowd the VersionTag. */}
         {sp.add ? (
-          <div id="punch-new" className="rounded-card border border-accent bg-card shadow-sm">
+          <Card id="punch-new" edge="accent" pad="none">
             <PunchForm mode="add" day={today} draft={draft} />
-          </div>
+          </Card>
         ) : (
           !anyOpen && (
-            <AppLink
+            <Card
               href="/crew/time?add=1#punch-new"
               prefetch={false}
-              className="flex min-h-[52px] items-center justify-center rounded-card border border-line bg-card font-semibold text-ink shadow-sm"
+              as={AppLink} pad="none" className="flex min-h-[52px] items-center justify-center font-semibold text-ink"
             >
               Add hours
-            </AppLink>
+            </Card>
           )
         )}
       </section>

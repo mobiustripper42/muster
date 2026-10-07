@@ -15,8 +15,7 @@
  * degrades to a visible error state — the rest of the form (totals, gates) works without it,
  * which is also what keeps the e2e deterministic offline.
  *
- * Inputs use the tinted `bg-bg` fill (the #484 settings-form treatment) — a white input in a
- * white card is invisible; the app-wide #484 decision stays open.
+ * Fields, cards and notices are the shared `components/ui` ones (issue #484).
  *
  * **Built from `components/checkout/` since 16.1d** (issue #1092): the contact fields, tip tiles,
  * money summary and pay bar are shared with the operator's phone booking, so the two surfaces
@@ -43,6 +42,8 @@ import { TipTiles } from "../../../../components/checkout/tip-tiles";
 import { usePaymentLock } from "../../../../components/checkout/payment-lock";
 import { startElementsCheckout } from "./actions";
 import { startPaymentLinkCheckout } from "../../p/[token]/actions";
+import { Card, Well } from "../../../../components/ui/card";
+import { Notice } from "../../../../components/ui/notice";
 
 /**
  * The gift-card / discount row, rendered inert until that feature exists. Hoisted so the
@@ -336,18 +337,19 @@ function InnerForm(p: InnerProps) {
             />
           // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
           ) : p.stripeFailed ? (
-            <div className="rounded-card border border-bad-line bg-bad-bg px-4 py-3 text-sm text-bad" data-testid="stripe-error">
+            <Notice tone="bad" data-testid="stripe-error">
               The payment form couldn&rsquo;t load. Check your connection and reload — you have
               not been charged.
-            </div>
+            </Notice>
           ) : (
-            <div
-              className="flex items-center gap-2 rounded-card border border-line bg-bg px-4 py-6 text-sm text-muted"
-              data-testid="stripe-loading"
-            >
-              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-accent" />
-              Loading secure payment…
-            </div>
+            // The inner `py-4` on the well's own `py-2` holds the space the payment form will
+            // take, so the page does not jump when Stripe mounts it.
+            <Well data-testid="stripe-loading">
+              <div className="flex items-center gap-2 py-4 text-sm text-muted">
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-accent" />
+                Loading secure payment…
+              </div>
+            </Well>
           )}
         </div>
 
@@ -403,7 +405,7 @@ function InnerForm(p: InnerProps) {
           className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center bg-card/70 pt-24"
           data-testid="checkout-busy"
         >
-          <div className="flex items-center gap-2.5 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
+          <Card className="flex items-center gap-2.5">
             {/* Same shape as `submit-button.tsx` and `nav-spinner.tsx` — one idiom for "working",
                 not a third. Decorative; the sentence beside it carries the meaning. */}
             <span
@@ -411,7 +413,7 @@ function InnerForm(p: InnerProps) {
               className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-[3px] border-accent border-r-transparent"
             />
             <span className="text-sm font-medium text-ink">Taking payment — don&rsquo;t close this page.</span>
-          </div>
+          </Card>
         </div>
       )}
 
@@ -421,9 +423,9 @@ function InnerForm(p: InnerProps) {
               the sticky pay bar, so it is in view at any scroll position — but nothing announced
               it. On the last screen before money moves, a customer using a screen reader got the
               same silence this issue is about. */}
-          <div role="alert" className="rounded-card border border-bad-line bg-bad-bg px-4 py-3 text-sm text-bad" data-testid="checkout-error">
+          <Notice role="alert" tone="bad" data-testid="checkout-error">
             {error}
-          </div>
+          </Notice>
         </div>
       )}
 

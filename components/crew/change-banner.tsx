@@ -2,6 +2,7 @@ import type { ChangeBanner } from "@core/crewapp/shift-changes.js";
 import { shiftStartHHmm } from "@core/adapters/change-summary.js";
 import { fmt12, fmtRunWhen } from "../../app/lib/format";
 import { SubmitButton } from "../ui/submit-button";
+import { Card } from "../ui/card";
 
 /**
  * "This shift changed" — what moved since this crew member last looked (#769, DEC-158).
@@ -42,9 +43,9 @@ export function ChangeBanner({
   const tripsMoved = banner.tripsBefore !== null && banner.tripsAfter !== null;
 
   return (
-    <section
+    <Card
       data-testid="change-banner"
-      className="flex flex-col gap-3 rounded-card border border-accent bg-card px-4 py-4 shadow-sm"
+      as="section" edge="accent" className="flex flex-col gap-3"
     >
       {/* One sentence, never a count (#766). It used to read "changed twice" / "changed N times"
           off a row count, which two overlapping re-forms could inflate — one change recorded
@@ -84,7 +85,7 @@ export function ChangeBanner({
           <SubmitButton className="btn-primary min-h-[44px]">Got it</SubmitButton>
         </form>
       </div>
-    </section>
+    </Card>
   );
 }
 

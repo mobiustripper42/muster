@@ -1,4 +1,5 @@
 import type { InputHTMLAttributes, Ref, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import { join } from "./join";
 
 /**
  * The one field (issue #484). Every `<input>` and `<textarea>` a person types into, and every
@@ -34,10 +35,6 @@ const TEXTAREA_DENSITY: Record<FieldDensity, string> = {
   touch: "px-3 py-2 text-base",
   dense: "px-2 py-1.5 text-sm",
 };
-
-function join(...parts: (string | undefined)[]): string {
-  return parts.filter(Boolean).join(" ");
-}
 
 export function Input({
   density = "touch",

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useFormStatus } from "react-dom";
 import { ADD_CHILD, REMOVE_CHILD } from "./child-intent";
 import { DateOfBirth, type DobParts } from "./date-of-birth";
-import { card } from "./form-look";
+import { Card } from "../../../components/ui/card";
 import { Field } from "../../../components/ui/field";
 import { Input } from "../../../components/ui/input";
 
@@ -33,7 +33,7 @@ import { Input } from "../../../components/ui/input";
 
 const CHILD_FIELDS: DobParts = { month: "childMonth", day: "childDay", year: "childYear" };
 
-type Card = { key: number; name: string; added: boolean } & DobParts;
+type ChildCard = { key: number; name: string; added: boolean } & DobParts;
 
 export function ChildCards({
   initial,
@@ -48,7 +48,7 @@ export function ChildCards({
   years: number[];
   ageOfMajority: number;
 }) {
-  const [cards, setCards] = useState<Card[]>(() => initial.map((c, i) => ({ ...c, key: i, added: false })));
+  const [cards, setCards] = useState<ChildCard[]>(() => initial.map((c, i) => ({ ...c, key: i, added: false })));
   const nextKey = useRef(initial.length);
   const { pending } = useFormStatus();
   const addButton = useRef<HTMLButtonElement>(null);
@@ -79,7 +79,7 @@ export function ChildCards({
   return (
     <>
       {cards.map((c, i) => (
-        <section key={c.key} className={card}>
+        <Card key={c.key} as="section" className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Minor {i + 1}</h2>
             {/* `formNoValidate`: removing a card must not be blocked by a blank field in it. */}
@@ -100,7 +100,7 @@ export function ChildCards({
             <Input id={`child-name-${i}`} name="childName" required maxLength={100} defaultValue={c.name} autoFocus={c.added} className="w-full" />
           </Field>
           <DateOfBirth names={CHILD_FIELDS} years={years} defaults={c} label={`Minor ${i + 1}’s date of birth`} />
-        </section>
+        </Card>
       ))}
       <div className="flex flex-col gap-2">
         {cards.length < max ? (

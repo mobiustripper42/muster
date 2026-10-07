@@ -7,6 +7,7 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/abandonment (14.8, SPEC §2.8.8) — every checkout that claimed a boat and walked away.
@@ -116,7 +117,7 @@ export default async function AdminAbandonment() {
             is a hash, not the cookie itself.
           </p>
 
-          <div className="overflow-x-auto rounded-card border border-line bg-card">
+          <Card pad="none" className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-line text-xs uppercase text-muted">
                 <tr>
@@ -161,7 +162,7 @@ export default async function AdminAbandonment() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </Card>
 
         </>
       )}
@@ -172,10 +173,10 @@ export default async function AdminAbandonment() {
 /** One header number. `note` carries the arithmetic, so the figure above it needs no explaining. */
 function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div className="rounded-card border border-line bg-card px-4 py-3">
+    <Card>
       <div className="text-xs uppercase text-muted">{label}</div>
       <div className="text-lg font-semibold text-ink">{value}</div>
       {note && <div className="text-xs text-muted">{note}</div>}
-    </div>
+    </Card>
   );
 }

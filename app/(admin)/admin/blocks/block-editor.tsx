@@ -8,6 +8,7 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { AppLink } from "../../../../components/ui/app-link";
 import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { saveBlock, liftBlock } from "./actions";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * The /admin/blocks create/edit panel (task 12.10, DEC-125; reason-first since issue #1091) — a
@@ -95,7 +96,7 @@ export function BlockEditor({
   );
 
   return (
-    <aside className="self-start rounded-card border border-line bg-card shadow-sm min-[1080px]:sticky min-[1080px]:top-4">
+    <Card as="aside" pad="none" className="self-start min-[1080px]:sticky min-[1080px]:top-4">
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">{choice ? TITLE[choice] : "New block"}</h2>
         {editing && (
@@ -280,7 +281,7 @@ export function BlockEditor({
           )}
         </div>
       )}
-    </aside>
+    </Card>
   );
 }
 

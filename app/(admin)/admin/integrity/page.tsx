@@ -12,6 +12,7 @@ import {
   loadCountedAboveCheckedIn,
   type CountedAboveRow,
 } from "@core/checkin/departure.js";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/integrity (#501) — the detective control the no-FK schema is predicated on.
@@ -177,7 +178,7 @@ function Result({ view, countedAbove }: { view: IntegrityView; countedAbove: Cou
           </h2>
           {/* Ids are long and unbreakable; let the table scroll rather than
               blowing out the page width on a phone. */}
-          <div className="overflow-x-auto rounded-card border border-line bg-card">
+          <Card pad="none" className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-line text-xs uppercase text-muted">
                 <tr>
@@ -200,7 +201,7 @@ function Result({ view, countedAbove }: { view: IntegrityView; countedAbove: Cou
                 ))}
               </tbody>
             </table>
-          </div>
+          </Card>
         </section>
       ))}
 
@@ -210,14 +211,14 @@ function Result({ view, countedAbove }: { view: IntegrityView; countedAbove: Cou
           identical without these numbers. */}
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold text-ink">Scanned</h2>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-card border border-line bg-card px-4 py-3 text-sm sm:grid-cols-3">
+        <Card as="dl" className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
           {view.scanned.map((s) => (
             <div key={s.entity} className="flex items-baseline justify-between gap-2">
               <dt className="text-muted">{s.entity}</dt>
               <dd className="font-mono text-xs text-ink">{s.rows.toLocaleString()}</dd>
             </div>
           ))}
-        </dl>
+        </Card>
       </section>
     </>
   );

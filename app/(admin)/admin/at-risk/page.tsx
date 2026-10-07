@@ -261,24 +261,28 @@ function ttLabel(h: number): string {
   return `${Math.floor(whole / 24)}d ${whole % 24}h to trip`;
 }
 
+// The inner `py-7` on top of the Notice's own `py-3` keeps the empty state roomy: padding added
+// inside, never a second padding class on the box (`components/ui/card.tsx` says why).
 function EmptySuccess() {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-card border border-ok-line bg-ok-bg px-6 py-10 text-center">
-      <div className="text-2xl text-ok" aria-hidden>
-        ✓
+    <Notice tone="ok">
+      <div className="flex flex-col items-center gap-2 py-7 text-center">
+        <div className="text-2xl text-ok" aria-hidden>
+          ✓
+        </div>
+        <h2 className="text-lg font-semibold text-ink">
+          Nothing needs you right now.
+        </h2>
+        <p className="max-w-md text-sm text-muted">
+          Every shift is crewed or still being worked by the automation. An empty
+          board is the system doing its job — not a reminder to go check
+          something.
+        </p>
+        <p className="text-xs text-muted">
+          Tiers 1–2 will summon you here only if a shift genuinely can’t be
+          closed.
+        </p>
       </div>
-      <h2 className="text-lg font-semibold text-ink">
-        Nothing needs you right now.
-      </h2>
-      <p className="max-w-md text-sm text-muted">
-        Every shift is crewed or still being worked by the automation. An empty
-        board is the system doing its job — not a reminder to go check
-        something.
-      </p>
-      <p className="text-xs text-muted">
-        Tiers 1–2 will summon you here only if a shift genuinely can’t be
-        closed.
-      </p>
-    </div>
+    </Notice>
   );
 }

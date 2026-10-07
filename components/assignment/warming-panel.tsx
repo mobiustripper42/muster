@@ -1,4 +1,5 @@
 import { AppLink } from "../ui/app-link";
+import { Card } from "../ui/card";
 
 /**
  * The warming view (SPEC §2.4, #55, DEC-027 §3) — shifts trending toward risk,
@@ -50,7 +51,7 @@ export function WarmingPanel({
     );
   }
   return (
-    <section className="flex flex-col gap-2 rounded-card border border-line bg-card p-4 shadow-sm">
+    <Card as="section" className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <div>
           {/* Section kicker scale (9.8) — matches the seat-card kicker. */}
@@ -105,6 +106,6 @@ export function WarmingPanel({
           ))}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }

@@ -16,6 +16,7 @@ import type { FormDraft } from "../../../lib/form-draft";
 import { vesselHueClass } from "../../../lib/vessel-hue";
 import { PriceVariationsEditor } from "./price-variations-editor";
 import { DepartureTimesEditor } from "./departure-times-editor";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * The /admin/offerings editor sections (task 12.8, DEC-123), split out of `page.tsx` to keep
@@ -54,13 +55,13 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section id={id} className="scroll-mt-4 rounded-card border border-line bg-card shadow-sm">
+    <Card id={id} as="section" pad="none" className="scroll-mt-4">
       <div className="flex items-baseline gap-3 border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">{title}</h2>
         <span className="ml-auto text-right text-xs text-muted">{hint}</span>
       </div>
       <div className="px-4 py-1">{children}</div>
-    </section>
+    </Card>
   );
 }
 

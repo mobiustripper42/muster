@@ -36,6 +36,7 @@ import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 import { holdSlot, releaseHold, type CalendarErr } from "./actions";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * The Day·Grid calendar surface (task 12.11, #464), shared by both calendar routes:
@@ -767,7 +768,7 @@ export function SlotPane({ data, bookErr }: { data: CalendarData; bookErr?: stri
         <Notice tone="bad">Blocked while you were booking — nothing was booked.</Notice>
       ) : null}
 
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-card border border-line bg-card px-4 py-3 text-sm">
+      <Card as="dl" className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
         {blocked ? (
           <>
             <dt className="text-muted">Blocked</dt>
@@ -783,7 +784,7 @@ export function SlotPane({ data, bookErr }: { data: CalendarData; bookErr?: stri
         ))}
         {!blocked ? <SlotRow label="Boat takes">{p.capacity} guests</SlotRow> : null}
         {!blocked && onWater ? <SlotRow label="On the water">{onWater}</SlotRow> : null}
-      </dl>
+      </Card>
 
       <div className="flex gap-3">
         {!blocked ? (
@@ -958,10 +959,8 @@ export function CalendarGrid({
   }
 
   return (
-    <div
-      className={`mt-2 overflow-hidden rounded-card border border-line bg-card shadow-sm ${
-        fill ? "lg:flex lg:min-h-[240px] lg:flex-1 lg:flex-col" : ""
-      }`}
+    <Card
+      pad="none" className={`mt-2 overflow-hidden ${fill ? "lg:flex lg:min-h-[240px] lg:flex-1 lg:flex-col" : ""}`}
     >
       {/* Opening a pane re-renders the page: bring the selected card back into view (#1104). */}
       <RevealSelectedCard selectedKey={selectedKey} />
@@ -1305,7 +1304,7 @@ export function CalendarGrid({
           })}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 

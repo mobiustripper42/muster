@@ -1,5 +1,6 @@
 import type { OtherShiftToday } from "@core/crewapp/other-shifts.js";
 import { fmt12 } from "../../app/lib/format";
+import { Card, Well } from "../ui/card";
 
 /**
  * "Other shifts today" (#315) — a no-JS `<details>` on the crew shift card that
@@ -16,7 +17,7 @@ import { fmt12 } from "../../app/lib/format";
 export function OtherShiftsToday({ shifts }: { shifts: OtherShiftToday[] }) {
   if (shifts.length === 0) return null;
   return (
-    <details className="group rounded-card border border-line bg-card px-4 pb-3">
+    <Card as="details" pad="none" className="group px-4 pb-3">
       <summary className="flex min-h-[44px] items-center justify-between text-sm font-semibold text-muted [&::-webkit-details-marker]:hidden">
         <span>
           Other shifts today
@@ -30,10 +31,7 @@ export function OtherShiftsToday({ shifts }: { shifts: OtherShiftToday[] }) {
       </summary>
       <div className="flex flex-col gap-2 pb-1">
         {shifts.map((s) => (
-          <div
-            key={s.shiftId}
-            className="rounded-card border border-line bg-bg px-3 py-2"
-          >
+          <Well key={s.shiftId}>
             {/* items-start (not baseline): the stacked time+trips on the right
                 would otherwise pull the boat name off a shared baseline. */}
             <div className="flex items-start justify-between gap-2">
@@ -56,9 +54,9 @@ export function OtherShiftsToday({ shifts }: { shifts: OtherShiftToday[] }) {
                 ? "Not crewed yet"
                 : s.crew.map((c) => c.name).join(", ")}
             </div>
-          </div>
+          </Well>
         ))}
       </div>
-    </details>
+    </Card>
   );
 }

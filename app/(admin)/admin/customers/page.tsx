@@ -12,6 +12,7 @@ import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { Input } from "../../../../components/ui/input";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/customers (task 12.12b, #465) — the contact list (DEC-123 §3, DEC-132).
@@ -110,7 +111,7 @@ export default async function AdminCustomers({
       )}
 
       {rows.length > 0 && (
-        <div className="mt-2 overflow-hidden rounded-card border border-line bg-card shadow-sm">
+        <Card pad="none" className="mt-2 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -147,7 +148,7 @@ export default async function AdminCustomers({
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Lifetime excludes tips on purpose — say so, so the number isn't misread as "collected". */}

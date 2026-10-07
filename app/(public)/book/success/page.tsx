@@ -39,6 +39,7 @@ import {
   SOLD_OUT_VIEW_COPY,
 } from "@core/reservations/booking-outcome-view.js";
 import type { BookingOutcome } from "@core/reservations/booking-outcome-view.js";
+import { Card } from "../../../../components/ui/card";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,7 +83,7 @@ export default async function BookingSuccessPage(props: {
   if (view.kind === "sold_out") {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
-        <div className="overflow-hidden rounded-[18px] border border-line bg-card shadow-sm">
+        <Card pad="none" className="overflow-hidden">
           <div className="border-b border-line px-6 py-7 text-center">
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-warn-bg text-2xl text-warn">
               !
@@ -104,14 +105,14 @@ export default async function BookingSuccessPage(props: {
               </AppLink>
             </div>
           </div>
-        </div>
+        </Card>
       </main>
     );
   }
 
   return (
     <main className="mx-auto max-w-lg px-4 py-16">
-      <div className="overflow-hidden rounded-[18px] border border-line bg-card shadow-sm">
+      <Card pad="none" className="overflow-hidden">
         <div className="border-b border-line bg-gradient-to-br from-ok-bg to-transparent px-6 py-7 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-ok-bg text-2xl text-ok">
             ✓
@@ -135,7 +136,7 @@ export default async function BookingSuccessPage(props: {
             </AppLink>
           </div>
         </div>
-      </div>
+      </Card>
     </main>
   );
 }

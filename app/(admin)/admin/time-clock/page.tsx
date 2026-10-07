@@ -32,6 +32,7 @@ import {
 import { Checkbox } from "../../../../components/ui/choice";
 import { Field } from "../../../../components/ui/field";
 import { Input, Select } from "../../../../components/ui/input";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/time-clock (#627, SPEC §2.9.5) — the operator's repair bench. Muster never
@@ -170,7 +171,7 @@ export default async function AdminTimeClock({
           belongs to neither the selected crew nor the selected day, and it is exactly
           the thing this page exists for (§2.9.5). */}
       {stale.length > 0 && (
-        <section className="flex flex-col gap-2 rounded-card border border-bad bg-card px-4 py-3 shadow-sm">
+        <Card as="section" edge="bad" className="flex flex-col gap-2">
           <h2 className="text-sm font-semibold text-bad">
             {stale.length} punch{stale.length === 1 ? "" : "es"} still open from an earlier day
           </h2>
@@ -188,7 +189,7 @@ export default async function AdminTimeClock({
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       )}
 
       {/* TABS, not two competing picker forms. Which view you're in has to be
@@ -234,7 +235,7 @@ export default async function AdminTimeClock({
 
       {/* The selected view's controls. Both selects navigate on change — no View
           button to press (the CrewSelect idiom, DEC-042 amendment). */}
-      <div className="flex flex-wrap items-end gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
+      <Card className="flex flex-wrap items-end gap-3">
         {dayMode ? (
           <>
             {/* Day nav: one step back, a picker, one step forward. The steps are plain
@@ -303,7 +304,7 @@ export default async function AdminTimeClock({
             </div>
           </form>
         )}
-      </div>
+      </Card>
 
       <section className="flex flex-col gap-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
@@ -380,15 +381,13 @@ function PunchCard({
    */
   const mine = draft && draft.get("punchId") === row.id ? draft : null;
   return (
-    <div
+    <Card
       // A countable hook for the bench's rows. Same reasoning as `data-active` on the admin nav:
       // a test that has to infer "how many punches are on screen" from a class string is a test
       // that breaks on a styling change. `payroll-reconcile.spec.ts` waits on this count after
       // each Add, because the redirect URL cannot tell two consecutive adds apart.
       data-punch-row={row.id}
-      className={`flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm ${
-        row.open ? "border-bad" : "border-line"
-      }`}
+      edge={row.open ? "bad" : "line"} className="flex flex-col gap-2"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="font-semibold text-ink">
@@ -471,7 +470,7 @@ function PunchCard({
           </SubmitButton>
         </form>
       </details>
-    </div>
+    </Card>
   );
 }
 
@@ -497,9 +496,9 @@ function AddPunchForm({
       <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
         Add a punch
       </h2>
-      <form
+      <Card
         action={addPunchAction}
-        className="flex flex-wrap items-end gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+        as="form" className="flex flex-wrap items-end gap-3"
       >
         <ContextFields context={context} />
         {/* One picker or the other — in the day view the day is fixed and you choose a
@@ -566,7 +565,7 @@ function AddPunchForm({
         <SubmitButton className="btn-primary min-h-[44px]">
           Add
         </SubmitButton>
-      </form>
+      </Card>
     </section>
   );
 }

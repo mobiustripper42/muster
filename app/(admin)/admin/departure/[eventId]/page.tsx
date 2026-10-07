@@ -10,6 +10,7 @@ import { VersionTag } from "../../../../../components/ui/version-tag";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../../lib/swallowed";
+import { Card, Well } from "../../../../../components/ui/card";
 
 /**
  * /admin/departure/[eventId] (Phase 18.8, issue #1122) — one departure's waivers, check-in and
@@ -86,14 +87,14 @@ export default async function DeparturePage({ params }: { params: Promise<{ even
           )}
         </header>
 
-        <Card title="Check-in">
+        <TitledCard title="Check-in">
           <p data-testid="count-line" className="text-sm text-ink">
             {view.countLine}
           </p>
           <p data-testid="numbers-line" className="text-sm text-ink">
             {view.numbersLine}
           </p>
-        </Card>
+        </TitledCard>
 
         {view.warning && (
           <div data-testid="departure-warning">
@@ -101,7 +102,7 @@ export default async function DeparturePage({ params }: { params: Promise<{ even
           </div>
         )}
 
-        <Card title="Signed">
+        <TitledCard title="Signed">
           {view.people.length === 0 ? (
             <p className="py-2 text-sm text-muted">Nobody has signed for this trip yet.</p>
           ) : (
@@ -111,10 +112,10 @@ export default async function DeparturePage({ params }: { params: Promise<{ even
               ))}
             </ul>
           )}
-        </Card>
+        </TitledCard>
 
         {view.versions.length > 0 && (
-          <Card title="Waiver text">
+          <TitledCard title="Waiver text">
             <ul className="flex flex-col divide-y divide-line">
               {view.versions.map((v) => (
                 <li key={v.id} className="py-2">
@@ -127,7 +128,7 @@ export default async function DeparturePage({ params }: { params: Promise<{ even
                 </li>
               ))}
             </ul>
-          </Card>
+          </TitledCard>
         )}
       </div>
 
@@ -136,14 +137,14 @@ export default async function DeparturePage({ params }: { params: Promise<{ even
   );
 }
 
-function Card({ title, children }: { title: string; children: ReactNode }) {
+function TitledCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section aria-label={title} className="rounded-card border border-line bg-card shadow-sm">
+    <Card aria-label={title} as="section" pad="none">
       <div className="border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">{title}</h2>
       </div>
       <div className="flex flex-col gap-1 px-4 py-3">{children}</div>
-    </section>
+    </Card>
   );
 }
 
@@ -167,7 +168,7 @@ function PersonRow({ p }: { p: DeparturePerson }) {
         </summary>
         <div className="flex flex-col gap-3">
           {p.signings.map((s) => (
-            <dl key={s.guestId} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 rounded-card border border-line bg-bg px-3 py-2 text-sm">
+            <Well key={s.guestId} as="dl" className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
               {p.signings.length > 1 && <div className="col-span-2 text-xs font-semibold text-muted">{s.heading}</div>}
               {s.rows.map((r) => (
                 <div key={r.label} className="contents">
@@ -175,7 +176,7 @@ function PersonRow({ p }: { p: DeparturePerson }) {
                   <dd className="break-words text-ink">{r.value}</dd>
                 </div>
               ))}
-            </dl>
+            </Well>
           ))}
         </div>
       </details>

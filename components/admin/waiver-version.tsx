@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Well } from "../ui/card";
 
 /**
  * A waiver version's words exactly as stored — line breaks kept, nothing rendered as markup. Shared
@@ -10,9 +11,9 @@ export function WaiverVersionText({ version, body, meta }: { version: string; bo
     <div className="flex flex-col gap-2 py-3">
       <p className="text-sm font-medium text-ink">{version}</p>
       <p className="text-xs text-muted">{meta}</p>
-      <div className="max-h-[420px] overflow-y-auto whitespace-pre-wrap break-words rounded-card border border-line bg-bg p-3 text-sm text-ink">
+      <Well className="max-h-[420px] overflow-y-auto whitespace-pre-wrap break-words text-sm text-ink">
         {body}
-      </div>
+      </Well>
     </div>
   );
 }

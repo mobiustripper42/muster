@@ -2,6 +2,7 @@ import { formatCents } from "@core/reservations/calendar-detail.js";
 import { AppLink } from "../../../../components/ui/app-link";
 import { RevealSelectedCard } from "../../../../components/admin/reveal-selected-card";
 import { vesselHueClass } from "../../../lib/vessel-hue";
+import { Card } from "../../../../components/ui/card";
 import {
   bookHref,
   calendarHref,
@@ -214,12 +215,10 @@ export function CalendarList({
     : "lg:grid-cols-[84px_110px_minmax(0,1.1fr)_120px_minmax(0,1.6fr)_72px_92px]";
 
   return (
-    <div
+    <Card
       data-testid="cal-list"
       data-cal-scroll
-      className={`mt-2 overflow-hidden rounded-card border border-line bg-card shadow-sm ${
-        narrow ? "lg:min-h-0 lg:flex-1 lg:overflow-y-auto" : ""
-      }`}
+      pad="none" className={`mt-2 overflow-hidden ${narrow ? "lg:min-h-0 lg:flex-1 lg:overflow-y-auto" : ""}`}
     >
       {/* Opening a pane re-renders the page: bring the selected row back into view (#1104). */}
       <RevealSelectedCard selectedKey={selected?.key ?? ""} />
@@ -325,7 +324,7 @@ export function CalendarList({
           </div>
         );
       })}
-    </div>
+    </Card>
   );
 }
 

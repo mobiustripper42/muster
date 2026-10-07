@@ -21,6 +21,7 @@ import {
   type BlockKind,
 } from "./block-sections";
 import { BlockEditor } from "./block-editor";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/blocks (task 12.10, DEC-125) — the single block registry, laid out to
@@ -293,7 +294,7 @@ export default async function AdminBlocks({
 
       <div className="mt-3 grid grid-cols-1 gap-4 min-[1080px]:grid-cols-[1fr_340px]">
         {/* Registry (master) */}
-        <div className="overflow-hidden rounded-card border border-line bg-card shadow-sm">
+        <Card pad="none" className="overflow-hidden">
           <div className={`hidden border-b border-line px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted min-[720px]:grid ${ROW_COLS} min-[720px]:gap-3`}>
             <div>What</div>
             <div>Which</div>
@@ -393,7 +394,7 @@ export default async function AdminBlocks({
               );
             })
           )}
-        </div>
+        </Card>
 
         {/* Create (aside) */}
         <BlockEditor

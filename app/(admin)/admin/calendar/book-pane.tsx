@@ -13,6 +13,7 @@ import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import type { BookErr } from "./book-actions";
 import { SlotHeader, bookHref, calendarHref, type CalendarData } from "./calendar-view";
 import { PhoneBookingForm } from "./phone-booking-form";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * Book by phone, in the calendar's pane (16.1, 16.1d, SPEC §2.10.6; issue #1104 part 3).
@@ -168,7 +169,7 @@ function PassengersStep({
         {data.view === "list" ? <input type="hidden" name="view" value="list" /> : null}
         <input type="hidden" name="hold" value={`${p.vesselId}|${p.time}`} />
         <input type="hidden" name="book" value="1" />
-        <div className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
+        <Card className="flex flex-col gap-3">
           {choices.length > 1 ? (
             <Field label="Cruise" htmlFor="book-offering">
               <Select id="book-offering" name="offering" defaultValue={String(offering.id)} className="w-full">
@@ -199,7 +200,7 @@ function PassengersStep({
               className="w-full"
             />
           </Field>
-        </div>
+        </Card>
         <div className="flex gap-3">
           <GetFormSubmit className="btn-primary flex-1">Continue</GetFormSubmit>
           {/* Back to the slot's own pane — Book it / Block it again. Nothing was written. */}
@@ -248,7 +249,7 @@ function CheckoutStep({
   return (
     <>
       {error ? <Notice tone="bad">{error}</Notice> : null}
-      <div className="flex flex-col rounded-card border border-line bg-card">
+      <Card pad="none" className="flex flex-col">
         {/* The trip, changeable — the public checkout's "Your trip" row. */}
         <div className="px-4 pt-4">
           <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Their trip</div>
@@ -279,7 +280,7 @@ function CheckoutStep({
           }}
           restored={draft !== null}
         />
-      </div>
+      </Card>
     </>
   );
 }

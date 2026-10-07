@@ -1,6 +1,7 @@
 import { AppLink } from "../ui/app-link";
 import { leanOn } from "../../app/(admin)/admin/at-risk/actions";
 import { SubmitButton } from "../ui/submit-button";
+import { Card } from "../ui/card";
 
 /**
  * One At-Risk board row (SPEC §2.5, #42) — enough to act without opening it:
@@ -91,7 +92,7 @@ function TrailLine({ trail }: { trail: RiskRowVM["trail"] }) {
 export function RiskRow({ row }: { row: RiskRowVM }) {
   const tone = TONE[row.flag.tone];
   return (
-    <article className="flex overflow-hidden rounded-card border border-line bg-card shadow-sm">
+    <Card as="article" pad="none" className="flex overflow-hidden">
       <div className={`w-1 shrink-0 ${tone.rail}`} aria-hidden />
       <div className="flex min-w-0 grow flex-col gap-2 p-4">
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
@@ -196,6 +197,6 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
           </span>
         </div>
       </div>
-    </article>
+    </Card>
   );
 }

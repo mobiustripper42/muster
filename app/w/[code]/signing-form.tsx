@@ -7,10 +7,11 @@ import type { FormDraft } from "../../lib/form-draft";
 import { signWaiver } from "./actions";
 import { ChildCards } from "./child-cards";
 import { DateOfBirth, type DobParts } from "./date-of-birth";
-import { card } from "./form-look";
 import { Checkbox } from "../../../components/ui/choice";
 import { Field } from "../../../components/ui/field";
 import { Input } from "../../../components/ui/input";
+import { Card, Well } from "../../../components/ui/card";
+import { Notice } from "../../../components/ui/notice";
 
 /**
  * The signing form (Phase 18.4): the guest's details, a card for each child they add, then the
@@ -76,12 +77,12 @@ export function SigningFormView({
       <input type="hidden" name="templateId" value={template.id} />
 
       {error && (
-        <p role="alert" className="rounded-card border border-bad-line bg-bad-bg px-3 py-2 text-sm text-bad">
+        <Notice role="alert" as="p" tone="bad">
           {error}
-        </p>
+        </Notice>
       )}
 
-      <section className={card}>
+      <Card as="section" className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold">Your details</h1>
           <p className="text-sm text-muted">You must be {ageOfMajority} or older to sign.</p>
@@ -104,7 +105,7 @@ export function SigningFormView({
         <Field label="Phone (optional)" htmlFor="sign-phone">
           <Input id="sign-phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" defaultValue={draft?.get("phone") ?? ""} className="w-full" />
         </Field>
-      </section>
+      </Card>
 
       <ChildCards
         initial={childCardsFrom(draft)}
@@ -113,12 +114,12 @@ export function SigningFormView({
         ageOfMajority={ageOfMajority}
       />
 
-      <section className={card}>
+      <Card as="section" className="flex flex-col gap-4">
         <h2 className="text-lg font-semibold">The agreement</h2>
         {/* In page flow — no scroll-to-bottom gate (§A1). Shown as written, line breaks kept. */}
-        <div className="whitespace-pre-wrap break-words rounded-card border border-line bg-bg p-3 text-sm text-ink">
+        <Well className="whitespace-pre-wrap break-words text-sm text-ink">
           {template.body}
-        </div>
+        </Well>
         <Checkbox name="consent" value="yes" required defaultChecked={draft?.has("consent") ?? false}>
           <span>{ESIGN_CONSENT_LINE}</span>
         </Checkbox>
@@ -128,7 +129,7 @@ export function SigningFormView({
           <p className="mt-1 text-muted">{ESIGN_CONSENT_TEXT}</p>
         </details>
         <SubmitButton className="btn-primary min-h-[52px] w-full">Sign</SubmitButton>
-      </section>
+      </Card>
     </form>
   );
 }

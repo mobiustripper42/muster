@@ -35,6 +35,7 @@ import { TENANT_NAME } from "../../../lib/tenant";
 import { logSwallowed } from "../../../lib/swallowed";
 import { CheckoutForm } from "../../book/checkout/checkout-form";
 import { cancelFromPaymentLink } from "./actions";
+import { Card } from "../../../../components/ui/card";
 
 export const dynamic = "force-dynamic";
 
@@ -113,7 +114,7 @@ export default async function PayPage({
   return (
     <main className="min-h-screen bg-bg px-3 py-6 sm:px-4 sm:py-8">
       <PaymentLockProvider>
-        <div className="mx-auto flex w-full max-w-[560px] flex-col overflow-hidden rounded-[18px] border border-line bg-card shadow-sm">
+        <Card pad="none" className="mx-auto flex w-full max-w-[560px] flex-col overflow-hidden">
           {/* header — the checkout's, with no ‹: there is no picker behind this page */}
           <div className="flex flex-none items-center gap-2.5 border-b border-line px-4 py-3">
             <div className="flex min-w-0 flex-col">
@@ -169,7 +170,7 @@ export default async function PayPage({
               <CancelBooking token={token} r={r} confirming={sp.cancel === "1"} failed={sp.cancelErr !== undefined} />
             </LockedWhilePaying>
           </div>
-        </div>
+        </Card>
       </PaymentLockProvider>
     </main>
   );
@@ -223,7 +224,7 @@ function Cancelled({ reservation: r }: { reservation: Reservation }) {
   const when = r.date && r.time ? `Your ${formatClock(r.time)} trip on ${formatShortDay(r.date)}` : "Your trip";
   return (
     <Shell>
-      <div data-testid="pay-state" className="overflow-hidden rounded-[18px] border border-line bg-card shadow-sm">
+      <Card data-testid="pay-state" pad="none" className="overflow-hidden">
         <div className="border-b border-line px-6 py-7 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-bg text-2xl text-muted">
             ✕
@@ -244,7 +245,7 @@ function Cancelled({ reservation: r }: { reservation: Reservation }) {
             </AppLink>
           </div>
         </div>
-      </div>
+      </Card>
     </Shell>
   );
 }

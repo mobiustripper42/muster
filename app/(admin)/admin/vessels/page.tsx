@@ -16,6 +16,7 @@ import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { HUE_COUNT, vesselHueClass, vesselHueIndex } from "../../../lib/vessel-hue";
 import { saveVessel, type VesselErr } from "./actions";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/vessels (task 12.9, DEC-123) — the Vessel settings twin, laid out to
@@ -153,7 +154,7 @@ export default async function AdminVessels({
         )}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
-          <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
+          <Card as="nav" pad="none" className="flex flex-col gap-0.5 self-start p-1.5">
             <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
               Vessels
             </p>
@@ -185,7 +186,7 @@ export default async function AdminVessels({
             >
               + New vessel
             </AppLink>
-          </nav>
+          </Card>
 
           <div className="flex flex-col gap-4">
             {(selected || creating) && (
@@ -322,7 +323,7 @@ function VesselCard({
 }) {
   const isNew = creating || !vessel;
   return (
-    <section className="rounded-card border border-line bg-card shadow-sm">
+    <Card as="section" pad="none">
       <div className="flex items-center gap-3 border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">Vessel</h2>
       </div>
@@ -394,7 +395,7 @@ function VesselCard({
           />
         </Field>
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -402,7 +403,7 @@ function VesselCard({
 function OfferingsSection({ vessel, offerings }: { vessel: Vessel; offerings: Offering[] }) {
   const runs = offerings.filter((o) => o.vesselIds.includes(vessel.id));
   return (
-    <section className="rounded-card border border-line bg-card shadow-sm">
+    <Card as="section" pad="none">
       <div className="border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">Offerings</h2>
       </div>
@@ -419,6 +420,6 @@ function OfferingsSection({ vessel, offerings }: { vessel: Vessel; offerings: Of
           </div>
         )}
       </div>
-    </section>
+    </Card>
   );
 }

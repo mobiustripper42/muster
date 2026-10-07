@@ -35,6 +35,7 @@ import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 import { CheckoutForm } from "./checkout-form";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
+import { Card } from "../../../../components/ui/card";
 
 export const dynamic = "force-dynamic";
 
@@ -270,7 +271,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
       {/* One lock for the whole screen while a payment is in flight (issue #1082 part A): the form
           turns it on, and the header's ‹ and the trip card's Change go inert with the form body. */}
       <PaymentLockProvider>
-      <div className="mx-auto flex w-full max-w-[560px] flex-col overflow-hidden rounded-[18px] border border-line bg-card shadow-sm">
+      <Card pad="none" className="mx-auto flex w-full max-w-[560px] flex-col overflow-hidden">
         {/* header — same shell as /book */}
         <LockedWhilePaying className="flex flex-none items-center gap-2.5 border-b border-line px-4 py-3">
           <AppLink
@@ -322,7 +323,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             cancellationTerms={CANCELLATION_TERMS}
           />
         </div>
-      </div>
+      </Card>
       </PaymentLockProvider>
     </main>
   );

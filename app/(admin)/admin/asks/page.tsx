@@ -16,6 +16,7 @@ import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { fmtRunWhen } from "../../../lib/format";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/asks — the crew audit trail (#400, DEC-118). ONE list of every event
@@ -106,14 +107,14 @@ function AuditRow({ row }: { row: AuditTrailRow }) {
         : null;
   const secondary = [row.actorLabel, row.detail, trip].filter(Boolean).join(" · ");
   return (
-    <div className="flex flex-col gap-1 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
+    <Card className="flex flex-col gap-1">
       <div className="flex items-start justify-between gap-3">
         <span className="font-medium text-ink">{row.crewName}</span>
         <KindTag kind={row.kind} />
       </div>
       {secondary && <span className="text-sm text-muted">{secondary}</span>}
       <span className="text-xs text-muted">{fmtRunWhen(row.timestamp)}</span>
-    </div>
+    </Card>
   );
 }
 
@@ -129,7 +130,7 @@ function KindTag({ kind }: { kind: AuditKind }) {
 /** Crew + kind filter — a native GET form (no JS, DEC-026). */
 function FilterForm({ crew, sp }: { crew: { id: string; name: string }[]; sp: Search }) {
   return (
-    <form method="get" className="flex flex-wrap items-end gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
+    <Card method="get" as="form" className="flex flex-wrap items-end gap-3">
       <div className="flex flex-col gap-1">
         <label htmlFor="crew" className="text-xs text-muted">
           Crew
@@ -167,7 +168,7 @@ function FilterForm({ crew, sp }: { crew: { id: string; name: string }[]; sp: Se
           Clear
         </AppLink>
       )}
-    </form>
+    </Card>
   );
 }
 

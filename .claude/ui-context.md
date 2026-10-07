@@ -30,6 +30,9 @@ Colors map straight to Tailwind utilities (`bg-*`, `text-*`, `border-*`):
   `<Radio>` / `<Chip>` / `<Swatch>` (`components/ui/choice.tsx`), and `<Field>`
   (`components/ui/field.tsx`). A raw `<input>`/`<textarea>`/`<select>` fails lint; a page passes
   layout only.
+- **Surfaces:** `<Card>` and `<Well>` (`components/ui/card.tsx`) and `<Notice>` (`components/ui/notice.tsx`)
+  — the white box, the grey inset that goes inside one, and the tinted message. A class string
+  holding a surface's radius and fill fails lint; padding is the `pad` prop, never a class.
 - **Brand/roles:** `accent` (#2f5d86), `captain` (#2f5d86), `mate` (#2f7d70).
 - **Status (each has a soft bg + line):** `ok`/`ok-bg`/`ok-line` (green), `warn`/`warn-bg`/`warn-line`
   (amber), `bad`/`bad-bg`/`bad-line` (red).

@@ -18,6 +18,7 @@ import { addMyTimeOff, removeMyTimeOff, setMyDaysOff, type CrewTimeOffErr } from
 import { Checkbox } from "../../../../components/ui/choice";
 import { Field } from "../../../../components/ui/field";
 import { Input } from "../../../../components/ui/input";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /crew/time-off (SPEC §2.1, DEC-009) — the crew member's own time off, two axes on
@@ -108,16 +109,16 @@ export default async function CrewTimeOff({
           <Notice>Nothing set — you’re available for asks on every date.</Notice>
         ) : (
           windows.map((w) => (
-            <div
+            <Card
               key={w.id}
-              className="flex items-center justify-between gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+              className="flex items-center justify-between gap-3"
             >
               <span className="font-medium text-ink">{fmtDateRange(w.start, w.end)}</span>
               <form action={removeMyTimeOff}>
                 <input type="hidden" name="id" value={w.id} />
                 <SubmitButton className="btn-quiet text-bad">Remove</SubmitButton>
               </form>
-            </div>
+            </Card>
           ))
         )}
       </section>
@@ -134,9 +135,9 @@ export default async function CrewTimeOff({
           Check the days you’re never available. You won’t be asked for shifts on
           them, every week until you change it.
         </p>
-        <form
+        <Card
           action={setMyDaysOff}
-          className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm"
+          as="form" className="flex flex-col gap-3"
         >
           {/* **Not `restored`, deliberately.** The draft is scoped to the SURFACE, but only
               `addMyTimeOff` ever writes one (`actions.ts:50`) — `setMyDaysOff` clears it on its
@@ -163,7 +164,7 @@ export default async function CrewTimeOff({
           <SubmitButton className="btn-primary min-h-[52px] w-full">
             Save
           </SubmitButton>
-        </form>
+        </Card>
       </section>
 
       <VersionTag />
@@ -183,7 +184,7 @@ function AddForm({
   draft: FormDraft | null;
 }) {
   return (
-    <form action={action} className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm">
+    <Card action={action} as="form" className="flex flex-col gap-3">
       <UnsavedGuard restored={draft !== null} />
       <h2 className="text-sm font-semibold text-ink">Add time off</h2>
       <Field label="First day off" htmlFor="start">
@@ -206,6 +207,6 @@ function AddForm({
       <SubmitButton className="btn-primary min-h-[52px] w-full">
         Add
       </SubmitButton>
-    </form>
+    </Card>
   );
 }

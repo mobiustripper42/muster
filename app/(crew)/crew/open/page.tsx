@@ -22,6 +22,7 @@ import { vesselHueClass } from "../../../lib/vessel-hue";
 import { claimSeat } from "./actions";
 import { Field } from "../../../../components/ui/field";
 import { Input } from "../../../../components/ui/input";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /crew/open (SPEC §2.7.1, DEC-074) — the crew-facing PULL surface, the 4th crew
@@ -276,7 +277,7 @@ function Filters({
   const chip = (active: boolean) =>
     `pressable inline-flex min-h-[44px] items-center rounded-full border px-4 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
   return (
-    <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
+    <Card className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <AppLink href="/crew/open" className={chip(label === "7d")}>
           7 Days
@@ -313,7 +314,7 @@ function Filters({
           Show
         </GetFormSubmit>
       </form>
-    </div>
+    </Card>
   );
 }
 
@@ -360,7 +361,7 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
   const tripCount = n > 0 ? `${n} trip${n === 1 ? "" : "s"}` : null;
   const facts = confirmFacts(row);
   return (
-    <details className="group overflow-hidden rounded-card border border-line bg-card shadow-sm">
+    <Card as="details" pad="none" className="group overflow-hidden">
       <summary className="flex min-h-[44px] items-start justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
         {/* Left: day over vessel · role. The role lives here, so the confirm copy
             below doesn't repeat "as captain". */}
@@ -408,7 +409,7 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
           </SubmitButton>
         </form>
       </div>
-    </details>
+    </Card>
   );
 }
 

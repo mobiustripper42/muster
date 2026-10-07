@@ -12,6 +12,8 @@ import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 import { TENANT_NAME } from "../../../lib/tenant";
 import { loadBookingByCode } from "../load";
+import { Card } from "../../../../components/ui/card";
+import { Notice } from "../../../../components/ui/notice";
 
 /**
  * /b/<code>/party — the booker's party page (Phase 18.6, issue #1120). Spec:
@@ -92,10 +94,10 @@ export default async function PartyPage({ params }: { params: Promise<{ code: st
       <p className="mb-6 text-center text-sm text-muted">{stillToSignLine(coverage.remaining)}</p>
 
       {names.length === 0 ? (
-        <p className="rounded-card border border-line bg-card px-4 py-3 text-sm text-muted">Nobody has signed yet.</p>
+        <Notice as="p">Nobody has signed yet.</Notice>
       ) : (
         // Every name, never "… 10 more" (§B): the booker is looking for who is missing.
-        <ul className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-card border border-line bg-card px-4 py-3" aria-label="Who has signed">
+        <Card as="ul" className="grid grid-cols-2 gap-x-4 gap-y-2" aria-label="Who has signed">
           {names.map((n, i) => (
             <li key={`${n.name}-${i}`} className="min-w-0 break-words text-sm text-ink">
               <span aria-hidden className="text-ok">
@@ -110,7 +112,7 @@ export default async function PartyPage({ params }: { params: Promise<{ code: st
               {n.age !== undefined && <span className="text-muted"> ({n.age})</span>}
             </li>
           ))}
-        </ul>
+        </Card>
       )}
 
       {sailed ? (

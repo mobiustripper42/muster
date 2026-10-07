@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { CrewHeader } from "../../../../components/crew/crew-header";
 import { Shell } from "../../../../components/ui/shell";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * Crew quick-start (Phase 10.6/10.7) — the "what is Muster / how to answer an
@@ -15,10 +16,10 @@ export const metadata: Metadata = { title: "How Muster works" };
 /** One labelled block — keeps the page a scannable stack, not a wall of prose. */
 function Block({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-1 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
+    <Card as="section" className="flex flex-col gap-1">
       <h2 className="text-sm font-semibold text-ink">{title}</h2>
       <div className="text-sm leading-relaxed text-muted">{children}</div>
-    </section>
+    </Card>
   );
 }
 

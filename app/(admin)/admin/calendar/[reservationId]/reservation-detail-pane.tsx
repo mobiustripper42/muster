@@ -18,6 +18,7 @@ import { PhoneBookingActions, type UnpaidActionState } from "./phone-booking-act
 import { paymentLinkSentMessage } from "./payment-link-message";
 import { Radio } from "../../../../../components/ui/choice";
 import { Input } from "../../../../../components/ui/input";
+import { Card } from "../../../../../components/ui/card";
 
 /**
  * Everything the actions block needs, resolved by the route (#616). Passed in rather than
@@ -356,12 +357,12 @@ function Row({
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function PaneCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section aria-label={title} className="rounded-card border border-line bg-card px-4 py-3">
+    <Card aria-label={title} as="section">
       <h3 className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-muted">{title}</h3>
       {children}
-    </section>
+    </Card>
   );
 }
 
@@ -470,18 +471,18 @@ export function ReservationDetailPane({
 
       {cancelled || !waivers ? null : <WaiversCard w={waivers} />}
 
-      <Card title="Contact">
+      <PaneCard title="Contact">
         <Row label="Mobile">
           {v.phone ? <span className="font-mono text-[13px]">{v.phone}</span> : <Faint>—</Faint>}
         </Row>
         <Row label="Email">
           {v.email ? <span className="break-all font-mono text-[12px]">{v.email}</span> : <Faint>—</Faint>}
         </Row>
-      </Card>
+      </PaneCard>
 
-      <Card title="Money">
+      <PaneCard title="Money">
         <MoneyRows v={v} />
-      </Card>
+      </PaneCard>
 
       {balance ? <BalanceLink v={v} balance={balance} /> : null}
 
@@ -512,7 +513,7 @@ function JustBooked({ v, linkSent }: { v: ReservationDetailView; linkSent: strin
 
 function TripCard({ v }: { v: ReservationDetailView }) {
   return (
-    <Card title="Trip">
+    <PaneCard title="Trip">
       {v.offeringName && <Row label="Cruise">{v.offeringName}</Row>}
       <Row label="Guests">
         {v.guestCount}
@@ -526,7 +527,7 @@ function TripCard({ v }: { v: ReservationDetailView }) {
           </AppLink>
         </Row>
       )}
-    </Card>
+    </PaneCard>
   );
 }
 
@@ -544,7 +545,7 @@ export interface WaiverCardView {
  */
 function WaiversCard({ w }: { w: WaiverCardView }) {
   return (
-    <Card title="Waivers">
+    <PaneCard title="Waivers">
       <Row label="Signed">{w.signed}</Row>
       <Row label="Counted">{w.counted}</Row>
       <div className="pt-1">
@@ -552,7 +553,7 @@ function WaiversCard({ w }: { w: WaiverCardView }) {
           See waivers ›
         </AppLink>
       </div>
-    </Card>
+    </PaneCard>
   );
 }
 

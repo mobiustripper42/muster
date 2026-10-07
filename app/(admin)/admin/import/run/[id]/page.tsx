@@ -9,6 +9,7 @@ import { readSubject } from "../../../../../lib/auth";
 import { fmt12, fmtRunWhen, IMPORT_SOURCE_LABEL } from "../../../../../lib/format";
 import { getRepo } from "../../../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../../../lib/swallowed";
+import { Card } from "../../../../../../components/ui/card";
 
 /**
  * Import-run detail (#128, DEC-056) — what one Xola import actually did. The
@@ -77,7 +78,7 @@ export default async function ImportRunView({
       </header>
 
       {/* The headline counts. */}
-      <div className="rounded-card border border-line bg-card px-4 py-3 text-sm text-ink">
+      <Card className="text-sm text-ink">
         Pulled <b>{s.ordersFetched}</b> order{plural(s.ordersFetched)} ·{" "}
         <b>{s.reservationsAdded}</b> new, <b>{s.reservationsUpdated}</b> updated,{" "}
         <b>{s.reservationsNewlyCancelled}</b> newly cancelled · <b>{s.eventsCreated}</b>{" "}
@@ -89,7 +90,7 @@ export default async function ImportRunView({
           </>
         )}
         .
-      </div>
+      </Card>
 
       {/* Actionable alerts — only when they fired. */}
       {s.unmappedResources.length > 0 && (
@@ -166,9 +167,9 @@ export default async function ImportRunView({
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-semibold text-ink">Assignments by day</h2>
           {s.assignments.map((day) => (
-            <div
+            <Card
               key={day.date}
-              className="rounded-card border border-line bg-card px-4 py-2 text-sm"
+              className="text-sm"
             >
               <div className="font-semibold text-ink">{fmtDate(day.date)}</div>
               {day.boats.length === 0 ? (
@@ -181,7 +182,7 @@ export default async function ImportRunView({
                   </div>
                 ))
               )}
-            </div>
+            </Card>
           ))}
         </section>
       )}

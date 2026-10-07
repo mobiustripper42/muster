@@ -14,6 +14,7 @@ import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { saveLocation, type LocationErr } from "./actions";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/locations (task 12.9, DEC-123) — the Location settings twin, laid out to
@@ -109,7 +110,7 @@ export default async function AdminLocations({
         )}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
-          <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
+          <Card as="nav" pad="none" className="flex flex-col gap-0.5 self-start p-1.5">
             <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
               Locations
             </p>
@@ -141,7 +142,7 @@ export default async function AdminLocations({
             >
               + New location
             </AppLink>
-          </nav>
+          </Card>
 
           <div className="flex flex-col gap-4">
             {(selected || creating) && <LocationCard location={selected} draft={draft} />}
@@ -163,7 +164,7 @@ export default async function AdminLocations({
  */
 function LocationCard({ location, draft }: { location: Location | null; draft: FormDraft | null }) {
   return (
-    <section className="rounded-card border border-line bg-card shadow-sm">
+    <Card as="section" pad="none">
       <div className="flex items-center gap-3 border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">Location</h2>
       </div>
@@ -206,7 +207,7 @@ function LocationCard({ location, draft }: { location: Location | null; draft: F
           />
         </Field>
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -214,7 +215,7 @@ function LocationCard({ location, draft }: { location: Location | null; draft: F
 function OfferingsSection({ location, offerings }: { location: Location; offerings: Offering[] }) {
   const used = offerings.filter((o) => o.locationId === location.id);
   return (
-    <section className="rounded-card border border-line bg-card shadow-sm">
+    <Card as="section" pad="none">
       <div className="border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">Offerings</h2>
       </div>
@@ -231,6 +232,6 @@ function OfferingsSection({ location, offerings }: { location: Location; offerin
           </div>
         )}
       </div>
-    </section>
+    </Card>
   );
 }

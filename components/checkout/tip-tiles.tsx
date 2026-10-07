@@ -34,7 +34,7 @@ export function TipTiles({
             data-testid={`tip-${t.bps}`}
             aria-pressed={t.bps === selectedBps}
             onClick={() => onSelect(t.bps)}
-            className={`rounded-xl border px-1 py-2.5 text-center ${
+            className={`rounded-box border px-1 py-2.5 text-center ${
               t.bps === selectedBps ? "border-accent bg-accent/5 ring-1 ring-accent" : "border-line bg-card"
             }`}
           >

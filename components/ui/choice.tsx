@@ -54,7 +54,7 @@ const FACE_FOCUS =
 const CHIP_FACE =
   "flex select-none items-center gap-1.5 rounded-full border border-line-strong bg-card px-3 py-1 text-sm text-muted peer-checked:border-ink peer-checked:bg-ink peer-checked:font-medium peer-checked:text-white";
 const SWATCH_FACE =
-  "block h-7 w-7 rounded-lg border border-ink/10 peer-checked:outline peer-checked:outline-2 peer-checked:outline-offset-2 peer-checked:outline-accent";
+  "block h-7 w-7 rounded-box border border-ink/10 peer-checked:outline peer-checked:outline-2 peer-checked:outline-offset-2 peer-checked:outline-accent";
 // A swatch already says "selected" with the ring FACE_FOCUS would draw, so focus on the selected
 // swatch — where Tab lands in a radio group — changed nothing on screen (@ui-reviewer). Focus
 // here is a second ring outside it instead: one ring is selected, two is selected and focused.

@@ -80,7 +80,7 @@ export function NavSpinner({
 
   return (
     <span
-      className={`absolute inset-0 z-10 flex items-center justify-center rounded-card bg-card/70 ${className ?? ""}`}
+      className={`absolute inset-0 z-10 flex items-center justify-center rounded-box bg-card/70 ${className ?? ""}`}
     >
       {ring}
     </span>

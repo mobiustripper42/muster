@@ -18,7 +18,7 @@ import {
 } from "./actions";
 import { Input } from "../../../../components/ui/input";
 import { Field } from "../../../../components/ui/field";
-import { Card } from "../../../../components/ui/card";
+import { Card, Well } from "../../../../components/ui/card";
 
 /**
  * /crew/calendar (#355, DEC-098) — the crew member's calendar-sync control. Mint a
@@ -145,7 +145,7 @@ export default async function CrewCalendar() {
  *  mobile-primary, so Apple gets the iPhone flow; Google's "From URL" is web-only. */
 function AddInstructions() {
   return (
-    <div className="rounded-lg border border-line bg-bg px-3 py-2 text-xs text-muted">
+    <Well className="text-xs text-muted">
       <p className="font-semibold text-ink">Add it to your calendar</p>
       <ul className="mt-1 flex list-disc flex-col gap-1 pl-4">
         <li>
@@ -162,6 +162,6 @@ function AddInstructions() {
         new or changed shift appears the next time your calendar app checks in —
         Apple refreshes as often as you set it; Google can take a few hours.
       </p>
-    </div>
+    </Well>
   );
 }

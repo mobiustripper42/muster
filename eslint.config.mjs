@@ -296,20 +296,22 @@ const RAW_FIELD_SELECTORS = [
  * **There is no element to key on**, unlike the field rule — a card is a `div`, a `section`, a
  * `nav`, a `details`, a link. So these read the class string, the way #951's `text-faint` rule
  * does, as a `Literal` and as a `TemplateElement`. A string is flagged when it holds a surface's
- * radius AND its fill: `rounded-card` (or the public pages' old `rounded-[18px]`) with `bg-card`,
+ * radius AND its fill: `rounded-box` (`rounded-card` when this was written) with `bg-card`,
  * with a tinted `bg-ok-bg`/`bg-bad-bg`/`bg-warn-bg`, or with the page grey `bg-bg`. A fill must be
  * a whole class — `hover:bg-card` is a state, not a fill, and `bg-card/70` is the spinner's veil.
  * (`\x2f` is `/`: esquery ends a regex at the first slash, escaped or not.)
  *
  * **What it cannot see**, and why the issue closes with a gap audit: the radius and the fill in
- * two different strings — `` `rounded-card border px-4 ${tone}` `` with the fill in `tone` — or
+ * two different strings — `` `rounded-box border px-4 ${tone}` `` with the fill in `tone` — or
  * the look rebuilt from other tokens. Both were swept by hand here; the rule holds what is
  * written as one string, which is how nearly all of it was.
  *
- * `input.tsx` is exempt alongside the three components: the field look is `rounded-card` and
+ * `input.tsx` is exempt alongside the three components: the field look is `rounded-box` and
  * `bg-card` too, and is not a card.
  */
-const SURFACE_RADIUS = "(?=[\\s\\S]*\\brounded-(?:card|\\[18px\\]))";
+// Any other radius is refused by the radius rule below, so the box radius is the only one a
+// surface can be written with — `rounded-[18px]`, the public pages' old sheet, left with part 5.
+const SURFACE_RADIUS = "(?=[\\s\\S]*\\brounded-box\\b)";
 const surfaceFill = (fill) => `(?=[\\s\\S]*(?<!\\S)${fill}(?![\\w\\x2f-]))`;
 const surfaceSelectors = (fill, message) => [
   { selector: `Literal[value=/^${SURFACE_RADIUS}${surfaceFill(fill)}/]`, message },
@@ -328,10 +330,46 @@ const SURFACE_SELECTORS = [
   ...surfaceSelectors("bg-bg(?:\\x2f\\d+)?", WELL_MESSAGE),
 ];
 
+/**
+ * ## One radius (issue #484, part 5)
+ *
+ * Every box in the app has the same corner: `rounded-box`, `--radius-box` in `app/globals.css`.
+ * A box is anything that holds something — a card, a notice, a well, a field, a button, a menu,
+ * a list row, a calendar block. Before this, boxes were drawn at eight radii from 3px to 14px,
+ * which is the drift a single shared component cannot stop on its own: the card, the field and
+ * the button were each one look, and every box that was none of them picked its own corner.
+ * `rounded-full` stays for a pill or a round dot, and `rounded-none` for undoing one.
+ *
+ * **Marks are the exception, by design.** A mark is a decoration under 20px — a legend key, a
+ * role glyph, a seat pip, the block-type dot, a tiny uppercase badge. It is not a box and does
+ * not share the box radius: 8px turns a 10px legend key into a dot and an 18px glyph into a
+ * coin. A mark keeps the radius it was drawn with and says so where it is drawn, with an
+ * `eslint-disable-next-line no-restricted-syntax` reading `mark (issue #484)` — so
+ * `grep -rn "mark (issue #484)" app components` lists every one, and a new mark has to declare
+ * itself to get past this rule. The role glyph is a component, so its file is exempt instead
+ * (the block naming `components/ui/role-glyph.tsx` below).
+ *
+ * Like the surface rule, this reads the class string as a `Literal` and a `TemplateElement`. It
+ * matches a whole class token — `rounded`, with any side (`rounded-t-…`) and any value,
+ * arbitrary or dynamic (`rounded-[9px]`, `rounded-${x}`) — and lets through only `box`, `full`
+ * and `none`. Bare `rounded` is a real class, so a prose string with the word in it ("totals are
+ * rounded to the cent") would trip it too; none does today, and a disable saying so is the fix.
+ */
+const RADIUS_TOKEN_REST = "[\\w\\[\\].%-]";
+const RADIUS_TOKEN =
+  `(?<![\\w-])rounded(?=[-\\s]|$)(?!${RADIUS_TOKEN_REST}*-(?:box|full|none)(?!${RADIUS_TOKEN_REST}))`;
+const RADIUS_MESSAGE =
+  "One radius for every box (issue #484): rounded-box for a card, field, button, menu, notice or list row; rounded-full for a pill or a round dot. A mark — a decoration under 20px such as a legend key, a role glyph or a tiny badge — keeps its own radius: add an eslint-disable-next-line no-restricted-syntax saying `mark (issue #484)`.";
+const RADIUS_SELECTORS = [
+  { selector: `Literal[value=/${RADIUS_TOKEN}/]`, message: RADIUS_MESSAGE },
+  { selector: `TemplateElement[value.cooked=/${RADIUS_TOKEN}/]`, message: RADIUS_MESSAGE },
+];
+
 const APP_SELECTORS = [
   RAW_SUBMIT_SELECTOR,
   ...RAW_FIELD_SELECTORS,
   ...SURFACE_SELECTORS,
+  ...RADIUS_SELECTORS,
   ...BUTTON_KIND_SELECTORS,
   APP_CATCH_SELECTOR,
   REDIRECT_IN_TRY_SELECTOR,
@@ -854,7 +892,7 @@ export default tseslint.config(
     },
   },
   {
-    // The field look is `rounded-card` and `bg-card` too, so `input.tsx` is subtracted from
+    // The field look is `rounded-box` and `bg-card` too, so `input.tsx` is subtracted from
     // the surface rule as well as the field one. One block, because flat config replaces a
     // rule's options per file rather than merging them: two blocks would leave only the last.
     files: ["components/ui/input.tsx"],
@@ -872,6 +910,18 @@ export default tseslint.config(
       "no-restricted-syntax": [
         "error",
         ...APP_SELECTORS.filter((s) => !SURFACE_SELECTORS.includes(s)),
+      ],
+    },
+  },
+  {
+    // The role glyph is a mark, not a box (issue #484, part 5): an 18px square keeps its own
+    // radius. It is the one mark that is a component, so its file is exempt from the radius rule
+    // and every other mark carries a `mark (issue #484)` disable where it is drawn.
+    files: ["components/ui/role-glyph.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...APP_SELECTORS.filter((s) => !RADIUS_SELECTORS.includes(s)),
       ],
     },
   },

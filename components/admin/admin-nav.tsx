@@ -222,13 +222,13 @@ export function AdminNav({
                 {/* Absolutely positioned: a panel in normal flow grows the sticky bar past the
                     52px `shell.tsx` subtracts, and the e2e height assertion would catch it. */}
                 {/* eslint-disable-next-line no-restricted-syntax -- a menu, not a card: it floats over the page (issue #1163 owns menus). */}
-                <div className="absolute right-0 top-full z-30 mt-2 flex min-w-44 flex-col gap-1 rounded-card border border-line bg-card p-2 shadow-lg">
+                <div className="absolute right-0 top-full z-30 mt-2 flex min-w-44 flex-col gap-1 rounded-box border border-line bg-card p-2 shadow-lg">
                   {g.links.map((l) => (
                     <AppLink
                       key={l.href}
                       href={l.href}
                       aria-current={isActive(l.href) ? "page" : undefined}
-                      className={`whitespace-nowrap rounded-lg px-2 py-1.5 ${isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"}`}
+                      className={`whitespace-nowrap rounded-box px-2 py-1.5 ${isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"}`}
                     >
                       {l.label}
                     </AppLink>
@@ -254,8 +254,8 @@ export function AdminNav({
               </span>
             </summary>
             {/* eslint-disable-next-line no-restricted-syntax -- a menu, not a card: it floats over the page (issue #1163 owns menus). */}
-            <div className="absolute right-0 top-full z-30 mt-2 flex min-w-44 flex-col gap-1 rounded-card border border-line bg-card p-2 shadow-lg">
-              <AccountActions className="whitespace-nowrap rounded-lg px-2 py-1.5 text-left" />
+            <div className="absolute right-0 top-full z-30 mt-2 flex min-w-44 flex-col gap-1 rounded-box border border-line bg-card p-2 shadow-lg">
+              <AccountActions className="whitespace-nowrap rounded-box px-2 py-1.5 text-left" />
             </div>
           </details>
         </div>
@@ -267,7 +267,7 @@ export function AdminNav({
           aria-label="Open menu"
           aria-expanded={open}
           aria-controls="admin-drawer"
-          className="-mr-1 flex size-[44px] items-center justify-center rounded-lg text-ink lg:hidden"
+          className="-mr-1 flex size-[44px] items-center justify-center rounded-box text-ink lg:hidden"
         >
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
             <path d="M4 6h14M4 11h14M4 16h14" />
@@ -309,7 +309,7 @@ export function AdminNav({
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Close menu"
-              className="flex size-[44px] items-center justify-center rounded-lg text-muted"
+              className="flex size-[44px] items-center justify-center rounded-box text-muted"
             >
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M5 5l10 10M15 5L5 15" />
@@ -324,7 +324,7 @@ export function AdminNav({
               key={l.href}
               href={l.href}
               aria-current={isActive(l.href) ? "page" : undefined}
-              className={`flex items-center gap-2 rounded-lg px-3 py-3 text-base ${
+              className={`flex items-center gap-2 rounded-box px-3 py-3 text-base ${
                 isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"
               }`}
             >
@@ -343,7 +343,7 @@ export function AdminNav({
                 <details key={g.label} name="admin-drawer" className="group border-t border-line">
                   <summary
                     data-active={holdsActive ? "" : undefined}
-                    className="flex list-none items-center justify-between rounded-lg px-3 py-3 text-base text-ink"
+                    className="flex list-none items-center justify-between rounded-box px-3 py-3 text-base text-ink"
                   >
                     <span className={holdsActive ? "font-semibold text-accent" : undefined}>{g.label}</span>
                     <span aria-hidden className="text-xs text-muted transition-transform group-open:rotate-180 motion-reduce:transition-none">
@@ -355,7 +355,7 @@ export function AdminNav({
                       key={l.href}
                       href={l.href}
                       aria-current={isActive(l.href) ? "page" : undefined}
-                      className={`flex items-center gap-2 rounded-lg py-3 pl-6 pr-3 text-base ${
+                      className={`flex items-center gap-2 rounded-box py-3 pl-6 pr-3 text-base ${
                         isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"
                       }`}
                     >
@@ -373,7 +373,7 @@ export function AdminNav({
               `mt-auto` pins it to the foot of the panel however short the link list is, so a
               mis-tap at the end of the groups cannot land on Sign out. */}
           <div className="mt-auto flex flex-col gap-1 border-t border-line pt-2">
-            <AccountActions className="flex min-h-[44px] items-center rounded-lg px-3 py-3 text-base" />
+            <AccountActions className="flex min-h-[44px] items-center rounded-box px-3 py-3 text-base" />
           </div>
         </div>
       </div>

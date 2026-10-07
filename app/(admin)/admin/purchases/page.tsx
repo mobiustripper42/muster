@@ -189,7 +189,7 @@ export default async function AdminPurchases({
         {query && (
           <AppLink
             href={hrefWith({ q: "" })}
-            className="rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-muted"
+            className="btn-secondary btn-sm"
           >
             Clear
           </AppLink>
@@ -205,7 +205,7 @@ export default async function AdminPurchases({
               href={hrefWith({ state: s.key })}
               aria-current={active ? "page" : undefined}
               data-testid={`state-${s.key}`}
-              className={`rounded-lg border px-2.5 py-1 text-xs ${
+              className={`rounded-box border px-2.5 py-1 text-xs ${
                 active ? "border-ink bg-ink font-medium text-white" : "border-line bg-card text-muted"
               }`}
             >
@@ -283,6 +283,7 @@ export default async function AdminPurchases({
                     <td className="px-3 py-2">
                       <span
                         data-testid={`row-state-${r.reservationId}`}
+                        // eslint-disable-next-line no-restricted-syntax -- mark (issue #484): a 10px badge keeps its 4px corner
                         className={`inline-block rounded border px-1.5 py-px text-[10px] uppercase tracking-wide ${BADGE[r.state]}`}
                       >
                         {BADGE_TEXT[r.state] ?? r.state}

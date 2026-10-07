@@ -58,7 +58,11 @@ export function KindPill({ kind }: { kind: BlockKind }) {
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${meta.pill}`}
     >
-      <span className={`inline-block h-1.5 w-1.5 rounded-sm ${meta.dot}`} aria-hidden />
+      <span
+        // eslint-disable-next-line no-restricted-syntax -- mark (issue #484): a 6px square dot keeps its corner
+        className={`inline-block h-1.5 w-1.5 rounded-sm ${meta.dot}`}
+        aria-hidden
+      />
       {meta.label}
     </span>
   );

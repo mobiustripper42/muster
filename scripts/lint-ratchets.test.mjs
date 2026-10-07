@@ -132,7 +132,7 @@ const CASES = [
       // `disabled:text-faint` WAS a good case here (WCAG 1.4.3 exempts an inactive control). It
       // moved to the #1103 case below as a BAD one: disabled styling is now set once in
       // globals.css, so any hand-written `disabled:` class is refused, faint or not.
-      ['<div className="rounded-card border border-faint" />;', "a border is not text"],
+      ['<div className="rounded-box border border-faint" />;', "a border is not text"],
       ['<span className="bg-faint" />;', "a fill is not text"],
       ['<p className="text-muted">faint is 2.36:1</p>;', "the word alone, with no class attached"],
     ],
@@ -146,19 +146,48 @@ const CASES = [
     rule: "an action button names its kind; pointer and disabled are never hand-written (#1103)",
     filePath: "app/(admin)/admin/probe/page.tsx",
     bad: [
-      ['<SubmitButton className="rounded-card bg-accent px-4 text-white">Save</SubmitButton>;', "no kind"],
+      ['<SubmitButton className="rounded-box bg-accent px-4 text-white">Save</SubmitButton>;', "no kind"],
       ["<SubmitButton>Save</SubmitButton>;", "no className at all"],
       ["<GetFormSubmit className={cls}>Show</GetFormSubmit>;", "a class the guard cannot read, via a variable"],
       ['<DirtySubmit className="min-h-[44px] bg-ok text-white">Save</DirtySubmit>;', "the wrapper that slipped past once"],
-      ['<a href="/x" className="rounded-lg bg-accent px-4 text-white">Go</a>;', "a link dressed as a filled button"],
+      ['<a href="/x" className="rounded-box bg-accent px-4 text-white">Go</a>;', "a link dressed as a filled button"],
       ['<button type="button" className="cursor-pointer">x</button>;', "a hand-written pointer"],
       ['<button disabled className="text-xs disabled:text-faint">Go</button>;', "a hand-written disabled style"],
     ],
     good: [
       ['<SubmitButton className="btn-primary w-full">Save</SubmitButton>;', "a kind plus layout"],
       ['<SubmitButton className={x ? "btn-secondary" : "btn-danger"}>Go</SubmitButton>;', "a ternary of kinds"],
-      ['<button type="button" className="rounded-xl border border-line px-1">15%</button>;', "a selection tile"],
+      ['<button type="button" className="rounded-box border border-line px-1">15%</button>;', "a selection tile"],
       ['<AppLink href="/x" className="btn-quiet text-xs">Change</AppLink>;', "a quiet link keeping its size"],
+    ],
+  },
+  {
+    /**
+     * One radius (issue #484, part 5). Every box is `rounded-box`; the `good` cases are the three
+     * other shapes the rule must let through — a pill, an undo, and a mark that declares itself —
+     * plus the word in copy, which a token match that ignored word boundaries would eat.
+     */
+    rule: "one radius for every box (issue #484)",
+    filePath: "app/(admin)/admin/probe/page.tsx",
+    bad: [
+      ['<div className="rounded-lg border" />;', "a Tailwind scale radius"],
+      ['<div className="rounded-[9px] border" />;', "an arbitrary radius"],
+      ['<span className="rounded border px-1" />;', "bare `rounded` — Tailwind's own 4px"],
+      ['<div className="rounded-t-lg" />;', "a side variant"],
+      ['<div className="sm:rounded-xl" />;', "behind a variant prefix"],
+      ["<div className={`rounded-${size} border`} />;", "a dynamic radius, in a template literal"],
+      ['<div className="rounded-card border" />;', "the old card name, gone with the rename"],
+    ],
+    good: [
+      ['<div className="rounded-box border" />;', "the box radius"],
+      ['<div className="rounded-t-box border-b" />;', "one side of the box radius"],
+      ['<span className="rounded-full bg-ok px-2" />;', "a pill"],
+      ['<div className="rounded-box sm:rounded-none" />;', "undoing one"],
+      [
+        '// eslint-disable-next-line no-restricted-syntax -- mark (issue #484)\nconst KEY = "h-2.5 w-2.5 rounded-[3px] border";',
+        "a mark that declares itself",
+      ],
+      ["<p>Rounded corners everywhere</p>;", "the word in copy, which is JSX text and not a class"],
     ],
   },
 ];
@@ -248,5 +277,27 @@ describe("components/ui primitives keep every ban except the raw-submit one", ()
   it("and that exemption is theirs alone — an ordinary component still gets it", async () => {
     const found = await violations('<button type="submit">Go</button>;', "components/probe.tsx");
     expect(found).not.toHaveLength(0);
+  });
+});
+
+/**
+ * The role glyph is the one mark that is a component, so its FILE is exempt from the radius
+ * rule (issue #484, part 5) — by the same one-selector subtraction as the primitives above.
+ * Pinned from both sides: the exemption reaches nothing else in that file, and no other file.
+ */
+describe("role-glyph.tsx is exempt from the radius rule and nothing else", () => {
+  const GLYPH = "components/ui/role-glyph.tsx";
+  const MARK = 'const c = "h-[18px] w-[18px] rounded-[5px]";';
+
+  it("stays quiet on the glyph's own corner", async () => {
+    expect(await violations(MARK, GLYPH)).toHaveLength(0);
+  });
+
+  it("still fires on #951's token ban there", async () => {
+    expect(await violations('const c = "text-faint";', GLYPH)).not.toHaveLength(0);
+  });
+
+  it("and the exemption is that file's alone", async () => {
+    expect(await violations(MARK, "components/probe.tsx")).not.toHaveLength(0);
   });
 });

@@ -57,7 +57,7 @@ export function CrewMenu({
   current?: string;
 }) {
   const rowClass =
-    "flex min-h-[44px] items-center rounded-lg px-3 py-3 text-base text-ink";
+    "flex min-h-[44px] items-center rounded-box px-3 py-3 text-base text-ink";
 
   return (
     <details
@@ -74,7 +74,7 @@ export function CrewMenu({
           `list-none` + the marker reset kills the default disclosure triangle in both engines. */}
       <summary
         aria-label="Open menu"
-        className="relative z-50 flex size-[44px] list-none items-center justify-center rounded-lg text-ink [&::-webkit-details-marker]:hidden"
+        className="relative z-50 flex size-[44px] list-none items-center justify-center rounded-box text-ink [&::-webkit-details-marker]:hidden"
       >
         {/* `group-open:z-50` puts the control ABOVE the panel. Without it, at 375px the panel
             (w-64, max-w-[80vw]) covers the top-right corner and there is NO visible way to close

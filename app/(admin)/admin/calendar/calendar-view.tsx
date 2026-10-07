@@ -114,6 +114,11 @@ const GUTTER_TICKS: { time: string; label: string }[] = [
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+// A legend key is a mark, not a box (issue #484, part 5): a 12px square keeps its small corner,
+// where the box radius would round it into a dot unlike the cards it labels.
+// eslint-disable-next-line no-restricted-syntax -- mark (issue #484)
+const LEGEND_KEY = "inline-block h-3 w-3 rounded-sm";
+
 /** Shift an ISO `yyyy-mm-dd` by whole days (UTC-safe). */
 export function addDays(date: string, delta: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + delta * 86_400_000)
@@ -589,7 +594,7 @@ export function CalendarControls({ data }: { data: CalendarData }) {
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2">
-      <div className="inline-flex overflow-hidden rounded-lg border border-line bg-card">
+      <div className="segmented">
         <AppLink
           href={calendarHref(data, { date: addDays(data.day, -1) })}
           aria-label="Previous day"
@@ -607,9 +612,11 @@ export function CalendarControls({ data }: { data: CalendarData }) {
       </div>
       <span className="min-w-[150px] text-sm font-medium text-ink">{formatFullDay(data.day)}</span>
       {data.day !== data.today && (
+        // A one-segment `.segmented`, not `btn-sm`: it sits in a row of segmented groups, and
+        // `btn-sm`'s 12px type left it 4px shorter than its neighbours (`@ui-reviewer`).
         <AppLink
           href={calendarHref(data, { date: data.today })}
-          className="rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-muted"
+          className="segmented px-3 py-1.5 text-sm text-muted"
         >
           Today
         </AppLink>
@@ -617,7 +624,7 @@ export function CalendarControls({ data }: { data: CalendarData }) {
 
       {/* Grid or List (16.1b, issue #1079): the same day, drawn as cards on boats or as one row per
           departure to sell from. Links, not state — the choice is in the URL and every link keeps it. */}
-      <div className="inline-flex overflow-hidden rounded-lg border border-line bg-card">
+      <div className="segmented">
         {(["grid", "list"] as const).map((v) => {
           const active = data.view === v;
           return (
@@ -638,7 +645,7 @@ export function CalendarControls({ data }: { data: CalendarData }) {
 
       <span className="flex-1" />
 
-      <div className="inline-flex overflow-hidden rounded-lg border border-line bg-card">
+      <div className="segmented">
         {FILTERS.map((f) => {
           const active = data.filter === f.key;
           return (
@@ -673,7 +680,7 @@ export function CalendarLegend({ data }: { data: CalendarData }) {
       {legendOfferings.map((o) => (
         <span key={String(o.id)} className="inline-flex items-center gap-1.5">
           <span
-            className={`inline-block h-3 w-3 rounded-sm ${offeringDotClass(String(o.id))}`}
+            className={`${LEGEND_KEY} ${offeringDotClass(String(o.id))}`}
             aria-hidden
           />
           {o.name}
@@ -681,14 +688,14 @@ export function CalendarLegend({ data }: { data: CalendarData }) {
       ))}
       <span className="inline-flex items-center gap-1.5">
         <span
-          className="inline-block h-3 w-3 rounded-sm border border-dashed border-faint"
+          className={`${LEGEND_KEY} border border-dashed border-faint`}
           aria-hidden
         />
         Open
       </span>
       <span className="inline-flex items-center gap-1.5">
         <span
-          className="inline-block h-3 w-3 rounded-sm border border-line"
+          className={`${LEGEND_KEY} border border-line`}
           style={{
             background:
               "repeating-linear-gradient(45deg, color-mix(in srgb, var(--color-faint) 24%, transparent) 0 3px, transparent 3px 6px)",
@@ -703,7 +710,7 @@ export function CalendarLegend({ data }: { data: CalendarData }) {
       {data.holdBySlot.size > 0 && (
         <span className="inline-flex items-center gap-1.5">
           <span
-            className="inline-block h-3 w-3 rounded-sm border border-accent/60"
+            className={`${LEGEND_KEY} border border-accent/60`}
             style={{
               background:
                 "repeating-linear-gradient(45deg, color-mix(in srgb, var(--color-faint) 24%, transparent) 0 3px, transparent 3px 6px)",
@@ -1083,7 +1090,7 @@ export function CalendarGrid({
                         </span>
                       </>
                     );
-                    const cls = `absolute flex flex-col justify-center overflow-hidden rounded-lg border px-2 py-1 ${offeringColorClass(
+                    const cls = `absolute flex flex-col justify-center overflow-hidden rounded-box border px-2 py-1 ${offeringColorClass(
                       String(s.offeringId),
                     )} ${selected ? "ring-2 ring-ink ring-offset-1" : ""}`;
 
@@ -1148,7 +1155,7 @@ export function CalendarGrid({
                     // and unsellable, but only one is the operator's own and undoable from
                     // here — if they looked identical the legend would be the only thing
                     // saying which dark cards click, and a legend is not where you look.
-                    const cls = `absolute flex items-center justify-center overflow-hidden rounded-lg border text-[10px] ${
+                    const cls = `absolute flex items-center justify-center overflow-hidden rounded-box border text-[10px] ${
                       hold ? "border-accent/60 font-medium text-accent" : "border-line text-muted"
                     }${askedRelease ? " ring-2 ring-ink ring-offset-1" : ""}`;
                     const style = {
@@ -1228,7 +1235,8 @@ export function CalendarGrid({
                         data-vessel={String(s.vesselId)}
                         data-status="awaiting-payment"
                         data-cal-selected={selectedAttr(selectedReservationId === String(phoneBooking.id))}
-                        className={`absolute flex flex-col justify-center overflow-hidden rounded-lg border border-dashed border-warn-line bg-warn-bg px-2 py-1 text-warn${
+                        // eslint-disable-next-line no-restricted-syntax -- a calendar block tinted for "Unpaid", not a message box: <Notice> has no absolute position or grid size (issue #484)
+                        className={`absolute flex flex-col justify-center overflow-hidden rounded-box border border-dashed border-warn-line bg-warn-bg px-2 py-1 text-warn${
                           selectedReservationId === String(phoneBooking.id) ? " ring-2 ring-ink ring-offset-1" : ""
                         }`}
                         style={pos}
@@ -1252,7 +1260,7 @@ export function CalendarGrid({
                         data-testid="cal-block"
                         data-vessel={String(s.vesselId)}
                         data-status={s.status}
-                        className={`absolute flex items-center justify-center overflow-hidden rounded-lg border text-[10px] ${
+                        className={`absolute flex items-center justify-center overflow-hidden rounded-box border text-[10px] ${
                           departed
                             ? "border-line border-dashed text-muted"
                             : "border-accent/60 font-medium text-accent"
@@ -1288,7 +1296,7 @@ export function CalendarGrid({
                       data-lane={laneCount > 1 ? `${lane + 1}/${laneCount}` : undefined}
                       // Which offering a sliver belongs to is the thing 1/n width takes away.
                       // The tint says it against the legend.
-                      className={`absolute flex items-center justify-center overflow-hidden rounded-lg border-2 border-dashed text-[10px] text-muted ${offeringOpenClass(
+                      className={`absolute flex items-center justify-center overflow-hidden rounded-box border-2 border-dashed text-[10px] text-muted ${offeringOpenClass(
                         String(s.offeringId),
                       )}${ring}`}
                       style={pos}

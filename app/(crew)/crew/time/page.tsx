@@ -519,7 +519,7 @@ function PunchForm({
  */
 /** The clock buttons' one class rule: green means LIVE, not "this is Clock in" (#718). */
 function clockBtn(live: boolean): string {
-  return `min-h-[52px] w-full rounded-card font-semibold ${
+  return `min-h-[52px] w-full rounded-box font-semibold ${
     live ? "bg-ok text-white" : "border border-line bg-bg text-muted"
   }`;
 }

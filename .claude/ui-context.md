@@ -24,8 +24,9 @@ philosophy), `docs/design/DESIGN-REFERENCE.md` (how to consume mockups), `docs/d
 ## Design tokens (utilities generated from `app/globals.css`)
 Colors map straight to Tailwind utilities (`bg-*`, `text-*`, `border-*`):
 - **Surfaces/ink:** `bg` (#eef2f6 page), `card` (#fff), `ink` (#101826), `muted` (#5b6675),
-  `faint` (#93a0b0), `line` (#e7ebf1 borders), `line-strong` (#7b8796 — form-control edges only,
-  fields and chips, 3:1 on card and page; not from the mockups, issue #484).
+  `faint` (#93a0b0), `line` (#e7ebf1 borders), `line-strong` (#7b8796 — control edges only:
+  fields, chips, `btn-secondary` and `.segmented`, 3:1 on card and page; not from the mockups,
+  issue #484). A white box with the pale `line` edge is a card; with `line-strong` it is a control.
 - **Form controls:** `<Input>` / `<Textarea>` / `<Select>` (`components/ui/input.tsx`), `<Checkbox>` /
   `<Radio>` / `<Chip>` / `<Swatch>` (`components/ui/choice.tsx`), and `<Field>`
   (`components/ui/field.tsx`). A raw `<input>`/`<textarea>`/`<select>` fails lint; a page passes
@@ -36,7 +37,11 @@ Colors map straight to Tailwind utilities (`bg-*`, `text-*`, `border-*`):
 - **Brand/roles:** `accent` (#2f5d86), `captain` (#2f5d86), `mate` (#2f7d70).
 - **Status (each has a soft bg + line):** `ok`/`ok-bg`/`ok-line` (green), `warn`/`warn-bg`/`warn-line`
   (amber), `bad`/`bad-bg`/`bad-line` (red).
-- **Radius:** `rounded-card` (14px) for cards/banners.
+- **Radius:** `rounded-box` (`--radius-box` in `app/globals.css`) for every box — card, notice,
+  well, field, button, menu, list row, calendar block — and `rounded-full` for a pill or round dot.
+  Any other radius fails lint. A **mark** (a decoration under 20px: legend key, role glyph, seat
+  pip, tiny badge) keeps its own radius and declares itself with a `mark (issue #484)` disable;
+  the role glyph's file is exempt instead. Not from the mockups — the operator's call (issue #484).
 Harvested from the mockups per DESIGN-REFERENCE — read values, re-express as tokens, never import.
 
 ## Voice (binding — from BRAND)

@@ -33,6 +33,7 @@ import { createContext, useContext, useEffect, useState, useTransition, type Rea
 import { useRouter } from "next/navigation";
 import { bookHref } from "@core/reservations/availability-screen.js";
 import { AppLink } from "../../../components/ui/app-link";
+import { Well } from "../../../components/ui/card";
 
 /** How long the stepper waits for the customer to stop tapping before it settles the URL. Long
  *  enough that a run of taps costs one navigation, short enough that a single tap doesn't feel
@@ -147,7 +148,7 @@ export function BookingProvider({
 export function GuestCard() {
   const { count, setCount, included, extraPriceCents, cap, baseCents, syncing } = useBooking();
   return (
-    <div className="rounded-[9px] border border-line bg-bg px-3 py-3" data-testid="guest-card">
+    <Well data-testid="guest-card">
       {/* No "you've got the whole boat" note. `Private charter` in the header says it, and the
           included/extra line below says what the money buys — the sentence between them was
           inventory language dressed as reassurance (operator, 2026-08-16). */}
@@ -158,7 +159,7 @@ export function GuestCard() {
           aria-label="Fewer guests"
           onClick={() => setCount(count - 1)}
           disabled={count <= 1}
-          className="h-[38px] w-[38px] rounded-[10px] border border-line bg-card text-xl leading-none text-ink"
+          className="btn-secondary size-[38px] p-0 text-xl leading-none"
         >
           −
         </button>
@@ -174,7 +175,7 @@ export function GuestCard() {
           aria-label="More guests"
           onClick={() => setCount(count + 1)}
           disabled={count >= cap}
-          className="h-[38px] w-[38px] rounded-[10px] border border-line bg-card text-xl leading-none text-ink"
+          className="btn-secondary size-[38px] p-0 text-xl leading-none"
         >
           +
         </button>
@@ -197,7 +198,7 @@ export function GuestCard() {
           {" "}
         </div>
       )}
-    </div>
+    </Well>
   );
 }
 

@@ -36,7 +36,7 @@ Knowing this prevents the most common wrong review — flagging restraint as unf
   are desktop-leaning but must not break on a phone.
 - **No component library** (DEC-021). Surfaces are hand-built from Tailwind v4 utilities.
   **Never flag the absence of shadcn or any component library** — it's a decision, not a gap.
-- **Locked identity:** the palette, IBM Plex Sans/Mono, and `rounded-card` radius are fixed. Don't
+- **Locked identity:** the palette, IBM Plex Sans/Mono, and the `rounded-box` radius are fixed. Don't
   propose a new palette, a signature element, an aesthetic risk, or motion.
 - **Empty states are successes**, not blanks — the At-Risk board's empty state is a success card,
   and that's the pattern.

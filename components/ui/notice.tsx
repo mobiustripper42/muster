@@ -33,7 +33,7 @@ export function Notice<T extends ElementType = "div">({
   return (
     <Tag
       {...props}
-      className={join("rounded-card border text-sm", pad === "normal" && "px-4 py-3", NOTICE_TONE[tone ?? "none"], className)}
+      className={join("rounded-box border text-sm", pad === "normal" && "px-4 py-3", NOTICE_TONE[tone ?? "none"], className)}
     />
   );
 }

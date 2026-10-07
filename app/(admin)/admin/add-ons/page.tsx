@@ -123,7 +123,7 @@ export default async function AdminAddOns({
                 key={a.id}
                 href={`/admin/add-ons?sel=${a.id}`}
                 aria-current={selected?.id === a.id ? "page" : undefined}
-                className={`block rounded-[9px] px-2.5 py-2 text-sm ${
+                className={`block rounded-box px-2.5 py-2 text-sm ${
                   selected?.id === a.id ? "bg-bg font-medium text-ink" : "text-muted"
                 }`}
               >
@@ -139,7 +139,7 @@ export default async function AdminAddOns({
             ))}
             <AppLink
               href="/admin/add-ons?sel=new"
-              className={`mx-0.5 mt-1.5 rounded-lg border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
+              className={`mx-0.5 mt-1.5 rounded-box border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
                 creating ? "font-medium" : ""
               }`}
             >

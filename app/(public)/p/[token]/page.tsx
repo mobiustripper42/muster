@@ -136,7 +136,7 @@ export default async function PayPage({
             {/* your trip — set by the operator, so no Change */}
             <div className="px-[18px] pt-4">
               <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Your trip</div>
-              <div className="rounded-xl border border-line px-3.5 py-3 text-sm" data-testid="pay-trip">
+              <div className="rounded-box border border-line px-3.5 py-3 text-sm" data-testid="pay-trip">
                 <b className="font-semibold">
                   {formatShortDay(r.date)} · {formatClock(r.time)}
                 </b>

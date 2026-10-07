@@ -176,7 +176,7 @@ Persistence is **Postgres behind the `Repository` port**: **local Postgres in de
 - **Cite a section in the form the gate can read: `` `docs/SPEC.md §2.4` ``** — path and section inside one pair of backticks, closing backtick ending the section name. That shape gets verified. A bare `(8.3)` in prose does not, and two of them sat here pointing at a section number SPEC stopped using; Split and Merge live under an unnumbered `### Actions`. The rule generalizes: **prefer the spelling the gate can check over the one that reads better**, because the difference is whether a stale reference announces itself or waits to be grepped.
 
 ### UI / Brand
-- Tokens are harvested from the mockups into `@theme` in `app/globals.css` (DEC-021) — colors, one card radius (`--radius-card: 14px` — deliberately a single value, not a scale; see `BRAND.md`). No color for color's sake. Binding constraints live in `.claude/ui-context.md`.
+- Tokens are harvested from the mockups into `@theme` in `app/globals.css` (DEC-021) — colors, one box radius (`--radius-box` in `app/globals.css` — deliberately a single value, not a scale, held by lint; marks excepted; see `docs/BRAND.md`). No color for color's sake. Binding constraints live in `.claude/ui-context.md`.
 - Font: IBM Plex Sans/Mono, loaded via next/font in `app/layout.tsx`.
 - Layout padding in `layout.tsx` only.
 - Every page works at 375px — eyeball at `mill-dev:3000` per `docs/RUNNING.md` (Playwright screenshots when that tooling lands).

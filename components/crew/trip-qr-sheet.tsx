@@ -49,7 +49,7 @@ export function TripQrSheet({
         role="dialog"
         aria-modal="true"
         aria-label="Scan to sign"
-        className="fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md flex-col items-center gap-4 rounded-t-card bg-white px-6 pb-24 pt-6 text-center"
+        className="fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md flex-col items-center gap-4 rounded-t-box bg-white px-6 pb-24 pt-6 text-center"
       >
         {url ? (
           <TripQr url={url} className="w-full max-w-[320px]" />

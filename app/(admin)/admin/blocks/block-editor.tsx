@@ -115,7 +115,7 @@ export function BlockEditor({
                 key={c.key}
                 type="button"
                 onClick={() => setChoice(c.key)}
-                className="flex select-none flex-col rounded-lg border border-line bg-card px-3 py-2 text-left text-sm font-medium text-ink hover:border-accent hover:bg-bg"
+                className="flex select-none flex-col rounded-box border border-line px-3 py-2 text-left text-sm font-medium text-ink hover:border-accent hover:bg-bg"
               >
                 {c.title}
                 <span className="text-xs font-normal text-muted">{c.sub}</span>

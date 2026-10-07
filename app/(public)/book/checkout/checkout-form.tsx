@@ -56,7 +56,7 @@ import { Notice } from "../../../../components/ui/notice";
  */
 const INERT_PROMO_ROW =
   // eslint-disable-next-line no-restricted-syntax -- inactive control, WCAG 1.4.3; see above
-  "flex items-center justify-between rounded-xl border border-dashed border-line px-3.5 py-3 text-[13px] text-faint";
+  "flex items-center justify-between rounded-box border border-dashed border-line px-3.5 py-3 text-[13px] text-faint";
 
 export interface CheckoutFormProps {
   publishableKey: string;
@@ -180,7 +180,7 @@ function BookedFor({ name, phoneLabel }: { name: string; phoneLabel: string }) {
   return (
     <div className="pt-4">
       <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Booked for</div>
-      <div className="rounded-xl border border-line px-3.5 py-3 text-sm" data-testid="booked-for">
+      <div className="rounded-box border border-line px-3.5 py-3 text-sm" data-testid="booked-for">
         <b className="font-semibold">{name}</b>
         <span className="text-muted"> · {phoneLabel}</span>
       </div>

@@ -51,6 +51,11 @@ export const dynamic = "force-dynamic";
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const DOW = ["S", "M", "T", "W", "T", "F", "S"];
 
+// A legend key is a mark, not a box (issue #484, part 5): a 10px square keeps its 3px corner,
+// where the box radius would round it into a dot unlike the day cells it labels.
+// eslint-disable-next-line no-restricted-syntax -- mark (issue #484)
+const LEGEND_KEY = "h-2.5 w-2.5 rounded-[3px] border";
+
 type Search = { offering?: string; date?: string; time?: string; guests?: string };
 
 const LABEL_TONE = { open: "text-ok", tight: "text-warn", sold: "text-muted" } as const;
@@ -263,7 +268,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
             <AppLink
               href={bookHref({})}
               aria-label="Back to cruises"
-              className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border border-line text-muted"
+              className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-box border border-line text-muted"
             >
               ‹
             </AppLink>
@@ -345,13 +350,13 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       href={bookHref({ offering: sp.offering, date: prev.first, guests: hrefGuests })}
                       scroll={false}
                       aria-label="Previous month"
-                      className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-line text-muted"
+                      className="flex h-[30px] w-[30px] items-center justify-center rounded-box border border-line text-muted"
                     >
                       ‹
                     </AppLink>
                   ) : (
                     // eslint-disable-next-line no-restricted-syntax -- the INACTIVE month arrow (#951). WCAG 1.4.3 exempts an inactive control, and the dimming is the only thing telling it apart from the live `›` beside it, which is `text-muted`.
-                    <span className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-line text-faint opacity-40">
+                    <span className="flex h-[30px] w-[30px] items-center justify-center rounded-box border border-line text-faint opacity-40">
                       ‹
                     </span>
                   )}
@@ -359,7 +364,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                     href={bookHref({ offering: sp.offering, date: next.first, guests: hrefGuests })}
                     scroll={false}
                     aria-label="Next month"
-                    className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-line text-muted"
+                    className="flex h-[30px] w-[30px] items-center justify-center rounded-box border border-line text-muted"
                   >
                     ›
                   </AppLink>
@@ -374,7 +379,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                 <div className="grid grid-cols-7 gap-1">
                   {calendar.days.map((c, i) => {
                     if (c.state === "blank") return <span key={i} className="aspect-square" />;
-                    const base = "flex aspect-square items-center justify-center rounded-[9px] text-[13px] tabular-nums";
+                    const base = "flex aspect-square items-center justify-center rounded-box text-[13px] tabular-nums";
                     if (c.state === "avail")
                       return (
                         <AppLink
@@ -443,23 +448,23 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                 </div>
                 <div className="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-muted">
                   <span className="inline-flex items-center gap-1.5">
-                    <i className="h-2.5 w-2.5 rounded-[3px] border border-ok-line bg-ok-bg" />
+                    <i className={`${LEGEND_KEY} border-ok-line bg-ok-bg`} />
                     Available
                   </span>
                   {/* No "Selected" key. A customer who can't tell which day they just tapped is
                       not helped by a legend entry — the filled accent cell either reads as
                       selected on its own or the cell is wrong (operator, 2026-08-16). */}
                   <span className="inline-flex items-center gap-1.5">
-                    <i className="h-2.5 w-2.5 rounded-[3px] border border-line bg-bg" />
+                    <i className={`${LEGEND_KEY} border-line bg-bg`} />
                     Sold out
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <i className="h-2.5 w-2.5 rounded-[3px] border border-dashed border-line bg-bg" />
+                    <i className={`${LEGEND_KEY} border-dashed border-line bg-bg`} />
                     Too big for {guests}
                   </span>
                   {monthHasPhoneDay && (
                     <span className="inline-flex items-center gap-1.5">
-                      <i className="h-2.5 w-2.5 rounded-[3px] border border-warn-line bg-warn-bg" />
+                      <i className={`${LEGEND_KEY} border-warn-line bg-warn-bg`} />
                       Call to book
                     </span>
                   )}
@@ -509,7 +514,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                           <div
                             key={r.time}
                             data-testid={`slot-${r.time}`}
-                            className="mb-2.5 flex items-center gap-3 rounded-xl border border-warn-line bg-card px-3.5 py-3"
+                            className="mb-2.5 flex items-center gap-3 rounded-box border border-warn-line px-3.5 py-3"
                           >
                             {inner}
                           </div>
@@ -519,7 +524,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                           <div
                             key={r.time}
                             data-testid={`slot-${r.time}`}
-                            className={`mb-2.5 flex items-center gap-3 rounded-xl border bg-card px-3.5 py-3 opacity-55 ${
+                            className={`mb-2.5 flex items-center gap-3 rounded-box border px-3.5 py-3 opacity-55 ${
                               r.soldOut ? "border-line" : "border-dashed border-line"
                             }`}
                           >
@@ -533,7 +538,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                           href={bookHref({ offering: sp.offering, date: selectedDate, time: r.time, guests: hrefGuests })}
                           scroll={false}
                           spinner="none"
-                          className={`mb-2.5 flex items-center gap-3 rounded-xl border bg-card px-3.5 py-3 ${
+                          className={`mb-2.5 flex items-center gap-3 rounded-box border px-3.5 py-3 ${
                             selected ? "border-accent bg-accent/5 ring-1 ring-accent" : "border-line hover:border-accent"
                           }`}
                         >

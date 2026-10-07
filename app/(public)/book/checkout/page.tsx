@@ -277,7 +277,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           <AppLink
             href={backHref(sp, date, time, guests)}
             aria-label="Back to date & time"
-            className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border border-line text-muted"
+            className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-box border border-line text-muted"
           >
             ‹
           </AppLink>
@@ -302,7 +302,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           {/* your trip — the picked slot, changeable (locked while paying, with the header) */}
           <LockedWhilePaying className="px-[18px] pt-4">
             <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Your trip</div>
-            <div className="flex items-center gap-2.5 rounded-xl border border-line px-3.5 py-3">
+            <div className="flex items-center gap-2.5 rounded-box border border-line px-3.5 py-3">
               <span className="flex-1 text-sm">
                 <b className="font-semibold">{dateTimeLabel}</b>
                 <span className="text-muted"> · {guests} {guests === 1 ? "guest" : "guests"}</span>

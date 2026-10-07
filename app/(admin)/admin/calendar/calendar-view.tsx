@@ -612,9 +612,11 @@ export function CalendarControls({ data }: { data: CalendarData }) {
       </div>
       <span className="min-w-[150px] text-sm font-medium text-ink">{formatFullDay(data.day)}</span>
       {data.day !== data.today && (
+        // A one-segment `.segmented`, not `btn-sm`: it sits in a row of segmented groups, and
+        // `btn-sm`'s 12px type left it 4px shorter than its neighbours (`@ui-reviewer`).
         <AppLink
           href={calendarHref(data, { date: data.today })}
-          className="btn-secondary btn-sm"
+          className="segmented px-3 py-1.5 text-sm text-muted"
         >
           Today
         </AppLink>

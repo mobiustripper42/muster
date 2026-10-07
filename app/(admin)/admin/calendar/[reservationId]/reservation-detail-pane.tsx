@@ -16,6 +16,7 @@ import {
 } from "./actions";
 import { PhoneBookingActions, type UnpaidActionState } from "./phone-booking-actions";
 import { paymentLinkSentMessage } from "./payment-link-message";
+import { Radio } from "../../../../../components/ui/choice";
 import { Input } from "../../../../../components/ui/input";
 
 /**
@@ -930,14 +931,16 @@ function PaneActions({
                   ["operator", "We cancelled — weather, crew, mechanical", actions.quoteOperatorCents],
                 ] as const
               ).map(([value, label, cents]) => (
-                <label
+                <Radio
                   key={value}
-                  className="flex min-h-[44px] items-center gap-2 border-b border-line py-1 last:border-0 text-sm text-ink"
+                  name="by"
+                  value={value}
+                  defaultChecked={value === actions.cancelBy}
+                  className="border-b border-line last:border-0"
                 >
-                  <input type="radio" name="by" value={value} defaultChecked={value === actions.cancelBy} />
                   <span className="flex-1">{label}</span>
-                  <span className="font-mono text-xs text-muted">{formatCents(cents)}</span>
-                </label>
+                  <span className="self-center font-mono text-xs text-muted">{formatCents(cents)}</span>
+                </Radio>
               ))}
             </fieldset>
 

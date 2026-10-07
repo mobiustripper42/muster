@@ -248,22 +248,24 @@ const BUTTON_KIND_SELECTORS = [
  * The sweep that opened #484 found the same field styled by four shared class strings and a
  * dozen one-offs, 28 of them white-on-white behind a near-white border — and the stopgap fix
  * on the settings screens had to be copied by hand to every page that wanted it, which none did.
- * `<Input>`, `<Textarea>` and `<Select>` (`components/ui/`) carry the one look; a page passes
- * layout only.
+ * `<Input>`, `<Textarea>` and `<Select>` (`components/ui/input.tsx`) carry the one field look,
+ * and `<Checkbox>`, `<Radio>`, `<Chip>` and `<Swatch>` (`components/ui/choice.tsx`) the one
+ * choice look; a page passes layout only.
  *
  * **Unlike the button rule, there is nothing to work out.** A `<button>` can be a link, a toggle
  * or a submit, so #1103 had to decide which one it was looking at. An `<input>` is always a form
- * control, so the rule is just "raw element". Two exemptions, both by `type`:
- *   - `hidden` — never rendered, nothing to style.
- *   - `checkbox` / `radio` — a different control; the Checkbox task removes this exemption.
- * Any other type is flagged, including `submit` and `file`, which nothing uses today: one that
- * appears later should be a decision, not a raw control nobody saw. A `type={expr}` cannot be
- * read here and is flagged too.
+ * control, so the rule is just "raw element". One exemption: `type="hidden"`, never rendered,
+ * nothing to style. A checkbox or radio gets its own message, pointing at the choice components
+ * rather than at `<Input>`. Any other type is flagged, including `submit` and `file`, which
+ * nothing uses today: one that appears later should be a decision, not a raw control nobody saw.
+ * A `type={expr}` cannot be read here and is flagged too.
  */
 const TEXT_CONTROL_MESSAGE =
   "Use <Input> or <Textarea> from components/ui (issue #484) — one field look for the whole app, so a style change is one edit. Pass layout only (width, font-mono) through className.";
 const SELECT_MESSAGE =
   "Use <Select> from components/ui (issue #484) — the same field look as <Input>, so a style change is one edit. Pick a density; pass layout only (width, font-mono) through className.";
+const CHOICE_MESSAGE =
+  "Use <Checkbox>, <Radio>, <Chip> or <Swatch> from components/ui/choice.tsx (issue #484) — one box size and one chip look for the whole app, and the label wraps its input so a tap anywhere on it toggles. Pass layout only through className.";
 const RAW_FIELD_SELECTORS = [
   {
     selector:
@@ -272,6 +274,11 @@ const RAW_FIELD_SELECTORS = [
       // borrow the nested element's exemption (`@code-review`; reproduced with esquery).
       "JSXOpeningElement[name.name='input']:not(:has(> JSXAttribute[name.name='type'][value.value=/^(hidden|checkbox|radio)$/]))",
     message: TEXT_CONTROL_MESSAGE,
+  },
+  {
+    selector:
+      "JSXOpeningElement[name.name='input']:has(> JSXAttribute[name.name='type'][value.value=/^(checkbox|radio)$/])",
+    message: CHOICE_MESSAGE,
   },
   { selector: "JSXOpeningElement[name.name='textarea']", message: TEXT_CONTROL_MESSAGE },
   // A `<select>` has no `type`, so there is nothing to exempt: every one is `<Select>`. The
@@ -791,10 +798,10 @@ export default tseslint.config(
     },
   },
   {
-    // `<Input>`, `<Textarea>` and `<Select>` wrap the raw elements the #484 rule refuses, so
-    // this file alone is exempt from THAT rule — subtracted, the same way the block above
-    // subtracts the submit rule, so every other selector still reaches it.
-    files: ["components/ui/input.tsx"],
+    // The field and choice components wrap the raw elements the #484 rule refuses, so these
+    // two files alone are exempt from THAT rule — subtracted, the same way the block above
+    // subtracts the submit rule, so every other selector still reaches them.
+    files: ["components/ui/input.tsx", "components/ui/choice.tsx"],
     rules: {
       "no-restricted-syntax": [
         "error",

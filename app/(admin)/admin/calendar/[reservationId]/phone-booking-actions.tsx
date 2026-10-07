@@ -2,6 +2,7 @@ import { PAYMENT_LINK_HOURS } from "@core/reservations/payment-link.js";
 import { AppLink } from "../../../../../components/ui/app-link";
 import { CopyButton } from "../../../../../components/ui/copy-button";
 import { Notice } from "../../../../../components/ui/notice";
+import { Radio } from "../../../../../components/ui/choice";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { errCopyFor } from "../../../../lib/err-copy";
 import { cancelPhoneBooking, sendPaymentLinkAgain, type PhoneCancelErr } from "./actions";
@@ -138,13 +139,15 @@ function CancelControl({ reservationId, state }: { reservationId: string; state:
             ["operator", "We cancelled"],
           ] as const
         ).map(([value, label]) => (
-          <label
+          <Radio
             key={value}
-            className="flex min-h-[44px] items-center gap-2 border-b border-line py-1 text-sm text-ink last:border-0"
+            name="by"
+            value={value}
+            defaultChecked={value === "customer"}
+            className="border-b border-line last:border-0"
           >
-            <input type="radio" name="by" value={value} defaultChecked={value === "customer"} />
             {label}
-          </label>
+          </Radio>
         ))}
       </fieldset>
       <div className="flex gap-2">

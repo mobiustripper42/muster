@@ -29,6 +29,7 @@ import {
   editPunchAction,
   type TimeClockErr,
 } from "./actions";
+import { Checkbox } from "../../../../components/ui/choice";
 import { Field } from "../../../../components/ui/field";
 import { Input, Select } from "../../../../components/ui/input";
 
@@ -439,19 +440,18 @@ function PunchCard({
         {/* An evening trip that lands after midnight is ONE punch on the earlier day
             (§2.9.6), so the out time needs to be able to say "next day". Explicit, not
             inferred from out < in — that would turn a typo into a paid 16 hours. */}
-        <label className="flex items-center gap-2 pb-2 text-sm text-muted">
-          <input
-            type="checkbox"
-            name="outNextDay"
-            value="1"
-            // `has`, never `??`: an unticked box posts nothing, and that nothing is the
-            // operator's answer. Falling back to the stored value here would silently re-tick
-            // the box they had just cleared — on a form that decides how many hours get paid.
-            defaultChecked={mine ? mine.has("outNextDay") : row.outIsNextDay}
-            className="h-5 w-5"
-          />
+        <Checkbox
+          density="dense"
+          name="outNextDay"
+          value="1"
+          // `has`, never `??`: an unticked box posts nothing, and that nothing is the
+          // operator's answer. Falling back to the stored value here would silently re-tick
+          // the box they had just cleared — on a form that decides how many hours get paid.
+          defaultChecked={mine ? mine.has("outNextDay") : row.outIsNextDay}
+          className="pb-2"
+        >
           Out is next day
-        </label>
+        </Checkbox>
         {/* Disabled until something in this row actually changes — a column of live
             Save buttons on rows you're only reading is noise. */}
         <DirtySubmit className="btn-primary min-h-[44px]">
@@ -554,16 +554,15 @@ function AddPunchForm({
             defaultValue={retry.out}
           />
         </Field>
-        <label className="flex items-center gap-2 pb-2 text-sm text-muted">
-          <input
-            type="checkbox"
-            name="outNextDay"
-            value="1"
-            defaultChecked={retry.next}
-            className="h-5 w-5"
-          />
+        <Checkbox
+          density="dense"
+          name="outNextDay"
+          value="1"
+          defaultChecked={retry.next}
+          className="pb-2"
+        >
           Out is next day
-        </label>
+        </Checkbox>
         <SubmitButton className="btn-primary min-h-[44px]">
           Add
         </SubmitButton>

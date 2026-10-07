@@ -4,6 +4,7 @@ import { GetFormSubmit } from "../ui/get-form-submit";
 import type { Mode, Scope } from "./shifts-view-types";
 import { Field } from "../ui/field";
 import { Input } from "../ui/input";
+import { Card } from "../ui/card";
 
 /** Date-range + crew filter — preset links, a no-JS date GET form, and a no-JS
  * crew dropdown (DEC-026 pattern). The active chip reflects the RESOLVED scope
@@ -87,7 +88,7 @@ export function Filter({
   // in effect, so an active advanced filter is never hidden behind the toggle.
   const moreOpen = kind === "range" || !!crew || showCancelled || showSplitOnly;
   return (
-    <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
+    <Card className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <AppLink href={href("today")} className={chip(kind === "today")}>
           Today
@@ -188,6 +189,6 @@ export function Filter({
           </AppLink>
         </div>
       </details>
-    </div>
+    </Card>
   );
 }

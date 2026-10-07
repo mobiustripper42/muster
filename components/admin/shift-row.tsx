@@ -1,4 +1,5 @@
 import { AppLink } from "../ui/app-link";
+import { Card } from "../ui/card";
 import { Select } from "../ui/input";
 import { SubmitButton } from "../ui/submit-button";
 import { SeatPips, AssignedCrew } from "./seat-pips";
@@ -76,7 +77,7 @@ export function ShiftRow({
       : cutOptions[0] ?? "";
 
   return (
-    <div
+    <Card
       // Scroll target for the selected-row reveal (#365, DEC-114): the
       // `RevealSelectedRow` client island finds this row by id and nudges
       // board-col's own scroll so a click doesn't snap the list back to the top on
@@ -87,9 +88,7 @@ export function ShiftRow({
       // dip on :active — fires because the row `<AppLink>` is in the card's activation
       // chain. Background, NOT transform/filter, so it can't collapse the link's
       // `after:inset-0` overlay (that would establish a containing block).
-      className={`relative flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm active:bg-accent/10 ${
-        selected ? "border-accent" : "border-line"
-      } ${row.cancelled ? "opacity-60" : ""}`}
+      edge={selected ? "accent" : "line"} className={`relative flex flex-col gap-2 active:bg-accent/10 ${row.cancelled ? "opacity-60" : ""}`}
     >
       <div className="flex items-start justify-between gap-4">
         {/* Stretched link (9.8): the whole card opens the cockpit; the split/
@@ -217,6 +216,6 @@ export function ShiftRow({
           <SubmitButton className="btn-secondary btn-sm">Merge back into one shift</SubmitButton>
         </form>
       )}
-    </div>
+    </Card>
   );
 }

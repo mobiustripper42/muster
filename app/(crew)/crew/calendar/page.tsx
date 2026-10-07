@@ -18,6 +18,7 @@ import {
 } from "./actions";
 import { Input } from "../../../../components/ui/input";
 import { Field } from "../../../../components/ui/field";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /crew/calendar (#355, DEC-098) — the crew member's calendar-sync control. Mint a
@@ -66,7 +67,7 @@ export default async function CrewCalendar() {
       </p>
 
       {feedUrl ? (
-        <div className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm">
+        <Card className="flex flex-col gap-3">
           <Notice tone="warn">
             Copy this link now — for your security it won’t be shown again. Lost it?
             Just make a new one.
@@ -93,10 +94,10 @@ export default async function CrewCalendar() {
               I’ve saved it — done
             </SubmitButton>
           </form>
-        </div>
+        </Card>
       // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       ) : feed ? (
-        <div className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm">
+        <Card className="flex flex-col gap-3">
           <Notice tone="ok">
             Your calendar sync is on (since {fmtWhen(feed.createdAt)}).
           </Notice>
@@ -120,9 +121,9 @@ export default async function CrewCalendar() {
               Turn off calendar sync
             </SubmitButton>
           </form>
-        </div>
+        </Card>
       ) : (
-        <div className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm">
+        <Card className="flex flex-col gap-3">
           <p className="text-sm text-muted">
             You don’t have a calendar link yet. Create one, then add it to your
             calendar app — that’s it.
@@ -132,7 +133,7 @@ export default async function CrewCalendar() {
               Create my calendar link
             </SubmitButton>
           </form>
-        </div>
+        </Card>
       )}
 
       <VersionTag />

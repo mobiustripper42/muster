@@ -1,5 +1,6 @@
 import type { InputHTMLAttributes, ReactNode, Ref } from "react";
 import type { FieldDensity } from "./input";
+import { join } from "./join";
 
 /**
  * The one choice (issue #484): every tick box, radio, toggle chip and colour swatch. Same contract
@@ -59,10 +60,6 @@ const SWATCH_FACE =
 // here is a second ring outside it instead: one ring is selected, two is selected and focused.
 const SWATCH_FOCUS =
   "peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-[6px]";
-
-function join(...parts: (string | undefined)[]): string {
-  return parts.filter(Boolean).join(" ");
-}
 
 function Box({
   type,

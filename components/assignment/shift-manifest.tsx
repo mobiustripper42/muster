@@ -5,6 +5,7 @@ import { fmt12, tel, sms } from "../../app/lib/format";
 import { TENANT_NAME } from "../../app/lib/tenant";
 import { AppLink } from "../ui/app-link";
 import { GuestTextButton } from "./guest-text-button";
+import { Card } from "../ui/card";
 
 const mapHref = (q: string) => `https://maps.google.com/?q=${encodeURIComponent(q)}`;
 
@@ -70,8 +71,8 @@ export function ShiftManifest({
               Check in
             </AppLink>
           )}
-          <details
-            className="group overflow-hidden rounded-card border border-line bg-card"
+          <Card
+            as="details" pad="none" className="group overflow-hidden"
             open={events.length === 1}
           >
             <summary
@@ -153,7 +154,7 @@ export function ShiftManifest({
                 ))
               )}
             </div>
-          </details>
+          </Card>
         </div>
       ))}
     </section>

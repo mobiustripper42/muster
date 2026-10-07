@@ -4,6 +4,7 @@ import type { TrailEventMetadata } from "@core/domain/reservation-trail.js";
 import type { TrailEntry } from "@core/reservations/reservation-trail-view.js";
 import { AppLink } from "../ui/app-link";
 import { fmtRunWhen } from "../../app/lib/format";
+import { Card } from "../ui/card";
 
 /**
  * One booking-audit line, in the two shapes the two surfaces have (issue #1049).
@@ -63,7 +64,7 @@ export function TrailRow({ row }: { row: TrailListRow }) {
   const detail = detailLine(row.metadata);
   const who = TRAIL_ACTOR_LABEL[row.actorKind];
   return (
-    <div className="flex flex-col gap-1 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
+    <Card className="flex flex-col gap-1">
       <div className="flex items-start justify-between gap-3">
         <Subject row={row} />
         <TypeTag label={TRAIL_TYPE_LABEL[row.type]} />
@@ -72,7 +73,7 @@ export function TrailRow({ row }: { row: TrailListRow }) {
       <span className="text-xs text-muted">
         {who} · {fmtRunWhen(row.timestamp)}
       </span>
-    </div>
+    </Card>
   );
 }
 
@@ -122,7 +123,7 @@ export function TrailEntryRow({ entry }: { entry: TrailEntry }) {
   const detail = detailLine(entry.metadata);
   const borrowed = entry.when.kind !== "recorded";
   return (
-    <div className="flex flex-col gap-1 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
+    <Card className="flex flex-col gap-1">
       <div className="flex items-start justify-between gap-3">
         <span className="font-medium text-ink">{TRAIL_TYPE_LABEL[entry.type]}</span>
         {borrowed && <TypeTag label="approx" />}
@@ -134,6 +135,6 @@ export function TrailEntryRow({ entry }: { entry: TrailEntry }) {
       {entry.when.kind !== "recorded" && (
         <span className="text-xs italic text-muted">{entry.when.from}</span>
       )}
-    </div>
+    </Card>
   );
 }

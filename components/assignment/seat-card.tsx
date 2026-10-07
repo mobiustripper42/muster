@@ -52,6 +52,7 @@ const STATE_TONE: Record<SeatCardVM["state"], string> = {
 };
 
 import { roleHueClass } from "./role-hue";
+import { Card } from "../ui/card";
 
 /** The role glyph pip (9.8, DEC-086) — identity color + initial; decorative
  *  (the kicker text right beside it is the accessible name). Shares its hue
@@ -165,7 +166,7 @@ export function SeatCard({
   roster: { id: string; name: string }[];
 }) {
   return (
-    <article className="flex flex-col gap-2 rounded-card border border-line bg-card p-4 shadow-sm">
+    <Card as="article" className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted">
           <RoleGlyph roleName={vm.roleName} />
@@ -244,6 +245,6 @@ export function SeatCard({
           </form>
         )}
       </details>
-    </article>
+    </Card>
   );
 }

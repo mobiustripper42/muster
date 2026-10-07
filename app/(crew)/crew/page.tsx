@@ -22,6 +22,7 @@ import { SubmitButton } from "../../../components/ui/submit-button";
 import { Checkbox } from "../../../components/ui/choice";
 import { Field } from "../../../components/ui/field";
 import { Input } from "../../../components/ui/input";
+import { Card } from "../../../components/ui/card";
 
 /** #161: the Yes/No tap's outcome → a calm /crew notice (codes only, DEC-026).
  *  The `in`/`out` keys are the URL param (DEC-026 keeps prose out of params) —
@@ -284,7 +285,7 @@ function SignedOut({
  */
 function SmsConsentBlock() {
   return (
-    <div className="rounded-card border border-line bg-card px-3">
+    <Card pad="none" className="px-3">
       <Checkbox id={SMS_CONSENT_FIELD} name={SMS_CONSENT_FIELD} value={SMS_CONSENT_FIELD_VALUE}>
         <span>
           I agree to receive SMS text messages from Cleveland Cycleboats, LLC
@@ -311,7 +312,7 @@ function SmsConsentBlock() {
           .
         </span>
       </Checkbox>
-    </div>
+    </Card>
   );
 }
 
@@ -409,9 +410,9 @@ function CredentialLine({ nudge }: { nudge: NonNullable<CrewAppView["credentialN
       ? `Your ${nudge.type} expired ${date} — you won’t be asked for shifts until it’s renewed. Renew it and the office will update your record.`
       : `Your ${nudge.type} expires ${date} — renew it to keep getting asked for shifts. The office updates your record once you have.`;
   return (
-    <p className="rounded-card border border-warn-line bg-warn-bg px-4 py-3 text-sm text-warn">
+    <Notice as="p" tone="warn">
       {copy}
-    </p>
+    </Notice>
   );
 }
 
@@ -488,9 +489,9 @@ function CrewApp({
             // is Confirmed-only) — render it as a non-link "awaiting confirmation"
             // row so the "Yes" visibly landed, without navigating to a dead card.
             s.pending ? (
-              <div
+              <Card
                 key={s.seatId}
-                className="flex flex-col gap-1 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+                className="flex flex-col gap-1"
               >
                 <div className="flex items-center justify-between gap-2">
                   <ShiftWhenWhat s={s} />
@@ -498,13 +499,13 @@ function CrewApp({
                     Awaiting confirmation
                   </span>
                 </div>
-              </div>
+              </Card>
             ) : (
-              <AppLink
+              <Card
                 key={s.seatId}
                 href={`/crew/shift/${s.shiftId}`}
                 spinner="overlay"
-                className="relative flex flex-col gap-1 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+                as={AppLink} className="relative flex flex-col gap-1"
               >
                 <div className="flex items-center justify-between gap-2">
                   <ShiftWhenWhat s={s} />
@@ -529,7 +530,7 @@ function CrewApp({
                     Added for you
                   </span>
                 )}
-              </AppLink>
+              </Card>
             ),
           )
         )}
@@ -547,7 +548,7 @@ function CrewApp({
 
 function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
   return (
-    <div className="overflow-hidden rounded-card border border-line bg-card shadow-sm">
+    <Card pad="none" className="overflow-hidden">
       <div className="border-b border-line px-4 py-3">
         <div className="text-ink">
           {fmtDate(ask.date)}
@@ -590,6 +591,6 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
           Yes
         </SubmitButton>
       </form>
-    </div>
+    </Card>
   );
 }

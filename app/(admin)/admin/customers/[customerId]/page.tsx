@@ -12,6 +12,7 @@ import { AdminSignedOut } from "../../../../../components/admin/admin-signed-out
 import { VersionTag } from "../../../../../components/ui/version-tag";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
+import { Card } from "../../../../../components/ui/card";
 
 /**
  * /admin/customers/[customerId] (task 12.12b, #465) — one contact record + booking history.
@@ -98,7 +99,7 @@ export default async function CustomerDetailPage({
         </div>
       </header>
 
-      <div className="mt-3 overflow-hidden rounded-card border border-line bg-card shadow-sm">
+      <Card pad="none" className="mt-3 overflow-hidden">
         <div className="border-b border-line px-4 py-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink">
             <span className="font-mono">{formatPhoneForDisplay(v.phoneE164)}</span>
@@ -158,7 +159,7 @@ export default async function CustomerDetailPage({
             </ul>
           )}
         </div>
-      </div>
+      </Card>
 
       <p className="mt-2 text-xs text-muted">
         A contact record, not an account — customers never sign in. Editing and messaging aren’t

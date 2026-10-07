@@ -26,6 +26,7 @@ import { logSwallowed } from "../../lib/swallowed";
 import { requestBookingChange } from "./actions";
 import { loadBookingByCode } from "./load";
 import { Textarea } from "../../../components/ui/input";
+import { Card } from "../../../components/ui/card";
 
 export const dynamic = "force-dynamic";
 
@@ -131,7 +132,7 @@ export default async function ManagePage({
 
   return (
     <main className="mx-auto max-w-lg px-3 py-6 sm:px-4 sm:py-8">
-      <div className="overflow-hidden rounded-[18px] border border-line bg-card shadow-sm">
+      <Card pad="none" className="overflow-hidden">
         {/* header */}
         <div className="border-b border-line bg-gradient-to-br from-accent/10 to-transparent px-5 py-4">
           <div className="flex items-center justify-between">
@@ -356,7 +357,7 @@ export default async function ManagePage({
             </Section>
           )}
         </div>
-      </div>
+      </Card>
     </main>
   );
 }

@@ -10,6 +10,7 @@ import { CREW_UNAVAILABLE, logSwallowed } from "../../../lib/swallowed";
 import { TENANT_ID } from "../../../lib/tenant";
 import { messagingEnabled } from "../../../lib/flags";
 import { notFound, redirect } from "next/navigation";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * Crew messaging — the thread list (SPEC §2.6 / artifact §10, #117). Insultingly
@@ -40,12 +41,12 @@ export default async function ThreadsPage() {
       <CrewHeader title="Messages" back={{ href: "/crew", label: "My shifts" }} current="/crew/threads" />
       <section className="flex flex-col gap-2">
         {view.threads.map((t) => (
-          <AppLink
+          <Card
             key={t.threadId}
             href={`/crew/threads/${t.threadId}`}
             prefetch={false}
             spinner="overlay"
-            className="relative flex items-center justify-between gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+            as={AppLink} className="relative flex items-center justify-between gap-3"
           >
             <span className="flex min-w-0 flex-col">
               <span className="truncate font-semibold text-ink">{t.title}</span>
@@ -64,7 +65,7 @@ export default async function ThreadsPage() {
                 {t.unread}
               </span>
             )}
-          </AppLink>
+          </Card>
         ))}
       </section>
     </Shell>

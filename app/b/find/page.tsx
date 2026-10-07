@@ -21,6 +21,7 @@ import { SubmitButton } from "../../../components/ui/submit-button";
 import { requestBookingLink } from "./actions";
 import { Field } from "../../../components/ui/field";
 import { Input } from "../../../components/ui/input";
+import { Card } from "../../../components/ui/card";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export default async function FindBookingPage({
 
   return (
     <main className="mx-auto max-w-lg px-3 py-8 sm:px-4 sm:py-12">
-      <div className="overflow-hidden rounded-[18px] border border-line bg-card shadow-sm">
+      <Card pad="none" className="overflow-hidden">
         <div className="border-b border-line bg-gradient-to-br from-accent/10 to-transparent px-5 py-4">
           <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
             Find your booking
@@ -100,7 +101,7 @@ export default async function FindBookingPage({
             .
           </p>
         </div>
-      </div>
+      </Card>
     </main>
   );
 }

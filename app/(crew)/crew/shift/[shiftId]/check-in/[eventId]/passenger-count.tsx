@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { SubmitButton } from "../../../../../../../components/ui/submit-button";
 import { confirmCount } from "./actions";
 import { Input } from "../../../../../../../components/ui/input";
+import { Card } from "../../../../../../../components/ui/card";
 
 /**
  * The passenger count (Phase 18.5a; surfaces §C1, §C4): the mate's number, set separately from the
@@ -58,7 +59,7 @@ export function PassengerCount({
   else if (ready && valid) label = `Confirm ${n} aboard and depart`;
 
   return (
-    <form action={confirmCount} className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
+    <Card action={confirmCount} as="form" className="flex flex-col gap-3">
       <input type="hidden" name="shiftId" value={shiftId} />
       <input type="hidden" name="eventId" value={eventId} />
       <div className="flex items-center justify-between gap-3">
@@ -109,6 +110,6 @@ export function PassengerCount({
         </div>
       </div>
       <SubmitButton className="btn-primary min-h-[52px] w-full">{label}</SubmitButton>
-    </form>
+    </Card>
   );
 }

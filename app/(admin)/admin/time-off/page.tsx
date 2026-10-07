@@ -15,6 +15,7 @@ import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { adminAddTimeOff, adminRemoveTimeOff, type AdminTimeOffErr } from "./actions";
 import { Field } from "../../../../components/ui/field";
 import { Input, Select } from "../../../../components/ui/input";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/time-off (#332, SPEC §2.1, DEC-009) — the office's view of everyone's
@@ -93,11 +94,9 @@ export default async function AdminTimeOff({
           <Notice>No time off on the books — everyone’s available.</Notice>
         ) : (
           groups.map((g) => (
-            <div
+            <Card
               key={g.crewMemberId}
-              className={`flex flex-col gap-2 rounded-card border border-line px-4 py-3 shadow-sm ${
-                g.archived ? "bg-bg opacity-60" : "bg-card"
-              }`}
+              className={`flex flex-col gap-2 ${g.archived ? "opacity-60" : ""}`}
             >
               <span className="flex items-center gap-2">
                 <span className="font-semibold text-ink">{g.crewName}</span>
@@ -120,7 +119,7 @@ export default async function AdminTimeOff({
                   </li>
                 ))}
               </ul>
-            </div>
+            </Card>
           ))
         )}
       </section>
@@ -134,9 +133,9 @@ export default async function AdminTimeOff({
  *  (DEC-026). The domain enforces `start ≤ end`. */
 function AddForm({ crew, draft }: { crew: CrewMember[]; draft: FormDraft | null }) {
   return (
-    <form
+    <Card
       action={adminAddTimeOff}
-      className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm"
+      as="form" className="flex flex-col gap-3"
     >
       <UnsavedGuard restored={draft !== null} />
       <h2 className="text-sm font-semibold text-ink">Add time off</h2>
@@ -180,6 +179,6 @@ function AddForm({ crew, draft }: { crew: CrewMember[]; draft: FormDraft | null 
       <SubmitButton className="btn-primary min-h-[48px]">
         Add time off
       </SubmitButton>
-    </form>
+    </Card>
   );
 }

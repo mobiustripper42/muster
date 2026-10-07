@@ -9,6 +9,7 @@ import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { TENANT_ID } from "../../../lib/tenant";
 import { messagingEnabled } from "../../../lib/flags";
 import { notFound } from "next/navigation";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * Operator messaging (#118, artifact §10) — every thread the operator can read or
@@ -43,17 +44,17 @@ export default async function AdminMessages() {
       <h1 className="text-lg font-semibold text-ink">Messages</h1>
       <section className="flex flex-col gap-2">
         {view.threads.map((t) => (
-          <AppLink
+          <Card
             key={t.threadId}
             href={`/admin/messages/${t.threadId}`}
             spinner="overlay"
-            className="relative flex min-w-0 flex-col rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+            as={AppLink} className="relative flex min-w-0 flex-col"
           >
             <span className="truncate font-semibold text-ink">{t.title}</span>
             <span className="truncate text-sm text-muted">
               {t.preview ? `${t.preview.senderLabel}: ${t.preview.body}` : "No messages yet"}
             </span>
-          </AppLink>
+          </Card>
         ))}
       </section>
     </Shell>

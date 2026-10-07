@@ -165,9 +165,9 @@ export default async function CheckInPage({
 
       <section className="flex flex-col gap-2">
         {count && (
-          <p className="rounded-card border border-ok-line bg-ok-bg px-4 py-3 text-sm font-semibold text-ok">
+          <Notice as="p" tone="ok" className="font-semibold">
             ✓ {Math.min(count.pax, screen.limit)} aboard · counted {clockOf(count.countedAt)} by {counterName}
-          </p>
+          </Notice>
         )}
         <PassengerCount
           shiftId={shiftId}

@@ -19,6 +19,7 @@ import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { saveSettings, saveWaiverVersion, type SettingsErr, type WaiverErr } from "./actions";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/waivers (Phase 18.2, issue #1116) — the waiver text guests agree to, and the module's
@@ -130,7 +131,7 @@ export default async function AdminWaivers({ searchParams }: { searchParams: Pro
           <Notice tone="bad">That version can’t be edited — it has taken effect or no longer exists.</Notice>
         )}
 
-        <Card title="In effect now">
+        <TitledCard title="In effect now">
           {current ? (
             <WaiverVersionText
               version={current.version}
@@ -140,10 +141,10 @@ export default async function AdminWaivers({ searchParams }: { searchParams: Pro
           ) : (
             <p className="py-2 text-sm text-muted">No waiver posted yet.</p>
           )}
-        </Card>
+        </TitledCard>
 
         {scheduled.length > 0 && (
-          <Card title="Scheduled">
+          <TitledCard title="Scheduled">
             <ul className="flex flex-col divide-y divide-line">
               {scheduled.map((t) => (
                 <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
@@ -162,7 +163,7 @@ export default async function AdminWaivers({ searchParams }: { searchParams: Pro
                 </li>
               ))}
             </ul>
-          </Card>
+          </TitledCard>
         )}
 
         <VersionForm
@@ -173,7 +174,7 @@ export default async function AdminWaivers({ searchParams }: { searchParams: Pro
         />
 
         {past.length > 0 && (
-          <Card title="Past versions">
+          <TitledCard title="Past versions">
             <ul className="flex flex-col divide-y divide-line">
               {past.map((t) => (
                 <li key={t.id} className="py-2">
@@ -191,7 +192,7 @@ export default async function AdminWaivers({ searchParams }: { searchParams: Pro
                 </li>
               ))}
             </ul>
-          </Card>
+          </TitledCard>
         )}
 
         <SettingsForm config={config} draft={settingsDraft} error={settingsErr} />
@@ -202,14 +203,14 @@ export default async function AdminWaivers({ searchParams }: { searchParams: Pro
   );
 }
 
-function Card({ title, children }: { title: string; children: ReactNode }) {
+function TitledCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-card border border-line bg-card shadow-sm">
+    <Card as="section" pad="none">
       <div className="border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">{title}</h2>
       </div>
       <div className="px-4 py-1">{children}</div>
-    </section>
+    </Card>
   );
 }
 
@@ -230,7 +231,7 @@ function VersionForm({
 }) {
   const source = editing ?? current;
   return (
-    <section id="waiver-form" className="rounded-card border border-line bg-card shadow-sm">
+    <Card id="waiver-form" as="section" pad="none">
       <form key={editing?.id ?? "new"} action={saveWaiverVersion}>
         <UnsavedGuard restored={draft !== null} />
         <input type="hidden" name="form" value="version" />
@@ -285,7 +286,7 @@ function VersionForm({
           )}
         </div>
       </form>
-    </section>
+    </Card>
   );
 }
 
@@ -299,7 +300,7 @@ function SettingsForm({
   error: string | null;
 }) {
   return (
-    <section className="rounded-card border border-line bg-card shadow-sm">
+    <Card as="section" pad="none">
       <form action={saveSettings}>
         <UnsavedGuard restored={draft !== null} />
         <input type="hidden" name="form" value="settings" />
@@ -336,6 +337,6 @@ function SettingsForm({
           <SubmitButton className="btn-primary min-h-[44px]">Save settings</SubmitButton>
         </div>
       </form>
-    </section>
+    </Card>
   );
 }

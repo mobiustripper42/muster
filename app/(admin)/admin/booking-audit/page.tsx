@@ -21,6 +21,7 @@ import { TrailRow } from "../../../../components/admin/trail-row";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/booking-audit (issue #1049) — every recorded event across every booking, newest first,
@@ -126,9 +127,9 @@ function FilterForm({ sp }: { sp: Search }) {
     TRAIL_TYPE_LABEL[a].localeCompare(TRAIL_TYPE_LABEL[b]),
   );
   return (
-    <form
+    <Card
       method="get"
-      className="flex flex-wrap items-end gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+      as="form" className="flex flex-wrap items-end gap-3"
     >
       <div className="flex min-w-0 flex-col gap-1">
         <label htmlFor="type" className="text-xs text-muted">
@@ -167,6 +168,6 @@ function FilterForm({ sp }: { sp: Search }) {
           Clear
         </AppLink>
       )}
-    </form>
+    </Card>
   );
 }

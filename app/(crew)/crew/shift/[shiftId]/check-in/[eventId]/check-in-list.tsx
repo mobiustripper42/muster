@@ -5,6 +5,8 @@ import { useEffect, useRef, useState, useTransition, type MouseEvent, type React
 import type { CheckInRow } from "@core/checkin/check-in.js";
 import { nextToTick, nextToUntick } from "@core/checkin/duplicates.js";
 import { tickGuest, tickGuestForm, type TickOutcome } from "./actions";
+import { Card } from "../../../../../../../components/ui/card";
+import { Notice } from "../../../../../../../components/ui/notice";
 
 /**
  * The mate's list for one departure (Phase 18.5a; surfaces §C1, §C3): tap a name and the row moves
@@ -160,16 +162,16 @@ export function CheckInList({
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-card border border-line bg-card px-4 py-3" data-testid="checked-in-tile">
+        <Card  data-testid="checked-in-tile">
           <div className="text-xs font-semibold uppercase tracking-wide text-muted">{full ? "Full" : "Checked in"}</div>
           <div className="font-mono text-2xl font-semibold text-ink">
             {full ? `${Math.min(ticked, limit)} of ${limit}` : ticked}
           </div>
-        </div>
-        <div className="rounded-card border border-line bg-card px-4 py-3">
+        </Card>
+        <Card>
           <div className="text-xs font-semibold uppercase tracking-wide text-muted">Signed</div>
           <div className="font-mono text-2xl font-semibold text-ink">{signed}</div>
-        </div>
+        </Card>
       </div>
 
       <section className="flex flex-col gap-2">
@@ -177,25 +179,28 @@ export function CheckInList({
           Still to board · {Math.min(toBoard.length, limit)}
         </h2>
         {rows.length === 0 && (
-          <p className="rounded-card border border-line bg-card px-4 py-3 text-sm text-muted">
+          <Notice as="p">
             Nobody has signed for this trip yet.
-          </p>
+          </Notice>
         )}
         {rows.length > 0 && toBoard.length === 0 && (
-          <p className="rounded-card border border-ok-line bg-ok-bg px-4 py-3 font-semibold text-ok">✓ Everyone’s aboard</p>
+          <Notice tone="ok">
+            {/* 16px, as it was before it was a Notice: the one line a crew member is waiting to see. */}
+            <p className="text-base font-semibold">✓ Everyone’s aboard</p>
+          </Notice>
         )}
         {toBoard.length > 0 && (
           // Every name, never "…9 more" (§C1): the list scrolls in its own region.
-          <ul className="max-h-[55vh] divide-y divide-line overflow-y-auto rounded-card border border-line bg-card">
+          <Card as="ul" pad="none" className="max-h-[55vh] divide-y divide-line overflow-y-auto">
             {toBoard.map((r) => (
               <Row key={r.guestId} row={r} shiftId={shiftId} eventId={eventId} full={full} fresh={fresh.has(r.guestId)} onTap={tap} onRetry={send} />
             ))}
-          </ul>
+          </Card>
         )}
       </section>
 
       {aboard.length > 0 && (
-        <details className="rounded-card border border-line bg-card">
+        <Card as="details" pad="none">
           <summary className="flex min-h-[48px] items-center justify-between gap-3 px-4 py-2 font-semibold text-ink [&::-webkit-details-marker]:hidden">
             <span>
               <span className="text-ok" aria-hidden>
@@ -210,7 +215,7 @@ export function CheckInList({
               <Row key={r.guestId} row={r} shiftId={shiftId} eventId={eventId} full={full} fresh={false} onTap={tap} onRetry={send} />
             ))}
           </ul>
-        </details>
+        </Card>
       )}
     </div>
   );

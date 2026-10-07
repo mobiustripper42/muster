@@ -286,9 +286,52 @@ const RAW_FIELD_SELECTORS = [
   { selector: "JSXOpeningElement[name.name='select']", message: SELECT_MESSAGE },
 ];
 
+/**
+ * ## One card, one notice, one well (issue #484, part 4)
+ *
+ * The boxes a page groups things in: a white `<Card>`, a tinted `<Notice>`, a grey `<Well>` set
+ * inside a card. Before this, 103 white cards were written out by hand in 57 files, 55 with a
+ * shadow and 40 without, at four paddings and two radii; the notices and wells the same way.
+ *
+ * **There is no element to key on**, unlike the field rule — a card is a `div`, a `section`, a
+ * `nav`, a `details`, a link. So these read the class string, the way #951's `text-faint` rule
+ * does, as a `Literal` and as a `TemplateElement`. A string is flagged when it holds a surface's
+ * radius AND its fill: `rounded-card` (or the public pages' old `rounded-[18px]`) with `bg-card`,
+ * with a tinted `bg-ok-bg`/`bg-bad-bg`/`bg-warn-bg`, or with the page grey `bg-bg`. A fill must be
+ * a whole class — `hover:bg-card` is a state, not a fill, and `bg-card/70` is the spinner's veil.
+ * (`\x2f` is `/`: esquery ends a regex at the first slash, escaped or not.)
+ *
+ * **What it cannot see**, and why the issue closes with a gap audit: the radius and the fill in
+ * two different strings — `` `rounded-card border px-4 ${tone}` `` with the fill in `tone` — or
+ * the look rebuilt from other tokens. Both were swept by hand here; the rule holds what is
+ * written as one string, which is how nearly all of it was.
+ *
+ * `input.tsx` is exempt alongside the three components: the field look is `rounded-card` and
+ * `bg-card` too, and is not a card.
+ */
+const SURFACE_RADIUS = "(?=[\\s\\S]*\\brounded-(?:card|\\[18px\\]))";
+const surfaceFill = (fill) => `(?=[\\s\\S]*(?<!\\S)${fill}(?![\\w\\x2f-]))`;
+const surfaceSelectors = (fill, message) => [
+  { selector: `Literal[value=/^${SURFACE_RADIUS}${surfaceFill(fill)}/]`, message },
+  { selector: `TemplateElement[value.cooked=/^${SURFACE_RADIUS}${surfaceFill(fill)}/]`, message },
+];
+const CARD_MESSAGE =
+  "Use <Card> from components/ui/card.tsx (issue #484) — one card look (edge, fill, radius, shadow) for the whole app, so a style change is one edit. A box that is a message is <Notice>. Padding is the `pad` prop; className is layout only.";
+const NOTICE_MESSAGE =
+  "Use <Notice> from components/ui/notice.tsx (issue #484) — the one tinted message box. className is layout only.";
+const WELL_MESSAGE =
+  "Use <Well> from components/ui/card.tsx (issue #484) — the one grey inset box, and it goes inside a card: grey on the grey page vanishes. className is layout only.";
+const SURFACE_SELECTORS = [
+  ...surfaceSelectors("bg-card", CARD_MESSAGE),
+  ...surfaceSelectors("bg-(?:ok|bad|warn)-bg", NOTICE_MESSAGE),
+  // A half-strength grey (`bg-bg/50`) is still a well; only the card's fill excludes `/`.
+  ...surfaceSelectors("bg-bg(?:\\x2f\\d+)?", WELL_MESSAGE),
+];
+
 const APP_SELECTORS = [
   RAW_SUBMIT_SELECTOR,
   ...RAW_FIELD_SELECTORS,
+  ...SURFACE_SELECTORS,
   ...BUTTON_KIND_SELECTORS,
   APP_CATCH_SELECTOR,
   REDIRECT_IN_TRY_SELECTOR,
@@ -800,12 +843,35 @@ export default tseslint.config(
   {
     // The field and choice components wrap the raw elements the #484 rule refuses, so these
     // two files alone are exempt from THAT rule — subtracted, the same way the block above
-    // subtracts the submit rule, so every other selector still reaches them.
-    files: ["components/ui/input.tsx", "components/ui/choice.tsx"],
+    // subtracts the submit rule, so every other selector still reaches them. `input.tsx` has
+    // its own block below, because it is subtracted from the surface rule too.
+    files: ["components/ui/choice.tsx"],
     rules: {
       "no-restricted-syntax": [
         "error",
         ...APP_SELECTORS.filter((s) => !RAW_FIELD_SELECTORS.includes(s)),
+      ],
+    },
+  },
+  {
+    // The field look is `rounded-card` and `bg-card` too, so `input.tsx` is subtracted from
+    // the surface rule as well as the field one. One block, because flat config replaces a
+    // rule's options per file rather than merging them: two blocks would leave only the last.
+    files: ["components/ui/input.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...APP_SELECTORS.filter((s) => !RAW_FIELD_SELECTORS.includes(s) && !SURFACE_SELECTORS.includes(s)),
+      ],
+    },
+  },
+  {
+    // The card, well and notice components write the surface looks the #484 rule refuses.
+    files: ["components/ui/card.tsx", "components/ui/notice.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...APP_SELECTORS.filter((s) => !SURFACE_SELECTORS.includes(s)),
       ],
     },
   },

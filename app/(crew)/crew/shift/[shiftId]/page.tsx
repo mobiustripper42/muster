@@ -24,6 +24,7 @@ import { messagingEnabled } from "../../../../lib/flags";
 import { fmt12, tel, sms } from "../../../../lib/format";
 import { bailFromSeat, dismissShiftChanges } from "./actions";
 import { startDm } from "../../threads/actions";
+import { Card } from "../../../../../components/ui/card";
 
 /**
  * Shift card (SPEC §2.6.3) — the single source of truth a crew member reads on
@@ -120,7 +121,7 @@ export default async function ShiftCardPage({
     card.events.length,
   ).catch(() => null);
   return (
-    <Card
+    <ShiftCard
       card={card}
       shiftId={shiftId}
       bailError={bailError}
@@ -134,21 +135,21 @@ export default async function ShiftCardPage({
 /** Standalone dock pin (the shared-dock case) — prominent, above the manifest. */
 function DockPin({ dock }: { dock: string }) {
   return (
-    <a
+    <Card
       href={mapHref(dock)}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex min-h-[44px] items-center justify-between rounded-card border border-line bg-card px-4 py-3 text-sm"
+      as="a" className="flex min-h-[44px] items-center justify-between text-sm"
     >
       <span className="text-ink">
         <span aria-hidden>📍</span> {dock}
       </span>
       <span className="font-semibold text-accent">Map ›</span>
-    </a>
+    </Card>
   );
 }
 
-function Card({
+function ShiftCard({
   card,
   shiftId,
   bailError,
@@ -189,33 +190,33 @@ function Card({
       {/* The load-bearing distinction: shift start (call/report time, = first
           departure − the lead) vs the first departure itself, distinct + labeled. */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-card border border-ok-line bg-ok-bg px-4 py-3">
+        <Card tone="ok">
           <div className="text-xs font-semibold uppercase tracking-wide text-ok">
             Shift Start
           </div>
           <div className="font-mono text-2xl font-semibold text-ink">
             {card.callTime ? fmt12(card.callTime) : "—"}
           </div>
-        </div>
-        <div className="rounded-card border border-line bg-card px-4 py-3">
+        </Card>
+        <Card>
           <div className="text-xs font-semibold uppercase tracking-wide text-muted">
             First departure
           </div>
           <div className="font-mono text-2xl font-semibold text-ink">
             {firstDeparture ? fmt12(firstDeparture) : "—"}
           </div>
-        </div>
+        </Card>
         {/* The other end of the commitment (DEC-041): last trip + trip length +
             teardown. Spans both columns under the start/departure pair so "when
             am I free" sits with "when do I report". */}
-        <div className="col-span-2 rounded-card border border-line bg-card px-4 py-3">
+        <Card className="col-span-2">
           <div className="text-xs font-semibold uppercase tracking-wide text-muted">
             Shift End <span className="font-normal normal-case text-muted">· off the clock</span>
           </div>
           <div className="font-mono text-2xl font-semibold text-ink">
             {card.shiftEndTime ? fmt12(card.shiftEndTime) : "—"}
           </div>
-        </div>
+        </Card>
       </div>
 
       {card.events.length === 0 && <Notice>No departures scheduled yet.</Notice>}
@@ -227,9 +228,9 @@ function Card({
             Crewing with you
           </h2>
           {card.coCrew.map((c) => (
-            <div
+            <Card
               key={c.crewMemberId}
-              className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3"
+              className="flex flex-col gap-3"
             >
               {/* Role glyph (DEC-086, aria-hidden) + name + role — who's running the
                   boat at a glance. Name/role take their own row above the actions so
@@ -271,7 +272,7 @@ function Card({
                   </form>
                 )}
               </span>
-            </div>
+            </Card>
           ))}
         </section>
       )}
@@ -291,12 +292,12 @@ function Card({
       {/* A trainee ride (DEC-087) has no bail: it's not a reliability
           commitment, and the seat must never re-ask — the office unstaffs. */}
       {card.traineeSeat ? (
-        <p className="rounded-card border border-line bg-card px-4 py-3 text-sm text-muted">
+        <Notice as="p">
           You’re riding this shift as a trainee. Can’t make it? Tell the office
           and they’ll take you off — no penalty.
-        </p>
+        </Notice>
       ) : (
-      <details className="rounded-card border border-line bg-card px-4 pb-3">
+      <Card as="details" pad="none" className="px-4 pb-3">
         {/* The summary owns the 44px hit area (clicks on details padding don't
             toggle); marker kept deliberately — the "…" + triangle reads as
             "more here" without borrowing the manifest's chevron idiom. */}
@@ -312,7 +313,7 @@ function Card({
             crew member's reliability record (DEC-028), so it sits behind one more
             deliberate tap — the button reveals the confirm rather than dropping.
             No-JS: a nested <details>, same posture as the claim confirm (DEC-077). */}
-        <details className="rounded-card border border-bad-line bg-bad-bg">
+        <Notice as="details" tone="bad" pad="none">
           <summary className="btn-quiet flex min-h-[44px] items-center justify-center px-4 text-sm text-bad [&::-webkit-details-marker]:hidden">
             Drop this shift
           </summary>
@@ -328,8 +329,8 @@ function Card({
               </SubmitButton>
             </form>
           </div>
-        </details>
-      </details>
+        </Notice>
+      </Card>
       )}
     </Shell>
   );

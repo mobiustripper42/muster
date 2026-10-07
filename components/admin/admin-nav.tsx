@@ -221,6 +221,7 @@ export function AdminNav({
                 </summary>
                 {/* Absolutely positioned: a panel in normal flow grows the sticky bar past the
                     52px `shell.tsx` subtracts, and the e2e height assertion would catch it. */}
+                {/* eslint-disable-next-line no-restricted-syntax -- a menu, not a card: it floats over the page (issue #1163 owns menus). */}
                 <div className="absolute right-0 top-full z-30 mt-2 flex min-w-44 flex-col gap-1 rounded-card border border-line bg-card p-2 shadow-lg">
                   {g.links.map((l) => (
                     <AppLink
@@ -252,6 +253,7 @@ export function AdminNav({
                 ▾
               </span>
             </summary>
+            {/* eslint-disable-next-line no-restricted-syntax -- a menu, not a card: it floats over the page (issue #1163 owns menus). */}
             <div className="absolute right-0 top-full z-30 mt-2 flex min-w-44 flex-col gap-1 rounded-card border border-line bg-card p-2 shadow-lg">
               <AccountActions className="whitespace-nowrap rounded-lg px-2 py-1.5 text-left" />
             </div>

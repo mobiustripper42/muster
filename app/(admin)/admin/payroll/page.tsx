@@ -16,6 +16,7 @@ import { readSubject } from "../../../lib/auth";
 import { timeClockEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * /admin/payroll (#347, then 13.4/#628) — what you send to payroll for a pay period.
@@ -106,9 +107,9 @@ export default async function AdminPayroll({
           : "Estimated hours per crew member for a pay period — the committed shift window (call time to off the clock) of every shift they were assigned. A gut-check against timesheets, not a punch clock. Assigned crew only (no trainee rides)."}
       </p>
 
-      <form
+      <Card
         method="get"
-        className="flex flex-wrap items-end gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+        as="form" className="flex flex-wrap items-end gap-3"
       >
         <div className="flex flex-col gap-1">
           <label htmlFor="period" className="text-xs text-muted">
@@ -129,7 +130,7 @@ export default async function AdminPayroll({
         <GetFormSubmit className="btn-primary min-h-[44px]">
           View
         </GetFormSubmit>
-      </form>
+      </Card>
 
       {rec ? (
         <ReconcileSection rec={rec} selValue={selValue} periodLabelText={periodLabel(sel)} />

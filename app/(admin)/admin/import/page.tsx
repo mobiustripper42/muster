@@ -11,6 +11,7 @@ import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 import { pullFromXola, type XolaPullErr } from "./actions";
 import { ClearFeedbackParams } from "./clear-feedback-params";
+import { Card } from "../../../../components/ui/card";
 
 /**
  * Import surface (DEC-043) — the operator's path to get live Xola trips onto the
@@ -92,9 +93,9 @@ export default async function ImportPage({
         </Notice>
       )}
 
-      <form
+      <Card
         action={pullFromXola}
-        className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-4"
+        as="form" className="flex flex-col gap-2"
       >
         <span className="text-sm font-semibold text-ink">Pull the latest schedule</span>
         <p className="text-xs text-muted">
@@ -104,18 +105,18 @@ export default async function ImportPage({
         <SubmitButton className="btn-primary mt-1 min-h-11 shadow-sm">
           Pull from Xola now
         </SubmitButton>
-      </form>
+      </Card>
 
       {recent.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-semibold text-ink">Recent imports</h2>
           <div className="flex flex-col gap-2">
             {recent.map((run) => (
-              <AppLink
+              <Card
                 key={run.id}
                 href={`/admin/import/run/${run.id}`}
                 spinner="overlay"
-                className="relative flex flex-col gap-0.5 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+                as={AppLink} className="relative flex flex-col gap-0.5"
               >
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="font-semibold text-ink">
@@ -124,7 +125,7 @@ export default async function ImportPage({
                   <span className="text-xs text-muted">{fmtRunWhen(run.ranAt)}</span>
                 </span>
                 <span className="text-xs text-muted">{summaryLine(run.summary)}</span>
-              </AppLink>
+              </Card>
             ))}
           </div>
         </section>

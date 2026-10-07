@@ -51,40 +51,22 @@ const STATE_TONE: Record<SeatCardVM["state"], string> = {
   Bailed: "border-bad-line bg-bad-bg text-bad",
 };
 
-import { roleHueClass } from "./role-hue";
 import { Card } from "../ui/card";
-
-/** The role glyph pip (9.8, DEC-086) — identity color + initial; decorative
- *  (the kicker text right beside it is the accessible name). Shares its hue
- *  map with the board's filled pips (role-hue.ts).
- *
- *  ALWAYS FILLED, and it deliberately does NOT match the board's open/filled pips
- *  (#598, operator's call after seeing both). The two glyphs look alike and do
- *  different jobs: the board is a SCAN — is this seat open or filled — so its pip
- *  carries state in weight. This card is a PICK, one seat at a time, and its own
- *  `OPEN`/`CONFIRMED` badge two inches away already carries the state. Here the
- *  hue is the whole point: it says captain-vs-mate at a glance so the operator
- *  never reads the word. That is DEC-086 exactly — identity color, never state.
- *
- *  A first cut at #598 made this conditional so the surfaces "agreed", which put an
- *  ink ring beside the OPEN badge and spent the identity signal to repeat something
- *  already on screen. Don't re-unify them; the inconsistency is the design. */
-function RoleGlyph({ roleName }: { roleName: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase text-white ${roleHueClass(roleName)}`}
-    >
-      {roleName.charAt(0)}
-    </span>
-  );
-}
+import { Notice } from "../ui/notice";
+// The role glyph (9.8, DEC-086) is ALWAYS FILLED here, and deliberately does NOT match the
+// board's open/filled pips (#598, operator's call after seeing both). The board is a SCAN — is
+// this seat open or filled — so its pip carries state in weight. This card is a PICK, one seat
+// at a time, and its own `OPEN`/`CONFIRMED` badge two inches away already carries the state;
+// the hue is the whole point. A first cut at #598 made it conditional so the surfaces "agreed",
+// which spent the identity signal to repeat something already on screen. Don't re-unify them.
+// It was a private copy of `components/ui/role-glyph.tsx` until issue #484 part 5.
+import { RoleGlyph } from "../ui/role-glyph";
 
 /** The state-conditional occupant zone. */
 function OccupantZone({ vm }: { vm: SeatCardVM }) {
   if (vm.state === "Claimed" && vm.occupant) {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warn-line bg-warn-bg px-3 py-2">
+      <Notice tone="warn" className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm text-ink">
           <b>{vm.occupant.name}</b>
           <span className="text-warn"> · accepted — awaiting your confirm</span>
@@ -93,12 +75,12 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
           <HiddenIds vm={vm} />
           <SubmitButton className="btn-primary btn-sm min-h-9">Confirm into seat</SubmitButton>
         </form>
-      </div>
+      </Notice>
     );
   }
   if (vm.state === "Confirmed" && vm.occupant) {
     return (
-      <div className="flex flex-col gap-1 rounded-lg border border-ok-line bg-ok-bg px-3 py-2">
+      <Notice tone="ok" className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm font-semibold text-ink">{vm.occupant.name}</span>
           {vm.occupant.phone && (
@@ -143,15 +125,11 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
             </form>
           </div>
         </details>
-      </div>
+      </Notice>
     );
   }
   if (vm.state === "Bailed") {
-    return (
-      <div className="rounded-lg border border-bad-line bg-bad-bg px-3 py-2 text-sm text-bad">
-        Crew bailed with nobody left to re-ask at the time.
-      </div>
-    );
+    return <Notice tone="bad">Crew bailed with nobody left to re-ask at the time.</Notice>;
   }
   return null;
 }

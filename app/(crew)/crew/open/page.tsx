@@ -222,7 +222,7 @@ function TeamRow({ row }: { row: TeamViewRow }) {
   // The existing token rather than a new one: a bespoke grey for a single border is
   // how a palette stops being a palette.
   return (
-    <div className="flex items-start justify-between gap-3 rounded-card border border-faint px-4 py-3">
+    <div className="flex items-start justify-between gap-3 rounded-box border border-faint px-4 py-3">
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
           <span
@@ -271,7 +271,7 @@ function Filters({
   sp: Search;
 }) {
   // One app-wide filter style — matches the admin board's Filter (outline-active
-  // pills, rounded-card container, rounded-lg date inputs on bg-bg). One deliberate
+  // pills, rounded-box container, the shared date fields). One deliberate
   // divergence: the crew controls keep min-h-[44px] touch targets (this is the
   // mobile-primary surface, DEC-085); admin is denser because it's desktop-first.
   const chip = (active: boolean) =>

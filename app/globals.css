@@ -81,8 +81,14 @@
   --color-bad-bg: #fbe6e4;
   --color-bad-line: #f2cdc9;
 
-  /* Card radius scale */
-  --radius-card: 14px;
+  /*
+   * ONE RADIUS, for every box (issue #484, part 5): a card, notice, well, field, button, menu,
+   * list row, calendar block. Was 14px for cards, beside seven other radii for everything else;
+   * the operator set all of them to 8px. `rounded-full` is the only other shape a box takes.
+   * Marks — decorations under 20px — keep their own radius; the lint rule in eslint.config.mjs
+   * says what a mark is and how one declares itself.
+   */
+  --radius-box: 8px;
 }
 
 html {
@@ -229,7 +235,7 @@ body {
     justify-content: center;
     gap: 0.5rem;
     border: 1px solid transparent;
-    border-radius: var(--radius-card);
+    border-radius: var(--radius-box);
     padding: 0.5rem 1rem;
     font-size: 0.875rem;
     line-height: 1.25rem;
@@ -244,9 +250,12 @@ body {
     background: var(--color-bad);
     color: #fff;
   }
+  /* The control edge, not the card's (issue #1187): with --color-line a full-width secondary
+   * button was a white box with a pale edge and the card's corner — a card, a few pixels from
+   * the real ones. --color-line-strong is the edge the fields and chips already wear. */
   .btn-secondary {
     background: var(--color-card);
-    border-color: var(--color-line);
+    border-color: var(--color-line-strong);
     color: var(--color-ink);
   }
   .btn-quiet {
@@ -270,6 +279,17 @@ body {
     padding: 0.8125rem 1.375rem;
     font-size: 0.9375rem;
     line-height: 1.25rem;
+  }
+  /* A row of linked segments — the calendar's day arrows, Grid/List and filters, the blocks
+   * page's kind and time scope (issue #484, part 5). Five copies of one wrapper before this.
+   * A control, so it wears the control edge the secondary button and the fields do; the
+   * segments inside keep their own dividers and their own active fill. */
+  .segmented {
+    display: inline-flex;
+    overflow: hidden;
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-box);
+    background: var(--color-card);
   }
   /* A link-button that cannot be pressed yet (`aria-disabled`, e.g. Continue before a slot is
    * picked) fades like a disabled <button>; the base layer already gives it "not allowed". */

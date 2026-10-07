@@ -202,14 +202,14 @@ export default async function AdminTimeClock({
           <>
             <AppLink
               href={`/admin/time-clock?crew=${crewList[0]?.id ?? ""}&period=${periodValue}`}
-              className="rounded-t-card px-4 py-2 font-semibold text-muted hover:text-ink"
+              className="rounded-t-box px-4 py-2 font-semibold text-muted hover:text-ink"
             >
               By crew
             </AppLink>
             <span
               role="tab"
               aria-selected="true"
-              className="rounded-t-card border-b-2 border-accent px-4 py-2 font-semibold text-ink"
+              className="rounded-t-box border-b-2 border-accent px-4 py-2 font-semibold text-ink"
             >
               By day
             </span>
@@ -219,13 +219,13 @@ export default async function AdminTimeClock({
             <span
               role="tab"
               aria-selected="true"
-              className="rounded-t-card border-b-2 border-accent px-4 py-2 font-semibold text-ink"
+              className="rounded-t-box border-b-2 border-accent px-4 py-2 font-semibold text-ink"
             >
               By crew
             </span>
             <AppLink
               href={`/admin/time-clock?day=${today}`}
-              className="rounded-t-card px-4 py-2 font-semibold text-muted hover:text-ink"
+              className="rounded-t-box px-4 py-2 font-semibold text-muted hover:text-ink"
             >
               By day
             </AppLink>

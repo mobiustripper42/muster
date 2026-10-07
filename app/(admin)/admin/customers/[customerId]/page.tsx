@@ -92,7 +92,10 @@ export default async function CustomerDetailPage({
           <h1 className="text-[22px] font-semibold leading-tight text-ink">{v.name}</h1>
           <span className="font-mono text-xs text-muted">{v.displayCode}</span>
           {!v.active && (
-            <span className="rounded border border-line px-1.5 py-px text-[10px] uppercase tracking-wide text-muted">
+            <span
+              // eslint-disable-next-line no-restricted-syntax -- mark (issue #484): a 10px badge keeps its 4px corner
+              className="rounded border border-line px-1.5 py-px text-[10px] uppercase tracking-wide text-muted"
+            >
               Retired
             </span>
           )}
@@ -133,7 +136,10 @@ export default async function CustomerDetailPage({
                       {h.guestCount} guest{h.guestCount === 1 ? "" : "s"}
                     </span>
                     {h.status === "cancelled" && (
-                      <span className="ml-2 rounded border border-line px-1 py-px text-[10px] uppercase tracking-wide text-muted">
+                      <span
+                        // eslint-disable-next-line no-restricted-syntax -- mark (issue #484): a 10px badge keeps its 4px corner
+                        className="ml-2 rounded border border-line px-1 py-px text-[10px] uppercase tracking-wide text-muted"
+                      >
                         Cancelled
                       </span>
                     )}

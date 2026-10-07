@@ -88,7 +88,7 @@ export default async function AdminCustomers({
         {query && (
           <AppLink
             href="/admin/customers"
-            className="rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-muted"
+            className="btn-secondary btn-sm"
           >
             Clear
           </AppLink>

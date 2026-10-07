@@ -163,7 +163,7 @@ export default async function AdminVessels({
                 key={v.id}
                 href={`/admin/vessels?sel=${v.id}`}
                 aria-current={selected?.id === v.id ? "page" : undefined}
-                className={`block rounded-[9px] px-2.5 py-2 text-sm ${
+                className={`block rounded-box px-2.5 py-2 text-sm ${
                   selected?.id === v.id ? "bg-bg font-medium text-ink" : "text-muted"
                 }`}
               >
@@ -180,7 +180,7 @@ export default async function AdminVessels({
             ))}
             <AppLink
               href="/admin/vessels?sel=new"
-              className={`mx-0.5 mt-1.5 rounded-lg border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
+              className={`mx-0.5 mt-1.5 rounded-box border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
                 creating ? "font-medium" : ""
               }`}
             >

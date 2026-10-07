@@ -256,7 +256,7 @@ export default async function AdminBlocks({
 
       {/* Filters — kind + time scope, both segmented chips. */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <div className="inline-flex overflow-hidden rounded-lg border border-line bg-card">
+        <div className="segmented">
           {FILTERS.map((f) => {
             const active = filter === f.key;
             return (
@@ -273,7 +273,7 @@ export default async function AdminBlocks({
             );
           })}
         </div>
-        <div className="inline-flex overflow-hidden rounded-lg border border-line bg-card">
+        <div className="segmented">
           {([["Upcoming", false], ["Past", true]] as const).map(([label, past]) => {
             const active = showPast === past;
             return (

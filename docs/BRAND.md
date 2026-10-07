@@ -46,8 +46,12 @@ knows *why* a value is what it is. Tokens were harvested from the Claude Design 
   layout shift). Mono is for times, counts, and ids — anything the eye scans in a column.
 - **Light only.** No dark mode and no theme toggle. This is a tool used on a bright dock and in a
   bright office; a second theme is surface area with no demonstrated demand.
-- **Radius** — one card radius (`--radius-card`, 14px). One value, not a scale — a scale invites
-  fiddling and buys nothing at this size.
+- **Radius** — one box radius (`--radius-box`, `app/globals.css`) on everything that holds
+  something: cards, fields, buttons, menus, notices. One value, not a scale — a scale invites
+  fiddling and buys nothing at this size, and lint refuses any other (issue #484). The two shapes
+  outside it are deliberate: `rounded-full` for a pill, and a **mark** — a decoration under 20px,
+  like a legend key or a role glyph — which keeps the small corner it was drawn with, because the
+  box radius would round it into a dot.
 - **Color is information, never decoration** (DEC-021/042). Three independent axes that must not bleed
   into each other:
   - **Role** — captain and mate each own a hue.

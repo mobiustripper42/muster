@@ -170,7 +170,7 @@ export default async function AdminOfferings({
                   key={o.id}
                   href={`/admin/offerings?sel=${o.id}${hiddenParam}`}
                   aria-current={selected?.id === o.id ? "page" : undefined}
-                  className={`block rounded-[9px] px-2.5 py-2 text-sm ${
+                  className={`block rounded-box px-2.5 py-2 text-sm ${
                     selected?.id === o.id ? "bg-bg font-medium text-ink" : "text-muted"
                   }`}
                 >
@@ -186,7 +186,7 @@ export default async function AdminOfferings({
               ))}
               <AppLink
                 href={`/admin/offerings?sel=new${hiddenParam}`}
-                className={`mx-0.5 mt-1.5 rounded-lg border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
+                className={`mx-0.5 mt-1.5 rounded-box border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
                   creating ? "font-medium" : ""
                 }`}
               >
@@ -218,7 +218,7 @@ export default async function AdminOfferings({
                   <a
                     key={href}
                     href={href}
-                    className="rounded-[9px] px-2.5 py-1.5 text-sm text-muted"
+                    className="rounded-box px-2.5 py-1.5 text-sm text-muted"
                   >
                     {label}
                   </a>

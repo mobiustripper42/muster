@@ -37,7 +37,7 @@ type CardEdge = "line" | "accent" | "bad" | "link";
 
 type CardTone = "ok" | "bad" | "warn";
 
-const CARD_LOOK = "rounded-card border shadow-sm";
+const CARD_LOOK = "rounded-box border shadow-sm";
 const CARD_PAD: Record<CardPad, string> = { normal: "px-4 py-3", none: "" };
 const CARD_EDGE: Record<CardEdge, string> = {
   line: "border-line bg-card",
@@ -50,7 +50,7 @@ const CARD_TONE: Record<CardTone, string> = {
   bad: "border-bad-line bg-bad-bg",
   warn: "border-warn-line bg-warn-bg",
 };
-const WELL_LOOK = "rounded-card border border-line bg-bg px-3 py-2";
+const WELL_LOOK = "rounded-box border border-line bg-bg px-3 py-2";
 
 export function Card<T extends ElementType = "div">({
   as,

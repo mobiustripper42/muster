@@ -63,7 +63,7 @@ export default async function ThreadPage({
           view.messages.map((m) => (
             <div
               key={m.id}
-              className={`flex max-w-[85%] flex-col gap-0.5 rounded-card border px-3 py-2 ${
+              className={`flex max-w-[85%] flex-col gap-0.5 rounded-box border px-3 py-2 ${
                 m.mine
                   // eslint-disable-next-line no-restricted-syntax -- own-message chat bubble, not an action button (#1103)
                   ? "self-end border-accent bg-accent text-white"

@@ -121,7 +121,7 @@ export default async function AdminLocations({
                   key={l.id}
                   href={`/admin/locations?sel=${l.id}`}
                   aria-current={selected?.id === l.id ? "page" : undefined}
-                  className={`block rounded-[9px] px-2.5 py-2 text-sm ${
+                  className={`block rounded-box px-2.5 py-2 text-sm ${
                     selected?.id === l.id ? "bg-bg font-medium text-ink" : "text-muted"
                   }`}
                 >
@@ -136,7 +136,7 @@ export default async function AdminLocations({
             })}
             <AppLink
               href="/admin/locations?sel=new"
-              className={`mx-0.5 mt-1.5 rounded-lg border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
+              className={`mx-0.5 mt-1.5 rounded-box border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
                 creating ? "font-medium" : ""
               }`}
             >

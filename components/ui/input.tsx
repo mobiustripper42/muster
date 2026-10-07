@@ -25,7 +25,7 @@ import { join } from "./join";
  */
 export type FieldDensity = "touch" | "dense";
 
-const LOOK = "rounded-card border border-line-strong bg-card text-ink placeholder:text-muted";
+const LOOK = "rounded-box border border-line-strong bg-card text-ink placeholder:text-muted";
 const DENSITY: Record<FieldDensity, string> = {
   touch: "min-h-[44px] px-3 text-base",
   dense: "min-h-9 px-2 text-sm",

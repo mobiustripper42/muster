@@ -1,5 +1,6 @@
 import type { AllShiftsSeat } from "@core/admin/all-shifts.js";
 import { roleHueClass } from "../assignment/role-hue";
+import { GLYPH_SHAPE } from "../ui/role-glyph";
 
 /**
  * Seat pips (9.6 — the reconciliation's density adopt, minus the mockup's
@@ -94,7 +95,7 @@ export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
         {required.map((s, i) => (
           <span
             key={i}
-            className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase ${
+            className={`${GLYPH_SHAPE} uppercase ${
               s.filled
                 ? `border-2 border-transparent text-white ${roleHueClass(s.roleName)}`
                 : "border-2 border-ink bg-bg text-ink"
@@ -106,7 +107,7 @@ export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
         {trainees.map((s, i) => (
           <span
             key={`t-${i}`}
-            className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border border-dashed text-[10px] font-bold ${
+            className={`${GLYPH_SHAPE} border border-dashed ${
               s.filled
                 ? "border-faint bg-faint text-white"
                 : OPEN_TRAINEE_PIP

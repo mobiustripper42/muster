@@ -253,7 +253,7 @@ function CheckoutStep({
         {/* The trip, changeable — the public checkout's "Your trip" row. */}
         <div className="px-4 pt-4">
           <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Their trip</div>
-          <div className="flex items-center gap-2.5 rounded-xl border border-line px-3.5 py-3">
+          <div className="flex items-center gap-2.5 rounded-box border border-line px-3.5 py-3">
             <span className="min-w-0 flex-1 text-sm">
               <b className="font-semibold">{offering.name}</b>
               <span className="text-muted">

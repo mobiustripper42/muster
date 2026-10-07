@@ -18,7 +18,7 @@ import { PhoneBookingActions, type UnpaidActionState } from "./phone-booking-act
 import { paymentLinkSentMessage } from "./payment-link-message";
 import { Radio } from "../../../../../components/ui/choice";
 import { Input } from "../../../../../components/ui/input";
-import { Card } from "../../../../../components/ui/card";
+import { Card, Well } from "../../../../../components/ui/card";
 
 /**
  * Everything the actions block needs, resolved by the route (#616). Passed in rather than
@@ -730,12 +730,13 @@ function BalanceLink({
           with the Stripe session; mint a fresh one any time.
         </p>
         <div className="flex items-center gap-2">
-          <span
-            className="min-w-0 flex-1 select-all truncate rounded-lg border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-muted"
+          <Well
+            as="span"
+            className="min-w-0 flex-1 select-all truncate font-mono text-[11px] text-muted"
             data-testid="balance-link"
           >
             {balance.url}
-          </span>
+          </Well>
           <CopyButton value={balance.url} label="Copy link" />
         </div>
       </div>
@@ -800,9 +801,9 @@ function PaneActions({
     >
 
       {actions.done && (
-        <p className="mb-2 rounded-lg border border-line bg-bg px-3 py-2 text-xs text-ink" data-testid="action-done">
+        <Well as="p" className="mb-2 text-xs text-ink" data-testid="action-done">
           {actions.done}
-        </p>
+        </Well>
       )}
       {actions.error && (
         <p className="mb-2 text-xs text-bad" data-testid="action-error">
@@ -1099,12 +1100,13 @@ function PaneActions({
             )}
           </p>
           <div className="flex items-center gap-2">
-            <span
-              className="min-w-0 flex-1 select-all truncate rounded-lg border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-muted"
+            <Well
+              as="span"
+              className="min-w-0 flex-1 select-all truncate font-mono text-[11px] text-muted"
               data-testid="manage-link"
             >
               {actions.manageUrl}
-            </span>
+            </Well>
             {/* "Copy manage link", not "Copy link" — the balance block above already has a
                 "Copy link" button, and two controls with the same accessible name in one pane
                 carrying DIFFERENT URLs (a Stripe checkout vs a capability token) is a real

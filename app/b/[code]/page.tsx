@@ -26,7 +26,7 @@ import { logSwallowed } from "../../lib/swallowed";
 import { requestBookingChange } from "./actions";
 import { loadBookingByCode } from "./load";
 import { Textarea } from "../../../components/ui/input";
-import { Card } from "../../../components/ui/card";
+import { Card, Well } from "../../../components/ui/card";
 
 export const dynamic = "force-dynamic";
 
@@ -171,10 +171,10 @@ export default async function ManagePage({
             </div>
           )}
 
-          <p className="mb-5 rounded-[9px] border border-line bg-bg px-3 py-2 text-[12.5px] text-muted">
+          <Well as="p" className="mb-5 text-[12.5px] text-muted">
             <b className="text-ink">Save this link</b> — it’s how you manage your booking. We texted and emailed it to
             you too.
-          </p>
+          </Well>
 
           {/* trip */}
           <Section title="Your trip">

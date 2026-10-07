@@ -88,7 +88,7 @@ export async function CrewHeader({
           prefetch={false}
           data-crew-back
           aria-label={`Back to ${back.label}`}
-          className="-ml-1 flex size-[44px] items-center justify-center rounded-lg text-accent"
+          className="-ml-1 flex size-[44px] items-center justify-center rounded-box text-accent"
         >
           {/* Drawn as an SVG at 26px rather than a text "‹" (operator, 2026-08-05: "can the little
               tiny back arrow be slightly larger"). The glyph rendered small and thin at any font

@@ -143,7 +143,7 @@ export default async function AdminPayroll({
             {rows.length === 0 ? (
               <Notice>No assigned shifts in this period.</Notice>
             ) : (
-              <div className="overflow-x-auto rounded-card border border-line">
+              <div className="overflow-x-auto rounded-box border border-line">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-line bg-card text-left text-xs uppercase tracking-wide text-muted">
@@ -199,7 +199,7 @@ export default async function AdminPayroll({
             {tips.rows.length === 0 ? (
               <Notice>No Muster-side tips in this period.</Notice>
             ) : (
-              <div className="overflow-x-auto rounded-card border border-line">
+              <div className="overflow-x-auto rounded-box border border-line">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-line bg-card text-left text-xs uppercase tracking-wide text-muted">
@@ -394,7 +394,7 @@ function ReconcileSection({
       {rec.rows.length === 0 ? (
         <Notice>No hours and no assigned shifts in this period.</Notice>
       ) : (
-        <div className="overflow-x-auto rounded-card border border-line">
+        <div className="overflow-x-auto rounded-box border border-line">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line bg-card text-left text-xs uppercase tracking-wide text-muted">

@@ -79,7 +79,7 @@ export function DetailsSection({
 }) {
   return (
     <Section id="details" title="Details" hint="what the customer reads">
-      <Field layout="row" label="Status">
+      <Field group layout="row" label="Status">
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {(["draft", "live", "hidden"] as const).map((s) => (
             <Chip
@@ -99,8 +99,9 @@ export function DetailsSection({
         </p>
       </Field>
 
-      <Field layout="row" label="Name">
+      <Field htmlFor="offering-name" layout="row" label="Name">
         <Input
+          id="offering-name"
           name="name"
           required
           defaultValue={draft?.get("name") ?? offering?.name ?? ""}
@@ -108,17 +109,25 @@ export function DetailsSection({
         />
       </Field>
 
-      <Field layout="row" label="Description" hint="markdown" align="start">
+      <Field
+        htmlFor="offering-description"
+        layout="row"
+        label="Description"
+        hint="markdown"
+        align="start"
+      >
         <Textarea
+          id="offering-description"
           name="description"
           defaultValue={draft?.get("description") ?? offering?.description ?? ""}
           className="min-h-[80px] w-full"
         />
       </Field>
 
-      <Field layout="row" label="Location" hint="launch point">
+      <Field htmlFor="offering-location-id" layout="row" label="Location" hint="launch point">
         <span className="flex flex-wrap items-center gap-3">
           <Select
+            id="offering-location-id"
             name="locationId"
             required
             defaultValue={draft?.get("locationId") ?? offering?.locationId ?? ""}
@@ -139,9 +148,15 @@ export function DetailsSection({
         </span>
       </Field>
 
-      <Field layout="row" label="Trip length" hint="on the water">
+      <Field
+        htmlFor="offering-trip-length-minutes"
+        layout="row"
+        label="Trip length"
+        hint="on the water"
+      >
         <span className="flex items-center gap-2">
           <Input
+            id="offering-trip-length-minutes"
             name="tripLengthMinutes"
             type="number"
             min={0}
@@ -152,9 +167,15 @@ export function DetailsSection({
         </span>
       </Field>
 
-      <Field layout="row" label="Boat held for" hint="turnaround included">
+      <Field
+        htmlFor="offering-hold-minutes"
+        layout="row"
+        label="Boat held for"
+        hint="turnaround included"
+      >
         <span className="flex items-center gap-2">
           <Input
+            id="offering-hold-minutes"
             name="holdMinutes"
             type="number"
             min={0}
@@ -165,9 +186,15 @@ export function DetailsSection({
         </span>
       </Field>
 
-      <Field layout="row" label="Arrive before" hint="guest call time">
+      <Field
+        htmlFor="offering-arrive-before-minutes"
+        layout="row"
+        label="Arrive before"
+        hint="guest call time"
+      >
         <span className="flex items-center gap-2">
           <Input
+            id="offering-arrive-before-minutes"
             name="arriveBeforeMinutes"
             type="number"
             min={0}
@@ -178,7 +205,7 @@ export function DetailsSection({
         </span>
       </Field>
 
-      <Field layout="row" label="Vessels" hint="which boats run it">
+      <Field group layout="row" label="Vessels" hint="which boats run it">
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {vessels.map((v) => (
             <Chip
@@ -218,12 +245,13 @@ export function ScheduleSection({
   const schedule = offering?.schedule;
   return (
     <Section id="schedule" title="Schedule" hint="a rule, not rows">
-      <Field layout="row" label="Season">
+      <Field group layout="row" label="Season">
         <span className="flex flex-wrap items-center gap-2">
           <Input
             name="seasonStart"
             type="date"
             required
+            aria-label="Season start"
             defaultValue={draft?.get("seasonStart") ?? schedule?.seasonStart ?? ""}
             className="font-mono"
           />
@@ -232,13 +260,14 @@ export function ScheduleSection({
             name="seasonEnd"
             type="date"
             required
+            aria-label="Season end"
             defaultValue={draft?.get("seasonEnd") ?? schedule?.seasonEnd ?? ""}
             className="font-mono"
           />
         </span>
       </Field>
 
-      <Field layout="row" label="Days">
+      <Field group layout="row" label="Days">
         <div className="flex flex-wrap gap-2 pt-1">
           {WEEKDAY_LABELS.map((label, d) => (
             <Chip
@@ -258,7 +287,7 @@ export function ScheduleSection({
         </div>
       </Field>
 
-      <Field layout="row" label="Departures" hint="add or remove times" align="start">
+      <Field group layout="row" label="Departures" hint="add or remove times" align="start">
         <div className="pt-1">
           {/* The island serializes each time to a hidden `departureTime` input, so the draft
               carries the whole list back — including one added and not yet saved. */}
@@ -308,10 +337,16 @@ export function PricingSection({
 }) {
   return (
     <Section id="pricing" title="Pricing" hint="the boat, by the guest">
-      <Field layout="row" label="Base fare" hint="buys the whole boat">
+      <Field
+        htmlFor="offering-base-price"
+        layout="row"
+        label="Base fare"
+        hint="buys the whole boat"
+      >
         <span className="flex items-center gap-2">
           <span className="text-xs text-muted">$</span>
           <Input
+            id="offering-base-price"
             name="basePrice"
             required
             inputMode="decimal"
@@ -323,9 +358,15 @@ export function PricingSection({
         </span>
       </Field>
 
-      <Field layout="row" label="Included guests" hint="the base fare covers">
+      <Field
+        htmlFor="offering-included-guest-count"
+        layout="row"
+        label="Included guests"
+        hint="the base fare covers"
+      >
         <span className="flex items-center gap-2">
           <Input
+            id="offering-included-guest-count"
             name="includedGuestCount"
             type="number"
             min={1}
@@ -336,10 +377,16 @@ export function PricingSection({
         </span>
       </Field>
 
-      <Field layout="row" label="Extra guest" hint="above the included count">
+      <Field
+        htmlFor="offering-extra-guest-price"
+        layout="row"
+        label="Extra guest"
+        hint="above the included count"
+      >
         <span className="flex items-center gap-2">
           <span className="text-xs text-muted">$</span>
           <Input
+            id="offering-extra-guest-price"
             name="extraGuestPrice"
             required
             inputMode="decimal"
@@ -353,7 +400,7 @@ export function PricingSection({
         </span>
       </Field>
 
-      <Field layout="row" label="Variations" hint="first match wins" align="start">
+      <Field group layout="row" label="Variations" hint="first match wins" align="start">
         <div className="pt-1">
           <PriceVariationsEditor initial={variationsFor(draft, offering)} />
         </div>
@@ -408,7 +455,7 @@ function GratuityKindRow({
 }) {
   const cap = kind === "pre" ? "Pre" : "Post";
   return (
-    <Field layout="row" label={label} hint={when}>
+    <Field group layout="row" label={label} hint={when}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
         <Checkbox
           density="dense"

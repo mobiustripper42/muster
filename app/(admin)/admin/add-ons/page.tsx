@@ -186,8 +186,9 @@ function AddOnCard({
       </div>
 
       <div className="px-4 py-1">
-        <Field layout="row" label="Label" hint="what the customer sees">
+        <Field htmlFor="addon-label" layout="row" label="Label" hint="what the customer sees">
           <Input
+            id="addon-label"
             name="label"
             required
             defaultValue={draft?.get("label") ?? addOn?.label ?? ""}
@@ -195,10 +196,11 @@ function AddOnCard({
           />
         </Field>
 
-        <Field layout="row" label="Amount" hint="a flat charge, revenue">
+        <Field htmlFor="addon-amount" layout="row" label="Amount" hint="a flat charge, revenue">
           <span className="flex items-center gap-2">
             <span className="text-xs text-muted">$</span>
             <Input
+              id="addon-amount"
               name="amount"
               required
               inputMode="decimal"
@@ -210,7 +212,7 @@ function AddOnCard({
           </span>
         </Field>
 
-        <Field layout="row" label="Required" hint="the customer must buy it">
+        <Field group layout="row" label="Required" hint="the customer must buy it">
           <Checkbox
             density="dense"
             name="required"
@@ -221,7 +223,7 @@ function AddOnCard({
           </Checkbox>
         </Field>
 
-        <Field layout="row" label="Active" hint="uncheck to retire">
+        <Field group layout="row" label="Active" hint="uncheck to retire">
           {/* Default checked on a new add-on; retired add-ons drop from the offering picker
               + browse but keep their references (DEC-123 soft-delete). */}
           <Checkbox

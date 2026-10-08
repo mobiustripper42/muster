@@ -30,7 +30,9 @@ Colors map straight to Tailwind utilities (`bg-*`, `text-*`, `border-*`):
 - **Form controls:** `<Input>` / `<Textarea>` / `<Select>` (`components/ui/input.tsx`), `<Checkbox>` /
   `<Radio>` / `<Chip>` / `<Swatch>` (`components/ui/choice.tsx`), and `<Field>`
   (`components/ui/field.tsx`). A raw `<input>`/`<textarea>`/`<select>` fails lint; a page passes
-  layout only.
+  layout only. Every label is tied: a `<Field>` takes `htmlFor` (one control) or `group` (several),
+  a raw `<label>` points or wraps — anything else fails lint. An `htmlFor` naming a missing id does
+  not; check it by hand.
 - **Surfaces:** `<Card>` and `<Well>` (`components/ui/card.tsx`) and `<Notice>` (`components/ui/notice.tsx`)
   — the white box, the grey inset that goes inside one, and the tinted message. A class string
   holding a surface's radius and fill fails lint; padding is the `pad` prop, never a class.

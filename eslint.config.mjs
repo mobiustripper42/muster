@@ -365,11 +365,53 @@ const RADIUS_SELECTORS = [
   { selector: `TemplateElement[value.cooked=/${RADIUS_TOKEN}/]`, message: RADIUS_MESSAGE },
 ];
 
+/**
+ * ## A label names its control (issue #484, part 6)
+ *
+ * A label not tied to its control looks identical to one that is, and fails two ways nobody
+ * sees from a desk: tapping it on a phone does nothing, and a screen reader announces the field
+ * with no name. Before this, 35 `<Field>` rows in 5 files rendered their label as a bare span.
+ *
+ *   - **`<Field>`** says what it labels: `htmlFor` for one control, `group` for several (see
+ *     `components/ui/field.tsx`). A Field with neither is refused. `> JSXAttribute`, a direct
+ *     child, for the reason the field rule above gives: a `hint={<label htmlFor>}` is not the
+ *     Field's own.
+ *   - **A raw `<label>`** points with `htmlFor` or wraps its control — the choice components'
+ *     shape, and the gratuity row's. One that does neither is refused. A wrapped control is any
+ *     field element or field component, at any depth in the label's children (not its
+ *     attributes); a label wrapping only text is the failure.
+ *
+ * **Each `:has` goes one level, nested, never `:has(> A > B)`.** That two-step relative chain
+ * silently matches nothing in this esquery — the first cut of this rule flagged 15 labels that
+ * carried `htmlFor`. The cases in `scripts/lint-ratchets.test.mjs` pin both halves.
+ *
+ * **What it cannot see:** an `htmlFor` naming an id that does not exist. That is two elements,
+ * often in two files, and a selector reads one. Three were found by hand when this was written
+ * — labels pointing at an `AutoSubmitSelect` that took no `id`.
+ */
+const LABEL_CONTROL = "/^(input|select|textarea|Input|Textarea|Select|[A-Z]\\w*(Input|Select|Date))$/";
+const UNTIED_LABEL_SELECTORS = [
+  {
+    selector: "JSXOpeningElement[name.name='Field']:not(:has(> JSXAttribute[name.name=/^(htmlFor|group)$/]))",
+    message:
+      "Say what this <Field> labels (issue #484): htmlFor=\"<the control's id>\" for one control, or group for several — a chip set, a pair of dates, a checkbox with its own label. Tapping a tied label focuses the field, and a screen reader announces it by name.",
+  },
+  {
+    selector:
+      "JSXElement[openingElement.name.name='label']" +
+      ":not(:has(> JSXOpeningElement:has(> JSXAttribute[name.name='htmlFor'])))" +
+      `:not(:has(> :matches(JSXElement, JSXExpressionContainer, JSXFragment):has(JSXOpeningElement[name.name=${LABEL_CONTROL}])))`,
+    message:
+      "Tie this <label> to its control (issue #484): htmlFor=\"<the control's id>\", or wrap the control inside it. Or use <Field> with htmlFor.",
+  },
+];
+
 const APP_SELECTORS = [
   RAW_SUBMIT_SELECTOR,
   ...RAW_FIELD_SELECTORS,
   ...SURFACE_SELECTORS,
   ...RADIUS_SELECTORS,
+  ...UNTIED_LABEL_SELECTORS,
   ...BUTTON_KIND_SELECTORS,
   APP_CATCH_SELECTOR,
   REDIRECT_IN_TRY_SELECTOR,

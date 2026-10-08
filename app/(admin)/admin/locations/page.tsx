@@ -170,8 +170,9 @@ function LocationCard({ location, draft }: { location: Location | null; draft: F
       </div>
 
       <div className="px-4 py-1">
-        <Field layout="row" label="Name">
+        <Field htmlFor="location-name" layout="row" label="Name">
           <Input
+            id="location-name"
             name="name"
             required
             defaultValue={draft?.get("name") ?? location?.name ?? ""}
@@ -179,8 +180,15 @@ function LocationCard({ location, draft }: { location: Location | null; draft: F
           />
         </Field>
 
-        <Field layout="row" label="Pickup" hint="where guests meet the boat" align="start">
+        <Field
+          htmlFor="location-pickup-description"
+          layout="row"
+          label="Pickup"
+          hint="where guests meet the boat"
+          align="start"
+        >
           <Textarea
+            id="location-pickup-description"
             name="pickupDescription"
             required
             defaultValue={draft?.get("pickupDescription") ?? location?.pickupDescription ?? ""}
@@ -188,8 +196,14 @@ function LocationCard({ location, draft }: { location: Location | null; draft: F
           />
         </Field>
 
-        <Field layout="row" label="Pickup link" hint="map / directions">
+        <Field
+          htmlFor="location-pickup-link"
+          layout="row"
+          label="Pickup link"
+          hint="map / directions"
+        >
           <Input
+            id="location-pickup-link"
             name="pickupLink"
             type="url"
             defaultValue={draft?.get("pickupLink") ?? location?.pickupLink ?? ""}
@@ -198,8 +212,15 @@ function LocationCard({ location, draft }: { location: Location | null; draft: F
           />
         </Field>
 
-        <Field layout="row" label="Route" hint="where the trip goes" align="start">
+        <Field
+          htmlFor="location-route-description"
+          layout="row"
+          label="Route"
+          hint="where the trip goes"
+          align="start"
+        >
           <Textarea
+            id="location-route-description"
             name="routeDescription"
             required
             defaultValue={draft?.get("routeDescription") ?? location?.routeDescription ?? ""}

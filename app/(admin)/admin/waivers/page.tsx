@@ -246,16 +246,18 @@ function VersionForm({
           </p>
         </div>
         <div className="px-4 py-1">
-          <Field layout="row" label="Label" hint="e.g. brewboat-2026-v2">
+          <Field htmlFor="waiver-version" layout="row" label="Label" hint="e.g. brewboat-2026-v2">
             <Input
+              id="waiver-version"
               name="version"
               required
               defaultValue={draft?.get("version") ?? editing?.version ?? ""}
               className="w-full max-w-[320px]"
             />
           </Field>
-          <Field layout="row" label="Takes effect">
+          <Field htmlFor="waiver-effective-date" layout="row" label="Takes effect">
             <Input
+              id="waiver-effective-date"
               name="effectiveDate"
               type="date"
               required
@@ -264,8 +266,15 @@ function VersionForm({
               className="max-w-[200px]"
             />
           </Field>
-          <Field layout="row" label="Waiver text" hint="Exactly what guests agree to" align="start">
+          <Field
+            htmlFor="waiver-body"
+            layout="row"
+            label="Waiver text"
+            hint="Exactly what guests agree to"
+            align="start"
+          >
             <Textarea
+              id="waiver-body"
               name="body"
               required
               rows={14}
@@ -313,8 +322,14 @@ function SettingsForm({
           </div>
         )}
         <div className="px-4 py-1">
-          <Field layout="row" label="Age of majority" hint="Younger guests sign with a parent or guardian">
+          <Field
+            htmlFor="waiver-age-of-majority"
+            layout="row"
+            label="Age of majority"
+            hint="Younger guests sign with a parent or guardian"
+          >
             <Input
+              id="waiver-age-of-majority"
               name="ageOfMajority"
               type="number"
               min={1}
@@ -324,8 +339,14 @@ function SettingsForm({
               className="max-w-[110px] font-mono"
             />
           </Field>
-          <Field layout="row" label="Reminder days" hint="Days before the trip the booker is reminded">
+          <Field
+            htmlFor="waiver-reminder-days"
+            layout="row"
+            label="Reminder days"
+            hint="Days before the trip the booker is reminded"
+          >
             <Input
+              id="waiver-reminder-days"
               name="reminderDays"
               defaultValue={draft?.get("reminderDays") ?? config.reminderDaysBefore.join(", ")}
               placeholder="none"

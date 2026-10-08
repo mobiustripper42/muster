@@ -190,6 +190,37 @@ const CASES = [
       ["<p>Rounded corners everywhere</p>;", "the word in copy, which is JSX text and not a class"],
     ],
   },
+  {
+    /**
+     * A label names its control (issue #484, part 6). A `<Field>` points at one control with
+     * `htmlFor` or says it labels several with `group`; a raw `<label>` points or wraps. The
+     * `good` cases are the four shapes a tied label takes, so a selector that eats one is caught.
+     */
+    rule: "a label is tied to its control (issue #484)",
+    filePath: "app/(admin)/admin/probe/page.tsx",
+    bad: [
+      ['<Field label="Name"><Input name="n" /></Field>;', "a Field with neither htmlFor nor group"],
+      [
+        '<Field layout="row" label="Days"><Chip name="d" value="1">Mon</Chip></Field>;',
+        "a group not marked as one",
+      ],
+      [
+        '<Field label="Name" hint={<label htmlFor="x">x</label>}><Input name="n" /></Field>;',
+        "an htmlFor nested inside an attribute value is not the Field's own",
+      ],
+      ['<label className="text-sm text-muted">Name</label>;', "a raw label tied to nothing"],
+      ['<label className="flex">Total <span>{n}</span></label>;', "a raw label wrapping text, not a control"],
+      ['<label x={<Input name="t" />}>Tiers</label>;', "a control inside an attribute value is not wrapped"],
+    ],
+    good: [
+      ['<Field label="Name" htmlFor="n"><Input id="n" name="n" /></Field>;', "a Field pointing at its control"],
+      ['<Field label="Days" group><Chip name="d" value="1">Mon</Chip></Field>;', "a Field naming a group"],
+      ['<label htmlFor="n" className="text-sm">Name</label>;', "a raw label pointing at its control"],
+      ['<label className="flex">Tiers <Input name="t" /></label>;', "a raw label wrapping its control"],
+      ['<label>Tiers <span>{on && <Select name="t" />}</span></label>;', "wrapping it a level or two down"],
+      ['<label>Day <AutoSubmitDate name="d" value="x" /></label>;', "wrapping a control's wrapper"],
+    ],
+  },
 ];
 
 describe.each(CASES)("$rule", ({ filePath, bad, good }) => {

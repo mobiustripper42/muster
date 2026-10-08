@@ -253,7 +253,7 @@ function CrewRows({
   const shown = rows.length > 0 ? rows : [{ roleTypeId: "", count: "1" }];
 
   return (
-    <Field layout="row" label="Required crew" hint="Who must be aboard to sail" align="start">
+    <Field group layout="row" label="Required crew" hint="Who must be aboard to sail" align="start">
       <div className="flex flex-col gap-2 pt-1.5">
         {shown.map((row, i) => (
           <div key={i} className="flex items-center gap-2">
@@ -329,8 +329,9 @@ function VesselCard({
       </div>
 
       <div className="px-4 py-1">
-        <Field layout="row" label="Name">
+        <Field htmlFor="vessel-name" layout="row" label="Name">
           <Input
+            id="vessel-name"
             name="name"
             required
             defaultValue={draft?.get("name") ?? vessel?.name ?? ""}
@@ -338,8 +339,14 @@ function VesselCard({
           />
         </Field>
 
-        <Field layout="row" label="Capacity" hint="The maximum number of passengers">
+        <Field
+          htmlFor="vessel-coi-max-pax"
+          layout="row"
+          label="Capacity"
+          hint="The maximum number of passengers"
+        >
           <Input
+            id="vessel-coi-max-pax"
             name="coiMaxPax"
             type="number"
             min={1}
@@ -352,9 +359,8 @@ function VesselCard({
 
         <CrewRows vessel={vessel} draft={draft} roleTypes={roleTypes} />
 
-        <Field layout="row" label="Color">
-          <fieldset className="flex flex-wrap gap-2 pt-1.5">
-            <legend className="sr-only">Color</legend>
+        <Field group layout="row" label="Color">
+          <div className="flex flex-wrap gap-2 pt-1.5">
             {Array.from({ length: HUE_COUNT }, (_, i) => i + 1).map((h) => (
               <Swatch
                 key={h}
@@ -369,11 +375,17 @@ function VesselCard({
                 label={`Color ${h}`}
               />
             ))}
-          </fieldset>
+          </div>
         </Field>
 
-        <Field layout="row" label="Home location" hint="default launch">
+        <Field
+          htmlFor="vessel-home-location-id"
+          layout="row"
+          label="Home location"
+          hint="default launch"
+        >
           <Select
+            id="vessel-home-location-id"
             name="homeLocationId"
             defaultValue={draft?.get("homeLocationId") ?? vessel?.homeLocationId ?? ""}
             className="w-full max-w-[280px]"
@@ -387,8 +399,9 @@ function VesselCard({
           </Select>
         </Field>
 
-        <Field layout="row" label="Notes" align="start">
+        <Field htmlFor="vessel-notes" layout="row" label="Notes" align="start">
           <Textarea
+            id="vessel-notes"
             name="notes"
             defaultValue={draft?.get("notes") ?? vessel?.notes ?? ""}
             className="min-h-[64px] w-full"

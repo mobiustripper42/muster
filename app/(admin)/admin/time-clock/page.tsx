@@ -282,6 +282,7 @@ export default async function AdminTimeClock({
                 Crew member
               </label>
               <AutoSubmitSelect
+                id="crew"
                 name="crew"
                 value={String(crewView?.crewMemberId ?? "")}
                 options={crewList.map((c) => ({ value: c.id, label: c.name }))}
@@ -293,6 +294,7 @@ export default async function AdminTimeClock({
                 Pay period
               </label>
               <AutoSubmitSelect
+                id="period"
                 name="period"
                 value={periodValue}
                 options={periods.map((p) => ({

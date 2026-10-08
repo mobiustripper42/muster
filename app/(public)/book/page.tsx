@@ -53,7 +53,7 @@ const DOW = ["S", "M", "T", "W", "T", "F", "S"];
 
 // A legend key is a mark, not a box (issue #484, part 5): a 10px square keeps its 3px corner,
 // where the box radius would round it into a dot unlike the day cells it labels.
-// eslint-disable-next-line no-restricted-syntax -- mark (issue #484)
+// eslint-disable-next-line muster/radius -- mark (issue #484)
 const LEGEND_KEY = "h-2.5 w-2.5 rounded-[3px] border";
 
 type Search = { offering?: string; date?: string; time?: string; guests?: string };
@@ -355,7 +355,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       ‹
                     </AppLink>
                   ) : (
-                    // eslint-disable-next-line no-restricted-syntax -- the INACTIVE month arrow (#951). WCAG 1.4.3 exempts an inactive control, and the dimming is the only thing telling it apart from the live `›` beside it, which is `text-muted`.
+                    // eslint-disable-next-line muster/faint-text -- the INACTIVE month arrow (#951). WCAG 1.4.3 exempts an inactive control, and the dimming is the only thing telling it apart from the live `›` beside it, which is `text-muted`.
                     <span className="flex h-[30px] w-[30px] items-center justify-center rounded-box border border-line text-faint opacity-40">
                       ‹
                     </span>
@@ -410,7 +410,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       );
                     if (c.state === "selected")
                       return (
-                        // eslint-disable-next-line no-restricted-syntax -- selected day in the date picker, not an action button (#1103)
+                        // eslint-disable-next-line muster/button-kind -- selected day in the date picker, not an action button (#1103)
                         <span key={i} className={`${base} border border-accent bg-accent font-bold text-white`}>
                           {c.day}
                         </span>

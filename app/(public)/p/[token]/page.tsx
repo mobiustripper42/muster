@@ -46,7 +46,7 @@ function safeDecode(segment: string): string {
   try {
     return decodeURIComponent(segment);
     // NOT a fault (#854): a stray `%` is bad input with a defined answer — the expired page.
-    // eslint-disable-next-line no-restricted-syntax -- malformed URL input, not a fault
+    // eslint-disable-next-line muster/bare-catch -- malformed URL input, not a fault
   } catch {
     return segment;
   }

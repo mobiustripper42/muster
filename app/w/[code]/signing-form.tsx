@@ -66,7 +66,7 @@ export function SigningFormView({
       {/* Enter in any field means Sign. A form's Enter key presses its FIRST submit button, and
           "+ Add a minor" and Remove are submit buttons (so they work without JS): without this,
           Enter in the name field would add a minor. */}
-      {/* eslint-disable-next-line no-restricted-syntax -- invisible Enter-key target; the visible Sign below is the SubmitButton */}
+      {/* eslint-disable-next-line muster/raw-submit -- invisible Enter-key target; the visible Sign below is the SubmitButton */}
       <button type="submit" tabIndex={-1} aria-hidden="true" className="sr-only">
         Sign
       </button>

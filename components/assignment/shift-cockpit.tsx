@@ -251,7 +251,7 @@ export async function ShiftCockpit({
               {view.trips.map((t) => (
                 <span
                   key={t.departureTime}
-                  // eslint-disable-next-line no-restricted-syntax -- mark (issue #484): a one-line trip chip keeps its small corner
+                  // eslint-disable-next-line muster/radius -- mark (issue #484): a one-line trip chip keeps its small corner
                   className="whitespace-nowrap rounded-md border border-line bg-bg px-1.5 py-0.5"
                 >
                   <span className="font-mono text-ink">{fmt12(t.departureTime)}</span>

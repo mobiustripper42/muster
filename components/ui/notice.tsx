@@ -4,7 +4,7 @@ import { join } from "./join";
 
 /**
  * The one message box (issue #484, part 4): a tinted `ok`/`bad`/`warn` box, or a neutral one on
- * white with no tone. `no-restricted-syntax` fails the build on the tinted look written by hand.
+ * white with no tone. `muster/surface` fails the build on the tinted look written by hand.
  * Unlike a `<Card>` it has no shadow — it says something, it does not hold things.
  *
  * `as` and the element's own props pass through (`role="alert"`, a `<details>` that opens);

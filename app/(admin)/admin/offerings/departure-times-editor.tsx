@@ -43,7 +43,7 @@ export function DepartureTimesEditor({ initial }: { initial: string[] }) {
         {times.map((t) => (
           <span
             key={t}
-            // eslint-disable-next-line no-restricted-syntax -- token (issue #484): a value you typed, removed with ×, not a choice; "10:00" never wraps
+            // eslint-disable-next-line muster/pill -- token (issue #484): a value you typed, removed with ×, not a choice; "10:00" never wraps
             className="flex select-none items-center gap-1.5 rounded-full border border-line bg-bg px-3 py-1 font-mono text-sm text-ink"
           >
             {t}

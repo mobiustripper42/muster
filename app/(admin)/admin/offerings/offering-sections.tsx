@@ -322,7 +322,7 @@ function variationsFor(draft: FormDraft | null, offering: Offering | null): Pric
     // round-tripped through a cookie. An unparseable draft is bad input with a defined
     // answer (fall back to the saved offering), which the line above already handles
     // for the non-array case.
-    // eslint-disable-next-line no-restricted-syntax -- unparseable draft cookie, not a fault
+    // eslint-disable-next-line muster/bare-catch -- unparseable draft cookie, not a fault
   } catch {
     return offering?.priceVariations ?? [];
   }

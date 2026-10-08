@@ -3,7 +3,7 @@ import { join } from "./join";
 
 /**
  * The one card and the one well (issue #484, part 4). Every white box a page groups content in is
- * a `<Card>`, and every grey box set inside one is a `<Well>`; `no-restricted-syntax` fails the
+ * a `<Card>`, and every grey box set inside one is a `<Well>`; `muster/surface` fails the
  * build on a class string that writes either look by hand (`eslint.config.mjs`, beside the field
  * rule), so the looks below are the only place they are written.
  *

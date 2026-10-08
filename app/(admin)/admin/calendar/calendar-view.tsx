@@ -117,7 +117,7 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 // A legend key is a mark, not a box (issue #484, part 5): a 12px square keeps its small corner,
 // where the box radius would round it into a dot unlike the cards it labels.
-// eslint-disable-next-line no-restricted-syntax -- mark (issue #484)
+// eslint-disable-next-line muster/radius -- mark (issue #484)
 const LEGEND_KEY = "inline-block h-3 w-3 rounded-sm";
 
 /** Shift an ISO `yyyy-mm-dd` by whole days (UTC-safe). */
@@ -1231,7 +1231,7 @@ export function CalendarGrid({
                         data-vessel={String(s.vesselId)}
                         data-status="awaiting-payment"
                         data-cal-selected={selectedAttr(selectedReservationId === String(phoneBooking.id))}
-                        // eslint-disable-next-line no-restricted-syntax -- a calendar block tinted for "Unpaid", not a message box: <Notice> has no absolute position or grid size (issue #484)
+                        // eslint-disable-next-line muster/surface -- a calendar block tinted for "Unpaid", not a message box: <Notice> has no absolute position or grid size (issue #484)
                         className={`absolute flex flex-col justify-center overflow-hidden rounded-box border border-dashed border-warn-line bg-warn-bg px-2 py-1 text-warn${
                           selectedReservationId === String(phoneBooking.id) ? " ring-2 ring-ink ring-offset-1" : ""
                         }`}

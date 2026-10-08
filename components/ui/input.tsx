@@ -3,7 +3,7 @@ import { join } from "./join";
 
 /**
  * The one field (issue #484). Every `<input>` and `<textarea>` a person types into, and every
- * `<select>` they pick from, is one of these three, and `no-restricted-syntax` fails the build on
+ * `<select>` they pick from, is one of these three, and `muster/field` fails the build on
  * a raw one anywhere else — so the look below is the only place it is written, and a change to it
  * is one edit.
  *

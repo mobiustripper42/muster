@@ -55,7 +55,7 @@ import { Notice } from "../../../../components/ui/notice";
  * a customer this is not something they can use yet.
  */
 const INERT_PROMO_ROW =
-  // eslint-disable-next-line no-restricted-syntax -- inactive control, WCAG 1.4.3; see above
+  // eslint-disable-next-line muster/faint-text -- inactive control, WCAG 1.4.3; see above
   "flex items-center justify-between rounded-box border border-dashed border-line px-3.5 py-3 text-[13px] text-faint";
 
 export interface CheckoutFormProps {
@@ -436,7 +436,7 @@ function InnerForm(p: InnerProps) {
             drives the in-flight label + disable instead. */}
         {/* The pay-bar call to action (#1103): `btn-lg`, the size shared with `/book`'s Continue
             and the operator's Book it — the same control on three screens. */}
-        {/* eslint-disable-next-line no-restricted-syntax -- client onSubmit flow, see above */}
+        {/* eslint-disable-next-line muster/raw-submit -- client onSubmit flow, see above */}
         <button type="submit"
           data-testid={p.pay ? "pay-now" : "book-pay"}
           disabled={!canSubmit}

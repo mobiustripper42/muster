@@ -58,7 +58,7 @@ export function KindPill({ kind }: { kind: BlockKind }) {
   return (
     <Badge tone={meta.tone}>
       <span
-        // eslint-disable-next-line no-restricted-syntax -- mark (issue #484): a 6px square dot keeps its corner
+        // eslint-disable-next-line muster/radius -- mark (issue #484): a 6px square dot keeps its corner
         className={`inline-block h-1.5 w-1.5 rounded-sm ${meta.dot}`}
         aria-hidden
       />

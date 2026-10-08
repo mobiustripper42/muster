@@ -19,7 +19,7 @@ async function copyText(value: string): Promise<boolean> {
     // operator's devtools console and reach no server log at all. And a blocked
     // clipboard API is the expected case on `http://mill-dev:3000` (see the
     // docstring) — the legacy path below is the answer, not a report.
-    // eslint-disable-next-line no-restricted-syntax -- expected in an insecure context
+    // eslint-disable-next-line muster/bare-catch -- expected in an insecure context
   } catch {
     // Secure-context API blocked/denied — fall through to the legacy path.
   }
@@ -38,7 +38,7 @@ async function copyText(value: string): Promise<boolean> {
     // NOT a fault (#854), same as above: browser-side, no server log to reach, and
     // `false` is already surfaced to the operator — the value renders `select-all`
     // so they can copy by hand.
-    // eslint-disable-next-line no-restricted-syntax -- browser-side, already surfaced
+    // eslint-disable-next-line muster/bare-catch -- browser-side, already surfaced
   } catch {
     return false;
   } finally {

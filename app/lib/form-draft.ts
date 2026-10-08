@@ -139,7 +139,7 @@ export async function readFormDraft(surface: string): Promise<FormDraft | null> 
     // reads as no draft… the failure mode that matters is the safe one." The bytes come
     // from a client-held cookie, so a throw here is tampered or truncated input with a
     // defined answer, not a defect in muster.
-    // eslint-disable-next-line no-restricted-syntax -- malformed draft cookie, not a fault
+    // eslint-disable-next-line muster/bare-catch -- malformed draft cookie, not a fault
   } catch {
     return null;
   }

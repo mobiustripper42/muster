@@ -191,7 +191,7 @@ export function CrewMenu({
               {/* A drawer menu row, styled like the nav links above it — not one of #1103's
                   button kinds, which would shrink it and recolour Sign out next to its siblings. */}
               <SubmitButton
-                // eslint-disable-next-line no-restricted-syntax -- drawer menu row, not an action button (#1103)
+                // eslint-disable-next-line muster/button-kind -- drawer menu row, not an action button (#1103)
                 className={`${rowClass} w-full text-accent`}
               >
                 Switch to admin
@@ -200,7 +200,7 @@ export function CrewMenu({
           )}
           <form action={signOut}>
             <SubmitButton
-              // eslint-disable-next-line no-restricted-syntax -- drawer menu row, not an action button (#1103)
+              // eslint-disable-next-line muster/button-kind -- drawer menu row, not an action button (#1103)
               className={`${rowClass} w-full text-muted`}
             >
               Sign out

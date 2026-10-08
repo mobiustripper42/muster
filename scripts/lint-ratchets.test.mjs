@@ -262,6 +262,11 @@ const CASES = [
       ["<span className={`rounded-full border px-2.5 ${tone}`}>x</span>;", "in a template literal, tone in a variable"],
       ['const chip = (on) => (on ? "rounded-full px-3 bg-ink" : "rounded-full px-3");', "hoisted into a const"],
       ['<a className="pressable rounded-full border sm:px-4">7 Days</a>;', "the padding behind a variant"],
+      [
+        "<span className={`rounded-full ${tone} px-3`}>x</span>;",
+        "the round end and the padding either side of a ${} — read whole since part B of the gap audit",
+      ],
+      ['<span className={`rounded-full border ${on ? "px-3 bg-ink" : "px-2"}`}>x</span>;', "the padding in a ?: branch"],
     ],
     good: [
       ['<span className="h-2 w-2 rounded-full bg-ok" />;', "a round dot has no side padding"],
@@ -269,6 +274,85 @@ const CASES = [
       ['<div className="flex rounded-full border border-line p-0.5">{x}</div>;', "a track, padded evenly"],
       ['<Badge tone="ok">Live</Badge>;', "the component"],
       ['<a className={chipLook(on, "dense")}>Week</a>;', "a link wearing the chip face"],
+    ],
+  },
+  {
+    /**
+     * One card, one notice, one well, one card header (issue #484). A surface is the box radius
+     * and a fill in one class string — and since part B of the gap audit, "one string" means a
+     * whole template literal: its fixed parts plus every string in a `?:` branch or after an `&&`
+     * inside its `${}`. Before that each part was read alone, and 11 surfaces hid in the gap — a
+     * chat bubble twice, a settings list's selected row seven times, the purchases filter.
+     */
+    rule: "a surface is a Card, a Notice, a Well or a CardHeader (issue #484)",
+    ruleId: "muster/surface",
+    filePath: "app/(admin)/admin/probe/page.tsx",
+    bad: [
+      ['<div className="rounded-box border border-line bg-card px-4 py-3" />;', "a card by hand, in one string"],
+      ['<p className="rounded-box border bg-warn-bg px-3">Heads up</p>;', "a notice by hand"],
+      [
+        '<div className={`flex rounded-box border px-3 py-2 ${m.mine ? "border-accent bg-accent" : "border-line bg-card"}`} />;',
+        "the fill in a ?: branch — the chat bubble",
+      ],
+      [
+        '<a className={`block rounded-box px-2.5 py-2 ${on ? "bg-bg font-medium" : "text-muted"}`}>x</a>;',
+        "a selected row's grey, in a branch — the settings side list",
+      ],
+      ["<div className={`rounded-box ${tone} bg-ok-bg`} />;", "the radius and the fill either side of a ${}"],
+      ['<div className={`rounded-box border ${on && "bg-card"}`} />;', "the fill after an &&"],
+      ['<div className={`rounded-box ${`border ${on ? "bg-bg" : ""}`}`} />;', "a template inside a template"],
+      [
+        '<div className="border-b border-line px-4 py-3"><h2 className="text-sm font-semibold text-ink">Vessel</h2></div>;',
+        "a card header strip by hand",
+      ],
+      [
+        '<div className="flex items-center gap-3 border-b border-line px-4 py-3"><h2>Add-on</h2><span>x</span></div>;',
+        "a card header strip with something beside the title",
+      ],
+    ],
+    good: [
+      ['<Card pad="none" edge="accent">x</Card>;', "the component"],
+      ['<CardHeader title="Vessel" />;', "the header component"],
+      ['<div className={`rounded-box border px-3 ${on ? "hover:bg-card" : ""}`} />;', "a hover fill is a state, split or not"],
+      ['<div className="rounded-box border border-line px-3.5 py-3" />;', "an edge with no fill is not a surface"],
+      ['<div className={`p-2 ${on ? "bg-card" : ""}`} />;', "a fill with no box radius"],
+      ['<div className={`rounded-box ${on ? "bg-card/70" : ""}`} />;', "the spinner's veil is not the card fill"],
+      ['<div className="border-b border-line px-4 py-3"><p>Signed 3 of 6</p></div>;', "a divided row with no heading"],
+      ['<h2 className="border-b border-line pb-1 text-xs">Today</h2>;', "a heading carrying its own rule"],
+    ],
+  },
+  {
+    /**
+     * A look component's `className` is layout only (issue #484, gap audit part B). The fill,
+     * edge, corner, shadow and padding are the component's — props where they vary (`Card`'s
+     * `pad`, `edge`, `tone`). Padding is in that list, margin is not: Tailwind settles two
+     * paddings by stylesheet order, not class order, so a padding passed in can silently lose
+     * to the component's own. The `good` cases are the layout a page legitimately passes.
+     */
+    rule: "a look component's className is layout only (issue #484)",
+    ruleId: "muster/layout-only",
+    filePath: "app/(admin)/admin/probe/page.tsx",
+    bad: [
+      ['<Card pad="none" className="px-3">x</Card>;', "padding past the pad prop"],
+      ['<Card as="nav" pad="none" className="flex flex-col gap-0.5 p-1.5">x</Card>;', "the settings list's rail padding"],
+      ['<Radio name="by" value="a" className="border-b border-line last:border-0">A</Radio>;', "a divider on each row"],
+      ['<Checkbox name="c" className={on ? "bg-bg" : "mb-2"}>C</Checkbox>;', "a fill in a ?: branch"],
+      ['<Card className={`relative flex ${x} active:bg-accent/10`}>x</Card>;', "a fill behind a state prefix"],
+      ['<Field label="Date" htmlFor="d" className="py-2"><Input id="d" /></Field>;', "padding on a Field"],
+      ['<Well className="rounded-none">x</Well>;', "a corner"],
+      ['<Notice className="shadow-md">x</Notice>;', "a shadow"],
+      ['<Badge className="px-1">Live</Badge>;', "padding on a pill"],
+      ['<SideList label="Vessels" className="bg-card">x</SideList>;', "the new components are covered too"],
+    ],
+    good: [
+      ['<Card pad="none" className="mt-3 flex flex-col gap-2 overflow-hidden">x</Card>;', "layout"],
+      ['<Card as="details" pad="fold" className="group">x</Card>;', "the padding as a prop"],
+      ['<Checkbox density="dense" name="c" className="mb-2">C</Checkbox>;', "a margin is layout"],
+      ['<Well className="text-sm text-muted">x</Well>;', "text styling passes through"],
+      ['<Card className="pointer-events-none place-self-start">x</Card>;', "p- words that are not padding"],
+      ['<Input id="x" name="x" className="w-full font-mono" />;', "a width and a font"],
+      ['<div className="rounded-box border-b px-4 py-3">x</div>;', "a raw element's own look is not this rule's"],
+      ['<AppLink href="/x" className="btn-secondary px-3 py-1 text-sm">+ New</AppLink>;', "a link is not a look component"],
     ],
   },
 ];
@@ -418,5 +502,69 @@ describe("role-glyph.tsx is exempt from the radius rule and nothing else", () =>
 
   it("and the exemption is that file's alone", async () => {
     expect(await violations(MARK, "components/probe.tsx", "muster/radius")).not.toHaveLength(0);
+  });
+});
+
+/**
+ * A class string read whole is still reported once (issue #484, gap audit part B). A string in a
+ * branch that is a surface on its own is reported where it is written; the template around it is
+ * reported only when no single string in it is. Two reports for one box would make a disable that
+ * suppresses one of them look like it suppressed the box.
+ */
+describe("a surface read whole is reported once", () => {
+  const PAGE = "app/(admin)/admin/probe/page.tsx";
+
+  it("at the branch, when the branch is a surface by itself", async () => {
+    const code = 'const c = `p-2 ${on ? "rounded-box bg-card" : ""}`;';
+    expect(await violations(code, PAGE, "muster/surface")).toHaveLength(1);
+  });
+
+  it("at the template, when only the whole is", async () => {
+    const code = 'const c = `rounded-box p-2 ${on ? "bg-card" : ""}`;';
+    expect(await violations(code, PAGE, "muster/surface")).toHaveLength(1);
+  });
+
+  it("and a disable above the template's opening line switches it off", async () => {
+    const code =
+      '// eslint-disable-next-line muster/surface -- probe\nconst c = `rounded-box p-2 ${\n  on ? "bg-card" : ""\n}`;';
+    expect(await violations(code, PAGE, "muster/surface")).toHaveLength(0);
+    expect(await ruleless(code, PAGE)).toHaveLength(0);
+  });
+});
+
+/**
+ * The chat bubble draws a card's fill without being a card (no shadow, accent when it is yours),
+ * so its file is exempt from the surface rule the way `card.tsx` is — and from nothing else.
+ */
+describe("chat-bubble.tsx is exempt from the surface rule and nothing else", () => {
+  const BUBBLE = "components/ui/chat-bubble.tsx";
+  const LOOK = 'const c = "rounded-box border border-line bg-card px-3 py-2";';
+
+  it("stays quiet on the bubble's own look", async () => {
+    expect(await violations(LOOK, BUBBLE, "muster/surface")).toHaveLength(0);
+  });
+
+  it("still fires on #951's token ban there", async () => {
+    expect(await violations('const c = "text-faint";', BUBBLE, "muster/faint-text")).not.toHaveLength(0);
+  });
+
+  it("and the exemption is that file's alone", async () => {
+    expect(await violations(LOOK, "components/probe.tsx", "muster/surface")).not.toHaveLength(0);
+  });
+});
+
+/**
+ * `components/ui/` is where the looks are put together — `Card` renders its element with the card
+ * look as its className — so the layout-only rule stops at that directory and reaches every other.
+ */
+describe("the layout-only rule reaches every directory but components/ui", () => {
+  const CODE = '<Card className="px-3">x</Card>;';
+
+  it("stays quiet in components/ui", async () => {
+    expect(await violations(CODE, "components/ui/probe.tsx", "muster/layout-only")).toHaveLength(0);
+  });
+
+  it.each([["components/admin/probe.tsx"], ["app/(crew)/crew/probe/page.tsx"]])("fires in %s", async (filePath) => {
+    expect(await violations(CODE, filePath, "muster/layout-only")).not.toHaveLength(0);
   });
 });

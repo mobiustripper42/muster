@@ -17,7 +17,7 @@ import { Card, Well } from "../ui/card";
 export function OtherShiftsToday({ shifts }: { shifts: OtherShiftToday[] }) {
   if (shifts.length === 0) return null;
   return (
-    <Card as="details" pad="none" className="group px-4 pb-3">
+    <Card as="details" pad="fold" className="group">
       <summary className="flex min-h-[44px] items-center justify-between text-sm font-semibold text-muted [&::-webkit-details-marker]:hidden">
         <span>
           Other shifts today

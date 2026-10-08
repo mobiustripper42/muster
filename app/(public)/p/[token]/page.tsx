@@ -36,6 +36,7 @@ import { logSwallowed } from "../../../lib/swallowed";
 import { CheckoutForm } from "../../book/checkout/checkout-form";
 import { cancelFromPaymentLink } from "./actions";
 import { Card } from "../../../../components/ui/card";
+import { Recap } from "../../../../components/checkout/recap";
 
 export const dynamic = "force-dynamic";
 
@@ -135,8 +136,7 @@ export default async function PayPage({
 
             {/* your trip — set by the operator, so no Change */}
             <div className="px-[18px] pt-4">
-              <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Your trip</div>
-              <div className="rounded-box border border-line px-3.5 py-3 text-sm" data-testid="pay-trip">
+              <Recap label="Your trip" data-testid="pay-trip">
                 <b className="font-semibold">
                   {formatShortDay(r.date)} · {formatClock(r.time)}
                 </b>
@@ -144,7 +144,7 @@ export default async function PayPage({
                   {" "}
                   · {guests} {guests === 1 ? "guest" : "guests"}
                 </span>
-              </div>
+              </Recap>
             </div>
 
             <CheckoutForm

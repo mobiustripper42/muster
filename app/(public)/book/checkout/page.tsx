@@ -36,6 +36,7 @@ import { logSwallowed } from "../../../lib/swallowed";
 import { CheckoutForm } from "./checkout-form";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
 import { Card } from "../../../../components/ui/card";
+import { Recap } from "../../../../components/checkout/recap";
 
 export const dynamic = "force-dynamic";
 
@@ -301,16 +302,10 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
 
           {/* your trip — the picked slot, changeable (locked while paying, with the header) */}
           <LockedWhilePaying className="px-[18px] pt-4">
-            <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Your trip</div>
-            <div className="flex items-center gap-2.5 rounded-box border border-line px-3.5 py-3">
-              <span className="flex-1 text-sm">
-                <b className="font-semibold">{dateTimeLabel}</b>
-                <span className="text-muted"> · {guests} {guests === 1 ? "guest" : "guests"}</span>
-              </span>
-              <AppLink href={backHref(sp, date, time, guests)} className="btn-quiet text-xs">
-                Change
-              </AppLink>
-            </div>
+            <Recap label="Your trip" changeHref={backHref(sp, date, time, guests)}>
+              <b className="font-semibold">{dateTimeLabel}</b>
+              <span className="text-muted"> · {guests} {guests === 1 ? "guest" : "guests"}</span>
+            </Recap>
           </LockedWhilePaying>
 
           <CheckoutForm

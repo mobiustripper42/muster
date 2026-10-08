@@ -39,7 +39,10 @@ import { join } from "./join";
  * global ring in `app/globals.css` lands on the input, which nobody can see. A chip's ring is the
  * global one; a swatch's sits further out, because its selected state is already that ring.
  *
- * **`className` is for layout**, on the label — width, `flex-1`, a divider between list rows.
+ * **`className` is for layout**, on the label — width, `flex-1`, a margin. A divider between list
+ * rows is drawn by their container (`divide-y divide-line`); `muster/layout-only` refuses an edge,
+ * fill or padding here, because the touch row's own `py-3` would settle a padding passed in by
+ * stylesheet order.
  */
 type ChoiceProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "className" | "children"> & {
   ref?: Ref<HTMLInputElement>;

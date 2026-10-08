@@ -2,7 +2,7 @@ import type { AddOn, Offering } from "@core/domain/entities.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Tag } from "../../../../components/ui/badge";
 import { Shell } from "../../../../components/ui/shell";
-import { AppLink } from "../../../../components/ui/app-link";
+import { SideList, SideListLink, SideListNew } from "../../../../components/admin/side-list";
 import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
@@ -16,7 +16,7 @@ import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { saveAddOn, type AddOnErr } from "./actions";
-import { Card } from "../../../../components/ui/card";
+import { Card, CardHeader } from "../../../../components/ui/card";
 
 /**
  * /admin/add-ons (#491, DEC-123) — the Add-on settings twin, matching the Vessel/Location
@@ -115,19 +115,9 @@ export default async function AdminAddOns({
         )}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
-          <Card as="nav" pad="none" className="flex flex-col gap-0.5 self-start p-1.5">
-            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Add-ons
-            </p>
+          <SideList label="Add-ons" className="self-start">
             {addOns.map((a) => (
-              <AppLink
-                key={a.id}
-                href={`/admin/add-ons?sel=${a.id}`}
-                aria-current={selected?.id === a.id ? "page" : undefined}
-                className={`block rounded-box px-2.5 py-2 text-sm ${
-                  selected?.id === a.id ? "bg-bg font-medium text-ink" : "text-muted"
-                }`}
-              >
+              <SideListLink key={a.id} href={`/admin/add-ons?sel=${a.id}`} current={selected?.id === a.id}>
                 <span className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate">{a.label}</span>
                   {!a.active && (
@@ -136,17 +126,12 @@ export default async function AdminAddOns({
                     </span>
                   )}
                 </span>
-              </AppLink>
+              </SideListLink>
             ))}
-            <AppLink
-              href="/admin/add-ons?sel=new"
-              className={`mx-0.5 mt-1.5 rounded-box border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
-                creating ? "font-medium" : ""
-              }`}
-            >
+            <SideListNew href="/admin/add-ons?sel=new" current={creating}>
               + New add-on
-            </AppLink>
-          </Card>
+            </SideListNew>
+          </SideList>
 
           <div className="flex flex-col gap-4">
             {(selected || creating) && (
@@ -182,9 +167,7 @@ function AddOnCard({
   const isNew = creating || !addOn;
   return (
     <Card as="section" pad="none">
-      <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">Add-on</h2>
-      </div>
+      <CardHeader title="Add-on" />
 
       <div className="px-4 py-1">
         <Field htmlFor="addon-label" layout="row" label="Label" hint="what the customer sees">
@@ -245,9 +228,7 @@ function OfferingsSection({ addOn, offerings }: { addOn: AddOn; offerings: Offer
   const used = offerings.filter((o) => o.addOnIds?.includes(addOn.id));
   return (
     <Card as="section" pad="none">
-      <div className="border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">Offerings</h2>
-      </div>
+      <CardHeader title="Offerings" />
       <div className="px-4 py-3">
         {used.length === 0 ? (
           <p className="text-sm text-muted">Not attached to any offerings yet.</p>

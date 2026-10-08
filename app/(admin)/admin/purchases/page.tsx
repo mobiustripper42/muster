@@ -21,6 +21,7 @@ import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { Input } from "../../../../components/ui/input";
 import { Card } from "../../../../components/ui/card";
+import { chipLook } from "../../../../components/ui/choice";
 
 /**
  * /admin/purchases (task 12.12a, #465) — the order list.
@@ -206,9 +207,7 @@ export default async function AdminPurchases({
               href={hrefWith({ state: s.key })}
               aria-current={active ? "page" : undefined}
               data-testid={`state-${s.key}`}
-              className={`rounded-box border px-2.5 py-1 text-xs ${
-                active ? "border-ink bg-ink font-medium text-white" : "border-line bg-card text-muted"
-              }`}
+              className={`pressable ${chipLook(active, "dense")}`}
             >
               {s.label} {counts[s.key]}
             </AppLink>

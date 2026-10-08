@@ -21,7 +21,7 @@ import {
   GratuitySection,
   AddOnsSection,
 } from "./offering-sections";
-import { Card } from "../../../../components/ui/card";
+import { SideList, SideListLink, SideListNew } from "../../../../components/admin/side-list";
 
 /**
  * /admin/offerings (task 12.8, DEC-123) — the Offering catalog editor, laid out to
@@ -160,19 +160,9 @@ export default async function AdminOfferings({
           {/* Left column pins while the detail scrolls (desktop only — the mockup's sticky
               sidenav); overflow guard keeps a long offerings list from running off-screen. */}
           <div className="flex flex-col gap-3 self-start min-[900px]:sticky min-[900px]:top-4 min-[900px]:max-h-[calc(100vh-1.5rem)] min-[900px]:overflow-y-auto">
-            <Card as="nav" pad="none" className="flex flex-col gap-0.5 p-1.5">
-              <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Offerings
-              </p>
+            <SideList label="Offerings">
               {visible.map((o) => (
-                <AppLink
-                  key={o.id}
-                  href={`/admin/offerings?sel=${o.id}${hiddenParam}`}
-                  aria-current={selected?.id === o.id ? "page" : undefined}
-                  className={`block rounded-box px-2.5 py-2 text-sm ${
-                    selected?.id === o.id ? "bg-bg font-medium text-ink" : "text-muted"
-                  }`}
-                >
+                <SideListLink key={o.id} href={`/admin/offerings?sel=${o.id}${hiddenParam}`} current={selected?.id === o.id}>
                   <span className="flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate">{o.name}</span>
                     {o.status !== "live" && (
@@ -181,16 +171,11 @@ export default async function AdminOfferings({
                       </span>
                     )}
                   </span>
-                </AppLink>
+                </SideListLink>
               ))}
-              <AppLink
-                href={`/admin/offerings?sel=new${hiddenParam}`}
-                className={`mx-0.5 mt-1.5 rounded-box border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
-                  creating ? "font-medium" : ""
-                }`}
-              >
+              <SideListNew href={`/admin/offerings?sel=new${hiddenParam}`} current={creating}>
                 + New offering
-              </AppLink>
+              </SideListNew>
               {(hiddenCount > 0 || showHidden) && (
                 <AppLink
                   href={showHidden ? "/admin/offerings" : "/admin/offerings?hidden=1"}
@@ -199,30 +184,32 @@ export default async function AdminOfferings({
                   {showHidden ? "Hide hidden offerings" : `Show hidden (${hiddenCount})`}
                 </AppLink>
               )}
-            </Card>
+            </SideList>
 
-            {/* Section side-nav — anchor scroll, per the mockup. */}
+            {/* Section side-nav — anchor scroll, per the mockup. Its rows jump within the page
+                rather than pick anything, so they stay plain anchors with no selected state.
+                Hidden on a phone by its wrapper: a `hidden` passed beside the list's own `flex`
+                would be settled by stylesheet order. */}
             {(selected || creating) && (
-              <Card as="nav" pad="none" className="hidden flex-col gap-0.5 min-[900px]:flex p-1.5">
-                <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                  Offering
-                </p>
-                {[
-                  ["#details", "Details"],
-                  ["#schedule", "Schedule"],
-                  ["#pricing", "Pricing"],
-                  ["#gratuity", "Gratuity"],
-                  ["#addons", "Add-ons"],
-                ].map(([href, label]) => (
-                  <a
-                    key={href}
-                    href={href}
-                    className="rounded-box px-2.5 py-1.5 text-sm text-muted"
-                  >
-                    {label}
-                  </a>
-                ))}
-              </Card>
+              <div className="hidden min-[900px]:block">
+                <SideList label="Offering">
+                  {[
+                    ["#details", "Details"],
+                    ["#schedule", "Schedule"],
+                    ["#pricing", "Pricing"],
+                    ["#gratuity", "Gratuity"],
+                    ["#addons", "Add-ons"],
+                  ].map(([href, label]) => (
+                    <a
+                      key={href}
+                      href={href}
+                      className="rounded-box px-2.5 py-1.5 text-sm text-muted"
+                    >
+                      {label}
+                    </a>
+                  ))}
+                </SideList>
+              </div>
             )}
           </div>
 

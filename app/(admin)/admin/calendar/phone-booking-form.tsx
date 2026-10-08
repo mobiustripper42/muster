@@ -136,7 +136,7 @@ function DiscountBox({
   comped: boolean;
 }) {
   return (
-    <Field label="Discount" hint="dollars off the fare" htmlFor="discount" className="pt-5">
+    <Field label="Discount" hint="dollars off the fare" htmlFor="discount" className="mt-5">
       <Input
         id="discount"
         name="discount"

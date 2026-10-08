@@ -2,6 +2,7 @@ import { CrewHeader } from "../../../../../components/crew/crew-header";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { buildThreadView, type ThreadView } from "@core/crewapp/thread-view.js";
 import { asId } from "@core/domain/ids.js";
+import { ChatBubble } from "../../../../../components/ui/chat-bubble";
 import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
@@ -61,26 +62,15 @@ export default async function ThreadPage({
           <Notice>No messages yet. Say something.</Notice>
         ) : (
           view.messages.map((m) => (
-            <div
+            <ChatBubble
               key={m.id}
-              className={`flex max-w-[85%] flex-col gap-0.5 rounded-box border px-3 py-2 ${
-                m.mine
-                  // eslint-disable-next-line muster/button-kind -- own-message chat bubble, not an action button (#1103)
-                  ? "self-end border-accent bg-accent text-white"
-                  : "self-start border-line bg-card text-ink"
-              }`}
+              mine={m.mine}
+              sender={m.mine ? "You" : m.senderLabel}
+              priority={m.priority}
+              at={fmtRunWhen(m.createdAt)}
             >
-              <span
-                className={`flex items-center gap-2 text-[11px] ${m.mine ? "text-white/80" : "text-muted"}`}
-              >
-                <span className="font-semibold">{m.mine ? "You" : m.senderLabel}</span>
-                {m.priority && (
-                  <span className="font-semibold uppercase tracking-wide">· Priority</span>
-                )}
-                <span>· {fmtRunWhen(m.createdAt)}</span>
-              </span>
-              <span className="whitespace-pre-wrap break-words text-sm">{m.body}</span>
-            </div>
+              {m.body}
+            </ChatBubble>
           ))
         )}
       </section>

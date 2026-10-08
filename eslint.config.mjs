@@ -286,41 +286,56 @@ const RAW_FIELD_SELECTORS = [
  * shadow and 40 without, at four paddings and two radii; the notices and wells the same way.
  *
  * **There is no element to key on**, unlike the field rule — a card is a `div`, a `section`, a
- * `nav`, a `details`, a link. So these read the class string, the way #951's `text-faint` rule
- * does, as a `Literal` and as a `TemplateElement`. A string is flagged when it holds a surface's
- * radius AND its fill: `rounded-box` (`rounded-card` when this was written) with `bg-card`,
- * with a tinted `bg-ok-bg`/`bg-bad-bg`/`bg-warn-bg`, or with the page grey `bg-bg`. A fill must be
- * a whole class — `hover:bg-card` is a state, not a fill, and `bg-card/70` is the spinner's veil.
- * (`\x2f` is `/`: esquery ends a regex at the first slash, escaped or not.)
+ * `nav`, a `details`, a link. So this reads the class string, the way #951's `text-faint` rule
+ * does. A string is flagged when it holds a surface's radius AND its fill: `rounded-box`
+ * (`rounded-card` when this was written) with `bg-card`, with a tinted
+ * `bg-ok-bg`/`bg-bad-bg`/`bg-warn-bg`, or with the page grey `bg-bg`. A fill must be a whole
+ * class — `hover:bg-card` is a state, not a fill, and `bg-card/70` is the spinner's veil.
+ * (`\x2f` is `/`: the patterns were written for esquery, which ends a regex at the first slash.)
  *
- * **What it cannot see**, and why the issue closes with a gap audit: the radius and the fill in
- * two different strings — `` `rounded-box border px-4 ${tone}` `` with the fill in `tone` — or
- * the look rebuilt from other tokens. Both were swept by hand here; the rule holds what is
- * written as one string, which is how nearly all of it was.
+ * **A template literal is read whole** — see `classStringRule` below. Until the gap audit that
+ * closes issue #484, each piece was read alone, so `` `rounded-box px-3 ${on ? "bg-bg" : ""}` ``
+ * put the radius and the fill in different pieces and passed: 11 surfaces hid there, among them
+ * the chat bubble twice and the settings lists' selected row seven times. **What it still cannot
+ * see** is a class from a variable, a map or a function call (`TONE[x]`, `chipLook(on)`), and a
+ * box with an edge and no fill — no surface has that look, and the boxes that do (a `Recap`, a
+ * dashed "+ New" link, a selection tile) are not surfaces.
+ *
+ * **It also refuses a card header strip written by hand**: a `div` with a bottom rule whose
+ * direct child is an `h2`. That strip was written twelve times in seven files before
+ * `<CardHeader>`. A strip whose class is an expression is not read; every one in the sweep was
+ * one string.
  *
  * `input.tsx` is exempt alongside the three components: the field look is `rounded-box` and
- * `bg-card` too, and is not a card.
+ * `bg-card` too, and is not a card. So is `chat-bubble.tsx`: a bubble is a card's fill with no
+ * shadow, drawn in that one place.
  */
 // Any other radius is refused by the radius rule below, so the box radius is the only one a
 // surface can be written with — `rounded-[18px]`, the public pages' old sheet, left with part 5.
 const SURFACE_RADIUS = "(?=[\\s\\S]*\\brounded-box\\b)";
 const surfaceFill = (fill) => `(?=[\\s\\S]*(?<!\\S)${fill}(?![\\w\\x2f-]))`;
-const surfaceSelectors = (fill, message) => [
-  { selector: `Literal[value=/^${SURFACE_RADIUS}${surfaceFill(fill)}/]`, message },
-  { selector: `TemplateElement[value.cooked=/^${SURFACE_RADIUS}${surfaceFill(fill)}/]`, message },
-];
+const surfacePattern = (fill, message) => ({ re: `^${SURFACE_RADIUS}${surfaceFill(fill)}`, message });
 const CARD_MESSAGE =
   "Use <Card> from components/ui/card.tsx (issue #484) — one card look (edge, fill, radius, shadow) for the whole app, so a style change is one edit. A box that is a message is <Notice>. Padding is the `pad` prop; className is layout only.";
 const NOTICE_MESSAGE =
   "Use <Notice> from components/ui/notice.tsx (issue #484) — the one tinted message box. className is layout only.";
 const WELL_MESSAGE =
   "Use <Well> from components/ui/card.tsx (issue #484) — the one grey inset box, and it goes inside a card: grey on the grey page vanishes. className is layout only.";
-const SURFACE_SELECTORS = [
-  ...surfaceSelectors("bg-card", CARD_MESSAGE),
-  ...surfaceSelectors("bg-(?:ok|bad|warn)-bg", NOTICE_MESSAGE),
+const SURFACE_PATTERNS = [
+  surfacePattern("bg-card", CARD_MESSAGE),
+  surfacePattern("bg-(?:ok|bad|warn)-bg", NOTICE_MESSAGE),
   // A half-strength grey (`bg-bg/50`) is still a well; only the card's fill excludes `/`.
-  ...surfaceSelectors("bg-bg(?:\\x2f\\d+)?", WELL_MESSAGE),
+  surfacePattern("bg-bg(?:\\x2f\\d+)?", WELL_MESSAGE),
 ];
+// Each `:has` goes one level, nested — `:has(> A > B)` silently matches nothing (see the label rule).
+const CARD_HEADER_SELECTOR = {
+  selector:
+    "JSXElement[openingElement.name.name='div']" +
+    ":has(> JSXOpeningElement:has(> JSXAttribute[name.name='className'][value.value=/(?<![\\w:-])border-b(?![\\w-])/]))" +
+    ":has(> JSXElement[openingElement.name.name='h2'])",
+  message:
+    "Use <CardHeader> from components/ui/card.tsx (issue #484) — the one strip at the top of a card: title, a hint or an action on the right, a note under the title. Put it first inside a <Card pad=\"none\">.",
+};
 
 /**
  * ## One radius (issue #484, part 5)
@@ -374,17 +389,122 @@ const RADIUS_SELECTORS = [
  * The components themselves use a fixed corner rather than `rounded-full` (a wrapped label made
  * the old pills ovals), so this rule never reaches them.
  *
- * **What it cannot see** is the surface rule's gap: each part of a template literal is read on its
- * own, so `` `rounded-full ${tone} px-3` `` puts the two classes in different parts and passes.
- * Every pill in the sweep wrote both before its `${}`; one written the other way is caught by
- * review, not here.
+ * Like the surface rule it reads a template literal whole (`classStringRule` below), so
+ * `` `rounded-full ${tone} px-3` `` is a pill. **What it cannot see** is the surface rule's
+ * remaining gap: a class from a variable, a map or a function call.
  */
 const PILL_RE = "^(?=[\\s\\S]*(?<![\\w-])rounded-full(?![\\w-]))(?=[\\s\\S]*(?<![\\w-])px-)";
 const PILL_MESSAGE =
   "A pill is a component (issue #484): <Chip> for a choice you toggle (chipLook for a filter link), <Badge> for a state, <Tag> for a name, count or amount — components/ui/choice.tsx, components/ui/badge.tsx. className is layout only.";
-const PILL_SELECTORS = [
-  { selector: `Literal[value=/${PILL_RE}/]`, message: PILL_MESSAGE },
-  { selector: `TemplateElement[value.cooked=/${PILL_RE}/]`, message: PILL_MESSAGE },
+const PILL_PATTERNS = [{ re: PILL_RE, message: PILL_MESSAGE }];
+
+/**
+ * ## A class string is read whole (issue #484, gap audit part B)
+ *
+ * The surface and pill rules each look for TWO classes in one string — a radius and a fill, a
+ * round end and side padding. An esquery selector reads a template literal one piece at a time,
+ * so a pair split by a `${}` passed: `` `rounded-box px-3 ${on ? "bg-bg" : ""}` ``. That cannot be
+ * fixed in a selector, so these two are small rules of their own in the `muster` plugin, with the
+ * same names, patterns and messages they had as selectors.
+ *
+ *   - **A string literal** is tested as it is, wherever it appears — a className, a const, a branch.
+ *   - **A template literal** is joined: its fixed parts, plus every string reachable inside its
+ *     `${}` through a `?:` branch (never its test), an `&&`/`||`, or a template nested in one.
+ *     A string behind a variable, a map lookup or a function call is not followed — that is the
+ *     gap the rule docs above name.
+ *   - **One report per box.** A string in a branch that matches on its own is reported where it is
+ *     written; the template around it is reported, at its opening line, only when no single
+ *     string in it matches.
+ *
+ * `selectors` adds esquery selectors to the same rule name, so the card header strip is a
+ * `muster/surface` finding and one disable name covers the surface family.
+ *
+ * `button-kind`'s filled pair (`bg-accent` with `text-white`) is the other two-class test, and it
+ * stays a selector: measured across `app/` and `components/` when this was written, no template
+ * split that pair. If one ever does, it moves here.
+ */
+function classPieces(node, out = []) {
+  if (node.type === "Literal" && typeof node.value === "string") out.push({ text: node.value, literal: true });
+  else if (node.type === "TemplateLiteral") {
+    node.quasis.forEach((q, i) => {
+      out.push({ text: q.value.cooked ?? "", literal: false });
+      if (node.expressions[i]) classPieces(node.expressions[i], out);
+    });
+  } else if (node.type === "ConditionalExpression") {
+    classPieces(node.consequent, out);
+    classPieces(node.alternate, out);
+  } else if (node.type === "LogicalExpression") {
+    classPieces(node.left, out);
+    classPieces(node.right, out);
+  }
+  return out;
+}
+/** A template another template's join already reaches, through the same hops `classPieces` takes. */
+function joinedByOuterTemplate(node) {
+  for (let child = node, p = node.parent; p; child = p, p = p.parent) {
+    if (p.type === "TemplateLiteral") return true;
+    if (p.type === "LogicalExpression" || (p.type === "ConditionalExpression" && p.test !== child)) continue;
+    return false;
+  }
+  return false;
+}
+function classStringRule(patterns, selectors = []) {
+  const tests = patterns.map(({ re, message }) => ({ re: new RegExp(re), message }));
+  return {
+    meta: { type: "problem", schema: [] },
+    create(context) {
+      const visitors = {
+        Literal(node) {
+          if (typeof node.value !== "string") return;
+          for (const { re, message } of tests) if (re.test(node.value)) context.report({ node, message });
+        },
+        TemplateLiteral(node) {
+          if (joinedByOuterTemplate(node)) return;
+          const pieces = classPieces(node);
+          const whole = pieces.map((p) => p.text).join(" ");
+          for (const { re, message } of tests) {
+            if (re.test(whole) && !pieces.some((p) => p.literal && re.test(p.text))) context.report({ node, message });
+          }
+        },
+      };
+      for (const { selector, message } of selectors) visitors[selector] = (node) => context.report({ node, message });
+      return visitors;
+    },
+  };
+}
+
+/**
+ * ## A look component's `className` is layout only (issue #484, gap audit part B)
+ *
+ * Every shared look says so in its header — `className` is for margin, gap, width, flex, grid,
+ * overflow, position — and until this nothing checked it. The gap audit found 22 places passing
+ * the component's own job through it instead: a Card's padding eight times, a divider on each
+ * Radio, padding on eight Fields and two Checkboxes, a press-state fill.
+ *
+ * **Padding counts as look, margin does not.** Tailwind settles two paddings by stylesheet order,
+ * not class order, so `px-3` passed to a component that draws `px-4` wins or loses by an accident
+ * of the generated CSS — the reason `Card` takes padding as a prop. A margin never collides with
+ * anything the component draws. A divider between rows is drawn by their container (`divide-y`).
+ *
+ * The rule reads every string inside the `className` value — a literal, a template's pieces, a
+ * branch, a function's argument — with any state prefix (`active:bg-…` is a fill). A class from a
+ * variable is not read. `components/ui/` is exempt: that is where the looks are put together.
+ * A new look component adds its name to `LOOK_COMPONENT`.
+ */
+const LOOK_COMPONENT =
+  "/^(Card|CardHeader|Well|Notice|Badge|Tag|Chip|Swatch|Checkbox|Radio|Input|Textarea|Select|AutoSubmitSelect|Field|SideList|SideListLink|SideListNew|Recap|ChatBubble)$/";
+const LOOK_CLASS = "(?<![\\w:\\[\\]-])(?:[^\\s:]+:)*(?:bg-|border\\b|rounded\\b|shadow\\b|p[xytblrse]?-)";
+const LAYOUT_ONLY_MESSAGE =
+  "className on a look component is layout only (issue #484): margin, gap, width, flex, grid, overflow, position, text. Its fill, edge, corner, shadow and padding are the component's — use its props (Card's pad, edge, tone); a divider between rows goes on their container (divide-y). Padding counts: Tailwind settles two paddings by stylesheet order, so one passed in can silently lose to the component's own.";
+const LAYOUT_ONLY_SELECTORS = [
+  {
+    selector: `JSXOpeningElement[name.name=${LOOK_COMPONENT}] > JSXAttribute[name.name='className'] Literal[value=/${LOOK_CLASS}/]`,
+    message: LAYOUT_ONLY_MESSAGE,
+  },
+  {
+    selector: `JSXOpeningElement[name.name=${LOOK_COMPONENT}] > JSXAttribute[name.name='className'] TemplateElement[value.cooked=/${LOOK_CLASS}/]`,
+    message: LAYOUT_ONLY_MESSAGE,
+  },
 ];
 
 /**
@@ -444,7 +564,9 @@ const ACTION_THROW_SELECTOR = {
  * such disables, each blinding ten rules it never meant to. So each group is the built-in
  * rule registered again under its own name in the local `muster` plugin: the same selectors
  * and messages, and a disable says which one it means —
- * `eslint-disable-next-line muster/radius -- mark (issue #484)`.
+ * `eslint-disable-next-line muster/radius -- mark (issue #484)`. Two groups, `surface` and
+ * `pill`, outgrew a selector and are small rules of their own (`CLASS_RULES`, which read a class
+ * string whole); they sit in the same plugin under the same kind of name.
  *
  * **It also retires the composition hazard on CLOCK_SELECTOR above** for these two
  * directories. Flat config replaces a rule's options per file, so every narrowing block here
@@ -460,25 +582,33 @@ const ACTION_THROW_SELECTOR = {
 const APP_RULES = {
   "raw-submit": [RAW_SUBMIT_SELECTOR],
   field: RAW_FIELD_SELECTORS,
-  surface: SURFACE_SELECTORS,
   radius: RADIUS_SELECTORS,
-  pill: PILL_SELECTORS,
   label: UNTIED_LABEL_SELECTORS,
   "button-kind": BUTTON_KIND_SELECTORS,
   "bare-catch": [APP_CATCH_SELECTOR],
   "redirect-in-try": [REDIRECT_IN_TRY_SELECTOR],
   clock: [CLOCK_SELECTOR],
   "faint-text": FAINT_TEXT_SELECTORS,
+  "layout-only": LAYOUT_ONLY_SELECTORS,
+};
+// The two that read a class string whole, which a selector cannot (`classStringRule`).
+const CLASS_RULES = {
+  surface: classStringRule(SURFACE_PATTERNS, [CARD_HEADER_SELECTOR]),
+  pill: classStringRule(PILL_PATTERNS),
 };
 const RESTRICTED_SYNTAX = builtinRules.get("no-restricted-syntax");
 const muster = {
-  rules: Object.fromEntries(
-    [...Object.keys(APP_RULES), "action-throw"].map((name) => [name, RESTRICTED_SYNTAX]),
-  ),
+  rules: {
+    ...Object.fromEntries([...Object.keys(APP_RULES), "action-throw"].map((name) => [name, RESTRICTED_SYNTAX])),
+    ...CLASS_RULES,
+  },
 };
-const APP_RULE_SETTINGS = Object.fromEntries(
-  Object.entries(APP_RULES).map(([name, selectors]) => [`muster/${name}`, ["error", ...selectors]]),
-);
+const APP_RULE_SETTINGS = {
+  ...Object.fromEntries(
+    Object.entries(APP_RULES).map(([name, selectors]) => [`muster/${name}`, ["error", ...selectors]]),
+  ),
+  ...Object.fromEntries(Object.keys(CLASS_RULES).map((name) => [`muster/${name}`, "error"])),
+};
 
 const OFF = {
   // --- playwright (e2e/ only) ---
@@ -996,9 +1126,16 @@ export default tseslint.config(
     rules: { "muster/field": "off", "muster/surface": "off" },
   },
   {
-    // The card, well and notice components write the surface looks the #484 rule refuses.
-    files: ["components/ui/card.tsx", "components/ui/notice.tsx"],
+    // The card, well and notice components write the surface looks the #484 rule refuses, and
+    // the chat bubble writes a card's fill without a card's shadow.
+    files: ["components/ui/card.tsx", "components/ui/notice.tsx", "components/ui/chat-bubble.tsx"],
     rules: { "muster/surface": "off" },
+  },
+  {
+    // `components/ui/` is where the looks are put together — `Card` hands its element the card
+    // look as a className — so the layout-only rule (issue #484) stops at it.
+    files: ["components/ui/**/*.{ts,tsx}"],
+    rules: { "muster/layout-only": "off" },
   },
   {
     // The role glyph is a mark, not a box (issue #484, part 5): an 18px square keeps its own

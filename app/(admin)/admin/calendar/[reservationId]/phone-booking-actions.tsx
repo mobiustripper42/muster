@@ -133,22 +133,18 @@ function CancelControl({ reservationId, state }: { reservationId: string; state:
       <p className="text-xs text-muted">Nothing was paid, so nothing is refunded.</p>
       <fieldset>
         <legend className="sr-only">Why</legend>
-        {(
-          [
-            ["customer", "The customer didn’t pay, or changed their mind"],
-            ["operator", "We cancelled"],
-          ] as const
-        ).map(([value, label]) => (
-          <Radio
-            key={value}
-            name="by"
-            value={value}
-            defaultChecked={value === "customer"}
-            className="border-b border-line last:border-0"
-          >
-            {label}
-          </Radio>
-        ))}
+        <div className="divide-y divide-line">
+          {(
+            [
+              ["customer", "The customer didn’t pay, or changed their mind"],
+              ["operator", "We cancelled"],
+            ] as const
+          ).map(([value, label]) => (
+            <Radio key={value} name="by" value={value} defaultChecked={value === "customer"}>
+              {label}
+            </Radio>
+          ))}
+        </div>
       </fieldset>
       <div className="flex gap-2">
         <SubmitButton data-commits="cancel" className="btn-danger min-h-[44px] flex-1">

@@ -19,7 +19,7 @@ import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { saveSettings, saveWaiverVersion, type SettingsErr, type WaiverErr } from "./actions";
-import { Card } from "../../../../components/ui/card";
+import { Card, CardHeader } from "../../../../components/ui/card";
 
 /**
  * /admin/waivers (Phase 18.2, issue #1116) — the waiver text guests agree to, and the module's
@@ -206,9 +206,7 @@ export default async function AdminWaivers({ searchParams }: { searchParams: Pro
 function TitledCard({ title, children }: { title: string; children: ReactNode }) {
   return (
     <Card as="section" pad="none">
-      <div className="border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">{title}</h2>
-      </div>
+      <CardHeader title={title} />
       <div className="px-4 py-1">{children}</div>
     </Card>
   );
@@ -236,15 +234,10 @@ function VersionForm({
         <UnsavedGuard restored={draft !== null} />
         <input type="hidden" name="form" value="version" />
         <input type="hidden" name="id" value={editing?.id ?? ""} />
-        <div className="border-b border-line px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink">
-            {editing ? `Edit scheduled version` : "Post a new version"}
-          </h2>
-          <p className="mt-1 text-xs text-muted">
-            Dated today, it takes effect as soon as you post it. A later date takes effect at midnight
-            that day, and can be edited until then. Once in effect, it can’t be changed.
-          </p>
-        </div>
+        <CardHeader title={editing ? `Edit scheduled version` : "Post a new version"}>
+          Dated today, it takes effect as soon as you post it. A later date takes effect at midnight
+          that day, and can be edited until then. Once in effect, it can’t be changed.
+        </CardHeader>
         <div className="px-4 py-1">
           <Field htmlFor="waiver-version" layout="row" label="Label" hint="e.g. brewboat-2026-v2">
             <Input
@@ -312,9 +305,7 @@ function SettingsForm({
       <form action={saveSettings}>
         <UnsavedGuard restored={draft !== null} />
         <input type="hidden" name="form" value="settings" />
-        <div className="border-b border-line px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink">Settings</h2>
-        </div>
+        <CardHeader title="Settings" />
         {error && (
           <div className="px-4 pt-3">
             <Notice tone="bad">{error}</Notice>

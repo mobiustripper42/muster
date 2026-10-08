@@ -10,7 +10,7 @@ import { VersionTag } from "../../../../../components/ui/version-tag";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../../lib/swallowed";
-import { Card, Well } from "../../../../../components/ui/card";
+import { Card, CardHeader, Well } from "../../../../../components/ui/card";
 
 /**
  * /admin/departure/[eventId] (Phase 18.8, issue #1122) — one departure's waivers, check-in and
@@ -140,9 +140,7 @@ export default async function DeparturePage({ params }: { params: Promise<{ even
 function TitledCard({ title, children }: { title: string; children: ReactNode }) {
   return (
     <Card aria-label={title} as="section" pad="none">
-      <div className="border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">{title}</h2>
-      </div>
+      <CardHeader title={title} />
       <div className="flex flex-col gap-1 px-4 py-3">{children}</div>
     </Card>
   );

@@ -35,7 +35,14 @@ Colors map straight to Tailwind utilities (`bg-*`, `text-*`, `border-*`):
   not; check it by hand.
 - **Surfaces:** `<Card>` and `<Well>` (`components/ui/card.tsx`) and `<Notice>` (`components/ui/notice.tsx`)
   — the white box, the grey inset that goes inside one, and the tinted message. A class string
-  holding a surface's radius and fill fails lint; padding is the `pad` prop, never a class.
+  holding a surface's radius and fill fails lint, read whole across a template's `${}`; padding is
+  the `pad` prop, never a class (`normal`, `none`, `nav`, `fold`, `sides`). A card's title strip is
+  `<CardHeader>`; one written by hand fails lint. Built on these: `<SideList>` for a settings list
+  column (`components/admin/side-list.tsx`), `<Recap>` for a choice restated on a checkout
+  (`components/checkout/recap.tsx`), `<ChatBubble>` for a thread message (`components/ui/chat-bubble.tsx`).
+- **className is layout:** on any of these components a page passes margin, gap, width, flex,
+  grid, overflow, position or text — never a fill, edge, corner, shadow or padding
+  (`muster/layout-only`). A divider between rows goes on their container (`divide-y`).
 - **Pills:** one per job (issue #484). `<Chip>` for a choice you toggle — dark fill when on — and
   `chipLook(on, density)` for a filter link wearing the same face (`components/ui/choice.tsx`);
   `<Badge>` for a state, in capitals, and `<Tag>` for data — a name, count or amount, as written

@@ -228,6 +228,7 @@ export function AdminNav({
                       key={l.href}
                       href={l.href}
                       aria-current={isActive(l.href) ? "page" : undefined}
+                      // eslint-disable-next-line muster/surface -- a menu row's selected fill, not a well (issue #1163 owns menus)
                       className={`whitespace-nowrap rounded-box px-2 py-1.5 ${isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"}`}
                     >
                       {l.label}
@@ -324,6 +325,7 @@ export function AdminNav({
               key={l.href}
               href={l.href}
               aria-current={isActive(l.href) ? "page" : undefined}
+              // eslint-disable-next-line muster/surface -- a menu row's selected fill, not a well (issue #1163 owns menus)
               className={`flex items-center gap-2 rounded-box px-3 py-3 text-base ${
                 isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"
               }`}
@@ -355,6 +357,7 @@ export function AdminNav({
                       key={l.href}
                       href={l.href}
                       aria-current={isActive(l.href) ? "page" : undefined}
+                      // eslint-disable-next-line muster/surface -- a menu row's selected fill, not a well (issue #1163 owns menus)
                       className={`flex items-center gap-2 rounded-box py-3 pl-6 pr-3 text-base ${
                         isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"
                       }`}

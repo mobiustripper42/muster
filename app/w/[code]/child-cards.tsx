@@ -83,7 +83,7 @@ export function ChildCards({
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Minor {i + 1}</h2>
             {/* `formNoValidate`: removing a card must not be blocked by a blank field in it. */}
-            {/* eslint-disable-next-line no-restricted-syntax -- handled in the browser, no round trip to spin for (header) */}
+            {/* eslint-disable-next-line muster/raw-submit -- handled in the browser, no round trip to spin for (header) */}
             <button type="submit"
               name="intent"
               value={`${REMOVE_CHILD}${i}`}
@@ -105,7 +105,7 @@ export function ChildCards({
       <div className="flex flex-col gap-2">
         {cards.length < max ? (
           // `formNoValidate`: adding a card must not be blocked by the blank one above it.
-          // eslint-disable-next-line no-restricted-syntax -- handled in the browser, no round trip to spin for (header)
+          // eslint-disable-next-line muster/raw-submit -- handled in the browser, no round trip to spin for (header)
           <button type="submit"
             ref={addButton}
             name="intent"

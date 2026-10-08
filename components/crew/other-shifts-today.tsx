@@ -24,7 +24,7 @@ export function OtherShiftsToday({ shifts }: { shifts: OtherShiftToday[] }) {
           <span className="ml-1 font-normal text-muted">({shifts.length})</span>
         </span>
         {/* Same caret idiom as the Manifest above (rotates right→down on open). */}
-        {/* eslint-disable-next-line no-restricted-syntax -- aria-hidden caret: decoration, not text (#951). <summary> announces its own open/closed state. */}
+        {/* eslint-disable-next-line muster/faint-text -- aria-hidden caret: decoration, not text (#951). <summary> announces its own open/closed state. */}
         <span className="text-faint transition-transform group-open:rotate-90" aria-hidden>
           ›
         </span>

@@ -135,7 +135,7 @@ export function CheckInList({
     let outcome: TickOutcome;
     try {
       outcome = await tickGuest(shiftId, eventId, guestId, on);
-      // eslint-disable-next-line no-restricted-syntax -- a tap that never reached the server is shown as failed (§C3), not a fault
+      // eslint-disable-next-line muster/bare-catch -- a tap that never reached the server is shown as failed (§C3), not a fault
     } catch {
       outcome = "error";
     }
@@ -256,7 +256,7 @@ function Row({
     >
       <div className="flex items-center">
         <TickForm shiftId={shiftId} eventId={eventId} guestId={target} aboard={next} className="min-w-0 flex-1">
-          {/* eslint-disable-next-line no-restricted-syntax -- a tap moves the row at once; no submit to spin for (header) */}
+          {/* eslint-disable-next-line muster/raw-submit -- a tap moves the row at once; no submit to spin for (header) */}
           <button type="submit"
             disabled={(next && full) || saving}
             onClick={onTap(target, next)}
@@ -297,7 +297,7 @@ function Row({
         <div className="flex items-center justify-between gap-3 px-4 pb-3">
           <span className="text-sm text-muted">Count this person twice?</span>
           <TickForm shiftId={shiftId} eventId={eventId} guestId={another} aboard className="shrink-0">
-            {/* eslint-disable-next-line no-restricted-syntax -- same as the row: a tap ticks at once (header) */}
+            {/* eslint-disable-next-line muster/raw-submit -- same as the row: a tap ticks at once (header) */}
             <button type="submit"
               disabled={full || saving}
               onClick={onTap(another, true)}

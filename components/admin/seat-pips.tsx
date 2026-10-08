@@ -49,7 +49,7 @@ export function AssignedCrew({ seats }: { seats: AllShiftsSeat[] }) {
       {filled.map((s, i) => (
         <span key={i} className="whitespace-nowrap">
           {i > 0 && (
-            // eslint-disable-next-line no-restricted-syntax -- aria-hidden `·` between two names: a separator, not text (#951). The names themselves are `text-muted` on the parent.
+            // eslint-disable-next-line muster/faint-text -- aria-hidden `·` between two names: a separator, not text (#951). The names themselves are `text-muted` on the parent.
             <span aria-hidden="true" className="text-faint">
               ·{" "}
             </span>
@@ -72,7 +72,7 @@ export function AssignedCrew({ seats }: { seats: AllShiftsSeat[] }) {
  * with a text equivalent. The doc comment at the top of this file is the design reason —
  * a rider is not an obligation, and faint-dashed is the treatment that says so.
  */
-// eslint-disable-next-line no-restricted-syntax -- decoration inside an aria-hidden wrapper; see above
+// eslint-disable-next-line muster/faint-text -- decoration inside an aria-hidden wrapper; see above
 const OPEN_TRAINEE_PIP = "border-faint bg-card text-faint";
 
 export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {

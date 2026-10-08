@@ -30,7 +30,7 @@ export async function POST(req: Request): Promise<Response> {
     // NOT a fault (#854). Every crew page that is not a thread fires this beacon with
     // no body at all, so `req.json()` throwing is the ordinary case, not the
     // exception. Logging it would write a line on most beacons in the app.
-    // eslint-disable-next-line no-restricted-syntax -- a bodyless beacon is the norm
+    // eslint-disable-next-line muster/bare-catch -- a bodyless beacon is the norm
   } catch {
     // no body / not JSON — presence-only beacon (a non-thread crew page).
   }

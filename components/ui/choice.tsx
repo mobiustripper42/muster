@@ -4,7 +4,7 @@ import { join } from "./join";
 
 /**
  * The one choice (issue #484): every tick box, radio, toggle chip and colour swatch. Same contract
- * as `input.tsx` — `no-restricted-syntax` fails the build on a raw `<input type="checkbox">` or
+ * as `input.tsx` — `muster/field` fails the build on a raw `<input type="checkbox">` or
  * `<input type="radio">` anywhere else, so the look below is the only place it is written.
  *
  * **The label wraps the input.** Each component renders a `<label>` around its own `<input>`, so a
@@ -64,9 +64,9 @@ const FACE_FOCUS =
 // Each corner is just over half the one-line height at the 15px root: dense is a 28px line, so
 // 1rem; touch is the 44px floor, so 1.5rem.
 const CHIP_SIZE: Record<FieldDensity, string> = {
-  // eslint-disable-next-line no-restricted-syntax -- a pill that may wrap (issue #484): see the header
+  // eslint-disable-next-line muster/radius -- a pill that may wrap (issue #484): see the header
   dense: "rounded-[1rem] px-3 py-1",
-  // eslint-disable-next-line no-restricted-syntax -- a pill that may wrap (issue #484): see the header
+  // eslint-disable-next-line muster/radius -- a pill that may wrap (issue #484): see the header
   touch: "min-h-[44px] rounded-[1.5rem] px-4",
 };
 const CHIP_SHAPE = "flex select-none items-center gap-1.5 border text-sm";

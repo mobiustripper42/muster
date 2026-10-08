@@ -4,6 +4,7 @@ import vitest from "@vitest/eslint-plugin";
 import playwright from "eslint-plugin-playwright";
 import reactHooks from "eslint-plugin-react-hooks";
 import js from "@eslint/js";
+import { builtinRules } from "eslint/use-at-your-own-risk";
 
 /**
  * The `recommended` preset of one plugin, minus the rules listed in `OFF` (#907).
@@ -89,7 +90,9 @@ const recommended = (mod) => {
  * the gate would have gone quiet with nothing to say so.
  *
  * So the selectors live here as named constants and blocks COMPOSE them. Adding a rule
- * to a directory means spreading the list, never rebuilding it.
+ * to a directory means spreading the list, never rebuilding it. That is how `src/`, `db/`
+ * and `e2e/` still work; `app/` and `components/` sidestep the hazard entirely by giving
+ * each group a rule name of its own — see `APP_RULES`.
  */
 const CLOCK_SELECTOR = {
   // An instant formatted without an explicit `timeZone` renders the SERVER's zone in a
@@ -111,7 +114,7 @@ const CLOCK_SELECTOR = {
 };
 
 const FAINT_MESSAGE =
-  "`text-faint` is not a text colour (#951). `--color-faint` measures 2.36:1 on the page background and 2.66:1 on a card — it fails AA's 4.5:1 for body text AND the 3:1 floor for large text, so no size or weight rescues it. Use `text-muted` (5.18:1 / 5.83:1). `faint` survives as a NON-text token: borders, rules, and `aria-hidden` decoration. `disabled:text-faint` is not flagged — WCAG 1.4.3 exempts an inactive control. For an `aria-hidden` glyph, add an eslint-disable-next-line no-restricted-syntax saying so.";
+  "`text-faint` is not a text colour (#951). `--color-faint` measures 2.36:1 on the page background and 2.66:1 on a card — it fails AA's 4.5:1 for body text AND the 3:1 floor for large text, so no size or weight rescues it. Use `text-muted` (5.18:1 / 5.83:1). `faint` survives as a NON-text token: borders, rules, and `aria-hidden` decoration. `disabled:text-faint` is not flagged — WCAG 1.4.3 exempts an inactive control. For an `aria-hidden` glyph, add an eslint-disable-next-line muster/faint-text saying so.";
 
 /**
  * The token ratchet (#951). **Two selectors because a className is written two ways.**
@@ -141,7 +144,7 @@ const FAINT_TEXT_SELECTORS = [
 const RAW_SUBMIT_SELECTOR = {
   selector: "JSXAttribute[name.name='type'][value.value='submit']",
   message:
-    'Use <SubmitButton> (server-action forms) or <GetFormSubmit> (GET filter forms) instead of a raw <button type="submit"> so it shows an in-flight spinner (DEC-090). For a genuine exception, add an eslint-disable-next-line no-restricted-syntax with a reason.',
+    'Use <SubmitButton> (server-action forms) or <GetFormSubmit> (GET filter forms) instead of a raw <button type="submit"> so it shows an in-flight spinner (DEC-090). For a genuine exception, add an eslint-disable-next-line muster/raw-submit with a reason.',
 };
 
 const APP_CATCH_SELECTOR = {
@@ -152,7 +155,7 @@ const APP_CATCH_SELECTOR = {
   // not apply. Recorded rather than left to be rediscovered as debt.
   selector: "CatchClause[param=null]",
   message:
-    "Bind the error and log it — `catch (e) { logSwallowed('<surface>', e); … }` from app/lib/swallowed (#854). A bare `catch {}` is the only place that knows why something failed, and it discards it: an unapplied migration rendered a calm 'try again in a moment' with an empty server log, and recovering the cause took a throwaway script. For a genuine NON-fault — malformed user input, a clipboard rejection — add an eslint-disable-next-line no-restricted-syntax saying which.",
+    "Bind the error and log it — `catch (e) { logSwallowed('<surface>', e); … }` from app/lib/swallowed (#854). A bare `catch {}` is the only place that knows why something failed, and it discards it: an unapplied migration rendered a calm 'try again in a moment' with an empty server log, and recovering the cause took a throwaway script. For a genuine NON-fault — malformed user input, a clipboard rejection — add an eslint-disable-next-line muster/bare-catch saying which.",
 };
 
 const REDIRECT_IN_TRY_SELECTOR = {
@@ -169,17 +172,6 @@ const REDIRECT_IN_TRY_SELECTOR = {
     "Move `redirect()` outside the try. It navigates by throwing, so a catch swallows the navigation and then logs the control-flow throw as if it were a fault. `redirect()` in a CATCH block is fine and is not flagged.",
 };
 
-/**
- * Everything `no-restricted-syntax` bans across `app/**` and `components/**`.
- *
- * **One array, so a narrowing block subtracts instead of rebuilding** (#951). Before this,
- * three blocks each restated the list and a fourth switched the whole rule off; the count of
- * what was being switched off lived in a hand-maintained comment that went stale at #904 and
- * again here. `@code-review` caught the second one: adding the token ban to the shared list
- * did not add it to `components/ui/*`, which opt out of the rule entirely — so the ratchet
- * written to stop #951 recurring was absent from four of the files most likely to grow a
- * new one. A `.filter()` naming the single exemption cannot drift that way.
- */
 /**
  * ## Four kinds of button, one look each (issue #1103)
  *
@@ -345,7 +337,7 @@ const SURFACE_SELECTORS = [
  * role glyph, a seat pip, the block-type dot. (Not a badge: that is `<Badge>`, below.) It is not a box and does
  * not share the box radius: 8px turns a 10px legend key into a dot and an 18px glyph into a
  * coin. A mark keeps the radius it was drawn with and says so where it is drawn, with an
- * `eslint-disable-next-line no-restricted-syntax` reading `mark (issue #484)` — so
+ * `eslint-disable-next-line muster/radius` reading `mark (issue #484)` — so
  * `grep -rn "mark (issue #484)" app components` lists every one, and a new mark has to declare
  * itself to get past this rule. The role glyph is a component, so its file is exempt instead
  * (the block naming `components/ui/role-glyph.tsx` below).
@@ -360,7 +352,7 @@ const RADIUS_TOKEN_REST = "[\\w\\[\\].%-]";
 const RADIUS_TOKEN =
   `(?<![\\w-])rounded(?=[-\\s]|$)(?!${RADIUS_TOKEN_REST}*-(?:box|full|none)(?!${RADIUS_TOKEN_REST}))`;
 const RADIUS_MESSAGE =
-  "One radius for every box (issue #484): rounded-box for a card, field, button, menu, notice or list row; rounded-full for a round dot (a pill is <Chip>, <Badge> or <Tag>). A mark — a decoration under 20px such as a legend key, a role glyph or a seat pip — keeps its own radius: add an eslint-disable-next-line no-restricted-syntax saying `mark (issue #484)`.";
+  "One radius for every box (issue #484): rounded-box for a card, field, button, menu, notice or list row; rounded-full for a round dot (a pill is <Chip>, <Badge> or <Tag>). A mark — a decoration under 20px such as a legend key, a role glyph or a seat pip — keeps its own radius: add an eslint-disable-next-line muster/radius saying `mark (issue #484)`.";
 const RADIUS_SELECTORS = [
   { selector: `Literal[value=/${RADIUS_TOKEN}/]`, message: RADIUS_MESSAGE },
   { selector: `TemplateElement[value.cooked=/${RADIUS_TOKEN}/]`, message: RADIUS_MESSAGE },
@@ -436,19 +428,57 @@ const UNTIED_LABEL_SELECTORS = [
   },
 ];
 
-const APP_SELECTORS = [
-  RAW_SUBMIT_SELECTOR,
-  ...RAW_FIELD_SELECTORS,
-  ...SURFACE_SELECTORS,
-  ...RADIUS_SELECTORS,
-  ...PILL_SELECTORS,
-  ...UNTIED_LABEL_SELECTORS,
-  ...BUTTON_KIND_SELECTORS,
-  APP_CATCH_SELECTOR,
-  REDIRECT_IN_TRY_SELECTOR,
-  CLOCK_SELECTOR,
-  ...FAINT_TEXT_SELECTORS,
-];
+const ACTION_THROW_SELECTOR = {
+  selector: "ThrowStatement",
+  message:
+    "Return the error, don't throw it — `string | null` for a form action, `{ error }` for a button action (CLAUDE-context § Error Handling). A throw here is a 500 where the surface wanted inline feedback. `redirect()` navigates by throwing but is not a ThrowStatement, so it is unaffected.",
+};
+
+/**
+ * ## Everything banned by syntax in `app/**` and `components/**`, one rule name per group (issue #484)
+ *
+ * **A disable names a rule, not a selector.** These groups were once eleven selector lists
+ * spread into the one built-in `no-restricted-syntax`, so a disable written for any of them —
+ * an `aria-hidden` caret for #951, a chat bubble that is "not an action button" for #1103, a
+ * mark — switched off all eleven on its line. The gap audit that closes issue #484 found 55
+ * such disables, each blinding ten rules it never meant to. So each group is the built-in
+ * rule registered again under its own name in the local `muster` plugin: the same selectors
+ * and messages, and a disable says which one it means —
+ * `eslint-disable-next-line muster/radius -- mark (issue #484)`.
+ *
+ * **It also retires the composition hazard on CLOCK_SELECTOR above** for these two
+ * directories. Flat config replaces a rule's options per file, so every narrowing block here
+ * used to rebuild the shared list minus one selector, and a restatement that missed one went
+ * stale twice (#904, then #951, caught in review both times). A narrowing block now switches
+ * one named rule off for its files; every other rule reaches them untouched, because there is
+ * no list to restate.
+ *
+ * **The names are held, not trusted.** `reportUnusedDisableDirectives: "error"` (the first
+ * config object below) fails a disable whose rule does not fire on its line, so a wrong name
+ * is an error rather than a reason that reads right and suppresses nothing.
+ */
+const APP_RULES = {
+  "raw-submit": [RAW_SUBMIT_SELECTOR],
+  field: RAW_FIELD_SELECTORS,
+  surface: SURFACE_SELECTORS,
+  radius: RADIUS_SELECTORS,
+  pill: PILL_SELECTORS,
+  label: UNTIED_LABEL_SELECTORS,
+  "button-kind": BUTTON_KIND_SELECTORS,
+  "bare-catch": [APP_CATCH_SELECTOR],
+  "redirect-in-try": [REDIRECT_IN_TRY_SELECTOR],
+  clock: [CLOCK_SELECTOR],
+  "faint-text": FAINT_TEXT_SELECTORS,
+};
+const RESTRICTED_SYNTAX = builtinRules.get("no-restricted-syntax");
+const muster = {
+  rules: Object.fromEntries(
+    [...Object.keys(APP_RULES), "action-throw"].map((name) => [name, RESTRICTED_SYNTAX]),
+  ),
+};
+const APP_RULE_SETTINGS = Object.fromEntries(
+  Object.entries(APP_RULES).map(([name, selectors]) => [`muster/${name}`, ["error", ...selectors]]),
+);
 
 const OFF = {
   // --- playwright (e2e/ only) ---
@@ -710,6 +740,12 @@ const CORE_PURITY_ALIAS =
  * says the rule out loud and fails on the import itself.
  */
 export default tseslint.config(
+  // A disable that switches nothing off is an error, everywhere (issue #484). ESLint's own
+  // default is `warn`, and `lint` carries no `--max-warnings 0`, so a stale or misnamed
+  // disable printed a line nobody read. With rules split by name (APP_RULES), a disable
+  // naming the wrong one would sit there reading like a reason; this is what fails it.
+  // 0 unused directives in the repo when it was switched on.
+  { linterOptions: { reportUnusedDisableDirectives: "error" } },
   // ── The measured presets (#907) ────────────────────────────────────────────
   //
   // These blocks come FIRST, deliberately. Flat config is last-wins, and the
@@ -825,6 +861,7 @@ export default tseslint.config(
       parser: tseslint.parser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    plugins: { muster },
     rules: {
       "no-restricted-imports": [
         "error",
@@ -839,7 +876,7 @@ export default tseslint.config(
           ],
         },
       ],
-      "no-restricted-syntax": ["error", ...APP_SELECTORS],
+      ...APP_RULE_SETTINGS,
     },
   },
   {
@@ -926,16 +963,11 @@ export default tseslint.config(
     // The wrappers legitimately use the raw primitives they encapsulate — and they need
     // exempting from THAT ban and nothing else.
     //
-    // This block used to say `"no-restricted-syntax": "off"`, which is blunter than it
-    // reads: it dropped the bare-`catch {}` ban (#854), the `redirect()`-in-try ban, the
-    // clock rule (#904) and then #951's token ban too, all of which these files want. The
-    // old comment tracked the count by hand and went stale twice — at #904, and again the
-    // moment #951 spread two more selectors into the shared list. `@code-review` caught the
-    // second one: the ratchet written to stop `text-faint` coming back was absent from four
-    // `components/ui` primitives, which are exactly where a new one would be written.
-    //
-    // So: subtract the one selector, keep the rest. Adding a selector to APP_SELECTORS now
-    // reaches these files automatically, and no comment has to be updated to stay true.
+    // This block once said `"no-restricted-syntax": "off"`, which dropped the bare-`catch {}`
+    // ban (#854), the `redirect()`-in-try ban, the clock rule (#904) and then #951's token ban
+    // too, all of which these files want — caught in review, because an absent rule and a
+    // satisfied one are the same silence. Then it subtracted one selector from a restated
+    // list. Now the ban is its own rule (APP_RULES), so switching it off touches nothing else.
     //
     // A previous sibling block did the same thing for `components/outbox/outbox-card.tsx`.
     // That directory no longer exists (PR #943 deleted the outbox) and the block went with
@@ -948,55 +980,32 @@ export default tseslint.config(
     ],
     rules: {
       "no-restricted-imports": "off",
-      "no-restricted-syntax": ["error", ...APP_SELECTORS.filter((s) => s !== RAW_SUBMIT_SELECTOR)],
+      "muster/raw-submit": "off",
     },
   },
   {
-    // The field and choice components wrap the raw elements the #484 rule refuses, so these
-    // two files alone are exempt from THAT rule — subtracted, the same way the block above
-    // subtracts the submit rule, so every other selector still reaches them. `input.tsx` has
-    // its own block below, because it is subtracted from the surface rule too.
+    // The field and choice components wrap the raw elements the #484 field rule refuses.
+    // Every other rule still reaches both files.
     files: ["components/ui/choice.tsx"],
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        ...APP_SELECTORS.filter((s) => !RAW_FIELD_SELECTORS.includes(s)),
-      ],
-    },
+    rules: { "muster/field": "off" },
   },
   {
-    // The field look is `rounded-box` and `bg-card` too, so `input.tsx` is subtracted from
-    // the surface rule as well as the field one. One block, because flat config replaces a
-    // rule's options per file rather than merging them: two blocks would leave only the last.
+    // The field look is `rounded-box` and `bg-card` too, so `input.tsx` is exempt from the
+    // surface rule as well.
     files: ["components/ui/input.tsx"],
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        ...APP_SELECTORS.filter((s) => !RAW_FIELD_SELECTORS.includes(s) && !SURFACE_SELECTORS.includes(s)),
-      ],
-    },
+    rules: { "muster/field": "off", "muster/surface": "off" },
   },
   {
     // The card, well and notice components write the surface looks the #484 rule refuses.
     files: ["components/ui/card.tsx", "components/ui/notice.tsx"],
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        ...APP_SELECTORS.filter((s) => !SURFACE_SELECTORS.includes(s)),
-      ],
-    },
+    rules: { "muster/surface": "off" },
   },
   {
     // The role glyph is a mark, not a box (issue #484, part 5): an 18px square keeps its own
     // radius. It is the one mark that is a component, so its file is exempt from the radius rule
     // and every other mark carries a `mark (issue #484)` disable where it is drawn.
     files: ["components/ui/role-glyph.tsx"],
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        ...APP_SELECTORS.filter((s) => !RADIUS_SELECTORS.includes(s)),
-      ],
-    },
+    rules: { "muster/radius": "off" },
   },
   {
     // The framework-free domain core, and the scripts that drive it (#757).
@@ -1171,26 +1180,14 @@ export default tseslint.config(
   {
     // ── A server action returns its errors, it does not throw (#904) ──────────
     //
-    // `app/**/actions.ts` is a SUBSET of the `app/**` block above, so this block would
-    // replace that block's selectors for every actions file. It ADDS to them instead of
-    // restating them — the shape every narrowing block here takes since #951; see
-    // APP_SELECTORS for the two times a hand-maintained restatement went stale.
+    // Its own rule name (APP_RULES), so it adds to what `app/**` already applies rather than
+    // replacing it — this block once had to restate the whole shared list to keep the rest.
     //
     // 0 findings, and the weakest of #904's four: a convention with no bug behind it.
     // It is here because it costs nothing, and because "prose conventions are not finding
     // them" is the sentence that opened this issue — #854's prose rule was broken 109 times.
     files: ["app/**/actions.ts"],
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        ...APP_SELECTORS,
-        {
-          selector: "ThrowStatement",
-          message:
-            "Return the error, don't throw it — `string | null` for a form action, `{ error }` for a button action (CLAUDE-context § Error Handling). A throw here is a 500 where the surface wanted inline feedback. `redirect()` navigates by throwing but is not a ThrowStatement, so it is unaffected.",
-        },
-      ],
-    },
+    rules: { "muster/action-throw": ["error", ACTION_THROW_SELECTOR] },
   },
   {
     // The Rules of Hooks, across the `"use client"` islands (#757). A hook called

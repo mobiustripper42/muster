@@ -508,7 +508,7 @@ function CrewApp({
               >
                 <div className="flex items-center justify-between gap-2">
                   <ShiftWhenWhat s={s} />
-                  {/* eslint-disable-next-line no-restricted-syntax -- aria-hidden caret: decoration, not text (#951). The card is the link and carries its own label. */}
+                  {/* eslint-disable-next-line muster/faint-text -- aria-hidden caret: decoration, not text (#951). The card is the link and carries its own label. */}
                   <span className="shrink-0 text-faint" aria-hidden>
                     ›
                   </span>
@@ -569,7 +569,7 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
         <SubmitButton
           name="response"
           value="declined"
-          // eslint-disable-next-line no-restricted-syntax -- paired Yes/No answer, not an action button (#1103)
+          // eslint-disable-next-line muster/button-kind -- paired Yes/No answer, not an action button (#1103)
           className="min-h-[52px] w-full bg-card font-semibold text-bad"
         >
           No
@@ -577,7 +577,7 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
         <SubmitButton
           name="response"
           value="accepted"
-          // eslint-disable-next-line no-restricted-syntax -- paired Yes/No answer, not an action button (#1103)
+          // eslint-disable-next-line muster/button-kind -- paired Yes/No answer, not an action button (#1103)
           className="min-h-[52px] w-full bg-ok font-semibold text-white"
         >
           Yes

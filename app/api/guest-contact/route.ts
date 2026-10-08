@@ -27,7 +27,7 @@ export async function POST(req: Request): Promise<Response> {
     // NOT a fault (#854). An unparseable body on a POST is bad input, answered with the
     // 400 below. The caller is a keepalive fetch that can be cut off mid-flight by the
     // browser handing off to Messages, so a truncated body is expected here.
-    // eslint-disable-next-line no-restricted-syntax -- truncated beacon body, not a fault
+    // eslint-disable-next-line muster/bare-catch -- truncated beacon body, not a fault
   } catch {
     return new NextResponse(null, { status: 400 });
   }

@@ -563,7 +563,7 @@ export default async function AllShifts({
  * the mode to assistive tech now that fill, not prose, marks it. */
 function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
   const seg = (active: boolean) =>
-    // eslint-disable-next-line no-restricted-syntax -- segmented mode toggle (View/Edit): not an action button (#1103), and a switch in one track rather than a row of chips (issue #484)
+    // eslint-disable-next-line muster/button-kind, muster/pill -- segmented mode toggle (View/Edit): not an action button (#1103), and a switch in one track rather than a row of chips (issue #484)
     `rounded-full px-4 py-1.5 font-semibold ${active ? "bg-accent text-white" : "text-muted"}`;
   // The active mode is an inert <span>, not a <AppLink> to itself — clicking the mode
   // you're already on shouldn't fire a navigation + full re-render of this

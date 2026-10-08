@@ -41,11 +41,11 @@ function AccountActions({ className }: { className: string }) {
     <>
       {/* Menu rows, styled like the nav entries beside them — not one of #1103's button kinds. */}
       <form action={switchToCrew}>
-        {/* eslint-disable-next-line no-restricted-syntax -- menu row, not an action button (#1103) */}
+        {/* eslint-disable-next-line muster/button-kind -- menu row, not an action button (#1103) */}
         <SubmitButton className={`${className} w-full text-accent`}>Switch to crew</SubmitButton>
       </form>
       <form action={signOutAdmin}>
-        {/* eslint-disable-next-line no-restricted-syntax -- menu row, not an action button (#1103) */}
+        {/* eslint-disable-next-line muster/button-kind -- menu row, not an action button (#1103) */}
         <SubmitButton className={`${className} w-full text-muted`}>Sign out</SubmitButton>
       </form>
     </>
@@ -221,7 +221,7 @@ export function AdminNav({
                 </summary>
                 {/* Absolutely positioned: a panel in normal flow grows the sticky bar past the
                     52px `shell.tsx` subtracts, and the e2e height assertion would catch it. */}
-                {/* eslint-disable-next-line no-restricted-syntax -- a menu, not a card: it floats over the page (issue #1163 owns menus). */}
+                {/* eslint-disable-next-line muster/surface -- a menu, not a card: it floats over the page (issue #1163 owns menus). */}
                 <div className="absolute right-0 top-full z-30 mt-2 flex min-w-44 flex-col gap-1 rounded-box border border-line bg-card p-2 shadow-lg">
                   {g.links.map((l) => (
                     <AppLink
@@ -253,7 +253,7 @@ export function AdminNav({
                 ▾
               </span>
             </summary>
-            {/* eslint-disable-next-line no-restricted-syntax -- a menu, not a card: it floats over the page (issue #1163 owns menus). */}
+            {/* eslint-disable-next-line muster/surface -- a menu, not a card: it floats over the page (issue #1163 owns menus). */}
             <div className="absolute right-0 top-full z-30 mt-2 flex min-w-44 flex-col gap-1 rounded-box border border-line bg-card p-2 shadow-lg">
               <AccountActions className="whitespace-nowrap rounded-box px-2 py-1.5 text-left" />
             </div>

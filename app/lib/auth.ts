@@ -114,7 +114,7 @@ export async function readSubject(): Promise<AuthSubject | null> {
       // SESSION_SECRET would therefore be swallowed as "read-only context" and silently
       // stop renewals. Hoisting the sign above the try would separate the two, but it
       // changes what escapes `readSubject()` on every request — out of scope here.
-      // eslint-disable-next-line no-restricted-syntax -- read-only render context, by design
+      // eslint-disable-next-line muster/bare-catch -- read-only render context, by design
     } catch {
       // Read-only context (e.g. a Server Component render) — renew next write.
     }

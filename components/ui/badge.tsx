@@ -35,7 +35,7 @@ const TONE: Record<Tone, string> = {
   bad: "border-bad-line bg-bad-bg text-bad",
 };
 
-// eslint-disable-next-line no-restricted-syntax -- a pill that may wrap (issue #484): see the header
+// eslint-disable-next-line muster/radius -- a pill that may wrap (issue #484): see the header
 const SHAPE = "inline-flex items-center gap-1.5 rounded-[0.75rem] border px-2.5 py-0.5 leading-4";
 const BADGE = "text-[11px] font-semibold uppercase tracking-wide";
 const TAG = "text-xs font-medium";

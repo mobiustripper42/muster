@@ -104,7 +104,7 @@ export async function saveOffering(formData: FormData): Promise<void> {
     // Malformed input has a defined answer here — `variationsParse = false`, which the
     // operator sees as a refusal — and the non-array branch above already handles the
     // same case without throwing.
-    // eslint-disable-next-line no-restricted-syntax -- malformed form field, not a fault
+    // eslint-disable-next-line muster/bare-catch -- malformed form field, not a fault
   } catch {
     variationsParse = false;
   }

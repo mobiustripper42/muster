@@ -40,15 +40,34 @@ import { ESLint } from "eslint";
 
 const eslint = new ESLint();
 
-/** Which messages from the real config fired on this snippet, at this path. */
-async function violations(code, filePath) {
+/** Every message the real config reports on this snippet, at this path. */
+async function lint(code, filePath) {
   const [result] = await eslint.lintText(code, { filePath });
-  return (result?.messages ?? []).filter((m) => m.ruleId === "no-restricted-syntax");
+  return result?.messages ?? [];
+}
+
+/**
+ * Which messages from one rule fired. **A rule is named, not inferred** (issue #484): in
+ * `app/` and `components/` each group of selectors is its own `muster/*` rule, so a case
+ * that counted every restricted-syntax hit would pass on the wrong rule firing.
+ */
+async function violations(code, filePath, ruleId) {
+  return (await lint(code, filePath)).filter((m) => m.ruleId === ruleId);
+}
+
+/**
+ * A message with no rule: a parse error, or a disable that switched nothing off. A `good`
+ * case that carries one is not good — the mark below is quiet only if its disable names
+ * the rule that fires, and a wrong name is reported here and nowhere else.
+ */
+async function ruleless(code, filePath) {
+  return (await lint(code, filePath)).filter((m) => m.ruleId === null);
 }
 
 const CASES = [
   {
     rule: "the clock rule — toLocale*String without a timeZone",
+    ruleId: "muster/clock",
     filePath: "app/(admin)/admin/probe-page.tsx",
     bad: [
       ['d.toLocaleTimeString("en-US", { hour: "numeric" });', "a time with no zone"],
@@ -63,6 +82,7 @@ const CASES = [
   },
   {
     rule: "redirect() inside a try block",
+    ruleId: "muster/redirect-in-try",
     filePath: "app/(admin)/admin/probe/page.tsx",
     bad: [
       ['try { redirect("/a"); } catch (e) { log(e); }', "directly in the try"],
@@ -75,6 +95,7 @@ const CASES = [
   },
   {
     rule: "a server action that throws",
+    ruleId: "muster/action-throw",
     filePath: "app/(admin)/admin/probe/actions.ts",
     bad: [
       ['export async function a() { throw new Error("no"); }', "a bare throw"],
@@ -87,6 +108,8 @@ const CASES = [
   },
   {
     rule: "an unconditionally skipped e2e suite",
+    // `e2e/` keeps its own one-selector list under the built-in name; nothing there to split.
+    ruleId: "no-restricted-syntax",
     filePath: "e2e/probe.spec.ts",
     bad: [
       ['test.describe.skip("dark forever", () => {});', "at the top level"],
@@ -114,6 +137,7 @@ const CASES = [
      * is a rule people turn off rather than obey.
      */
     rule: "`text-faint` on anything a person reads (#951)",
+    ruleId: "muster/faint-text",
     filePath: "app/(admin)/admin/probe/page.tsx",
     bad: [
       ['<p className="text-xs text-faint">Scanned 12 rows</p>;', "a plain className"],
@@ -144,6 +168,7 @@ const CASES = [
      * is not an action button — so a selector that eats one of them is caught here.
      */
     rule: "an action button names its kind; pointer and disabled are never hand-written (#1103)",
+    ruleId: "muster/button-kind",
     filePath: "app/(admin)/admin/probe/page.tsx",
     bad: [
       ['<SubmitButton className="rounded-box bg-accent px-4 text-white">Save</SubmitButton>;', "no kind"],
@@ -168,6 +193,7 @@ const CASES = [
      * plus the word in copy, which a token match that ignored word boundaries would eat.
      */
     rule: "one radius for every box (issue #484)",
+    ruleId: "muster/radius",
     filePath: "app/(admin)/admin/probe/page.tsx",
     bad: [
       ['<div className="rounded-lg border" />;', "a Tailwind scale radius"],
@@ -184,7 +210,7 @@ const CASES = [
       ['<span className="h-2 w-2 rounded-full bg-ok" />;', "a round dot"],
       ['<div className="rounded-box sm:rounded-none" />;', "undoing one"],
       [
-        '// eslint-disable-next-line no-restricted-syntax -- mark (issue #484)\nconst KEY = "h-2.5 w-2.5 rounded-[3px] border";',
+        '// eslint-disable-next-line muster/radius -- mark (issue #484)\nconst KEY = "h-2.5 w-2.5 rounded-[3px] border";',
         "a mark that declares itself",
       ],
       ["<p>Rounded corners everywhere</p>;", "the word in copy, which is JSX text and not a class"],
@@ -197,6 +223,7 @@ const CASES = [
      * `good` cases are the four shapes a tied label takes, so a selector that eats one is caught.
      */
     rule: "a label is tied to its control (issue #484)",
+    ruleId: "muster/label",
     filePath: "app/(admin)/admin/probe/page.tsx",
     bad: [
       ['<Field label="Name"><Input name="n" /></Field>;', "a Field with neither htmlFor nor group"],
@@ -228,6 +255,7 @@ const CASES = [
      * that are not pills — a dot, a spinner, a track — so a selector that eats them is caught.
      */
     rule: "a pill is a Chip, a Badge or a Tag (issue #484)",
+    ruleId: "muster/pill",
     filePath: "app/(admin)/admin/probe/page.tsx",
     bad: [
       ['<span className="rounded-full border px-2 py-0.5 text-[10px] uppercase">Live</span>;', "a hand-written badge"],
@@ -245,13 +273,49 @@ const CASES = [
   },
 ];
 
-describe.each(CASES)("$rule", ({ filePath, bad, good }) => {
+describe.each(CASES)("$rule", ({ ruleId, filePath, bad, good }) => {
   it.each(bad)("fires on %s (%s)", async (code) => {
-    expect(await violations(code, filePath)).not.toHaveLength(0);
+    expect(await violations(code, filePath, ruleId)).not.toHaveLength(0);
   });
 
   it.each(good)("stays quiet on %s (%s)", async (code) => {
-    expect(await violations(code, filePath)).toHaveLength(0);
+    expect(await violations(code, filePath, ruleId)).toHaveLength(0);
+    expect(await ruleless(code, filePath)).toHaveLength(0);
+  });
+});
+
+/**
+ * A disable switches off the one rule it names (issue #484).
+ *
+ * Until this, every selector in `app/` and `components/` shared the one name
+ * `no-restricted-syntax`, so a disable written for one of them — an `aria-hidden` caret for
+ * #951, a chat bubble that is "not an action button" for #1103 — switched off all eleven on
+ * that line. The gap audit found 55 such disables, each blinding ten rules it never meant to.
+ * Pinned from three sides: the other rules stay live, a disable naming a rule that does not
+ * fire is an error, and the old catch-all name no longer switches anything off here.
+ */
+describe("a disable switches off only the rule it names", () => {
+  const PAGE = "app/(admin)/admin/probe/page.tsx";
+  const isUnused = (m) => /Unused eslint-disable directive/.test(m.message);
+
+  it("leaves every other rule live on its line", async () => {
+    const code = '// eslint-disable-next-line muster/faint-text -- aria-hidden glyph\nconst c = "text-faint rounded-[9px]";';
+    expect(await violations(code, PAGE, "muster/faint-text")).toHaveLength(0);
+    expect(await violations(code, PAGE, "muster/radius")).toHaveLength(1);
+  });
+
+  it("fails lint when the rule it names does not fire there", async () => {
+    const code = '// eslint-disable-next-line muster/radius -- mark (issue #484)\nconst c = "text-faint";';
+    const unused = (await ruleless(code, PAGE)).filter(isUnused);
+    expect(unused).toHaveLength(1);
+    expect(unused[0].severity).toBe(2);
+    expect(await violations(code, PAGE, "muster/faint-text")).toHaveLength(1);
+  });
+
+  it("and the old catch-all name switches nothing off in app/", async () => {
+    const code = '// eslint-disable-next-line no-restricted-syntax -- mark\nconst c = "rounded-[9px]";';
+    expect(await violations(code, PAGE, "muster/radius")).toHaveLength(1);
+    expect((await ruleless(code, PAGE)).filter(isUnused)).toHaveLength(1);
   });
 });
 
@@ -264,17 +328,19 @@ describe.each(CASES)("$rule", ({ filePath, bad, good }) => {
  * `components/`. It surfaced only because eleven files happened to carry `eslint-disable`
  * comments that went unused.
  *
- * This asserts the older rules still reach the directories a #904 block touches. It fails
- * if anyone adds a `no-restricted-syntax` block without spreading what was already there.
+ * This asserts the older rules still reach the directories a #904 block touches. In `src/`
+ * it fails if anyone adds a `no-restricted-syntax` block without spreading what was already
+ * there; in `app/` and `components/` each rule has its own name (issue #484), so a later
+ * block can only replace the one rule it names — and this says none has.
  */
 describe("#904's blocks did not shadow the rules that came before them", () => {
   it.each([
-    ["app/(admin)/admin/probe/page.tsx", "app/** keeps #854's catch ban"],
-    ["app/(admin)/admin/probe/actions.ts", "the narrower actions.ts block keeps it too"],
-    ["components/probe.tsx", "components/** keeps it"],
-    ["src/probe.ts", "src/** keeps #902's version"],
-  ])("%s — %s", async (filePath) => {
-    const found = await violations("try { x(); } catch { }", filePath);
+    ["app/(admin)/admin/probe/page.tsx", "muster/bare-catch", "app/** keeps #854's catch ban"],
+    ["app/(admin)/admin/probe/actions.ts", "muster/bare-catch", "the narrower actions.ts block keeps it too"],
+    ["components/probe.tsx", "muster/bare-catch", "components/** keeps it"],
+    ["src/probe.ts", "no-restricted-syntax", "src/** keeps #902's version"],
+  ])("%s — %s (%s)", async (filePath, ruleId) => {
+    const found = await violations("try { x(); } catch { }", filePath, ruleId);
     expect(found).not.toHaveLength(0);
   });
 });
@@ -282,10 +348,10 @@ describe("#904's blocks did not shadow the rules that came before them", () => {
 /**
  * Same guard, other direction: #951's token ban has to survive the NARROWING blocks.
  *
- * `app/**\/actions.ts` is a subset of `app/**`, so its block rebuilds the selector list
- * from scratch. It spreads the shared constants back in — and the day someone adds a
- * fifth rule to it and forgets one, this is what says so. The `app/**` row is the
- * control: if that one ever fails, the rule is off everywhere and the rest is noise.
+ * `app/**\/actions.ts` is a subset of `app/**`, and its block used to rebuild the selector
+ * list from scratch to add one. It now adds a rule of its own name instead, and this is
+ * what says the token ban still reaches it. The `app/**` row is the control: if that one
+ * ever fails, the rule is off everywhere and the rest is noise.
  */
 describe("the #951 token ban reaches the narrowing blocks too", () => {
   it.each([
@@ -293,7 +359,7 @@ describe("the #951 token ban reaches the narrowing blocks too", () => {
     ["app/(admin)/admin/probe/actions.ts", "app/**/actions.ts still composes it"],
     ["components/probe.tsx", "components/**"],
   ])("%s — %s", async (filePath) => {
-    const found = await violations('const c = "text-faint";', filePath);
+    const found = await violations('const c = "text-faint";', filePath, "muster/faint-text");
     expect(found).not.toHaveLength(0);
   });
 });
@@ -308,34 +374,34 @@ describe("the #951 token ban reaches the narrowing blocks too", () => {
  * was caught by review, not by the gate, because an absent rule and a satisfied rule
  * produce the same silence.
  *
- * So the exemption is now a `.filter()` on one named selector, and this is what says the
- * subtraction is still exactly one wide.
+ * So the exemption switches off one named rule, `muster/raw-submit` (issue #484), and this
+ * is what says it is still exactly one wide.
  */
 describe("components/ui primitives keep every ban except the raw-submit one", () => {
   const PRIMITIVE = "components/ui/app-link.tsx";
 
   it.each([
-    ['const c = "text-faint";', "#951's token ban"],
-    ["try { x(); } catch { }", "#854's bare-catch ban"],
-    ["try { redirect('/a'); } catch (e) { log(e); }", "the redirect-in-try ban"],
-    ['d.toLocaleDateString("en-US");', "the clock rule"],
-  ])("still fires on %s (%s)", async (code) => {
-    expect(await violations(code, PRIMITIVE)).not.toHaveLength(0);
+    ['const c = "text-faint";', "muster/faint-text", "#951's token ban"],
+    ["try { x(); } catch { }", "muster/bare-catch", "#854's bare-catch ban"],
+    ["try { redirect('/a'); } catch (e) { log(e); }", "muster/redirect-in-try", "the redirect-in-try ban"],
+    ['d.toLocaleDateString("en-US");', "muster/clock", "the clock rule"],
+  ])("still fires on %s (%s, %s)", async (code, ruleId) => {
+    expect(await violations(code, PRIMITIVE, ruleId)).not.toHaveLength(0);
   });
 
   it("stays quiet on the raw submit button — the one thing these files exist to wrap", async () => {
-    expect(await violations('<button type="submit">Go</button>;', PRIMITIVE)).toHaveLength(0);
+    expect(await violations('<button type="submit">Go</button>;', PRIMITIVE, "muster/raw-submit")).toHaveLength(0);
   });
 
   it("and that exemption is theirs alone — an ordinary component still gets it", async () => {
-    const found = await violations('<button type="submit">Go</button>;', "components/probe.tsx");
+    const found = await violations('<button type="submit">Go</button>;', "components/probe.tsx", "muster/raw-submit");
     expect(found).not.toHaveLength(0);
   });
 });
 
 /**
  * The role glyph is the one mark that is a component, so its FILE is exempt from the radius
- * rule (issue #484, part 5) — by the same one-selector subtraction as the primitives above.
+ * rule (issue #484, part 5) — one named rule off, the same way as the primitives above.
  * Pinned from both sides: the exemption reaches nothing else in that file, and no other file.
  */
 describe("role-glyph.tsx is exempt from the radius rule and nothing else", () => {
@@ -343,14 +409,14 @@ describe("role-glyph.tsx is exempt from the radius rule and nothing else", () =>
   const MARK = 'const c = "h-[18px] w-[18px] rounded-[5px]";';
 
   it("stays quiet on the glyph's own corner", async () => {
-    expect(await violations(MARK, GLYPH)).toHaveLength(0);
+    expect(await violations(MARK, GLYPH, "muster/radius")).toHaveLength(0);
   });
 
   it("still fires on #951's token ban there", async () => {
-    expect(await violations('const c = "text-faint";', GLYPH)).not.toHaveLength(0);
+    expect(await violations('const c = "text-faint";', GLYPH, "muster/faint-text")).not.toHaveLength(0);
   });
 
   it("and the exemption is that file's alone", async () => {
-    expect(await violations(MARK, "components/probe.tsx")).not.toHaveLength(0);
+    expect(await violations(MARK, "components/probe.tsx", "muster/radius")).not.toHaveLength(0);
   });
 });

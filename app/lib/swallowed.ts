@@ -89,7 +89,7 @@ export function logSwallowed(surface: string, e: unknown, consequence?: string):
       // method and which table. Pinned by a test.
       e,
     );
-    // eslint-disable-next-line no-restricted-syntax -- see below
+    // eslint-disable-next-line muster/bare-catch -- see below
   } catch {
     // NOT a swallowed application error, and it must not call itself. This
     // function runs INSIDE a catch block; if it throws, the caller's degrade

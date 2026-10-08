@@ -635,6 +635,17 @@ test.describe("admin reservation actions (#616)", () => {
     await expect(confirm).toContainText("$538.80"); // customer asked — less the $50 fee
     await expect(confirm).toContainText("$588.80"); // we cancelled — everything paid
 
+    // Each quote sits on its own radio, and that radio posts the `by` the action prices the refund
+    // from. A markup pass that swapped a `value` would refund the other rate with every figure still
+    // right on screen — the shape the blast-radius note on reservation-detail-pane.tsx records — so
+    // the label, the quote and the posted value are pinned together (issue #484, gap audit part B).
+    const rate = (by: string) =>
+      confirm.locator("label").filter({ has: page.locator(`input[name="by"][value="${by}"]`) });
+    await expect(rate("customer")).toContainText("The customer asked");
+    await expect(rate("customer")).toContainText("$538.80");
+    await expect(rate("operator")).toContainText("We cancelled");
+    await expect(rate("operator")).toContainText("$588.80");
+
     const actionsText = (await page.getByTestId("reservation-actions").innerText()).toLowerCase();
     expect(actionsText).not.toMatch(/\b(above|below)\b/);
 

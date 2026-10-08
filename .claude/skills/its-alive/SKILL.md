@@ -63,11 +63,11 @@ The session file lives on an orphan `sessions` branch checked out at `.sessions-
 
 **Check for worktree.** `[ -e .sessions-worktree/.git ] && echo present || echo missing`. (`-e`, not `-d`: in a linked worktree `.git` is a *file* — a `gitdir:` pointer — so `-d` reports `missing` on a worktree that is present, and sends the session into sub-case (a) below to fail on `already exists`.)
 
-**If present:** `git -C .sessions-worktree fetch origin sessions && git -C .sessions-worktree reset --hard origin/sessions`. Continue to Step 1. (`git -C`, not `cd` — shell state doesn't persist between Bash calls, and a stray `cd` that fails leaves the next command running in the wrong tree. The `&&` chain here made it safer than the unchained version but not correct.)
+**If present:** `git -C .sessions-worktree fetch origin sessions && git -C .sessions-worktree reset --hard origin/sessions`. Continue to Step 1. (`git -C`, not `cd` — shell state doesn't persist between Bash calls, and a stray `cd` that fails leaves the next command running in the wrong tree. The `&&` chain here made it safer than the unchained version but not correct.) This `reset --hard` is why the permission policy denies the `-C` spellings of force-push, `clean -f` and `branch -D` but not of `reset --hard`: denying it would stop every session from opening.
 
 **If missing — three sub-cases:**
 
-a. **`origin/sessions` exists on remote** (fresh clone / accidental delete): `git fetch origin sessions` then `git worktree add .sessions-worktree sessions`. Continue. (`git worktree add <path> [<commit-ish>]` takes **one** ref — the two-ref form `… sessions origin/sessions` is a usage error, and git answers it with a fragment of its own `--help` output rather than anything that reads like a failure.) In a linked worktree this fails with `already checked out`: the lane was made without the link from the concurrent-session recipe in Step 2. Stop and give the user that recipe's `ln -s` and ignore lines.
+a. **`origin/sessions` exists on remote** (fresh clone / accidental delete): `git fetch origin sessions` then `git worktree add .sessions-worktree sessions`. Continue. (`git worktree add <path> [<commit-ish>]` takes **one** ref — the two-ref form `… sessions origin/sessions` is a usage error, and git answers it with a fragment of its own `--help` output rather than anything that reads like a failure.) In a linked worktree this fails with `already checked out`: the lane was made without the link from the concurrent-session recipe in Step 2. Stop and give the user that recipe's `ln -s`, settings and ignore lines.
 
 b. **`origin/sessions` does NOT exist** (first run on this project — migration path): bootstrap the orphan branch.
 ```
@@ -123,11 +123,12 @@ Sanitize: lowercase, replace any non-`[a-z0-9.-]` with `-`, collapse repeats.
 ```
 git worktree add ../<repo>-<slug> -b task/<slug> main
 ln -s "$PWD/.sessions-worktree" ../<repo>-<slug>/.sessions-worktree
-git -C ../<repo>-<slug> check-ignore -q .sessions-worktree || echo .sessions-worktree >> .git/info/exclude
+printf '{ "permissions": { "additionalDirectories": ["%s"] } }\n' "$PWD/.sessions-worktree" > ../<repo>-<slug>/.claude/settings.local.json
+for p in .sessions-worktree .claude/settings.local.json; do git -C ../<repo>-<slug> check-ignore -q $p || echo $p >> .git/info/exclude; done
 cd ../<repo>-<slug> && claude
 ```
 
-The link gives the new lane the main checkout's `sessions` worktree: adding a second one fails, because `sessions` is already checked out there. The ignore line is needed because a `.sessions-worktree/` pattern matches only a directory and a link is not one; it does nothing when the link is already ignored.
+The link gives the new lane the main checkout's `sessions` worktree: adding a second one fails, because `sessions` is already checked out there. The settings line lets the lane write through the link: the session file resolves outside the lane's working directory, so without it every session-file edit asks for approval. A new worktree has no `settings.local.json` — it is per-checkout and never committed — so writing it fresh overwrites nothing. The ignore line is needed because a `.sessions-worktree/` pattern matches only a directory and a link is not one, and because not every project's `.gitignore` covers `settings.local.json`; it does nothing for a path already ignored.
 
 When the lane is finished — its session closed by `/its-dead`, its pull request merged — clean it up from the main checkout. Removing the worktree takes the link, never the session files behind it. Or keep the lane and cut its next branch there; the setup is then once per repo.
 
@@ -139,7 +140,7 @@ Then the local branch, with `git branch -D` and its name. That one is the user's
 
 Do not offer to create it here, and do not create it if asked. A worktree made mid-session cannot capture the shell — the harness pins the working directory where `claude` launched and resets any `cd`. The session would end up with its code in one checkout and its shell in another, which is the split every downstream skill then has to detect and work around. Creating the worktree first makes the session's shell, checkout and branch the same thing, which is what every skill already assumes.
 
-If the user asks for a concurrent worktree here, give them those four lines and stop; asked to clean one up, give them the removal line and the branch deletion. Starting the session is their next move, not this one's.
+If the user asks for a concurrent worktree here, give them those five lines and stop; asked to clean one up, give them the removal line and the branch deletion. Starting the session is their next move, not this one's.
 
 ## Step 3 — Determine session number
 

@@ -127,7 +127,10 @@ const boundary = (cmd) => (/\w$/.test(cmd) ? '\\b' : '')
  */
 const spellings = (text, cmd) => {
   const out = []
-  const esc = cmd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // A `*` left inside the prefix is a wildcard in the middle of the rule — `git -C * branch -D`
+  // — and stands for one argument, a path. Escaped whole, it hunted for a literal asterisk no
+  // invocation contains, and every doc running the command passed.
+  const esc = cmd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '\\S+')
   const b = boundary(cmd)
   const lines = text.split('\n')
   let fenced = false

@@ -76,7 +76,7 @@ Two things the gate cannot check, which is why they are here:
 | `/start-phase` | Phase start | Materialize the phase as Issues with `phase:N`, `points:X` |
 | `/retro` | Phase end | A one-screen retro: points, days and drift from GitHub `points:N` labels, what happened, your take in a sentence or two, a one-paragraph PM read. Marks `[x]`, runs version bumps |
 | `/bump-major` | Breaking change | Major bump, CHANGELOG entry, tag on `main` |
-| `/promote-production` | Ship | ff-merge `main` → `production`, push. Projects with that branch only |
+| `/promote-production` | Ship | ff-merge `main` → `production`, push, wait for the deploy to land. Projects with that branch only |
 
 **Task model:** PROJECT_PLAN.md is read at planning and written at retro, untouched mid-phase. Current tasks are GitHub Issues. The phase ends when its issues close.
 

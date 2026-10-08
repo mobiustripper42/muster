@@ -26,10 +26,18 @@ const CONFIG = `${DECISIONS}/_config.json`
 /** Rule 1's shape. Deliberately narrow — see `EXCLUDED` for why it cannot stand alone. */
 export const ACRONYM = /\b(?:[A-Z]{2,6}(?:-[A-Z0-9])?|[0-9][A-Z]{2,})\b/g
 
-/** Prose only. Everything here is code or a link wearing markdown. */
+/**
+ * Prose only. Everything here is code or a link wearing markdown.
+ *
+ * A fence is blanked character by character, keeping its newlines, because every finding's line
+ * number is counted in THIS text. Replacing a fence with one space deleted its lines, and every
+ * line after it came out short by the fence's height: sheepdog's sync worktree was pointed at a
+ * table rule and a blank line for words 38 lines further down (issue #77). Blanking to the newlines
+ * alone would join the words either side of a one-line fence into one the document never wrote.
+ */
 export const prose = (s) =>
   s
-    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/```[\s\S]*?```/g, (fence) => fence.replace(/[^\n]/g, ' '))
     .replace(/`[^`\n]*`/g, ' ')
     .replace(/\bhttps?:\/\/\S+/g, ' ')
 

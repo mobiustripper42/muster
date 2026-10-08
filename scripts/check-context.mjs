@@ -28,7 +28,9 @@
 // than the code below: a guard whose blind spot is undocumented gets trusted for things it never
 // checked.
 
+import { execFileSync } from 'node:child_process'
 import { existsSync, globSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { basename, isAbsolute } from 'node:path'
 
 /** Every `.md` under a directory, recursively. Absent directory yields nothing. */
 const walkMd = (d) =>
@@ -162,7 +164,75 @@ export function resolves(raw) {
   // over `docs/*.md` and reported three live files as dead — the blind spot nobody would have
   // found from this script's own corpus, because context docs happen to cite only lists.
   const path = raw.replace(/:[\d,-]+$/, '').replace(/\\(?=[()])/g, '')
-  return isPattern(path) ? patternMatches(path) : existsSync(path)
+  if (isPattern(path)) return patternMatches(path)
+  if (existsSync(path)) return true
+  if (!gitIgnores(path)) return false
+  trusted.add(path)
+  return true
+}
+
+/**
+ * Cited paths the disk lacks and git ignores: believed, not checked, and named on each gate's ✓
+ * line so a stale one can be seen. Shared by both gates through this module (issue #75).
+ *
+ * Never cleared, because each gate is one process making one run: `check:context` and
+ * `check:docs` are separate `node` invocations. A caller that ran `check()` twice in one process
+ * would see the first run's entries on the second run's line.
+ */
+export const trusted = new Set()
+export const trustNote = () => (trusted.size ? `; taken on trust as gitignored: ${[...trusted].sort().join(', ')}` : '')
+
+/**
+ * Does the repository ignore this path? A fresh checkout has none of what git ignores, so a
+ * correct citation of a virtualenv or a build output is absent in every worktree — soundings'
+ * first `sync.mjs --pr` went red on nothing else, its context file citing `gateway/.venv`. The
+ * citation was right and the gate called it dead.
+ *
+ * Asked twice, and the second ask is the one that mattered: git reads an absent path as a FILE, so
+ * a directory-only pattern — soundings' `.venv/` — never matches `gateway/.venv` as written, only
+ * `gateway/.venv/`. One ask would have missed the case that motivated this.
+ *
+ * Only a TRACKED `.gitignore` counts, so the verdict is the repository's: a fresh worktree and a
+ * working checkout agree, unless that checkout has an uncommitted edit to the file. `check-ignore`
+ * also reads three things that are not: a machine's global excludes file, an untracked
+ * `.gitignore`, and `.git/info/exclude` — which every worktree of a clone shares, so a
+ * line an operator added in their own checkout would pass a dead citation inside the worktree
+ * `sync.mjs --pr` makes (found by @code-review). `--verbose` names the file that decided, and
+ * anything but a tracked `.gitignore` is refused. It also reports a negation (`!keep.log`) as the
+ * match for a path that negation UN-ignores, so a `!` pattern is refused too.
+ *
+ * Argument arrays and never a shell, for the reason `resolves()` gives above. Outside a
+ * repository, or with no git, every ask fails and the path is dead, as it always was.
+ */
+function gitIgnores(path) {
+  // A NUL is the record separator on `--stdin -z`, so a span carrying one would be asked as two
+  // paths and answered for whichever half git ignores (found by /security-review).
+  if (path.includes('\0')) return false
+  for (const ask of path.endsWith('/') ? [path] : [path, `${path}/`]) {
+    let out
+    try {
+      out = execFileSync('git', ['check-ignore', '--verbose', '-z', '--stdin'], {
+        input: `${ask}\0`,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'ignore'],
+      })
+    } catch {
+      continue // exit 1: no pattern matched; 128: not a repository; ENOENT: no git
+    }
+    const [source, , pattern] = out.split('\0') // <source> NUL <line> NUL <pattern> NUL <path> NUL
+    if (pattern && !pattern.startsWith('!') && committedIgnoreFile(source)) return true
+  }
+  return false
+}
+
+const committedIgnoreFile = (source) => {
+  if (basename(source) !== '.gitignore' || isAbsolute(source)) return false
+  try {
+    execFileSync('git', ['ls-files', '--error-unmatch', '--', source], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -382,5 +452,5 @@ if (process.argv[1]?.endsWith('check-context.mjs')) {
     console.error('')
     process.exit(1)
   }
-  console.log(`✓ context docs — every path, glob and § section cited in ${DOCS.join(' + ')} resolves`)
+  console.log(`✓ context docs — every path, glob and § section cited in ${DOCS.join(' + ')} resolves${trustNote()}`)
 }

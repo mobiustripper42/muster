@@ -381,6 +381,11 @@ const RADIUS_SELECTORS = [
  * switch, the departure-time token, the unread count — each say so in a disable where drawn.
  * The components themselves use a fixed corner rather than `rounded-full` (a wrapped label made
  * the old pills ovals), so this rule never reaches them.
+ *
+ * **What it cannot see** is the surface rule's gap: each part of a template literal is read on its
+ * own, so `` `rounded-full ${tone} px-3` `` puts the two classes in different parts and passes.
+ * Every pill in the sweep wrote both before its `${}`; one written the other way is caught by
+ * review, not here.
  */
 const PILL_RE = "^(?=[\\s\\S]*(?<![\\w-])rounded-full(?![\\w-]))(?=[\\s\\S]*(?<![\\w-])px-)";
 const PILL_MESSAGE =

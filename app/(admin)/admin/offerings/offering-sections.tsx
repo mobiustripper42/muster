@@ -114,7 +114,6 @@ export function DetailsSection({
         layout="row"
         label="Description"
         hint="markdown"
-        align="start"
       >
         <Textarea
           id="offering-description"
@@ -206,7 +205,7 @@ export function DetailsSection({
       </Field>
 
       <Field group layout="row" label="Vessels" hint="which boats run it">
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2">
           {vessels.map((v) => (
             <Chip
               key={v.id}
@@ -287,8 +286,8 @@ export function ScheduleSection({
         </div>
       </Field>
 
-      <Field group layout="row" label="Departures" hint="add or remove times" align="start">
-        <div className="pt-1">
+      <Field group layout="row" label="Departures" hint="add or remove times">
+        <div>
           {/* The island serializes each time to a hidden `departureTime` input, so the draft
               carries the whole list back — including one added and not yet saved. */}
           <DepartureTimesEditor
@@ -400,8 +399,8 @@ export function PricingSection({
         </span>
       </Field>
 
-      <Field group layout="row" label="Variations" hint="first match wins" align="start">
-        <div className="pt-1">
+      <Field group layout="row" label="Variations" hint="first match wins">
+        <div>
           <PriceVariationsEditor initial={variationsFor(draft, offering)} />
         </div>
       </Field>
@@ -456,7 +455,7 @@ function GratuityKindRow({
   const cap = kind === "pre" ? "Pre" : "Post";
   return (
     <Field group layout="row" label={label} hint={when}>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Checkbox
           density="dense"
           name={`grat${cap}`}

@@ -271,7 +271,6 @@ function VersionForm({
             layout="row"
             label="Waiver text"
             hint="Exactly what guests agree to"
-            align="start"
           >
             <Textarea
               id="waiver-body"

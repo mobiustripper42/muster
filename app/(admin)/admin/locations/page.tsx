@@ -185,7 +185,6 @@ function LocationCard({ location, draft }: { location: Location | null; draft: F
           layout="row"
           label="Pickup"
           hint="where guests meet the boat"
-          align="start"
         >
           <Textarea
             id="location-pickup-description"
@@ -217,7 +216,6 @@ function LocationCard({ location, draft }: { location: Location | null; draft: F
           layout="row"
           label="Route"
           hint="where the trip goes"
-          align="start"
         >
           <Textarea
             id="location-route-description"

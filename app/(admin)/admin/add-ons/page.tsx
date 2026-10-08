@@ -217,7 +217,6 @@ function AddOnCard({
             density="dense"
             name="required"
             defaultChecked={draft ? draft.has("required") : addOn?.required ?? false}
-            className="pt-1"
           >
             Required at checkout
           </Checkbox>
@@ -231,7 +230,6 @@ function AddOnCard({
             name="active"
             // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
             defaultChecked={draft ? draft.has("active") : isNew ? true : addOn.active}
-            className="pt-1"
           >
             Available to attach to offerings
           </Checkbox>

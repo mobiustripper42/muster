@@ -42,12 +42,16 @@ type ChoiceProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "classNa
   children: ReactNode;
 };
 
-const BOX = "h-5 w-5 shrink-0 accent-accent";
+// `self-start` with the row's `items-baseline`: the box sits at the top as before, and the row's
+// baseline is its text's rather than the box's bottom edge — a tick box has no text, so it would
+// otherwise hand a `<Field>` row a baseline 5px below the words beside it (issue #484). A lone
+// baseline item falls back to the top, so nothing inside the row moves.
+const BOX = "h-5 w-5 shrink-0 self-start accent-accent";
 const ROW: Record<FieldDensity, string> = {
   // The row is a flex line, so each child is its own item: wrap running text that carries links
   // in one `<span>`, or the words and the links lay out side by side as columns.
-  touch: "flex min-h-[44px] items-start gap-3 py-3 text-sm text-ink",
-  dense: "flex items-start gap-2 text-sm text-ink",
+  touch: "flex min-h-[44px] items-baseline gap-3 py-3 text-sm text-ink",
+  dense: "flex items-baseline gap-2 text-sm text-ink",
 };
 const FACE_FOCUS =
   "peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent";

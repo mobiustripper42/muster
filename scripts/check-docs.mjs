@@ -29,7 +29,7 @@
 // this gate throws without it. `scaffold/claude/doc-check.json` is the install-time starter.
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
-import { PATHISH, isClaim, resolves, checkSections } from './check-context.mjs'
+import { PATHISH, isClaim, resolves, checkSections, trustNote } from './check-context.mjs'
 import { ARCHIVE_DIRS, REFERENCE, archivedIds } from './check-decisions.mjs'
 import { load } from './gen-decisions-index.mjs'
 
@@ -460,6 +460,6 @@ if (process.argv[1]?.endsWith('check-docs.mjs')) {
     `✓ docs — ${DOCS.length} docs: DEC refs, npm scripts and issue links resolve, ` +
       `skill/agent rosters match disk both ways, paths and § sections resolve ` +
       `(${exempt} historical ledger${exempt === 1 ? '' : 's'} exempt` +
-      `${foreign ? `, ${foreign} citing another repo's record` : ''})`,
+      `${foreign ? `, ${foreign} citing another repo's record` : ''})${trustNote()}`,
   )
 }

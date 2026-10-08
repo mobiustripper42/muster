@@ -114,7 +114,6 @@ export function DetailsSection({
         layout="row"
         label="Description"
         hint="markdown"
-        align="start"
       >
         <Textarea
           id="offering-description"

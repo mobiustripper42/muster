@@ -24,7 +24,7 @@ PHASE
 
 SEMVER  ( needs package.json with a version field )
   /bump-major      breaking change. manual. tag on main.
-  /promote-production  main -> production ff-merge + push.
+  /promote-production  main -> production ff-merge + push, then waits for the deploy.
                    ( needs origin/production )
   patch bumps      /promote-production on ship, or /retro per
                    merged PR where there is no production branch.

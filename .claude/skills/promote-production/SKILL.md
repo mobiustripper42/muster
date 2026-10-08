@@ -110,14 +110,39 @@ The release tag was pushed in Step 3 (or already on the remote for a ship-as-is 
 
 If the `production` push fails, STOP. Surface the failure with full output. Local state is consistent (`production` advanced locally) but the remote isn't yet — retry the push once the issue (auth, network, branch protection) is resolved.
 
+## Step 5.5 — Wait for the deploy to land
+
+A push is not a deploy. A host can pull the commit and fail to build it, keep serving the old app, and look exactly like a success — CenterLine ran a day that way, its phone app calling a route the server did not have yet.
+
+**Use the Read tool** on `.claude/CLAUDE-context.md` for a `## Post-promote checks` section — never a `sed`/`grep` one-liner. No section: skip this step silently, and Step 6 reports the deploy as not checked.
+
+Each check there is one command that does its own waiting: it polls the host until the host reports the commit or tag just pushed, exits 0 when it does, and exits non-zero with its own message when it gives up. The project owns the polling and the time limit, because it knows its host; this step runs the command and reads the exit code.
+
+Run every check, in order — a failure does not skip the rest, since each one reports on a different thing:
+
+1. Say what it waits on, in one line, before running it — a check can take minutes, and silence reads as a hang.
+2. Run it, with a tool timeout longer than the check's own limit. The Bash tool caps a call at ten minutes; a check whose limit is that long or longer runs in the background, and this step waits for it to exit.
+3. Exit 0: **landed**. Anything else: **not landed** — name the check, pass on its output, and say where the section says to look (a deploy log, a dashboard). Never report a promotion as done when a check did not pass.
+
+Never undo the push. `production` is where the operator asked it to be; a failed deploy is a host problem to fix forward, and reverting a ref behind a host that may be mid-deploy is a second incident.
+
 ## Step 6 — Summary
+
+When any check did not pass, the reply opens with one line per failed check, above everything else — it is what changes what the user does next:
+
+```
+NOT LANDED — <check>: <its message>. Look at <where the section says>.
+```
+
+Then the summary:
 
 ```
 Promoted main → production at <SHIP_TAG or short commit hash>
 production now at <short commit hash>
 Host deploy on `production` triggered (if the host watches the production branch).
+Deploy: <landed | NOT LANDED (<failed checks>) | not checked>
 ```
 
-Remind the user to verify the deploy: tap the production URL, confirm the version tag in `<VersionTag />` displays the shipped version.
+`not checked` means the project has no `## Post-promote checks` section. Remind the user to verify the deploy by hand — open the production URL and confirm it shows the shipped version — and suggest adding a check, so the next promote waits for it instead.
 
 **Branch hygiene:** do NOT delete `main` or `production` — `main` keeps accumulating the next batch of work; `production` waits for the next promotion. Both are permanent.

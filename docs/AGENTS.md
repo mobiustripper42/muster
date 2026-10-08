@@ -18,7 +18,7 @@ entry is an unclassified file, which is the state this workflow keeps finding de
 | `/start-phase` | Phase start | Materialize the phase as GitHub Issues with `phase:N` and `points:X` labels |
 | `/retro` | Phase end | A one-screen retro: points, days and drift from issue labels, what happened, the operator's take, a one-paragraph @pm read. Marks `[x]`, writes `RETROSPECTIVES.md`, runs version bumps |
 | `/bump-major` | Breaking change | Major bump with a supplied rationale, CHANGELOG entry, tag on `main` |
-| `/promote-production` | Ship | ff-merge `main` → `production`, push. Projects with that branch only |
+| `/promote-production` | Ship | ff-merge `main` → `production`, push, then wait for the project's post-promote checks to report the deploy landed. Projects with that branch only |
 
 ### Not carried
 

@@ -2,6 +2,7 @@ import { AppLink } from "../ui/app-link";
 import { leanOn } from "../../app/(admin)/admin/at-risk/actions";
 import { SubmitButton } from "../ui/submit-button";
 import { Card } from "../ui/card";
+import { Badge, Tag } from "../ui/badge";
 
 /**
  * One At-Risk board row (SPEC §2.5, #42) — enough to act without opening it:
@@ -50,10 +51,7 @@ export interface RiskRowVM {
   available: { id: string; name: string }[];
 }
 
-const TONE = {
-  bad: { rail: "bg-bad", pill: "bg-bad-bg text-bad border-bad-line" },
-  warn: { rail: "bg-warn", pill: "bg-warn-bg text-warn border-warn-line" },
-} as const;
+const RAIL = { bad: "bg-bad", warn: "bg-warn" } as const;
 
 function TrailLine({ trail }: { trail: RiskRowVM["trail"] }) {
   const segs: React.ReactNode[] = [];
@@ -90,18 +88,16 @@ function TrailLine({ trail }: { trail: RiskRowVM["trail"] }) {
 }
 
 export function RiskRow({ row }: { row: RiskRowVM }) {
-  const tone = TONE[row.flag.tone];
+  const rail = RAIL[row.flag.tone];
   return (
     <Card as="article" pad="none" className="flex overflow-hidden">
-      <div className={`w-1 shrink-0 ${tone.rail}`} aria-hidden />
+      <div className={`w-1 shrink-0 ${rail}`} aria-hidden />
       <div className="flex min-w-0 grow flex-col gap-2 p-4">
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
           <div className="flex min-w-0 flex-col gap-1">
-            <span
-              className={`self-start rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${tone.pill}`}
-            >
+            <Badge tone={row.flag.tone} className="self-start">
               {row.flag.label}
-            </span>
+            </Badge>
             <span className="text-ink">
               <b>{row.vesselName}</b> · {row.dateLabel}
             </span>
@@ -130,12 +126,9 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
                   Missing
                 </span>
                 {row.missing.map((m) => (
-                  <span
-                    key={m.roleName}
-                    className="rounded-full border border-line bg-bg px-2 py-0.5 text-xs font-medium text-ink"
-                  >
+                  <Tag key={m.roleName}>
                     {m.count} {m.roleName}
-                  </span>
+                  </Tag>
                 ))}
               </>
             )}

@@ -28,6 +28,7 @@ import {
   shortTime,
 } from "@core/reservations/calendar-grid.js";
 import { Notice } from "../../../../components/ui/notice";
+import { Badge } from "../../../../components/ui/badge";
 import { AppLink } from "../../../../components/ui/app-link";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { RevealSelectedCard } from "../../../../components/admin/reveal-selected-card";
@@ -853,14 +854,9 @@ export function SlotHeader({ data, p }: { data: CalendarData; p: PendingHold }) 
         <h2 className="text-xl font-semibold text-ink">
           {clockTime(p.time)} · {p.vesselName}
         </h2>
-        <span
-          data-testid="slot-state"
-          className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-            blocked ? "border-line bg-bg text-accent" : "border-line bg-card text-muted"
-          }`}
-        >
+        <Badge data-testid="slot-state" tone={blocked ? "accent" : "neutral"}>
           {blocked ? "Blocked" : "Open"}
-        </span>
+        </Badge>
       </div>
       <p className="text-sm text-muted">{formatFullDay(data.day)}</p>
     </div>

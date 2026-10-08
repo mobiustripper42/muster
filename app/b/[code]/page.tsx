@@ -20,6 +20,7 @@ import { buildManageView } from "@core/reservations/manage-view.js";
 import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
 import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
+import { Badge } from "../../../components/ui/badge";
 import { SubmitButton } from "../../../components/ui/submit-button";
 import { getRepo } from "../../lib/repo";
 import { logSwallowed } from "../../lib/swallowed";
@@ -139,18 +140,18 @@ export default async function ManagePage({
             <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
               Your booking
             </span>
-            <span
-              className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+            <Badge
+              tone={
                 cancelled
-                  ? "bg-bad-bg text-bad"
+                  ? "bad"
                   // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
                   : phase === "completed"
-                    ? "bg-ok-bg text-ok"
-                    : "bg-accent/10 text-accent"
-              }`}
+                    ? "ok"
+                    : "accent"
+              }
             >
               {statusLabel}
-            </span>
+            </Badge>
           </div>
           <h1 className="mt-1.5 text-[19px] font-semibold">{detail.offeringName ?? "Your cruise"}</h1>
           <div className="mt-0.5 text-[12.5px] text-muted">{detail.customerName}</div>

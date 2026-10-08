@@ -2,6 +2,7 @@ import type { Block, Event, Location, Offering, Reservation, Vessel } from "@cor
 import { vesselDateOf } from "@core/config/tenant.js";
 import { blockDateSpan, computeBlockImpact } from "@core/reservations/block-impact.js";
 import { Notice } from "../../../../components/ui/notice";
+import { Tag } from "../../../../components/ui/badge";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
@@ -363,9 +364,9 @@ export default async function AdminBlocks({
                       {[ROW_SCOPE[kind], block.note].filter(Boolean).join(" · ")}
                     </div>
                     {!past && impact.conflictCount > 0 && (
-                      <span className="mt-1 inline-block rounded-full border border-warn-line bg-warn-bg px-2 py-0.5 text-[10px] font-semibold text-warn">
+                      <Tag tone="warn" className="mt-1">
                         ⚠ {impact.conflictCount} booked ({formatMoney(impact.conflictCents)}) conflict
-                      </span>
+                      </Tag>
                     )}
                   </div>
 

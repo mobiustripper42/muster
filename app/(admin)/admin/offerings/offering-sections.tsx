@@ -11,6 +11,7 @@ import { gratuityKindsFor } from "@core/reservations/pricing.js";
 import { AppLink } from "../../../../components/ui/app-link";
 import { Field } from "../../../../components/ui/field";
 import { Chip, Checkbox } from "../../../../components/ui/choice";
+import { Badge, type Tone } from "../../../../components/ui/badge";
 import { Input, Select, Textarea } from "../../../../components/ui/input";
 import type { FormDraft } from "../../../lib/form-draft";
 import { vesselHueClass } from "../../../lib/vessel-hue";
@@ -37,10 +38,10 @@ import { Card } from "../../../../components/ui/card";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]; // Mon=0…Sun=6
 
-export const STATUS_COPY: Record<Offering["status"], { label: string; pill: string }> = {
-  draft: { label: "Draft", pill: "border-line bg-bg text-muted" },
-  live: { label: "Live", pill: "border-ok-line bg-ok-bg text-ok" },
-  hidden: { label: "Hidden", pill: "border-warn-line bg-warn-bg text-warn" },
+export const STATUS_COPY: Record<Offering["status"], { label: string; tone: Tone }> = {
+  draft: { label: "Draft", tone: "neutral" },
+  live: { label: "Live", tone: "ok" },
+  hidden: { label: "Hidden", tone: "warn" },
 };
 
 function Section({
@@ -541,11 +542,7 @@ export function AddOnsSection({
                 {/* No colour of its own: it inherits the chip's, which turns white on the dark
                     "on" fill — `text-muted` here would vanish against it. */}
                 <span className="text-xs">${(a.amountCents / 100).toFixed(2)}</span>
-                {a.required && (
-                  <span className="rounded-full bg-warn-bg px-1.5 text-[10px] uppercase tracking-wide text-warn">
-                    Required
-                  </span>
-                )}
+                {a.required && <Badge tone="warn">Required</Badge>}
               </Chip>
             ))}
           </div>

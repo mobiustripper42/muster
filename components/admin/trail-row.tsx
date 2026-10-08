@@ -5,6 +5,7 @@ import type { TrailEntry } from "@core/reservations/reservation-trail-view.js";
 import { AppLink } from "../ui/app-link";
 import { fmtRunWhen } from "../../app/lib/format";
 import { Card } from "../ui/card";
+import { Badge } from "../ui/badge";
 
 /**
  * One booking-audit line, in the two shapes the two surfaces have (issue #1049).
@@ -23,9 +24,7 @@ import { Card } from "../ui/card";
 /** The type as a calm neutral pill (BRAND, no alarm colour) — the word carries it. */
 function TypeTag({ label }: { label: string }) {
   return (
-    <span className="shrink-0 rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-      {label}
-    </span>
+    <Badge className="shrink-0">{label}</Badge>
   );
 }
 

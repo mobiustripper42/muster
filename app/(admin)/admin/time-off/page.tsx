@@ -1,6 +1,7 @@
 import { buildAllTimeOff, type TimeOffByCrew } from "@core/crew/time-off.js";
 import type { CrewMember } from "@core/domain/entities.js";
 import { Notice } from "../../../../components/ui/notice";
+import { Badge } from "../../../../components/ui/badge";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
@@ -101,9 +102,7 @@ export default async function AdminTimeOff({
               <span className="flex items-center gap-2">
                 <span className="font-semibold text-ink">{g.crewName}</span>
                 {g.archived && (
-                  <span className="rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-                    Archived
-                  </span>
+                  <Badge>Archived</Badge>
                 )}
               </span>
               <ul className="flex flex-col gap-1">

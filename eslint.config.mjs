@@ -338,10 +338,11 @@ const SURFACE_SELECTORS = [
  * a list row, a calendar block. Before this, boxes were drawn at eight radii from 3px to 14px,
  * which is the drift a single shared component cannot stop on its own: the card, the field and
  * the button were each one look, and every box that was none of them picked its own corner.
- * `rounded-full` stays for a pill or a round dot, and `rounded-none` for undoing one.
+ * `rounded-full` stays for a round dot, and `rounded-none` for undoing one. (It was the pill's
+ * too, until the pill rule below moved every pill into a component with a corner of its own.)
  *
  * **Marks are the exception, by design.** A mark is a decoration under 20px — a legend key, a
- * role glyph, a seat pip, the block-type dot, a tiny uppercase badge. It is not a box and does
+ * role glyph, a seat pip, the block-type dot. (Not a badge: that is `<Badge>`, below.) It is not a box and does
  * not share the box radius: 8px turns a 10px legend key into a dot and an 18px glyph into a
  * coin. A mark keeps the radius it was drawn with and says so where it is drawn, with an
  * `eslint-disable-next-line no-restricted-syntax` reading `mark (issue #484)` — so
@@ -359,10 +360,34 @@ const RADIUS_TOKEN_REST = "[\\w\\[\\].%-]";
 const RADIUS_TOKEN =
   `(?<![\\w-])rounded(?=[-\\s]|$)(?!${RADIUS_TOKEN_REST}*-(?:box|full|none)(?!${RADIUS_TOKEN_REST}))`;
 const RADIUS_MESSAGE =
-  "One radius for every box (issue #484): rounded-box for a card, field, button, menu, notice or list row; rounded-full for a pill or a round dot. A mark — a decoration under 20px such as a legend key, a role glyph or a tiny badge — keeps its own radius: add an eslint-disable-next-line no-restricted-syntax saying `mark (issue #484)`.";
+  "One radius for every box (issue #484): rounded-box for a card, field, button, menu, notice or list row; rounded-full for a round dot (a pill is <Chip>, <Badge> or <Tag>). A mark — a decoration under 20px such as a legend key, a role glyph or a seat pip — keeps its own radius: add an eslint-disable-next-line no-restricted-syntax saying `mark (issue #484)`.";
 const RADIUS_SELECTORS = [
   { selector: `Literal[value=/${RADIUS_TOKEN}/]`, message: RADIUS_MESSAGE },
   { selector: `TemplateElement[value.cooked=/${RADIUS_TOKEN}/]`, message: RADIUS_MESSAGE },
+];
+
+/**
+ * ## One pill per job (issue #484)
+ *
+ * A pill is drawn by one of three components: `<Chip>` for a choice you toggle (`chipLook` for a
+ * filter link, which cannot be an input), `<Badge>` for a state, `<Tag>` for data — a name, a
+ * count, an amount. See `components/ui/choice.tsx` and `components/ui/badge.tsx`. Its first run
+ * found 27 pills written by hand, with the same job drawn several ways: two toggle looks, three
+ * "selected" fills, state labels at 10px and 11px with round corners and square.
+ *
+ * Like the surface rule, this reads the class string. A pill is a round end and side padding in
+ * one string: `rounded-full` with a `px-` class. A round dot, a spinner and a padded track have
+ * no side padding, so they pass. The three pills that stay hand-drawn — the shifts View/Edit
+ * switch, the departure-time token, the unread count — each say so in a disable where drawn.
+ * The components themselves use a fixed corner rather than `rounded-full` (a wrapped label made
+ * the old pills ovals), so this rule never reaches them.
+ */
+const PILL_RE = "^(?=[\\s\\S]*(?<![\\w-])rounded-full(?![\\w-]))(?=[\\s\\S]*(?<![\\w-])px-)";
+const PILL_MESSAGE =
+  "A pill is a component (issue #484): <Chip> for a choice you toggle (chipLook for a filter link), <Badge> for a state, <Tag> for a name, count or amount — components/ui/choice.tsx, components/ui/badge.tsx. className is layout only.";
+const PILL_SELECTORS = [
+  { selector: `Literal[value=/${PILL_RE}/]`, message: PILL_MESSAGE },
+  { selector: `TemplateElement[value.cooked=/${PILL_RE}/]`, message: PILL_MESSAGE },
 ];
 
 /**
@@ -411,6 +436,7 @@ const APP_SELECTORS = [
   ...RAW_FIELD_SELECTORS,
   ...SURFACE_SELECTORS,
   ...RADIUS_SELECTORS,
+  ...PILL_SELECTORS,
   ...UNTIED_LABEL_SELECTORS,
   ...BUTTON_KIND_SELECTORS,
   APP_CATCH_SELECTOR,

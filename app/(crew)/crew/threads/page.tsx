@@ -58,7 +58,7 @@ export default async function ThreadsPage() {
             </span>
             {t.unread > 0 && (
               <span
-                // eslint-disable-next-line no-restricted-syntax -- unread-count badge, not an action button (#1103)
+                // eslint-disable-next-line no-restricted-syntax -- unread count: not an action button (#1103), and a number on a filled bubble, which as a Badge would read as a state (issue #484)
                 className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-white"
                 aria-label={`${t.unread} unread`}
               >

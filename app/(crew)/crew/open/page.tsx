@@ -22,6 +22,7 @@ import { vesselHueClass } from "../../../lib/vessel-hue";
 import { claimSeat } from "./actions";
 import { Field } from "../../../../components/ui/field";
 import { Input } from "../../../../components/ui/input";
+import { chipLook } from "../../../../components/ui/choice";
 import { Card } from "../../../../components/ui/card";
 
 /**
@@ -270,12 +271,11 @@ function Filters({
   today: string;
   sp: Search;
 }) {
-  // One app-wide filter style — matches the admin board's Filter (outline-active
-  // pills, rounded-box container, the shared date fields). One deliberate
-  // divergence: the crew controls keep min-h-[44px] touch targets (this is the
-  // mobile-primary surface, DEC-085); admin is denser because it's desktop-first.
-  const chip = (active: boolean) =>
-    `pressable inline-flex min-h-[44px] items-center rounded-full border px-4 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
+  // One app-wide filter style — matches the admin board's Filter (the chip face, dark
+  // when on, issue #484; the shared date fields). One deliberate divergence: the crew
+  // controls keep min-h-[44px] touch targets (this is the mobile-primary surface,
+  // DEC-085); admin is denser because it's desktop-first.
+  const chip = (active: boolean) => `pressable ${chipLook(active, "touch")}`;
   return (
     <Card className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2 text-sm">

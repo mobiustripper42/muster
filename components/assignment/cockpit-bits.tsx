@@ -1,5 +1,6 @@
 import type { SeatCardView } from "@core/asks/assignment-view.js";
 import type { CandidateVM, SeatCardVM } from "./seat-card";
+import { Badge, type Tone } from "../ui/badge";
 
 /** Pure view helpers for the cockpit body (shift-cockpit.tsx) — VM mapping,
  * time/date labels, and the state badge. No data access, no forms. */
@@ -96,19 +97,14 @@ export function fmtDate(iso: string): string {
   });
 }
 
-const BADGE_TONE: Record<string, string> = {
-  AtRisk: "border-bad-line bg-bad-bg text-bad",
-  Filling: "border-warn-line bg-warn-bg text-warn",
-  Crewed: "border-ok-line bg-ok-bg text-ok",
+const BADGE_TONE: Record<string, Tone> = {
+  AtRisk: "bad",
+  Filling: "warn",
+  Crewed: "ok",
 };
 
-export function Badge({ state }: { state: string }) {
-  const cls = BADGE_TONE[state] ?? "border-line bg-bg text-muted";
+export function ShiftStateBadge({ state }: { state: string }) {
   return (
-    <span
-      className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${cls}`}
-    >
-      {state === "AtRisk" ? "At-Risk" : state}
-    </span>
+    <Badge tone={BADGE_TONE[state] ?? "neutral"}>{state === "AtRisk" ? "At-Risk" : state}</Badge>
   );
 }

@@ -181,7 +181,7 @@ const CASES = [
     good: [
       ['<div className="rounded-box border" />;', "the box radius"],
       ['<div className="rounded-t-box border-b" />;', "one side of the box radius"],
-      ['<span className="rounded-full bg-ok px-2" />;', "a pill"],
+      ['<span className="h-2 w-2 rounded-full bg-ok" />;', "a round dot"],
       ['<div className="rounded-box sm:rounded-none" />;', "undoing one"],
       [
         '// eslint-disable-next-line no-restricted-syntax -- mark (issue #484)\nconst KEY = "h-2.5 w-2.5 rounded-[3px] border";',
@@ -219,6 +219,28 @@ const CASES = [
       ['<label className="flex">Tiers <Input name="t" /></label>;', "a raw label wrapping its control"],
       ['<label>Tiers <span>{on && <Select name="t" />}</span></label>;', "wrapping it a level or two down"],
       ['<label>Day <AutoSubmitDate name="d" value="x" /></label>;', "wrapping a control's wrapper"],
+    ],
+  },
+  {
+    /**
+     * One pill per job (issue #484): a `<Chip>` to toggle, a `<Badge>` for a state, a `<Tag>`
+     * for data. A pill is a round end plus side padding; the `good` cases are the round things
+     * that are not pills — a dot, a spinner, a track — so a selector that eats them is caught.
+     */
+    rule: "a pill is a Chip, a Badge or a Tag (issue #484)",
+    filePath: "app/(admin)/admin/probe/page.tsx",
+    bad: [
+      ['<span className="rounded-full border px-2 py-0.5 text-[10px] uppercase">Live</span>;', "a hand-written badge"],
+      ["<span className={`rounded-full border px-2.5 ${tone}`}>x</span>;", "in a template literal, tone in a variable"],
+      ['const chip = (on) => (on ? "rounded-full px-3 bg-ink" : "rounded-full px-3");', "hoisted into a const"],
+      ['<a className="pressable rounded-full border sm:px-4">7 Days</a>;', "the padding behind a variant"],
+    ],
+    good: [
+      ['<span className="h-2 w-2 rounded-full bg-ok" />;', "a round dot has no side padding"],
+      ['<span className="h-4 w-4 animate-spin rounded-full border-2 border-current" />;', "a spinner"],
+      ['<div className="flex rounded-full border border-line p-0.5">{x}</div>;', "a track, padded evenly"],
+      ['<Badge tone="ok">Live</Badge>;', "the component"],
+      ['<a className={chipLook(on, "dense")}>Week</a>;', "a link wearing the chip face"],
     ],
   },
 ];

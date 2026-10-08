@@ -9,6 +9,7 @@ import { asId } from "@core/domain/ids.js";
 import { AppLink } from "../../../../components/ui/app-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
 import { Select } from "../../../../components/ui/input";
+import { Badge } from "../../../../components/ui/badge";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
@@ -121,9 +122,7 @@ function AuditRow({ row }: { row: AuditTrailRow }) {
 /** The kind as a calm neutral pill — the word carries it (BRAND, no alarm colour). */
 function KindTag({ kind }: { kind: AuditKind }) {
   return (
-    <span className="shrink-0 rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-      {AUDIT_KIND_LABEL[kind]}
-    </span>
+    <Badge className="shrink-0">{AUDIT_KIND_LABEL[kind]}</Badge>
   );
 }
 

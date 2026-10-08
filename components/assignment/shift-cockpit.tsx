@@ -14,7 +14,7 @@ import { getRepo } from "../../app/lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../app/lib/swallowed";
 import { TENANT_ID } from "../../app/lib/tenant";
 import { Notice } from "../ui/notice";
-import { Badge, fmtDate, toSeatVM, ttLabel } from "./cockpit-bits";
+import { ShiftStateBadge, fmtDate, toSeatVM, ttLabel } from "./cockpit-bits";
 import { buildShiftManifest, type ShiftManifestView } from "@core/crewapp/shift-card.js";
 import { standingThreadId } from "@core/messaging/entities.js";
 import { SeatCard } from "./seat-card";
@@ -239,7 +239,7 @@ export async function ShiftCockpit({
                 </h2>
               </>
             )}
-            <Badge state={badge} />
+            <ShiftStateBadge state={badge} />
           </div>
           {view.trips.length === 0 ? (
             <p className="text-sm text-muted">No scheduled trips.</p>

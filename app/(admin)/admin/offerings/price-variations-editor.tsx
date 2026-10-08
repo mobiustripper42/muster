@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import type { PriceVariation } from "@core/domain/entities.js";
 import { Input, Select } from "../../../../components/ui/input";
 import { Well } from "../../../../components/ui/card";
+import { Chip } from "../../../../components/ui/choice";
 
 /**
  * Ordered price-variations editor (12.8, DEC-123) — the one client island on the catalog
@@ -152,16 +153,18 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
               <option value="dateRange">Date range</option>
             </Select>
             {row.applies.kind === "weekdays" && (
-              <span className="flex flex-wrap gap-1">
+              <span className="flex flex-wrap gap-2">
                 {WEEKDAY_LABELS.map((label, d) => {
                   const applies = row.applies as { kind: "weekdays"; weekdays: number[] };
                   const on = applies.weekdays.includes(d);
+                  // A Chip with no `name`, so it posts nothing: the row's state is what the
+                  // hidden `priceVariations` input above serializes.
                   return (
-                    <button
+                    <Chip
                       key={label}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() =>
+                      type="checkbox"
+                      checked={on}
+                      onChange={() =>
                         update(i, {
                           ...row,
                           applies: {
@@ -172,12 +175,9 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                           },
                         })
                       }
-                      className={`select-none rounded-full border px-2 py-0.5 text-xs ${
-                        on ? "border-ink bg-ink text-white" : "border-line bg-card text-muted"
-                      }`}
                     >
                       {label}
-                    </button>
+                    </Chip>
                   );
                 })}
               </span>

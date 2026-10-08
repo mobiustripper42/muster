@@ -1,5 +1,6 @@
 import type { AddOn, Location, Offering, Vessel } from "@core/domain/entities.js";
 import { Notice } from "../../../../components/ui/notice";
+import { Badge } from "../../../../components/ui/badge";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
 import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
@@ -139,11 +140,9 @@ export default async function AdminOfferings({
             <h1 className="flex items-center gap-2 text-[22px] font-semibold leading-tight text-ink">
               <span className="truncate">{title}</span>
               {selected && (
-                <span
-                  className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${STATUS_COPY[selected.status].pill}`}
-                >
+                <Badge tone={STATUS_COPY[selected.status].tone} className="shrink-0">
                   {STATUS_COPY[selected.status].label}
-                </span>
+                </Badge>
               )}
             </h1>
           </div>

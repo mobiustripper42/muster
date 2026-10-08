@@ -1,5 +1,6 @@
 import type { Location, Offering } from "@core/domain/entities.js";
 import { Notice } from "../../../../components/ui/notice";
+import { Tag } from "../../../../components/ui/badge";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
 import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
@@ -244,9 +245,7 @@ function OfferingsSection({ location, offerings }: { location: Location; offerin
         ) : (
           <div className="flex flex-wrap gap-2">
             {used.map((o) => (
-              <span key={o.id} className="rounded-full border border-line px-3 py-1 text-xs text-muted">
-                {o.name}
-              </span>
+              <Tag key={o.id}>{o.name}</Tag>
             ))}
           </div>
         )}

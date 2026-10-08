@@ -9,6 +9,7 @@ import { asId } from "@core/domain/ids.js";
 import type { CrewMemberId } from "@core/domain/ids.js";
 import { RiskRow, type RiskRowVM } from "../../../../components/at-risk/risk-row";
 import { Notice } from "../../../../components/ui/notice";
+import { Tag } from "../../../../components/ui/badge";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
@@ -118,9 +119,9 @@ export default async function AtRiskBoard({
               {vms.length === 1 ? "shift needs" : "shifts need"} attention
             </span>
             {regressions > 0 && (
-              <span className="rounded-full border border-bad-line bg-bad-bg px-2 py-0.5 text-xs font-semibold text-bad">
+              <Tag tone="bad">
                 {regressions} late bail{regressions === 1 ? "" : "s"}
-              </span>
+              </Tag>
             )}
           </div>
         )}

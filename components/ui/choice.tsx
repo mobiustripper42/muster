@@ -24,7 +24,13 @@ import { join } from "./join";
  * Unselected takes the field edge (`--color-line-strong`); selected fills dark, the only "on"
  * state of the two the chips used to have that reads on a white card. Children are the face's
  * content and inherit its text colour — a child that sets its own (`text-muted`) vanishes on the
- * dark fill.
+ * dark fill. A filter link is a chip that cannot be an input, so it wears the same face through
+ * `chipLook(on, density)` — "selected" reads one way across the app (issue #484).
+ *
+ * **The chip's corner is fixed, not `rounded-full`.** `rounded-full` rounds to half the box's
+ * height, so a label that wraps — a long add-on at 375px — made the chip an oval. The corner is
+ * instead a little over half a one-line chip's height: the browser shrinks a corner too big for
+ * its box, so one line is still a full pill, and two lines are a box with the same corners.
  *
  * **`Swatch`** is a radio whose face is a colour square, for the one picker where the colour is
  * the choice and a text pill cannot show it. `label` is its accessible name, as hidden text.
@@ -55,8 +61,23 @@ const ROW: Record<FieldDensity, string> = {
 };
 const FACE_FOCUS =
   "peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent";
-const CHIP_FACE =
-  "flex select-none items-center gap-1.5 rounded-full border border-line-strong bg-card px-3 py-1 text-sm text-muted peer-checked:border-ink peer-checked:bg-ink peer-checked:font-medium peer-checked:text-white";
+// Each corner is just over half the one-line height at the 15px root: dense is a 28px line, so
+// 1rem; touch is the 44px floor, so 1.5rem.
+const CHIP_SIZE: Record<FieldDensity, string> = {
+  // eslint-disable-next-line no-restricted-syntax -- a pill that may wrap (issue #484): see the header
+  dense: "rounded-[1rem] px-3 py-1",
+  // eslint-disable-next-line no-restricted-syntax -- a pill that may wrap (issue #484): see the header
+  touch: "min-h-[44px] rounded-[1.5rem] px-4",
+};
+const CHIP_SHAPE = "flex select-none items-center gap-1.5 border text-sm";
+const CHIP_OFF = "border-line-strong bg-card text-muted";
+const CHIP_ON = "border-ink bg-ink font-medium text-white";
+const CHIP_FACE = join(
+  CHIP_SHAPE,
+  CHIP_SIZE.dense,
+  CHIP_OFF,
+  "peer-checked:border-ink peer-checked:bg-ink peer-checked:font-medium peer-checked:text-white",
+);
 const SWATCH_FACE =
   "block h-7 w-7 rounded-box border border-ink/10 peer-checked:outline peer-checked:outline-2 peer-checked:outline-offset-2 peer-checked:outline-accent";
 // A swatch already says "selected" with the ring FACE_FOCUS would draw, so focus on the selected
@@ -86,6 +107,11 @@ export function Checkbox(props: ChoiceProps & { density?: FieldDensity }) {
 
 export function Radio(props: ChoiceProps & { density?: FieldDensity }) {
   return <Box {...props} type="radio" />;
+}
+
+/** The chip face for a control that is not an input — a filter link. Add `pressable` beside it. */
+export function chipLook(on: boolean, density: FieldDensity): string {
+  return join(CHIP_SHAPE, CHIP_SIZE[density], on ? CHIP_ON : CHIP_OFF);
 }
 
 export function Chip({

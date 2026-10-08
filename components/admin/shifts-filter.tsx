@@ -5,6 +5,7 @@ import type { Mode, Scope } from "./shifts-view-types";
 import { Field } from "../ui/field";
 import { Input } from "../ui/input";
 import { Card } from "../ui/card";
+import { chipLook } from "../ui/choice";
 
 /** Date-range + crew filter — preset links, a no-JS date GET form, and a no-JS
  * crew dropdown (DEC-026 pattern). The active chip reflects the RESOLVED scope
@@ -44,8 +45,8 @@ export function Filter({
   /** href that flips the split-candidates toggle, preserving the rest of state. */
   splitHref: string;
 }) {
-  const chip = (active: boolean) =>
-    `pressable rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
+  // The chip face, dark when on (issue #484): a link cannot be a <Chip>, so it wears its look.
+  const chip = (active: boolean) => `pressable ${chipLook(active, "dense")}`;
   const edit = mode === "edit";
   const href = (preset?: string) => {
     const p = new URLSearchParams();

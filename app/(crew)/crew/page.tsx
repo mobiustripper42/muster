@@ -3,6 +3,7 @@ import { AppLink } from "../../../components/ui/app-link";
 import { buildCrewAppView, type CrewAppView } from "@core/crewapp/crew-view.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../components/ui/notice";
+import { Badge } from "../../../components/ui/badge";
 import { Shell } from "../../../components/ui/shell";
 import { CrewHeader } from "../../../components/crew/crew-header";
 import { VersionTag } from "../../../components/ui/version-tag";
@@ -495,9 +496,7 @@ function CrewApp({
               >
                 <div className="flex items-center justify-between gap-2">
                   <ShiftWhenWhat s={s} />
-                  <span className="shrink-0 rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-                    Awaiting confirmation
-                  </span>
+                  <Badge className="shrink-0">Awaiting confirmation</Badge>
                 </div>
               </Card>
             ) : (
@@ -518,18 +517,11 @@ function CrewApp({
                     muted treatment beside it: this one is asking to be tapped, and it is the
                     surface the change SMS points at. */}
                 {s.changed && (
-                  <span
-                    data-testid="changed-pill"
-                    className="self-start rounded-full border border-accent bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent"
-                  >
+                  <Badge data-testid="changed-pill" tone="accent" className="self-start">
                     Changed
-                  </span>
+                  </Badge>
                 )}
-                {s.addedByOperator && (
-                  <span className="self-start rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-                    Added for you
-                  </span>
-                )}
+                {s.addedByOperator && <Badge className="self-start">Added for you</Badge>}
               </Card>
             ),
           )

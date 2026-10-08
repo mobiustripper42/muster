@@ -1,6 +1,7 @@
 import { formatCents, type ReservationDetailView } from "@core/reservations/calendar-detail.js";
 import { AppLink } from "../../../../../components/ui/app-link";
 import { Notice } from "../../../../../components/ui/notice";
+import { Badge, type Tone } from "../../../../../components/ui/badge";
 import { UnsavedGuard } from "../../../../../components/ui/unsaved-guard";
 import { PANE_HEAD, clockTime, formatShortDay } from "../calendar-view";
 import { CopyButton } from "../../../../../components/ui/copy-button";
@@ -379,10 +380,10 @@ function pct(bps: number): string {
  * The pill beside the name. `admin` is the unpaid source (DEC-163): once paid the row turns
  * `muster`, so the source alone says "awaiting payment".
  */
-function bookingState(v: ReservationDetailView): { label: string; tone: string } {
-  if (v.status === "cancelled") return { label: "Cancelled", tone: "border-line bg-card text-muted" };
-  if (v.source === "admin") return { label: "Awaiting payment", tone: "border-warn-line bg-warn-bg text-warn" };
-  return { label: "Booked", tone: "border-ok-line bg-ok-bg text-ok" };
+function bookingState(v: ReservationDetailView): { label: string; tone: Tone } {
+  if (v.status === "cancelled") return { label: "Cancelled", tone: "neutral" };
+  if (v.source === "admin") return { label: "Awaiting payment", tone: "warn" };
+  return { label: "Booked", tone: "ok" };
 }
 
 const HOW_BOOKED: Record<ReservationDetailView["source"], string> = {
@@ -441,12 +442,9 @@ export function ReservationDetailPane({
       <div data-testid="pane-head" className={PANE_HEAD}>
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-xl font-semibold text-ink">{v.customerName}</h2>
-        <span
-          data-testid="booking-state"
-          className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${state.tone}`}
-        >
+        <Badge data-testid="booking-state" tone={state.tone}>
           {state.label}
-        </span>
+        </Badge>
       </div>
       <p className="text-sm text-muted">{metaLine(v)}</p>
       </div>

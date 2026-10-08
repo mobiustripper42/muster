@@ -1,4 +1,5 @@
 import { vesselHueClass } from "../../../lib/vessel-hue";
+import { Badge, type Tone } from "../../../../components/ui/badge";
 
 /**
  * /admin/blocks server-rendered presentational bits (task 12.10, DEC-125): the kind pill, the
@@ -18,10 +19,10 @@ export type BlockKind = "location" | "vessel" | "vesselHold";
  * The labels say what happened, not the scope's name (issue #1091): a new admin reads "Boat out"
  * without first learning that a vessel block is what takes a boat out.
  */
-export const KIND_META: Record<BlockKind, { label: string; dot: string; pill: string }> = {
-  location: { label: "Closed", dot: "bg-muted", pill: "border-line bg-bg text-muted" },
-  vessel: { label: "Boat out", dot: "bg-bad", pill: "border-bad-line bg-bad-bg text-bad" },
-  vesselHold: { label: "One departure", dot: "bg-accent", pill: "border-line bg-bg text-ink" },
+export const KIND_META: Record<BlockKind, { label: string; dot: string; tone: Tone }> = {
+  location: { label: "Closed", dot: "bg-muted", tone: "neutral" },
+  vessel: { label: "Boat out", dot: "bg-bad", tone: "bad" },
+  vesselHold: { label: "One departure", dot: "bg-accent", tone: "neutral" },
 };
 
 /** "2026-08-12" → "Wed Aug 12". Read at UTC midnight so the label never shifts by TZ. */
@@ -55,16 +56,14 @@ export function formatMoney(cents: number): string {
 export function KindPill({ kind }: { kind: BlockKind }) {
   const meta = KIND_META[kind];
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${meta.pill}`}
-    >
+    <Badge tone={meta.tone}>
       <span
         // eslint-disable-next-line no-restricted-syntax -- mark (issue #484): a 6px square dot keeps its corner
         className={`inline-block h-1.5 w-1.5 rounded-sm ${meta.dot}`}
         aria-hidden
       />
       {meta.label}
-    </span>
+    </Badge>
   );
 }
 

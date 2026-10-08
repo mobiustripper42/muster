@@ -36,13 +36,20 @@ Colors map straight to Tailwind utilities (`bg-*`, `text-*`, `border-*`):
 - **Surfaces:** `<Card>` and `<Well>` (`components/ui/card.tsx`) and `<Notice>` (`components/ui/notice.tsx`)
   — the white box, the grey inset that goes inside one, and the tinted message. A class string
   holding a surface's radius and fill fails lint; padding is the `pad` prop, never a class.
+- **Pills:** one per job (issue #484). `<Chip>` for a choice you toggle — dark fill when on — and
+  `chipLook(on, density)` for a filter link wearing the same face (`components/ui/choice.tsx`);
+  `<Badge>` for a state, in capitals, and `<Tag>` for data — a name, count or amount, as written
+  (`components/ui/badge.tsx`). Both take `tone`: neutral, accent, ok, warn, bad. A hand-written
+  pill (`rounded-full` with side padding) fails lint. Three stay hand-drawn, each with a disable
+  naming it: the shifts View/Edit switch, the departure-time token, the unread count.
 - **Brand/roles:** `accent` (#2f5d86), `captain` (#2f5d86), `mate` (#2f7d70).
 - **Status (each has a soft bg + line):** `ok`/`ok-bg`/`ok-line` (green), `warn`/`warn-bg`/`warn-line`
   (amber), `bad`/`bad-bg`/`bad-line` (red).
 - **Radius:** `rounded-box` (`--radius-box` in `app/globals.css`) for every box — card, notice,
-  well, field, button, menu, list row, calendar block — and `rounded-full` for a pill or round dot.
+  well, field, button, menu, list row, calendar block — and `rounded-full` for a round dot. The
+  pill components draw a fixed corner instead, so a wrapped label is not an oval.
   Any other radius fails lint. A **mark** (a decoration under 20px: legend key, role glyph, seat
-  pip, tiny badge) keeps its own radius and declares itself with a `mark (issue #484)` disable;
+  pip — never a badge, which is `<Badge>`) keeps its own radius and declares itself with a `mark (issue #484)` disable;
   the role glyph's file is exempt instead. Not from the mockups — the operator's call (issue #484).
 Harvested from the mockups per DESIGN-REFERENCE — read values, re-express as tokens, never import.
 

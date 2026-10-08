@@ -6,6 +6,7 @@ import { buildCustomerDetail } from "@core/customers/customer-view.js";
 import { formatCents } from "@core/reservations/calendar-detail.js";
 import { BackLink } from "../../../../../components/ui/back-link";
 import { Notice } from "../../../../../components/ui/notice";
+import { Badge } from "../../../../../components/ui/badge";
 import { Shell } from "../../../../../components/ui/shell";
 import { AppLink } from "../../../../../components/ui/app-link";
 import { AdminSignedOut } from "../../../../../components/admin/admin-signed-out";
@@ -91,14 +92,7 @@ export default async function CustomerDetailPage({
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-[22px] font-semibold leading-tight text-ink">{v.name}</h1>
           <span className="font-mono text-xs text-muted">{v.displayCode}</span>
-          {!v.active && (
-            <span
-              // eslint-disable-next-line no-restricted-syntax -- mark (issue #484): a 10px badge keeps its 4px corner
-              className="rounded border border-line px-1.5 py-px text-[10px] uppercase tracking-wide text-muted"
-            >
-              Retired
-            </span>
-          )}
+          {!v.active && <Badge>Retired</Badge>}
         </div>
       </header>
 
@@ -135,14 +129,7 @@ export default async function CustomerDetailPage({
                     <span className="ml-2 text-xs text-muted">
                       {h.guestCount} guest{h.guestCount === 1 ? "" : "s"}
                     </span>
-                    {h.status === "cancelled" && (
-                      <span
-                        // eslint-disable-next-line no-restricted-syntax -- mark (issue #484): a 10px badge keeps its 4px corner
-                        className="ml-2 rounded border border-line px-1 py-px text-[10px] uppercase tracking-wide text-muted"
-                      >
-                        Cancelled
-                      </span>
-                    )}
+                    {h.status === "cancelled" && <Badge className="ml-2">Cancelled</Badge>}
                   </span>
                   <span className="flex shrink-0 items-baseline gap-3">
                     <span

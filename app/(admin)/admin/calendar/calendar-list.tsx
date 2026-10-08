@@ -3,6 +3,7 @@ import { AppLink } from "../../../../components/ui/app-link";
 import { RevealSelectedCard } from "../../../../components/admin/reveal-selected-card";
 import { vesselHueClass } from "../../../lib/vessel-hue";
 import { Card } from "../../../../components/ui/card";
+import { Badge, Tag, type Tone } from "../../../../components/ui/badge";
 import {
   bookHref,
   calendarHref,
@@ -58,13 +59,13 @@ interface ListRow {
   phoneOnly?: boolean;
 }
 
-const PILL: Record<RowState, { label: string; cls: string }> = {
-  booked: { label: "Booked", cls: "border-ok-line bg-ok-bg text-ok" },
-  unpaid: { label: "Unpaid", cls: "border-warn-line bg-warn-bg text-warn" },
-  open: { label: "Open", cls: "border-dashed border-faint bg-card text-muted" },
-  blocked: { label: "Blocked", cls: "border-line bg-bg text-accent" },
-  "checking-out": { label: "Checking out", cls: "border-accent/60 bg-card text-accent" },
-  departed: { label: "Departed", cls: "border-line bg-card text-muted" },
+const PILL: Record<RowState, { label: string; tone: Tone }> = {
+  booked: { label: "Booked", tone: "ok" },
+  unpaid: { label: "Unpaid", tone: "warn" },
+  open: { label: "Open", tone: "neutral" },
+  blocked: { label: "Blocked", tone: "accent" },
+  "checking-out": { label: "Checking out", tone: "accent" },
+  departed: { label: "Departed", tone: "neutral" },
 };
 
 const guests = (n: number) => `${n} ${n === 1 ? "guest" : "guests"}`;
@@ -275,10 +276,10 @@ export function CalendarList({
                 <span className="hidden truncate text-ink lg:block">{cruiseText(r.cruises)}</span>
               )}
               <span>
-                <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${pill.cls}`}>
+                <Badge tone={pill.tone}>
                   {pill.label}
                   {r.phoneOnly && " · phone only"}
-                </span>
+                </Badge>
               </span>
               {r.bookHref ? (
                 <AppLink href={r.bookHref} className="btn-primary btn-sm relative z-10 lg:hidden">
@@ -302,9 +303,9 @@ export function CalendarList({
                 ) : null}
               </span>
               {r.owesCents !== undefined ? (
-                <span className="shrink-0 rounded-full border border-warn-line bg-warn-bg px-2 py-px font-mono text-[11px] font-semibold text-warn">
-                  owes {formatCents(r.owesCents)}
-                </span>
+                <Tag tone="warn" className="shrink-0">
+                  owes <span className="font-mono">{formatCents(r.owesCents)}</span>
+                </Tag>
               ) : null}
             </div>
 

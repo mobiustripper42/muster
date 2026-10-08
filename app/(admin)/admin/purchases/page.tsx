@@ -10,6 +10,7 @@ import {
 import { formatCents } from "@core/reservations/calendar-detail.js";
 import { canonicalizePhone, formatPhoneForDisplay } from "@core/customers/identity.js";
 import { Notice } from "../../../../components/ui/notice";
+import { Badge, type Tone } from "../../../../components/ui/badge";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
@@ -57,21 +58,21 @@ const STATES: { key: PaymentState | "all"; label: string }[] = [
   { key: "cancelled", label: "Cancelled" },
 ];
 
-/** Badge styling per state — existing palette tokens only (DEC-021/042, no new colors). */
-const BADGE: Record<PaymentState, string> = {
-  // Same tokens as deposit and pending — money is owed and expected, not missing.
-  awaiting: "border-warn-line bg-warn-bg text-warn",
-  paid: "border-ok-line bg-ok-bg text-ok",
-  deposit: "border-warn-line bg-warn-bg text-warn",
-  unpaid: "border-line bg-bg text-muted",
-  refunded: "border-bad-line bg-bad-bg text-bad",
-  // Same "bad" tokens as refunded — money that left the account, and no new colors (DEC-021/042).
+/** Badge tone per state — existing palette tokens only (DEC-021/042, no new colors). */
+const BADGE: Record<PaymentState, Tone> = {
+  // Same tone as deposit and pending — money is owed and expected, not missing.
+  awaiting: "warn",
+  paid: "ok",
+  deposit: "warn",
+  unpaid: "neutral",
+  refunded: "bad",
+  // Same "bad" tone as refunded — money that left the account, and no new colors (DEC-021/042).
   // The label carries the difference; a chargeback is not a worse-looking refund, it is a
   // different reason for the same missing money.
-  disputed: "border-bad-line bg-bad-bg text-bad",
-  // Same tokens as deposit — money is in motion, not missing and not lost.
-  pending: "border-warn-line bg-warn-bg text-warn",
-  cancelled: "border-line bg-bg text-muted",
+  disputed: "bad",
+  // Same tone as deposit — money is in motion, not missing and not lost.
+  pending: "warn",
+  cancelled: "neutral",
 };
 
 /** What the badge says. The state's own word, except where one word would mislead: "awaiting" on
@@ -281,13 +282,9 @@ export default async function AdminPurchases({
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      <span
-                        data-testid={`row-state-${r.reservationId}`}
-                        // eslint-disable-next-line no-restricted-syntax -- mark (issue #484): a 10px badge keeps its 4px corner
-                        className={`inline-block rounded border px-1.5 py-px text-[10px] uppercase tracking-wide ${BADGE[r.state]}`}
-                      >
+                      <Badge data-testid={`row-state-${r.reservationId}`} tone={BADGE[r.state]}>
                         {BADGE_TEXT[r.state] ?? r.state}
-                      </span>
+                      </Badge>
                     </td>
                   </tr>
                 ))}

@@ -66,4 +66,26 @@ test.describe("admin /admin/add-ons", () => {
       page.locator('label:has-text("Extra hour") input[name="addOnIds"]'),
     ).toBeChecked();
   });
+
+  // Issue #484: `rounded-full` rounds a chip to half its height, so a label that wraps at 375px
+  // turned the chip into an oval. Pinned at 375px in both projects, because it only wraps there.
+  test("a long add-on label wraps into a rounded box, not an oval", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/admin/add-ons?sel=new");
+    await page.fill('input[name="label"]', "Charcuterie and local cheese board for the whole party");
+    await page.fill('input[name="amount"]', "45.00");
+    await page.getByRole("button", { name: "Create" }).click();
+    await page.waitForURL(/saved=1/);
+
+    await page.goto("/admin/offerings?sel=new");
+    const face = page.locator('label:has(input[name="addOnIds"]) > span');
+    await expect(face).toHaveCount(1);
+    const { height, radius } = await face.evaluate((e) => ({
+      height: e.getBoundingClientRect().height,
+      radius: parseFloat(getComputedStyle(e).borderTopLeftRadius),
+    }));
+    expect(height, "the label wraps to two lines at 375px").toBeGreaterThan(40);
+    expect(radius, "corners, not round ends").toBeLessThan(height / 2);
+  });
 });

@@ -43,14 +43,15 @@ export interface SeatCardVM {
   pool: CandidateVM[] | null;
 }
 
-const STATE_TONE: Record<SeatCardVM["state"], string> = {
-  Open: "border-line bg-bg text-muted",
-  Asked: "border-line bg-bg text-accent",
-  Claimed: "border-warn-line bg-warn-bg text-warn",
-  Confirmed: "border-ok-line bg-ok-bg text-ok",
-  Bailed: "border-bad-line bg-bad-bg text-bad",
+const STATE_TONE: Record<SeatCardVM["state"], Tone> = {
+  Open: "neutral",
+  Asked: "accent",
+  Claimed: "warn",
+  Confirmed: "ok",
+  Bailed: "bad",
 };
 
+import { Badge, type Tone } from "../ui/badge";
 import { Card } from "../ui/card";
 import { Notice } from "../ui/notice";
 // The role glyph (9.8, DEC-086) is ALWAYS FILLED here, and deliberately does NOT match the
@@ -150,11 +151,7 @@ export function SeatCard({
           <RoleGlyph roleName={vm.roleName} />
           {vm.roleName} · required
         </span>
-        <span
-          className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${STATE_TONE[vm.state]}`}
-        >
-          {vm.state}
-        </span>
+        <Badge tone={STATE_TONE[vm.state]}>{vm.state}</Badge>
       </div>
 
       <OccupantZone vm={vm} />

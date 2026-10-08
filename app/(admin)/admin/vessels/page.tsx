@@ -253,8 +253,8 @@ function CrewRows({
   const shown = rows.length > 0 ? rows : [{ roleTypeId: "", count: "1" }];
 
   return (
-    <Field group layout="row" label="Required crew" hint="Who must be aboard to sail" align="start">
-      <div className="flex flex-col gap-2 pt-1.5">
+    <Field group layout="row" label="Required crew" hint="Who must be aboard to sail">
+      <div className="flex flex-col gap-2">
         {shown.map((row, i) => (
           <div key={i} className="flex items-center gap-2">
             <Input
@@ -359,7 +359,7 @@ function VesselCard({
 
         <CrewRows vessel={vessel} draft={draft} roleTypes={roleTypes} />
 
-        <Field group layout="row" label="Color">
+        <Field group layout="row" label="Color" align="start">
           <div className="flex flex-wrap gap-2 pt-1.5">
             {Array.from({ length: HUE_COUNT }, (_, i) => i + 1).map((h) => (
               <Swatch

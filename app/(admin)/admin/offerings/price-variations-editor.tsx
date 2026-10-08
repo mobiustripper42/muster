@@ -98,7 +98,9 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
           minus for a discount (−50 or −20%).
         </p>
       )}
-      <ol className="flex flex-col gap-2">
+      {/* `empty:hidden`: with no rows the empty list would be this column's first box, and its
+          zero-height baseline would pull the Variations label to the top of the row (issue #484). */}
+      <ol className="flex flex-col gap-2 empty:hidden">
         {rows.map(({ key, row }, i) => (
           <Well
             key={key}

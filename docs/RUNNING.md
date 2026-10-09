@@ -126,13 +126,17 @@ curl 'http://localhost:3000/crew/dev-code?email=quint@bb.test'
 
 It is also printed to the dev-server terminal: `[login-code] → Quint <quint@bb.test>: 123456`.
 
-**If nothing shows up, don't hit submit again — that is what keeps it from showing up.** The echo
-only fires on `outcome: "deliver"`, and `mintLoginCode` returns `skip` in two cases that look
-identical from the browser (`src/auth/login-code.ts`):
+The code is stored and echoed a moment **after** the page answers (issue #579 moved it off the
+response path), so an empty read straight away means "not yet" — run the `curl` again.
 
-- **a live code minted less than 60s ago** (`RESEND_COOLDOWN_MS`, :160) — you already have one, so
-  no second code is minted and nothing is logged. Retrying re-arms this every time.
-- **a roster miss** (:149) — wrong email, or a DB the seed never reached.
+**If nothing shows up, don't hit submit again — that is what keeps it from showing up.** Each
+submit clears that email's echo, and nothing new is echoed in two cases that look identical from
+the browser (`src/auth/login-code.ts`):
+
+- **a live code minted less than 60s ago** (`RESEND_COOLDOWN_MS`) — you already have one, so
+  `issueLoginCode` stores no second code and nothing is logged. Retrying re-arms this every time,
+  and clears the echo of the first.
+- **a roster miss** (`requestLoginCode` returns `skip`) — wrong email, or a DB the seed never reached.
 
 The code itself is stored hash-only, so a code you missed the log line for is gone; you have to wait
 the cooldown out. **Wait 60s, submit once, watch the terminal.** Only if it is still silent after a

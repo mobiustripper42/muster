@@ -59,7 +59,9 @@ export function Field({
     </>
   );
   const placement = hint ? "top" : align;
-  const labelClass = `text-sm text-muted ${layout === "row" ? "sm:text-right" : ""} ${layout === "row" && placement === "start" ? "sm:pt-3" : ""}`;
+  // `start` offsets the label onto a textarea's first line, so it follows the textarea's desktop
+  // top padding (`components/ui/input.tsx`, issue #1200).
+  const labelClass = `text-sm text-muted ${layout === "row" ? "sm:text-right" : ""} ${layout === "row" && placement === "start" ? "sm:pt-2" : ""}`;
   const labelNode = htmlFor ? (
     <label htmlFor={htmlFor} className={labelClass}>
       {text}

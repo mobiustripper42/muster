@@ -353,6 +353,20 @@ body {
   }
 }
 
+/* The select arrow, drawn (issue #1200). The browser pins its own arrow about 6px from the right
+ * edge whatever the padding, so on desktop — where every field has 9px between its letters and
+ * its border — the arrow is ours, 9px in, the ink colour (`--color-ink`, written out: a data URI
+ * cannot read a custom property). `Select` applies it from `sm:` up and pads 2rem on the right
+ * (9px + the 12px arrow + 9px) so option text stops short of it. The option list stays the
+ * browser's. A `@utility` rather than a component class so it takes the `sm:` variant. */
+@utility select-arrow {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4.5l4 4 4-4' fill='none' stroke='%23101826' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 0.8rem;
+}
+
 /* The pending spinner honours prefers-reduced-motion (#639) — the tactile press scale
  * in the base layer already did, so this was an inconsistency inside one file rather
  * than a policy we never had.

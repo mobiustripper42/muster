@@ -43,7 +43,10 @@ export function Field({
   group?: boolean;
   layout?: "stacked" | "row";
   align?: "baseline" | "start";
-  /** Outer layout only — spacing between fields, a grid column. */
+  /**
+   * Outer layout only — spacing between fields as a margin, a grid column. Not padding: the row
+   * layout draws its own `py-3`, and `muster/layout-only` refuses padding here either way.
+   */
   className?: string;
   children: ReactNode;
 }) {

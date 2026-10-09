@@ -14,6 +14,7 @@ import type { BookErr } from "./book-actions";
 import { SlotHeader, bookHref, calendarHref, type CalendarData } from "./calendar-view";
 import { PhoneBookingForm } from "./phone-booking-form";
 import { Card } from "../../../../components/ui/card";
+import { Recap } from "../../../../components/checkout/recap";
 
 /**
  * Book by phone, in the calendar's pane (16.1, 16.1d, SPEC §2.10.6; issue #1104 part 3).
@@ -252,19 +253,13 @@ function CheckoutStep({
       <Card pad="none" className="flex flex-col">
         {/* The trip, changeable — the public checkout's "Your trip" row. */}
         <div className="px-4 pt-4">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Their trip</div>
-          <div className="flex items-center gap-2.5 rounded-box border border-line px-3.5 py-3">
-            <span className="min-w-0 flex-1 text-sm">
-              <b className="font-semibold">{offering.name}</b>
-              <span className="text-muted">
-                {" "}
-                · {guests} {guests === 1 ? "guest" : "guests"}
-              </span>
+          <Recap label="Their trip" changeHref={changeHref}>
+            <b className="font-semibold">{offering.name}</b>
+            <span className="text-muted">
+              {" "}
+              · {guests} {guests === 1 ? "guest" : "guests"}
             </span>
-            <AppLink href={changeHref} className="btn-quiet text-xs">
-              Change
-            </AppLink>
-          </div>
+          </Recap>
         </div>
 
         <PhoneBookingForm

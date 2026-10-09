@@ -88,7 +88,9 @@ export function ShiftRow({
       // dip on :active — fires because the row `<AppLink>` is in the card's activation
       // chain. Background, NOT transform/filter, so it can't collapse the link's
       // `after:inset-0` overlay (that would establish a containing block).
-      edge={selected ? "accent" : "line"} className={`relative flex flex-col gap-2 active:bg-accent/10 ${row.cancelled ? "opacity-60" : ""}`}
+      edge={selected ? "accent" : "line"}
+      // eslint-disable-next-line muster/layout-only -- the press cue on a stretched-link row: a state fill, the one card that has it
+      className={`relative flex flex-col gap-2 active:bg-accent/10 ${row.cancelled ? "opacity-60" : ""}`}
     >
       <div className="flex items-start justify-between gap-4">
         {/* Stretched link (9.8): the whole card opens the cockpit; the split/

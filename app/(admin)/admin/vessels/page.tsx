@@ -2,7 +2,7 @@ import type { Location, Offering, RoleType, Vessel } from "@core/domain/entities
 import { Notice } from "../../../../components/ui/notice";
 import { Tag } from "../../../../components/ui/badge";
 import { Shell } from "../../../../components/ui/shell";
-import { AppLink } from "../../../../components/ui/app-link";
+import { SideList, SideListLink, SideListNew } from "../../../../components/admin/side-list";
 import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
@@ -17,7 +17,7 @@ import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { HUE_COUNT, vesselHueClass, vesselHueIndex } from "../../../lib/vessel-hue";
 import { saveVessel, type VesselErr } from "./actions";
-import { Card } from "../../../../components/ui/card";
+import { Card, CardHeader } from "../../../../components/ui/card";
 
 /**
  * /admin/vessels (task 12.9, DEC-123) — the Vessel settings twin, laid out to
@@ -155,19 +155,9 @@ export default async function AdminVessels({
         )}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
-          <Card as="nav" pad="none" className="flex flex-col gap-0.5 self-start p-1.5">
-            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Vessels
-            </p>
+          <SideList label="Vessels" className="self-start">
             {vessels.map((v) => (
-              <AppLink
-                key={v.id}
-                href={`/admin/vessels?sel=${v.id}`}
-                aria-current={selected?.id === v.id ? "page" : undefined}
-                className={`block rounded-box px-2.5 py-2 text-sm ${
-                  selected?.id === v.id ? "bg-bg font-medium text-ink" : "text-muted"
-                }`}
-              >
+              <SideListLink key={v.id} href={`/admin/vessels?sel=${v.id}`} current={selected?.id === v.id}>
                 {/* Flex lives INSIDE the link: AppLink wraps its children in a label
                     node, so a `gap` on the link itself never reaches the dot + name. */}
                 <span className="flex items-center gap-2.5">
@@ -177,17 +167,12 @@ export default async function AdminVessels({
                   />
                   <span className="min-w-0 flex-1 truncate">{v.name}</span>
                 </span>
-              </AppLink>
+              </SideListLink>
             ))}
-            <AppLink
-              href="/admin/vessels?sel=new"
-              className={`mx-0.5 mt-1.5 rounded-box border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
-                creating ? "font-medium" : ""
-              }`}
-            >
+            <SideListNew href="/admin/vessels?sel=new" current={creating}>
               + New vessel
-            </AppLink>
-          </Card>
+            </SideListNew>
+          </SideList>
 
           <div className="flex flex-col gap-4">
             {(selected || creating) && (
@@ -325,9 +310,7 @@ function VesselCard({
   const isNew = creating || !vessel;
   return (
     <Card as="section" pad="none">
-      <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">Vessel</h2>
-      </div>
+      <CardHeader title="Vessel" />
 
       <div className="px-4 py-1">
         <Field htmlFor="vessel-name" layout="row" label="Name">
@@ -418,9 +401,7 @@ function OfferingsSection({ vessel, offerings }: { vessel: Vessel; offerings: Of
   const runs = offerings.filter((o) => o.vesselIds.includes(vessel.id));
   return (
     <Card as="section" pad="none">
-      <div className="border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">Offerings</h2>
-      </div>
+      <CardHeader title="Offerings" />
       <div className="px-4 py-3">
         {runs.length === 0 ? (
           <p className="text-sm text-muted">Not assigned to any offerings yet.</p>

@@ -43,6 +43,7 @@ import { usePaymentLock } from "../../../../components/checkout/payment-lock";
 import { startElementsCheckout } from "./actions";
 import { startPaymentLinkCheckout } from "../../p/[token]/actions";
 import { Card, Well } from "../../../../components/ui/card";
+import { Recap } from "../../../../components/checkout/recap";
 import { Notice } from "../../../../components/ui/notice";
 
 /**
@@ -179,11 +180,10 @@ function submitLabel(pay: boolean, submitting: boolean): string {
 function BookedFor({ name, phoneLabel }: { name: string; phoneLabel: string }) {
   return (
     <div className="pt-4">
-      <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Booked for</div>
-      <div className="rounded-box border border-line px-3.5 py-3 text-sm" data-testid="booked-for">
+      <Recap label="Booked for" data-testid="booked-for">
         <b className="font-semibold">{name}</b>
         <span className="text-muted"> · {phoneLabel}</span>
-      </div>
+      </Recap>
     </div>
   );
 }

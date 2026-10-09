@@ -520,6 +520,7 @@ function PunchForm({
  */
 /** The clock buttons' one class rule: green means LIVE, not "this is Clock in" (#718). */
 function clockBtn(live: boolean): string {
+  // eslint-disable-next-line muster/surface -- the idle clock button: a disabled control's grey, not a well
   return `min-h-[52px] w-full rounded-box font-semibold ${
     live ? "bg-ok text-white" : "border border-line bg-bg text-muted"
   }`;

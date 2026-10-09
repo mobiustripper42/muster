@@ -8,7 +8,7 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { AppLink } from "../../../../components/ui/app-link";
 import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { saveBlock, liftBlock } from "./actions";
-import { Card } from "../../../../components/ui/card";
+import { Card, CardHeader } from "../../../../components/ui/card";
 
 /**
  * The /admin/blocks create/edit panel (task 12.10, DEC-125; reason-first since issue #1091) — a
@@ -97,14 +97,16 @@ export function BlockEditor({
 
   return (
     <Card as="aside" pad="none" className="self-start min-[1080px]:sticky min-[1080px]:top-4">
-      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">{choice ? TITLE[choice] : "New block"}</h2>
-        {editing && (
-          <AppLink href="/admin/blocks" className="btn-secondary shrink-0 px-3 py-1 text-sm">
-            + New block
-          </AppLink>
-        )}
-      </div>
+      <CardHeader
+        title={choice ? TITLE[choice] : "New block"}
+        action={
+          editing && (
+            <AppLink href="/admin/blocks" className="btn-secondary shrink-0 px-3 py-1 text-sm">
+              + New block
+            </AppLink>
+          )
+        }
+      />
 
       {choice === null && (
         <div className="px-4 py-3">
@@ -135,7 +137,7 @@ export function BlockEditor({
       )}
 
       {(choice === "vessel" || choice === "location") && (
-        <form action={saveBlock} className="px-4 py-1">
+        <form action={saveBlock} className="flex flex-col px-4 py-1">
           {/* `draftValues` is non-null exactly when a refusal restored this form. */}
           <UnsavedGuard restored={draftValues !== null} />
           <input type="hidden" name="id" value={selected ? String(selected.id) : ""} />
@@ -143,7 +145,7 @@ export function BlockEditor({
 
           {choice === "location" ? (
             <>
-              <Field className="py-2" label="Which location" htmlFor="blk-target">
+              <Field className="my-2" label="Which location" htmlFor="blk-target">
                 {editing ? (
                   <>
                     <input type="hidden" name="locationId" value={loc ? String(loc.locationId) : ""} />
@@ -165,7 +167,7 @@ export function BlockEditor({
                   </Select>
                 )}
               </Field>
-              <Field className="py-2" label="Date" htmlFor="blk-date">
+              <Field className="my-2" label="Date" htmlFor="blk-date">
                 <Input
                   id="blk-date"
                   name="date"
@@ -175,7 +177,7 @@ export function BlockEditor({
                 />
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field className="py-2" label="From" htmlFor="blk-from">
+                <Field className="my-2" label="From" htmlFor="blk-from">
                   <Input
                     id="blk-from"
                     name="startTime"
@@ -184,7 +186,7 @@ export function BlockEditor({
                     className="w-full font-mono"
                   />
                 </Field>
-                <Field className="py-2" label="To" htmlFor="blk-to">
+                <Field className="my-2" label="To" htmlFor="blk-to">
                   <Input
                     id="blk-to"
                     name="endTime"
@@ -197,7 +199,7 @@ export function BlockEditor({
             </>
           ) : (
             <>
-              <Field className="py-2" label="Which boat" htmlFor="blk-target">
+              <Field className="my-2" label="Which boat" htmlFor="blk-target">
                 {editing ? (
                   <>
                     <input type="hidden" name="vesselId" value={ves ? String(ves.vesselId) : ""} />
@@ -220,7 +222,7 @@ export function BlockEditor({
                 )}
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field className="py-2" label="From" htmlFor="blk-from">
+                <Field className="my-2" label="From" htmlFor="blk-from">
                   <Input
                     id="blk-from"
                     name="startDate"
@@ -229,7 +231,7 @@ export function BlockEditor({
                     className="w-full font-mono"
                   />
                 </Field>
-                <Field className="py-2" label="To" hint="blank = one day" htmlFor="blk-to">
+                <Field className="my-2" label="To" hint="blank = one day" htmlFor="blk-to">
                   <Input
                     id="blk-to"
                     name="endDate"
@@ -242,7 +244,7 @@ export function BlockEditor({
             </>
           )}
 
-          <Field className="py-2" label="Reason" hint="optional" htmlFor="blk-reason">
+          <Field className="my-2" label="Reason" hint="optional" htmlFor="blk-reason">
             <Input
               id="blk-reason"
               name="note"

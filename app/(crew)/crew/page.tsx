@@ -286,7 +286,7 @@ function SignedOut({
  */
 function SmsConsentBlock() {
   return (
-    <Card pad="none" className="px-3">
+    <Card pad="sides">
       <Checkbox id={SMS_CONSENT_FIELD} name={SMS_CONSENT_FIELD} value={SMS_CONSENT_FIELD_VALUE}>
         <span>
           I agree to receive SMS text messages from Cleveland Cycleboats, LLC

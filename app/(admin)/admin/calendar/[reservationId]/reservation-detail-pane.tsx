@@ -925,23 +925,19 @@ function PaneActions({
                 number at all on a screen whose whole job is deciding an amount. */}
             <fieldset className="mb-2">
               <legend className="sr-only">Who cancelled?</legend>
-              {(
-                [
-                  ["customer", "The customer asked", actions.quoteCustomerCents],
-                  ["operator", "We cancelled — weather, crew, mechanical", actions.quoteOperatorCents],
-                ] as const
-              ).map(([value, label, cents]) => (
-                <Radio
-                  key={value}
-                  name="by"
-                  value={value}
-                  defaultChecked={value === actions.cancelBy}
-                  className="border-b border-line last:border-0"
-                >
-                  <span className="flex-1">{label}</span>
-                  <span className="self-center font-mono text-xs text-muted">{formatCents(cents)}</span>
-                </Radio>
-              ))}
+              <div className="divide-y divide-line">
+                {(
+                  [
+                    ["customer", "The customer asked", actions.quoteCustomerCents],
+                    ["operator", "We cancelled — weather, crew, mechanical", actions.quoteOperatorCents],
+                  ] as const
+                ).map(([value, label, cents]) => (
+                  <Radio key={value} name="by" value={value} defaultChecked={value === actions.cancelBy}>
+                    <span className="flex-1">{label}</span>
+                    <span className="self-center font-mono text-xs text-muted">{formatCents(cents)}</span>
+                  </Radio>
+                ))}
+              </div>
             </fieldset>
 
             {/* **The amount is an OVERRIDE, not a prefill, and that is the whole point.**

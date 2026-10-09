@@ -34,6 +34,7 @@ export function TipTiles({
             data-testid={`tip-${t.bps}`}
             aria-pressed={t.bps === selectedBps}
             onClick={() => onSelect(t.bps)}
+            // eslint-disable-next-line muster/surface -- a selection tile, not a card; part C of issue #484 gives it the shared selected-tile look and drops this
             className={`rounded-box border px-1 py-2.5 text-center ${
               t.bps === selectedBps ? "border-accent bg-accent/5 ring-1 ring-accent" : "border-line bg-card"
             }`}

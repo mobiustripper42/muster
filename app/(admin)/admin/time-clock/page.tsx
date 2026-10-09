@@ -449,7 +449,7 @@ function PunchCard({
           // operator's answer. Falling back to the stored value here would silently re-tick
           // the box they had just cleared — on a form that decides how many hours get paid.
           defaultChecked={mine ? mine.has("outNextDay") : row.outIsNextDay}
-          className="pb-2"
+          className="mb-2"
         >
           Out is next day
         </Checkbox>
@@ -560,7 +560,7 @@ function AddPunchForm({
           name="outNextDay"
           value="1"
           defaultChecked={retry.next}
-          className="pb-2"
+          className="mb-2"
         >
           Out is next day
         </Checkbox>

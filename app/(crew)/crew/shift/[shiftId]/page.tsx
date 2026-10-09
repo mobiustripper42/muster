@@ -297,7 +297,7 @@ function ShiftCard({
           and they’ll take you off — no penalty.
         </Notice>
       ) : (
-      <Card as="details" pad="none" className="px-4 pb-3">
+      <Card as="details" pad="fold">
         {/* The summary owns the 44px hit area (clicks on details padding don't
             toggle); marker kept deliberately — the "…" + triangle reads as
             "more here" without borrowing the manifest's chevron idiom. */}

@@ -2,7 +2,7 @@ import type { Location, Offering } from "@core/domain/entities.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Tag } from "../../../../components/ui/badge";
 import { Shell } from "../../../../components/ui/shell";
-import { AppLink } from "../../../../components/ui/app-link";
+import { SideList, SideListLink, SideListNew } from "../../../../components/admin/side-list";
 import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
@@ -15,7 +15,7 @@ import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { saveLocation, type LocationErr } from "./actions";
-import { Card } from "../../../../components/ui/card";
+import { Card, CardHeader } from "../../../../components/ui/card";
 
 /**
  * /admin/locations (task 12.9, DEC-123) — the Location settings twin, laid out to
@@ -111,39 +111,24 @@ export default async function AdminLocations({
         )}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
-          <Card as="nav" pad="none" className="flex flex-col gap-0.5 self-start p-1.5">
-            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Locations
-            </p>
+          <SideList label="Locations" className="self-start">
             {locations.map((l) => {
               const used = offerings.filter((o) => o.locationId === l.id).length;
               return (
-                <AppLink
-                  key={l.id}
-                  href={`/admin/locations?sel=${l.id}`}
-                  aria-current={selected?.id === l.id ? "page" : undefined}
-                  className={`block rounded-box px-2.5 py-2 text-sm ${
-                    selected?.id === l.id ? "bg-bg font-medium text-ink" : "text-muted"
-                  }`}
-                >
+                <SideListLink key={l.id} href={`/admin/locations?sel=${l.id}`} current={selected?.id === l.id}>
                   <span className="flex flex-col">
                     <span className="truncate">{l.name}</span>
                     <span className="text-xs text-muted">
                       {used} {used === 1 ? "offering" : "offerings"}
                     </span>
                   </span>
-                </AppLink>
+                </SideListLink>
               );
             })}
-            <AppLink
-              href="/admin/locations?sel=new"
-              className={`mx-0.5 mt-1.5 rounded-box border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
-                creating ? "font-medium" : ""
-              }`}
-            >
+            <SideListNew href="/admin/locations?sel=new" current={creating}>
               + New location
-            </AppLink>
-          </Card>
+            </SideListNew>
+          </SideList>
 
           <div className="flex flex-col gap-4">
             {(selected || creating) && <LocationCard location={selected} draft={draft} />}
@@ -166,9 +151,7 @@ export default async function AdminLocations({
 function LocationCard({ location, draft }: { location: Location | null; draft: FormDraft | null }) {
   return (
     <Card as="section" pad="none">
-      <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">Location</h2>
-      </div>
+      <CardHeader title="Location" />
 
       <div className="px-4 py-1">
         <Field htmlFor="location-name" layout="row" label="Name">
@@ -236,9 +219,7 @@ function OfferingsSection({ location, offerings }: { location: Location; offerin
   const used = offerings.filter((o) => o.locationId === location.id);
   return (
     <Card as="section" pad="none">
-      <div className="border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">Offerings</h2>
-      </div>
+      <CardHeader title="Offerings" />
       <div className="px-4 py-3">
         {used.length === 0 ? (
           <p className="text-sm text-muted">No offerings use this location yet.</p>

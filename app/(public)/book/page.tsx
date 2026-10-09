@@ -45,6 +45,7 @@ import { getRepo } from "../../lib/repo";
 import { logSwallowed } from "../../lib/swallowed";
 import { BookingProvider, Footer, GuestCard } from "./book-controls";
 import { Card } from "../../../components/ui/card";
+import { tileLook } from "../../../components/ui/choice";
 
 export const dynamic = "force-dynamic";
 
@@ -268,7 +269,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
             <AppLink
               href={bookHref({})}
               aria-label="Back to cruises"
-              className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-box border border-line text-muted"
+              className="btn-icon"
             >
               ‹
             </AppLink>
@@ -350,13 +351,14 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       href={bookHref({ offering: sp.offering, date: prev.first, guests: hrefGuests })}
                       scroll={false}
                       aria-label="Previous month"
-                      className="flex h-[30px] w-[30px] items-center justify-center rounded-box border border-line text-muted"
+                      className="btn-icon"
                     >
                       ‹
                     </AppLink>
                   ) : (
-                    // eslint-disable-next-line muster/faint-text -- the INACTIVE month arrow (#951). WCAG 1.4.3 exempts an inactive control, and the dimming is the only thing telling it apart from the live `›` beside it, which is `text-muted`.
-                    <span className="flex h-[30px] w-[30px] items-center justify-center rounded-box border border-line text-faint opacity-40">
+                    // The INACTIVE month arrow: `btn-icon` fades it, the only thing telling it apart
+                    // from the live `›` beside it (issue #484 part C; was faint text, #951).
+                    <span className="btn-icon" aria-disabled="true">
                       ‹
                     </span>
                   )}
@@ -364,7 +366,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                     href={bookHref({ offering: sp.offering, date: next.first, guests: hrefGuests })}
                     scroll={false}
                     aria-label="Next month"
-                    className="flex h-[30px] w-[30px] items-center justify-center rounded-box border border-line text-muted"
+                    className="btn-icon"
                   >
                     ›
                   </AppLink>
@@ -538,9 +540,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                           href={bookHref({ offering: sp.offering, date: selectedDate, time: r.time, guests: hrefGuests })}
                           scroll={false}
                           spinner="none"
-                          className={`mb-2.5 flex items-center gap-3 rounded-box border px-3.5 py-3 ${
-                            selected ? "border-accent bg-accent/5 ring-1 ring-accent" : "border-line hover:border-accent"
-                          }`}
+                          className={`mb-2.5 flex items-center gap-3 px-3.5 py-3 ${tileLook(selected)}`}
                         >
                           {inner}
                         </AppLink>

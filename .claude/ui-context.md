@@ -40,6 +40,11 @@ Colors map straight to Tailwind utilities (`bg-*`, `text-*`, `border-*`):
   `<CardHeader>`; one written by hand fails lint. Built on these: `<SideList>` for a settings list
   column (`components/admin/side-list.tsx`), `<Recap>` for a choice restated on a checkout
   (`components/checkout/recap.tsx`), `<ChatBubble>` for a thread message (`components/ui/chat-bubble.tsx`).
+- **Controls wear the control edge**, `line-strong` — never a card's `line`. A box you can press is
+  `btn-secondary` (`btn-sm` in a dense row), `btn-icon` for one glyph (the ‹ › arrows), `btn-add` for
+  "+ Add …" (`app/globals.css`), `tileLook(on)` for a choice tile — a start time, a tip — or
+  `chipLook` for a filter (`components/ui/choice.tsx`). A pressable box with the pale edge fails
+  lint (`muster/control-edge`); a row that cannot be pressed keeps it, and that is what says so.
 - **className is layout:** on any of these components a page passes margin, gap, width, flex,
   grid, overflow, position or text — never a fill, edge, corner, shadow or padding
   (`muster/layout-only`). A divider between rows goes on their container (`divide-y`).

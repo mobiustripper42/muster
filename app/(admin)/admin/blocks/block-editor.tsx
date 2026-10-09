@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Block, Location, Vessel } from "@core/domain/entities.js";
 import { Field } from "../../../../components/ui/field";
 import { Input, Select } from "../../../../components/ui/input";
+import { tileLook } from "../../../../components/ui/choice";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { AppLink } from "../../../../components/ui/app-link";
 import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
@@ -117,7 +118,7 @@ export function BlockEditor({
                 key={c.key}
                 type="button"
                 onClick={() => setChoice(c.key)}
-                className="flex select-none flex-col rounded-box border border-line px-3 py-2 text-left text-sm font-medium text-ink hover:border-accent hover:bg-bg"
+                className={`flex select-none flex-col px-3 py-2 text-left text-sm font-medium text-ink hover:bg-bg ${tileLook(false)}`}
               >
                 {c.title}
                 <span className="text-xs font-normal text-muted">{c.sub}</span>

@@ -93,7 +93,7 @@ export function DepartureTimesEditor({ initial }: { initial: string[] }) {
         <button
           type="button"
           onClick={add}
-          className="rounded-box border border-dashed border-line px-3 py-1.5 text-sm text-accent"
+          className="btn-add"
         >
           + Add time
         </button>

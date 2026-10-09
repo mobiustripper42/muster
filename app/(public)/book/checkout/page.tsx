@@ -278,7 +278,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           <AppLink
             href={backHref(sp, date, time, guests)}
             aria-label="Back to date & time"
-            className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-box border border-line text-muted"
+            className="btn-icon"
           >
             ‹
           </AppLink>

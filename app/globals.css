@@ -221,6 +221,16 @@ body {
  *   btn-quiet      accent text, no box — small in-line actions (add `text-bad` for a red one)
  *   btn-sm         compact size for dense rows (boxed kinds)
  *
+ * Two control looks sit beside them that are not action kinds — never on a submit, so
+ * `muster/button-kind` does not name them (issue #484, part C):
+ *
+ *   btn-icon       a 30px square holding one glyph — the booking flow's ‹ › arrows; faded when
+ *                  `aria-disabled="true"`
+ *   btn-add        dashed, accent text — "+ Add …", "+ New …": makes a new one
+ *
+ * Every boxed control here wears the control edge, `--color-line-strong`; `muster/control-edge`
+ * refuses a pressable box drawn with a card's `--color-line`.
+ *
  * In `@layer components` so a layout utility on the element still wins, and so the hover filter
  * below can outrank the base layer's press filter — which is exactly why press is restated here:
  * without it, a mouse press on a hovered button (every mouse press) would show the hover tint
@@ -293,9 +303,33 @@ body {
   }
   /* A link-button that cannot be pressed yet (`aria-disabled`, e.g. Continue before a slot is
    * picked) fades like a disabled <button>; the base layer already gives it "not allowed". */
+  .btn-icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-box);
+    background: var(--color-card);
+    color: var(--color-muted);
+  }
+  .btn-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border: 1px dashed var(--color-line-strong);
+    border-radius: var(--radius-box);
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: var(--color-accent);
+  }
   .btn-primary[aria-disabled="true"],
   .btn-secondary[aria-disabled="true"],
-  .btn-danger[aria-disabled="true"] {
+  .btn-danger[aria-disabled="true"],
+  .btn-icon[aria-disabled="true"] {
     opacity: 0.4;
   }
   @media (hover: hover) {
@@ -303,7 +337,9 @@ body {
     .btn-danger:not(:disabled):hover {
       filter: brightness(0.9);
     }
-    .btn-secondary:not(:disabled):hover {
+    .btn-secondary:not(:disabled):hover,
+    .btn-icon:not([aria-disabled="true"]):hover,
+    .btn-add:hover {
       border-color: var(--color-accent);
     }
     .btn-quiet:not(:disabled):hover {

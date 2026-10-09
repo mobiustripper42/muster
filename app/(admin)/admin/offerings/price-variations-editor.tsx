@@ -265,7 +265,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                 aria-label={`Move variation ${i + 1} up`}
                 onClick={() => move(i, i - 1)}
                 disabled={i === 0}
-                className="rounded-box border border-line px-2 py-1 text-xs text-muted"
+                className="btn-secondary btn-sm"
               >
                 ▲
               </button>
@@ -274,7 +274,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                 aria-label={`Move variation ${i + 1} down`}
                 onClick={() => move(i, i + 1)}
                 disabled={i === rows.length - 1}
-                className="rounded-box border border-line px-2 py-1 text-xs text-muted"
+                className="btn-secondary btn-sm"
               >
                 ▼
               </button>
@@ -282,7 +282,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                 type="button"
                 aria-label={`Remove variation ${i + 1}`}
                 onClick={() => setRows(rows.filter((_, j) => j !== i))}
-                className="rounded-box border border-line px-2 py-1 text-xs text-muted"
+                className="btn-secondary btn-sm"
               >
                 Remove
               </button>
@@ -293,7 +293,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
       <button
         type="button"
         onClick={() => setRows([...rows, { key: nextKey.current++, row: newRow() }])}
-        className="self-start rounded-box border border-dashed border-line px-3 py-1.5 text-sm text-accent"
+        className="btn-add self-start"
       >
         + Price variation
       </button>

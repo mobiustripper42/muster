@@ -355,6 +355,44 @@ const CASES = [
       ['<AppLink href="/x" className="btn-secondary px-3 py-1 text-sm">+ New</AppLink>;', "a link is not a look component"],
     ],
   },
+  {
+    /**
+     * A control wears the control edge (issue #484, part C). `--color-line` is a card's hairline;
+     * a box you can press drawn with it reads as a card, and 14 were — arrows, tiles, "+ Add"
+     * links, small buttons. The class string is read whole, like the surface rule's. The `good`
+     * cases are the shared control looks, and the two pale edges that are right: a row that
+     * cannot be pressed, and a divider inside a segmented control.
+     */
+    rule: "a control wears the control edge (issue #484)",
+    ruleId: "muster/control-edge",
+    filePath: "app/(admin)/admin/probe/page.tsx",
+    bad: [
+      [
+        '<AppLink href="/x" className="flex h-[30px] w-[30px] items-center justify-center rounded-box border border-line text-muted">‹</AppLink>;',
+        "an arrow with a card's edge",
+      ],
+      ['<button type="button" className="rounded-box border border-line px-2 py-1 text-xs">▲</button>;', "a small button"],
+      [
+        '<button type="button" className="rounded-box border border-dashed border-line px-3 py-1.5 text-accent">+ Add time</button>;',
+        "a dashed add",
+      ],
+      [
+        '<a className={`flex rounded-box border px-3.5 py-3 ${on ? "border-accent" : "border-line"}`}>3:30</a>;',
+        "the pale edge in a ?: branch — the start-time row",
+      ],
+      ['<summary className="rounded-box border border-line px-3">More</summary>;', "a summary"],
+    ],
+    good: [
+      ['<button type="button" className="btn-secondary btn-sm">Remove</button>;', "the small secondary button"],
+      ['<AppLink href="/x" className="btn-icon">‹</AppLink>;', "the glyph control"],
+      ['<button type="button" className="btn-add">+ Add time</button>;', "the add control"],
+      ['<a className={`flex px-3.5 py-3 ${tileLook(on)}`}>3:30</a>;', "the shared tile look"],
+      ['<button type="button" className="rounded-box border border-line-strong px-3">Pick</button>;', "the control edge by hand"],
+      ['<div className="rounded-box border border-line px-3.5 py-3 opacity-55">Sold out</div>;', "a row that cannot be pressed"],
+      ['<AppLink href="/x" className="border-r border-line px-3 py-1.5">Grid</AppLink>;', "a segment's divider"],
+      ['<button type="button" className="rounded-box border border-line-strong hover:border-line">x</button>;', "a pale edge as a state only"],
+    ],
+  },
 ];
 
 describe.each(CASES)("$rule", ({ ruleId, filePath, bad, good }) => {

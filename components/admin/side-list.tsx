@@ -12,7 +12,7 @@ import { join } from "../ui/join";
  *   - `SideList` — the card and its label. `className` is layout (`self-start`).
  *   - `SideListLink` — one row; `current` is the one open on the right. What a row says (a
  *     Retired label, an offering count, a vessel's colour) is the caller's.
- *   - `SideListNew` — the dashed link that opens a blank form; `current` while it is open.
+ *   - `SideListNew` — the dashed link that opens a blank form (`btn-add`); `current` while it is open.
  *
  * Anything else a list needs (the offerings' "Show hidden") goes in as a plain child.
  */
@@ -40,12 +40,8 @@ export function SideListLink({ href, current, children }: { href: string; curren
 
 export function SideListNew({ href, current, children }: { href: string; current: boolean; children: ReactNode }) {
   return (
-    <AppLink
-      href={href}
-      className={`mx-0.5 mt-1.5 rounded-box border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
-        current ? "font-medium" : ""
-      }`}
-    >
+    // `btn-add`, with the rows' own padding so its label lines up with theirs.
+    <AppLink href={href} className={`btn-add mx-0.5 mt-1.5 px-2.5 py-2 ${current ? "font-medium" : ""}`}>
       {children}
     </AppLink>
   );

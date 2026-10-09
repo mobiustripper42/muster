@@ -15,6 +15,7 @@ import {
   seedCrewMember,
   removeCrewRow,
   exhaustRateLimit,
+  readDevCode,
 } from "./fixtures.js";
 import { CREW_SIGN_IN_LIMIT } from "../src/auth/login-code.js";
 import type { Page } from "@playwright/test";
@@ -94,11 +95,7 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
 
     // Read the delivered code from the dev-only echo (hash-only store; same
     // affordance). Real delivery is email in 7.0b.
-    const res = await page.request.get(
-      `/crew/dev-code?email=${encodeURIComponent(QUINT_EMAIL)}`,
-    );
-    const code = (await res.text()).trim();
-    expect(code).toMatch(/^\d{6}$/);
+    const code = await readDevCode(page, QUINT_EMAIL);
 
     await page.getByLabel(/enter your code/i).fill(code);
     await page.getByRole("button", { name: "Sign in" }).click();
@@ -145,11 +142,7 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
 
     // And the whole way through, so the stale session is genuinely replaced rather
     // than merely rendered past.
-    const res = await page.request.get(
-      `/crew/dev-code?email=${encodeURIComponent(QUINT_EMAIL)}`,
-    );
-    const code = (await res.text()).trim();
-    expect(code).toMatch(/^\d{6}$/);
+    const code = await readDevCode(page, QUINT_EMAIL);
     await page.getByLabel(/enter your code/i).fill(code);
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByRole("heading", { name: "Quint" })).toBeVisible();

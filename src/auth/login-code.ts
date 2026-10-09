@@ -106,10 +106,10 @@ export interface RequestParams {
 }
 
 /**
- * Sign-in requests per client address per hour (Phase 18.3a, DEC-189). Bounds issue #579's sample
- * budget — a few hundred timed requests separate an on-roster email from an off-roster one, and
- * this allows one or two candidates per address per day — while leaving room for a whole crew
- * signing in over one Wi-Fi. It does NOT close #579: the timing gap is still there, just starved.
+ * Sign-in requests per client address per hour (Phase 18.3a, DEC-189), leaving room for a whole
+ * crew signing in over one Wi-Fi. It was built to starve issue #579's timing gap; the gap is now
+ * closed by both paths doing the same round trips (`issueLoginCode`), so this bounds the work an
+ * address can make the app do, and limits the samples again if the two paths ever diverge.
  *
  * Fails open: the request stage grants nothing by itself, and DEC-142's per-subject window still
  * guards the verify stage. A broken counter must not lock the operator out.
@@ -129,37 +129,38 @@ export interface RequestDeps {
   onLimiterFailure?: (message: string) => void;
 }
 
+/** A code minted for a roster match and not yet stored. `issueLoginCode` stores it. */
+export interface PendingLoginCode {
+  subject: Subject;
+  recipientEmail: string;
+  recipientName: string;
+  code: string;
+  codeHash: string;
+}
+
 /**
  * What the caller should do — never leaks whether the email matched (the
- * surface shows the SAME generic response either way; only `deliver` actually
- * sends, which the requester can't observe — that's the no-enumeration guard).
+ * surface shows the SAME generic response either way; only `issue` leads to a
+ * send, which the requester can't observe — that's the no-enumeration guard).
  */
 export type RequestResult =
-  | {
-      outcome: "deliver";
-      subject: Subject;
-      recipientEmail: string;
-      recipientName: string;
-      code: string;
-    }
+  /** A roster match. Respond first, then hand `pending` to `issueLoginCode` — never before. */
+  | { outcome: "issue"; pending: PendingLoginCode }
   | { outcome: "skip" }
   /** Too many requests from this address. Says nothing about the roster — only the address. */
   | { outcome: "throttled"; retryAfterMs: number };
 
 /**
- * Mint a login code for a matching email and tell the caller to deliver it.
+ * Step one of a request, the part that runs before the response: limit, match, mint. It makes the
+ * same database round trips for a roster email and a stranger's, and it writes no login code.
  *
- * No-enumeration: the RESPONSE is identical on match and miss (the caller shows
- * the same screen either way). The CPU hash work runs on both paths too. But the
- * symmetry is not perfect — a match also does a SELECT + UPSERT and asks the
- * caller to deliver, a miss returns before either. In 7.0a (fake delivery, local
- * DB) that delta is ~2 round-trips, small. The sharp version is 7.0b: if the
- * caller `await`s a real email send (only on a match), a match becomes
- * observably slower — a timing oracle. The fix lives at the delivery seam (don't
- * await the network on the hot path; see auth-delivery.ts), not here.
- *
- * A live code younger than the cooldown suppresses a re-mint (anti-spam) but
- * still returns `skip`, indistinguishable from a non-match.
+ * No-enumeration (issue #579): the RESPONSE was always identical on match and miss, but the time
+ * to produce it was not — a match also read the subject's live code and saved a new one, two round
+ * trips a miss skipped, and a few hundred timed requests told them apart. Equalizing that by doing
+ * dummy work on the miss branch is a fix that rots silently. Instead everything that depends on
+ * the match moves after the response: the caller runs `issueLoginCode` off the hot path, where the
+ * email send already was, for the same reason. `login-code.test.ts` records the round trips and
+ * fails if the two branches ever differ again.
  */
 export async function requestLoginCode(
   repo: Repository,
@@ -167,8 +168,7 @@ export async function requestLoginCode(
   deps: RequestDeps,
 ): Promise<RequestResult> {
   // Limited FIRST, before the roster is read: a refusal must look the same for a crew email and a
-  // stranger's, and it adds one round trip that is identical on both paths — so it does not widen
-  // issue #579's gap, only bounds how many samples of it an address gets.
+  // stranger's, and its round trip is identical on both paths.
   const limit = await takeRateLimit(
     {
       repo,
@@ -188,16 +188,38 @@ export async function requestLoginCode(
 
   if (!crew || !crew.email) return { outcome: "skip" };
 
-  // Anti-spam: a still-live code minted within the cooldown is left in place —
-  // the crew member already has one in their inbox. Indistinguishable from a miss.
-  const existing = await repo.getLoginCode("crew", crew.id);
+  return {
+    outcome: "issue",
+    pending: {
+      subject: { kind: "crew", id: crew.id },
+      recipientEmail: crew.email,
+      recipientName: crew.name,
+      code,
+      codeHash,
+    },
+  };
+}
+
+/**
+ * Step two, after the response: store the pending code and say whether to send it. Store first,
+ * send second, so no code reaches an inbox (or the dev echo) before it can verify.
+ *
+ * Anti-spam: a still-live code minted within the cooldown is left in place — the crew member
+ * already has one in their inbox — and this says `skip`. The requester never sees the difference.
+ */
+export async function issueLoginCode(
+  repo: Repository,
+  pending: PendingLoginCode,
+  deps: { now: Date },
+): Promise<"deliver" | "skip"> {
+  const existing = await repo.getLoginCode("crew", pending.subject.id);
   if (
     existing &&
     !existing.consumedAt &&
     deps.now.getTime() < Date.parse(existing.expiresAt) &&
     deps.now.getTime() - Date.parse(existing.createdAt) < RESEND_COOLDOWN_MS
   ) {
-    return { outcome: "skip" };
+    return "skip";
   }
 
   const createdAt = deps.now.toISOString();
@@ -208,21 +230,14 @@ export async function requestLoginCode(
 
   const record: LoginCode = {
     subjectKind: "crew",
-    subjectId: crew.id,
-    codeHash,
+    subjectId: pending.subject.id,
+    codeHash: pending.codeHash,
     createdAt,
     expiresAt,
     attempts: 0,
   };
   await repo.saveLoginCode(record);
-
-  return {
-    outcome: "deliver",
-    subject: { kind: "crew", id: crew.id },
-    recipientEmail: crew.email,
-    recipientName: crew.name,
-    code,
-  };
+  return "deliver";
 }
 
 /**
@@ -253,6 +268,13 @@ export type VerifyResult =
 /** The single generic failure. Named so every return site reads as deliberate. */
 const FAILED: VerifyResult = { ok: false, reason: "invalid" };
 
+/**
+ * The subject a stranger's email claims against: an id no crew member can have, so the claim
+ * matches no row and changes nothing. The leading space is what guarantees that: `db:crew add`
+ * trims `--id`, and the only other writers are seeds with fixed `crew-…` ids.
+ */
+const NO_SUBJECT = " no roster match";
+
 export interface VerifyParams {
   email: string;
   code: string;
@@ -275,7 +297,6 @@ export async function verifyLoginCode(
   deps: VerifyDeps,
 ): Promise<VerifyResult> {
   const crew = matchCrewByEmail(await repo.listCrewMembers(), params.email);
-  if (!crew) return FAILED;
 
   // Atomically claim one guess BEFORE evaluating it (#297): the increment-if-under-cap
   // is a single row-locked UPDATE, so concurrent submits can't all read attempts=0 and
@@ -288,10 +309,13 @@ export async function verifyLoginCode(
   // code claims even at the window cap (else the legitimate crew member is locked out for 24h by
   // an attacker's wrong guesses), and it doesn't advance the window. The hash was computed at the
   // bottom before; moving it up costs nothing (equal work on every path) and lets the claim decide.
+  //
+  // A stranger's email claims too, against NO_SUBJECT, so it costs the same round trip a roster
+  // email does (issue #579). Returning before the claim made a roster email measurably slower.
   const presentedCodeHash = hashCode(params.code);
   const claim = await repo.claimLoginAttempt(
     "crew",
-    crew.id,
+    crew?.id ?? NO_SUBJECT,
     MAX_ATTEMPTS,
     {
       startsAt: new Date(deps.now.getTime() - FAILURE_WINDOW_MS).toISOString(),
@@ -300,10 +324,10 @@ export async function verifyLoginCode(
     },
     presentedCodeHash,
   );
-  // No live under-cap code — locked at the cap, consumed, expired, or never minted. All
-  // four are the same answer to the caller; the second read that used to tell them apart
-  // is gone with the copy it fed.
-  if (!claim) return FAILED;
+  // No live under-cap code — locked at the cap, consumed, expired, or never minted, or a
+  // stranger's email. All five are the same answer to the caller; the second read that used to
+  // tell them apart is gone with the copy it fed.
+  if (!claim || !crew) return FAILED;
   if (deps.now.getTime() >= Date.parse(claim.expiresAt)) return FAILED;
 
   if (presentedCodeHash !== claim.codeHash) return FAILED;

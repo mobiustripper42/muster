@@ -5,16 +5,18 @@ import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { recordResponseAndConfirm } from "@core/asks/ask-loop.js";
 import {
+  issueLoginCode,
   randomCode,
   requestLoginCode as mintLoginCode,
   verifyLoginCode as checkLoginCode,
+  type PendingLoginCode,
 } from "@core/auth/login-code.js";
 import { answeredNoticeCode } from "@core/crewapp/answered-code.js";
 import { limitKeyFor } from "@core/rate-limit/rate-limit.js";
 import { asId } from "@core/domain/ids.js";
 import { endSession, readSubject, startSession } from "../../lib/auth";
 import { clientIpFrom } from "../../lib/client-ip";
-import { echoLoginCodeForDev, sendLoginCodeEmail } from "../../lib/auth-delivery";
+import { echoLoginCodeForDev, forgetLoginCodeEcho, sendLoginCodeEmail } from "../../lib/auth-delivery";
 import {
   LOGIN_EMAIL_COOKIE,
   LOGIN_EMAIL_TTL_S,
@@ -103,6 +105,7 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
     formData.get(SMS_CONSENT_FIELD) === SMS_CONSENT_FIELD_VALUE;
   // A blank submit isn't an enumeration probe — just re-show the email step.
   if (!email) redirect("/crew");
+  forgetLoginCodeEcho(email); // non-prod; any email, roster or not
 
   // Rate limited per address (Phase 18.3a, DEC-189), inside `mintLoginCode` before any roster read.
   const clientKey = limitKeyFor(clientIpFrom(await headers()));
@@ -119,27 +122,15 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
     );
     if (result.outcome === "throttled") {
       throttledMinutes = Math.max(1, Math.ceil(result.retryAfterMs / 60_000));
-    } else if (result.outcome === "deliver") {
-      const d = {
-        crewMemberId: result.subject.id,
-        email: result.recipientEmail,
-        name: result.recipientName,
-        code: result.code,
-      };
-      echoLoginCodeForDev(d); // non-prod: instant log + dev-code echo
-      // Real email runs AFTER the response (Vercel keeps the fn alive). Off the
-      // hot path so a match doesn't return slower than a miss — the timing-oracle
-      // half of no-enumeration (DEC-081). Errors stay inside the callback.
-      after(() => sendLoginCodeEmail(d));
-      // Record the SMS opt-in only on a roster match (an unknown email has no
-      // number to consent for) and only AFTER the response — same no-enumeration
-      // discipline as the email send. Best-effort: swallowed so it never blocks login.
-      if (consented) {
-        after(() => recordConsentBestEffort(result.subject.id, result.recipientEmail));
-      }
+    } else if (result.outcome === "issue") {
+      // Everything a roster match does runs AFTER the response (Vercel keeps the fn alive), so a
+      // match returns no slower than a miss — the timing half of no-enumeration (DEC-081, issue
+      // #579). Nothing match-only may be awaited here.
+      const { pending } = result;
+      after(() => issueAndDeliver(pending, consented));
     }
   } catch (e) {
-    // A delivery/DB hiccup must not reveal more than the generic path — log and
+    // A DB hiccup must not reveal more than the generic path — log and
     // fall through to the same code screen (a wrong/absent code just won't verify).
     console.error("requestLoginCode failed", e);
   }
@@ -154,6 +145,32 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
     loginCookieOptions(LOGIN_EMAIL_TTL_S),
   );
   redirect("/crew?stage=code");
+}
+
+/**
+ * The half of a sign-in request that runs after the response (issue #579): store the code, then
+ * echo and send it, then record the SMS opt-in. Stored first, so no code reaches an inbox or the
+ * dev echo before it can verify. A code inside the resend cooldown sends nothing. Every error
+ * stays in here — the response has gone, and a failed store reads to the crew member exactly
+ * as a code that never arrived.
+ */
+async function issueAndDeliver(pending: PendingLoginCode, consented: boolean): Promise<void> {
+  try {
+    if ((await issueLoginCode(getRepo(), pending, { now: new Date() })) === "skip") return;
+  } catch (e) {
+    console.error("requestLoginCode: storing the code failed", e);
+    return;
+  }
+  const d = {
+    crewMemberId: pending.subject.id,
+    email: pending.recipientEmail,
+    name: pending.recipientName,
+    code: pending.code,
+  };
+  echoLoginCodeForDev(d); // non-prod: log + dev-code echo
+  await sendLoginCodeEmail(d);
+  // Only on a roster match: an unknown email has no number to consent for.
+  if (consented) await recordConsentBestEffort(pending.subject.id, pending.recipientEmail);
 }
 
 /**

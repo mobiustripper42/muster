@@ -7,6 +7,7 @@ import {
   MAX_ATTEMPTS,
   MAX_FAILURES_PER_WINDOW,
   RESEND_COOLDOWN_MS,
+  issueLoginCode,
   normalizeEmail,
   randomCode,
   requestLoginCode,
@@ -37,24 +38,32 @@ async function repoWithCrew(): Promise<InMemoryRepository> {
   return repo;
 }
 
-/** Drive request → return the minted code (fails the test if it didn't deliver). */
+/** Request then issue, as the action does either side of its response. Null when nothing is sent. */
+async function requestAndIssue(
+  repo: InMemoryRepository,
+  email: string,
+  code = "123456",
+  now = at(),
+): Promise<string | null> {
+  const r = await requestLoginCode(repo, { email }, { now, mintCode: fixedCode(code) });
+  if (r.outcome !== "issue") return null;
+  return (await issueLoginCode(repo, r.pending, { now })) === "deliver" ? r.pending.code : null;
+}
+
+/** Drive request → issue → return the minted code (fails the test if it didn't deliver). */
 async function mintFor(
   repo: InMemoryRepository,
   email: string,
   code = "123456",
   now = at(),
 ): Promise<string> {
-  const r = await requestLoginCode(
-    repo,
-    { email },
-    { now, mintCode: fixedCode(code) },
-  );
-  if (r.outcome !== "deliver") throw new Error("expected delivery");
-  return r.code;
+  const sent = await requestAndIssue(repo, email, code, now);
+  if (sent === null) throw new Error("expected delivery");
+  return sent;
 }
 
 describe("requestLoginCode", () => {
-  it("mints + asks to deliver for a matching email", async () => {
+  it("mints for a matching email and stores nothing until it is issued", async () => {
     const repo = await repoWithCrew();
     const r = await requestLoginCode(
       repo,
@@ -62,14 +71,20 @@ describe("requestLoginCode", () => {
       { now: at(), mintCode: fixedCode("123456") },
     );
     expect(r).toMatchObject({
-      outcome: "deliver",
-      recipientEmail: EMAIL,
-      recipientName: "Quint",
-      code: "123456",
-      subject: { kind: "crew", id: "crew-quint" },
+      outcome: "issue",
+      pending: {
+        recipientEmail: EMAIL,
+        recipientName: "Quint",
+        code: "123456",
+        subject: { kind: "crew", id: "crew-quint" },
+      },
     });
+    expect(await repo.getLoginCode("crew", "crew-quint")).toBeNull();
+
+    if (r.outcome !== "issue") throw new Error("expected issue");
+    expect(await issueLoginCode(repo, r.pending, { now: at() })).toBe("deliver");
     const stored = await repo.getLoginCode("crew", "crew-quint");
-    expect(stored?.codeHash).toBeTruthy();
+    expect(stored?.codeHash).toBe(r.pending.codeHash);
     expect(stored?.attempts).toBe(0);
   });
 
@@ -80,7 +95,7 @@ describe("requestLoginCode", () => {
       { email: "  quint@bb.test  " },
       { now: at(), mintCode: fixedCode("123456") },
     );
-    expect(r.outcome).toBe("deliver");
+    expect(r.outcome).toBe("issue");
   });
 
   it("skips (no leak, no persist) for an unknown email", async () => {
@@ -97,23 +112,15 @@ describe("requestLoginCode", () => {
   it("suppresses a re-mint inside the cooldown, then allows it after", async () => {
     const repo = await repoWithCrew();
     await mintFor(repo, EMAIL, "111111", at(0));
-    const within = await requestLoginCode(
-      repo,
-      { email: EMAIL },
-      { now: at(30_000), mintCode: fixedCode("222222") },
-    );
-    expect(within.outcome).toBe("skip");
+    // Inside the cooldown the issue step sends nothing — decided after the response, so the
+    // request itself still says `issue`, the same as any roster match.
+    expect(await requestAndIssue(repo, EMAIL, "222222", at(30_000))).toBeNull();
     // The first code still stands (verifies); the cooldown one was discarded.
     expect((await verifyLoginCode(repo, { email: EMAIL, code: "111111" }, { now: at(31_000) })).ok)
       .toBe(true);
 
     // Past the cooldown a fresh request re-mints.
-    const after = await requestLoginCode(
-      repo,
-      { email: EMAIL },
-      { now: at(120_000), mintCode: fixedCode("333333") },
-    );
-    expect(after.outcome).toBe("deliver");
+    expect(await requestAndIssue(repo, EMAIL, "333333", at(120_000))).toBe("333333");
   });
 
   describe("rate limit per address (Phase 18.3a, issue #579's sample budget)", () => {
@@ -136,13 +143,13 @@ describe("requestLoginCode", () => {
     it("another address is unaffected", async () => {
       const repo = await repoWithCrew();
       for (let i = 0; i <= CREW_SIGN_IN_LIMIT.limit; i++) await ask(repo, "stranger@nope.test", "203.0.113.9", i);
-      expect((await ask(repo, EMAIL, "198.51.100.4", 100)).outcome).toBe("deliver");
+      expect((await ask(repo, EMAIL, "198.51.100.4", 100)).outcome).toBe("issue");
     });
 
     it("with no address known, nothing is limited", async () => {
       const repo = await repoWithCrew();
       for (let i = 0; i <= CREW_SIGN_IN_LIMIT.limit; i++) await ask(repo, "stranger@nope.test", null, i);
-      expect((await ask(repo, EMAIL, null, 100)).outcome).toBe("deliver");
+      expect((await ask(repo, EMAIL, null, 100)).outcome).toBe("issue");
     });
   });
 });
@@ -317,6 +324,76 @@ describe("verifyLoginCode", () => {
     // WINDOW gate for a correct code; the per-code `attempts < MAX_ATTEMPTS` ceiling stays an
     // independent AND, so a code that already absorbed 5 guesses is spent regardless.
     expect(await verifyLoginCode(repo, { email: EMAIL, code }, { now: at(MAX_ATTEMPTS) })).toEqual(FAILED);
+  });
+});
+
+/**
+ * Every repository method a call reaches, in order — the database round trips it makes. A proxy
+ * over the real in-memory repo, so behaviour is unchanged; the repo's calls to its own methods go
+ * through the target and are not counted.
+ */
+function recording(target: InMemoryRepository): { repo: InMemoryRepository; calls: string[] } {
+  const calls: string[] = [];
+  const repo = new Proxy(target, {
+    get(t, prop) {
+      const value: unknown = Reflect.get(t, prop, t);
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        calls.push(String(prop));
+        return (value as (...a: unknown[]) => unknown).apply(t, args);
+      };
+    },
+  });
+  return { repo, calls };
+}
+
+// Issue #579. The responses were already identical; the time to produce them was not, because a
+// roster email cost database round trips a stranger's did not, and a few hundred timed requests
+// tell the two apart. These pin the round trips themselves: the same calls, in the same order,
+// whichever email is typed. A new repo call on one branch only fails here.
+describe("the same database work for any email (issue #579)", () => {
+  const STRANGER = "stranger@nope.test";
+
+  it("request: the calls before the response are the same for a roster email, one in its cooldown, and a stranger's", async () => {
+    const callsFor = async (email: string, setup: (repo: InMemoryRepository) => Promise<unknown> = async () => {}) => {
+      const base = await repoWithCrew();
+      await setup(base);
+      const r = recording(base);
+      await requestLoginCode(r.repo, { email, clientKey: "203.0.113.9" }, { now: at(1000), mintCode: fixedCode("123456") });
+      return r.calls;
+    };
+
+    const stranger = await callsFor(STRANGER);
+    expect(await callsFor(EMAIL)).toEqual(stranger);
+    expect(await callsFor(EMAIL, (repo) => mintFor(repo, EMAIL, "111111", at(0)))).toEqual(stranger);
+    expect(stranger).toEqual(["incrementRateLimit", "listCrewMembers"]);
+  });
+
+  it("verify: the calls are the same for a stranger and for a roster email in every state", async () => {
+    const callsFor = async (email: string, setup: (repo: InMemoryRepository) => Promise<unknown>, now: number) => {
+      const base = await repoWithCrew();
+      await setup(base);
+      const r = recording(base);
+      await verifyLoginCode(r.repo, { email, code: "000000" }, { now: at(now) });
+      return r.calls;
+    };
+
+    const stranger = await callsFor(STRANGER, async () => {}, 1);
+    // No code ever minted; a live code and a wrong guess; an expired code.
+    expect(await callsFor(EMAIL, async () => {}, 1)).toEqual(stranger);
+    expect(await callsFor(EMAIL, (repo) => mintFor(repo, EMAIL, "123456", at(0)), 1)).toEqual(stranger);
+    expect(await callsFor(EMAIL, (repo) => mintFor(repo, EMAIL, "123456", at(0)), 11 * 60_000)).toEqual(stranger);
+    expect(stranger).toEqual(["listCrewMembers", "claimLoginAttempt"]);
+  });
+
+  it("verify: a stranger's claim lands on no crew member's code", async () => {
+    const repo = await repoWithCrew();
+    const code = await mintFor(repo, EMAIL, "123456", at(0));
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      expect(await verifyLoginCode(repo, { email: STRANGER, code: "000000" }, { now: at(1 + i) })).toEqual(FAILED);
+    }
+    expect((await repo.getLoginCode("crew", "crew-quint"))?.attempts).toBe(0);
+    expect((await verifyLoginCode(repo, { email: EMAIL, code }, { now: at(100) })).ok).toBe(true);
   });
 });
 

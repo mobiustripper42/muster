@@ -6,9 +6,10 @@ import { isProdDeploy } from "./flags";
  * Login-code delivery seam (DEC-081) — server-only (no client import).
  *
  * Two paths, deliberately split so neither blocks nor leaks:
- *  - `echoLoginCodeForDev` — the non-prod log + `/crew/dev-code` echo. Synchronous
- *    and gated to non-prod, so the e2e round-trip stays deterministic and no live
- *    credential ever lands in a production log.
+ *  - `echoLoginCodeForDev` — the non-prod log + `/crew/dev-code` echo. Gated to
+ *    non-prod, so no live credential ever lands in a production log. It runs after
+ *    the response, once the code is stored (issue #579), so a reader polls for it —
+ *    `forgetLoginCodeEcho` is what makes an empty read mean "not yet", not "stale".
  *  - `sendLoginCodeEmail` — the real Resend send (7.0b). A no-op when email isn't
  *    configured, so dev/e2e fall back to the echo with no key. The caller runs it
  *    via `after()` (post-response), NOT awaited on the hot path — a network send
@@ -59,6 +60,14 @@ export function echoLoginCodeForDev(d: LoginCodeDelivery): void {
   if (isProdDeploy()) return;
   console.log(`[login-code] → ${d.name} <${d.email}>: ${d.code}`);
   lastCodeByEmail.set(d.email.trim().toLowerCase(), d.code);
+}
+
+/** Non-prod: drop an email's echoed code as a request for it starts — every email typed, on the
+ *  roster or not, so it is the same work on both paths. The new code is echoed only after the
+ *  response, and without this a reader arriving first would get the previous request's code. */
+export function forgetLoginCodeEcho(email: string): void {
+  if (isProdDeploy()) return;
+  lastCodeByEmail.delete(email.trim().toLowerCase());
 }
 
 interface EmailEnv {

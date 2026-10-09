@@ -637,6 +637,27 @@ export function slowPath(): number {
 const CODE_SENT = /a 6-digit code is on its way/i;
 
 /**
+ * The code just requested for `email`, from the dev-only `/crew/dev-code` echo. Polled: the code
+ * is stored and echoed after the response (issue #579), and the request cleared the previous one,
+ * so an empty read means "not yet", never "stale". A request inside the resend cooldown echoes
+ * nothing new — sign in with the first code rather than asking twice within a minute.
+ */
+export async function readDevCode(page: Page, email: string): Promise<string> {
+  let code = "";
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get(`/crew/dev-code?email=${encodeURIComponent(email)}`);
+        code = (await res.text()).trim();
+        return code;
+      },
+      { message: `/crew/dev-code gave no code for ${email}` },
+    )
+    .toMatch(/^\d{6}$/);
+  return code;
+}
+
+/**
  * Sign in at `/crew` with an email and the code it was sent — the flow a crew member uses.
  * The code comes from `/crew/dev-code`, the dev-only echo (hard 404 on a production deploy).
  */
@@ -658,11 +679,7 @@ export async function signInWithCode(page: Page, email: string): Promise<void> {
   await emailField.fill(email);
   await page.getByRole("button", { name: /email me a code/i }).click();
   await expect(page.getByText(CODE_SENT)).toBeVisible();
-  const res = await page.request.get(`/crew/dev-code?email=${encodeURIComponent(email)}`);
-  const code = (await res.text()).trim();
-  if (!/^\d{6}$/.test(code)) {
-    throw new Error(`signInWithCode: /crew/dev-code gave no code for ${email} (HTTP ${res.status()})`);
-  }
+  const code = await readDevCode(page, email);
   await page.getByLabel(/enter your code/i).fill(code);
   await page.getByRole("button", { name: "Sign in" }).click();
   // Wait for the SESSION, not the URL. The code screen is itself `/crew?stage=code`, so a URL

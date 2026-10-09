@@ -22,14 +22,17 @@ import { join } from "./join";
  * **Desktop is one box (issue #1200).** From `sm:` up the tap floor goes and every field has the
  * same space between its letters and its border on all four sides — 9px at the 15px root, picked
  * by the operator from rendered mock-ups. The 44px box is the phone's, and the phone keeps it.
- *   - The height is the capitals plus 9px above and below, plus the two border pixels: 31px for
- *     touch text, 29px for dense. In rem, so a raised browser font still grows the box.
+ *   - The height is the tallest lowercase letters (l, b, d) plus 9px above and below, plus the
+ *     two border pixels: 31px for touch text, 29px for dense. In rem, so a raised browser font
+ *     still grows the box. Capitals stand about 1px shorter, so on an all-caps word the gap above
+ *     measures 10px at 1x. Tuning to capitals instead is parked on issue #1194.
  *   - The side padding is 7.5px, not 9: letters carry about 1.5px of side space of their own, so
  *     7.5px of padding measures 9px from the border to the ink.
  *   - The line height is the font's own (`normal`). At the text size's 1.5 a text box still
  *     centres, but a select, date or time box sets its text 1-2px high.
- *   - A textarea has no fixed height, so its top padding is what puts its first line's capitals
- *     9px below the border; `Field`'s `align="start"` label offset is matched to that line.
+ *   - A textarea has no fixed height, so its top padding is what puts its first line 9px below
+ *     the border; `Field`'s `align="start"` label offset is matched to that line. Tuned on touch
+ *     text: a dense textarea comes out about 1px tighter, and none exists yet.
  * An odd height is deliberate: text lands on whole pixels, so the space left over after the
  * letters must be even to split equally above and below.
  *

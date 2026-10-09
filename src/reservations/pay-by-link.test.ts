@@ -41,7 +41,10 @@ const offering: Offering = {
 };
 
 /** A world with one operator's phone booking in it, unpaid. */
-async function phoneBooked(email?: string): Promise<{ repo: InMemoryRepository; row: Reservation }> {
+async function phoneBooked(
+  email?: string,
+  extra: { hasFlex?: boolean; discountCents?: number } = {},
+): Promise<{ repo: InMemoryRepository; row: Reservation }> {
   const repo = new InMemoryRepository();
   await repo.saveOffering(offering);
   await repo.saveVessel(vessel);
@@ -57,6 +60,7 @@ async function phoneBooked(email?: string): Promise<{ repo: InMemoryRepository; 
       customerName: "Phone Caller",
       phone: "216-555-0199",
       ...(email ? { email } : {}),
+      ...extra,
     },
     now,
   );
@@ -205,14 +209,43 @@ describe("payLinkMoney — the summary is the invoice frozen at booking", () => 
   it("adds back up to exactly what the row will be charged, with the tip fixed at the operator's tier", async () => {
     const { row } = await phoneBooked();
     const inv = row.invoice!;
-    const { money, tip } = payLinkMoney(inv);
+    const { money, tip, totals } = payLinkMoney(inv);
     expect(tip).toEqual({ bps: 2000, tipCents: inv.gratuityCents });
     expect(money.fareCents).toBe(inv.fareCents + inv.extrasCents);
     expect(money.baseCents).toBe(inv.fareCents);
     expect(money.extrasCents).toBe(inv.extrasCents);
-    // What the pay bar shows is what Stripe is asked for.
-    expect(money.dueNowBeforeTipCents + tip.tipCents).toBe(inv.amountDueNowCents);
-    expect(money.fareCents + money.taxCents + money.serviceFeeCents + tip.tipCents).toBe(inv.totalCents);
+    // What the pay bar shows is what Stripe is asked for — the frozen figures, not a recompute.
+    expect(totals).toEqual({
+      tipCents: inv.gratuityCents,
+      flexCents: 0,
+      taxCents: inv.taxCents,
+      serviceFeeCents: inv.serviceFeeCents,
+      totalCents: inv.totalCents,
+      dueNowCents: inv.amountDueNowCents,
+    });
+    expect(money.depositMode).toBe(false);
+  });
+
+  it("insurance bought on the phone rides the link at its frozen figures (16.8)", async () => {
+    const { row } = await phoneBooked(undefined, { hasFlex: true });
+    const inv = row.invoice!;
+    expect(inv.flexCents).toBe(3000);
+    const { money, totals } = payLinkMoney(inv);
+    expect(totals.flexCents).toBe(3000);
+    expect(totals.dueNowCents).toBe(inv.amountDueNowCents);
+    expect(money.depositMode).toBe(false);
+    expect(money.balanceLaterCents).toBe(0);
+  });
+
+  it("a discount that reached the insurance: the link charges what is left of it, and its tax and fee", async () => {
+    const { row: plain } = await phoneBooked(undefined, { hasFlex: true });
+    const fare = plain.invoice!.fareCents + plain.invoice!.extrasCents;
+    const { row } = await phoneBooked(undefined, { hasFlex: true, discountCents: fare + 1000 });
+    const inv = row.invoice!;
+    // $20 of insurance left: 7.25% tax $1.45 and 3% fee $0.60.
+    expect(inv.amountDueNowCents).toBe(2000 + 145 + 60);
+    const { money, totals } = payLinkMoney(inv);
+    expect(totals.dueNowCents).toBe(2205);
     expect(money.depositMode).toBe(false);
   });
 

@@ -23,7 +23,8 @@ import type { Location, Offering, Reservation } from "@core/domain/entities.js";
 import { formatPhoneForDisplay, type CanonicalPhone } from "@core/customers/identity.js";
 import { formatClock, formatDuration, formatShortDay } from "@core/reservations/availability-screen.js";
 import { maskedPhone, payLinkMoney, payLinkState } from "@core/reservations/pay-by-link.js";
-import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
+import { cancellationTerms } from "@core/reservations/refund-terms.js";
+import { hasFlex } from "@core/reservations/booking-invoice.js";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
 import { LockedWhilePaying, PaymentLockProvider } from "../../../../components/checkout/payment-lock";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -106,7 +107,7 @@ export default async function PayPage({
     );
   }
 
-  const { money, tip } = payLinkMoney(r.invoice);
+  const { money, tip, totals } = payLinkMoney(r.invoice);
   const guests = r.partySize ?? 0;
   const durationLabel = formatDuration(r.tripMinutes ?? offering?.tripLengthMinutes);
   const phone = r.phone ?? "";
@@ -153,9 +154,13 @@ export default async function PayPage({
               money={money}
               tiers={[tip]}
               defaultBps={tip.bps}
-              cancellationTerms={CANCELLATION_TERMS}
+              cancellationTerms={{ standard: cancellationTerms(false), flex: cancellationTerms(true) }}
+              insuranceHint=""
               pay={{
                 token,
+                // Sold on the phone, or not (16.8): a row in the summary and the 72-hour terms.
+                hasFlex: hasFlex(r.invoice),
+                totals,
                 bookedFor: {
                   name: r.customerName,
                   phone,

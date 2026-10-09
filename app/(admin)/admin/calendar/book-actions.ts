@@ -63,6 +63,8 @@ export async function bookPhoneReservation(formData: FormData): Promise<void> {
         phone: field("phone"),
         ...(field("email") ? { email: field("email") } : {}),
         discountCents,
+        // The insurance box (16.8) posts "1" when ticked and nothing when not.
+        hasFlex: field("hasFlex") === "1",
       },
       () => new Date().toISOString(),
     );

@@ -25,8 +25,9 @@ export interface PaymentConfig {
   depositPercent: number;
   /** Sales-tax rate in BASIS POINTS (725 = 7.25%) — integer, float-free (DEC-112). Ohio. */
   taxRateBps: number;
-  /** Service fee in BASIS POINTS (300 = 3%) on the FARE only (base + extras) — independent of
-   *  tax and tip (DEC-134). Charged IN FULL with the deposit charge; the balance carries none. */
+  /** Service fee in BASIS POINTS (300 = 3%) on everything but tax — fare, extras, insurance and the
+   *  tip (DEC-196); untaxed. Formerly the fare only (DEC-134). Charged IN FULL with the deposit
+   *  charge; the balance carries none. */
   serviceFeeBps: number;
   /** How many days before the event the balance is due — a formalized default; the
    *  scheduler that reads it (auto-emit) is P12+. Balance is collected on demand for now. */
@@ -59,7 +60,7 @@ export const PAYMENT_CONFIG_DEFAULTS: PaymentConfig = {
   depositMode: "full",
   depositPercent: 25,
   taxRateBps: 725, // Ohio state sales tax 7.25% (operator-adjustable)
-  serviceFeeBps: 300, // 3% of the fare (operator-adjustable), untaxed + untipped (DEC-134)
+  serviceFeeBps: 300, // 3% of everything but tax (operator-adjustable), untaxed (DEC-196)
   balanceDueDaysBeforeEvent: 14,
 };
 
@@ -68,11 +69,12 @@ export function taxCentsFor(taxableCents: number, taxRateBps: number): number {
   return Math.round((taxableCents * taxRateBps) / 10000);
 }
 
-/** Service fee on the FARE (base + extras), integer cents (round half-up) — never on tax or
- *  gratuity (DEC-134). Pure; the checkout builder computes it once and FREEZES it into the
- *  charge metadata (the DEC-107 freeze rule — the webhook never recomputes from live config). */
-export function feeCentsFor(fareCents: number, serviceFeeBps: number): number {
-  return Math.round((fareCents * serviceFeeBps) / 10000);
+/** Service fee on its base, integer cents (round half-up). The base is everything charged except
+ *  tax — fare + extras + insurance + tip (operator 2026-10-09, DEC-196, which reverses DEC-134's
+ *  fare-only base). Composed in one place, `chargeTotals`; frozen on the invoice, never recomputed
+ *  from live config. */
+export function feeCentsFor(baseCents: number, serviceFeeBps: number): number {
+  return Math.round((baseCents * serviceFeeBps) / 10000);
 }
 
 /**
@@ -165,13 +167,15 @@ export function balanceOwedCents(
     amountCents: number;
     gratuityCents?: number;
     serviceFeeCents?: number;
+    flexCents?: number;
     refundedCents?: number;
   }[],
 ): number {
   const total = fareCents + taxCentsFor(fareCents, taxRateBps);
-  // Net the GRATUITY and the SERVICE FEE out of each paid amount (DEC-124 / DEC-134): the tip
-  // is crew money and the fee is a one-shot surcharge — neither is part of fare+tax, so
-  // counting either as "paid toward balance" would under-charge a deposit booking's balance.
+  // Net the GRATUITY, the SERVICE FEE and the INSURANCE out of each paid amount (DEC-124 /
+  // DEC-134 / 16.8): the tip is crew money, the fee a one-shot surcharge, insurance a flat
+  // untaxed $30 — none is part of fare+tax, so counting any as "paid toward balance" would
+  // under-charge a deposit booking's balance.
   //
   // A REFUNDED amount is no longer paid. Before `markPaymentRefunded` existed nothing could
   // write `partially_refunded`, so filtering to `succeeded` was equivalent to "not refunded"
@@ -185,7 +189,7 @@ export function balanceOwedCents(
     // would count refunded money as paid. Status wins for the terminal state.
     if (!countsAsPaid(p)) return sum;
 
-    const notFareOrTax = (p.gratuityCents ?? 0) + (p.serviceFeeCents ?? 0);
+    const notFareOrTax = (p.gratuityCents ?? 0) + (p.serviceFeeCents ?? 0) + (p.flexCents ?? 0);
     const towardFareAndTax = p.amountCents - notFareOrTax;
 
     // A refund is attributed to GRATUITY AND FEE FIRST; only what exceeds them reduces

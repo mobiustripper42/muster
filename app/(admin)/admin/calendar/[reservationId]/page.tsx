@@ -26,6 +26,7 @@ import { isProdDeploy } from "../../../../lib/flags";
 import { operatorManageLink } from "../../../../lib/manage-link";
 import { mintPaymentLinkUrl } from "../../../../lib/payment-link";
 import { payLinkState } from "@core/reservations/pay-by-link.js";
+import { insuranceOf } from "@core/reservations/booking-invoice.js";
 import { liveBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { getRepo } from "../../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../../lib/swallowed";
@@ -291,7 +292,7 @@ export default async function ReservationDetailPage({
     const departureAt = zonedWallClockToInstant(event.date, event.time);
     const now = new Date();
     const quoteFor = (by: CancelledBy): number =>
-      quoteCancelRefund({ by, payments, departureAt, now }).refundCents;
+      quoteCancelRefund({ by, payments, departureAt, now, insurance: insuranceOf(reservation.invoice) }).refundCents;
 
     // Stripe's real ceiling. Read before the outcome copy, which needs it: a booking nobody
     // paid for gets no refund box, so the post-cancel message must not promise one.

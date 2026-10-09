@@ -28,7 +28,8 @@ import type { Reservation } from "../domain/entities.js";
 import type { ChannelPort } from "../ports/channel.js";
 import { tripLinkUrl } from "../checkin/trip-link.js";
 import { bookingUrl } from "./booking-code.js";
-import { CANCELLATION_TERMS_SHORT } from "./refund-terms.js";
+import { hasFlex } from "./booking-invoice.js";
+import { cancellationTermsShort } from "./refund-terms.js";
 
 export interface ConfirmationDeps {
   /** Email channel, when configured (Resend). Absent ⇒ no email side. */
@@ -69,7 +70,7 @@ export function bookingConfirmationBody(
     : "";
   return (
     `Hi ${who}, your Muster booking is confirmed for a party of ${reservation.partySize}.\n\n` +
-    `${CANCELLATION_TERMS_SHORT}\n\n` +
+    `${cancellationTermsShort(hasFlex(reservation.invoice))}\n\n` +
     waiver +
     `Manage your booking: ${manageUrl}\n\n` +
     `- Muster`

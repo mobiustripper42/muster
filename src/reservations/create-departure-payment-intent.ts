@@ -48,6 +48,9 @@ export interface DeparturePaymentIntentRequest {
   /** Chosen gratuity tier in basis points (DEC-124) — REQUIRED, must be one of the offering's
    *  tiers (no decline). The tip is a % of the fare, charged in full on top, untaxed. */
   gratuityBps: number;
+  /** Cancellation insurance ticked at checkout (16.8). Absent is none. Like the tip, re-frozen on
+   *  every attempt, so ticking it after a failed card reprices the row and the intent. */
+  hasFlex?: boolean;
   customerName: string;
   email?: string;
   phone?: string;
@@ -138,6 +141,7 @@ export async function createDeparturePaymentIntent(
       time: req.time,
       guestCount: req.guestCount,
       gratuityBps: req.gratuityBps,
+      hasFlex: req.hasFlex === true,
     });
     return {
       // The SAME row on a retry — its id is the booking's for life. Reserved time is set on the

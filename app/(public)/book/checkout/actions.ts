@@ -29,6 +29,8 @@ export interface StartElementsCheckoutInput {
   time: string;
   guests: number;
   gratuityBps: number;
+  /** Cancellation insurance ticked (16.8). Priced on the server, never trusted as an amount. */
+  hasFlex: boolean;
   customerName: string;
   email: string;
   phone: string;
@@ -222,6 +224,8 @@ async function startCheckout(
       time: input.time,
       guestCount: input.guests,
       gratuityBps: input.gratuityBps,
+      // `=== true`: a raw post carrying anything else buys no insurance, rather than a truthy string.
+      hasFlex: input.hasFlex === true,
       customerName,
       ...(email ? { email } : {}),
       // Store the CANONICAL form so the reservation's phone and the customer's identity key

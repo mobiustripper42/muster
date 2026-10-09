@@ -35,8 +35,9 @@ import type { Stripe, StripeElements } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { CheckoutSummary } from "../../../../components/checkout/checkout-summary";
 import { Checkbox } from "../../../../components/ui/choice";
+import { InsuranceBox } from "../../../../components/checkout/insurance-box";
 import { ContactFields, type ContactValues } from "../../../../components/checkout/contact-fields";
-import { totalsWithTip, type CheckoutMoney, type TipTier } from "../../../../components/checkout/money";
+import { totalsFor, type CheckoutMoney, type ScreenTotals, type TipTier } from "../../../../components/checkout/money";
 import { PayBar } from "../../../../components/checkout/pay-bar";
 import { TipTiles } from "../../../../components/checkout/tip-tiles";
 import { usePaymentLock } from "../../../../components/checkout/payment-lock";
@@ -68,8 +69,11 @@ export interface CheckoutFormProps {
   /** Pay mode passes one: the tier the operator already chose. */
   tiers: TipTier[];
   defaultBps: number;
-  /** The published cancellation terms (#619) — plain data; the terms box's own label (#1112). */
-  cancellationTerms: string;
+  /** The published cancellation terms (#619) — plain data; the terms box's own label (#1112). Both
+   *  versions, because the box follows the insurance choice (16.8): 14 days without, 72 hours with. */
+  cancellationTerms: { standard: string; flex: string };
+  /** The line under the insurance box (16.8). Unused in pay mode, which shows no box. */
+  insuranceHint: string;
   /** Present ⇒ pay mode: the payment link for a booking the operator took (issue #1082 part B). */
   pay?: PayMode;
 }
@@ -79,10 +83,18 @@ export interface PayMode {
   token: string;
   /** The booking's own contact, shown read-only and passed to Stripe as the billing details. */
   bookedFor: { name: string; phone: string; phoneLabel: string; email?: string | undefined };
+  /** Insurance the operator sold on the phone (16.8) — fixed, like the tip. */
+  hasFlex: boolean;
+  /** The frozen invoice's own figures (`payLinkMoney`) — shown as they are, never re-totalled. */
+  totals: ScreenTotals;
 }
 
 export function CheckoutForm(props: CheckoutFormProps) {
   const [tipBps, setTipBps] = useState(props.defaultBps);
+  // Cancellation insurance (16.8). Fixed on the payment link — the operator already asked.
+  const [flexChosen, setFlexChosen] = useState(false);
+  const hasFlex = props.pay ? props.pay.hasFlex : flexChosen;
+  const flexCents = hasFlex ? props.money.flexCents : 0;
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
   const [stripeFailed, setStripeFailed] = useState(false);
 
@@ -103,14 +115,18 @@ export function CheckoutForm(props: CheckoutFormProps) {
   }, [props.publishableKey]);
 
   const tip = props.tiers.find((t) => t.bps === tipBps) ?? props.tiers[0]!;
-  const { dueNowCents } = totalsWithTip(props.money, tip.tipCents);
+  // Re-totalled as the tip and the box change; the payment link's are the frozen invoice's own.
+  const totals = props.pay ? props.pay.totals : totalsFor(props.money, tip.tipCents, flexCents);
+  const dueNowCents = totals.dueNowCents;
 
   const inner = (bridge: { stripe: Stripe | null; elements: StripeElements | null; inElements: boolean }) => (
     <InnerForm
       {...props}
       tipBps={tip.bps}
       setTipBps={setTipBps}
-      tipCents={tip.tipCents}
+      hasFlex={hasFlex}
+      setFlexChosen={setFlexChosen}
+      totals={totals}
       dueNowCents={dueNowCents}
       stripeFailed={stripeFailed}
       {...bridge}
@@ -162,7 +178,9 @@ function StripeBridge({
 type InnerProps = CheckoutFormProps & {
   tipBps: number;
   setTipBps: (bps: number) => void;
-  tipCents: number;
+  hasFlex: boolean;
+  setFlexChosen: (on: boolean) => void;
+  totals: ScreenTotals;
   dueNowCents: number;
   stripe: Stripe | null;
   elements: StripeElements | null;
@@ -229,6 +247,7 @@ function InnerForm(p: InnerProps) {
             time: p.slot!.time,
             guests: p.slot!.guests,
             gratuityBps: p.tipBps,
+            hasFlex: p.hasFlex,
             customerName: name.trim(),
             email: email.trim(),
             phone: phone.trim(),
@@ -315,6 +334,17 @@ function InnerForm(p: InnerProps) {
               onChange={(field, value) => setContact((c) => ({ ...c, [field]: value }))}
             />
             <TipTiles tiers={p.tiers} selectedBps={p.tipBps} onSelect={p.setTipBps} />
+            <InsuranceBox
+              checked={p.hasFlex}
+              onChange={(on) => {
+                p.setFlexChosen(on);
+                // The terms box's label changes with this choice, so a tick given to the other
+                // version is not agreement to this one — the customer ticks the terms they read.
+                setAgreed(false);
+              }}
+              priceCents={p.money.flexCents}
+              hint={p.insuranceHint}
+            />
           </>
         )}
 
@@ -364,7 +394,7 @@ function InnerForm(p: InnerProps) {
           </div>
         )}
 
-        <CheckoutSummary m={p.money} tipBps={p.tipBps} tipCents={p.tipCents} frozen={Boolean(p.pay)} />
+        <CheckoutSummary m={p.money} tipBps={p.tipBps} t={p.totals} frozen={Boolean(p.pay)} />
 
         {/* THE TERMS BOX (issue #1112, cancellation terms #619). The published policy is the box's
             own label, so what the customer ticks is exactly what they read — quoted from the
@@ -372,8 +402,7 @@ function InnerForm(p: InnerProps) {
             before the pay bar: the last thing agreed before paying. Not a waiver, and nothing is
             stored — the box gates Book & pay, here and on the server.
 
-            Flex insurance is deliberately absent: it is a published term nothing can sell yet
-            (#683). */}
+            It follows the insurance box (16.8): 72 hours with insurance, 14 days without. */}
         <div className="pb-4 pt-4">
           <Checkbox
             data-testid="agree-terms"
@@ -382,7 +411,9 @@ function InnerForm(p: InnerProps) {
           >
             <span>
               <b className="font-semibold">I agree to the cancellation terms:</b>{" "}
-              <span data-testid="cancellation-terms">{p.cancellationTerms}</span>
+              <span data-testid="cancellation-terms">
+                {p.hasFlex ? p.cancellationTerms.flex : p.cancellationTerms.standard}
+              </span>
             </span>
           </Checkbox>
           {p.pay ? null : (
@@ -429,7 +460,7 @@ function InnerForm(p: InnerProps) {
         </div>
       )}
 
-      <PayBar m={p.money} tipCents={p.tipCents}>
+      <PayBar m={p.money} t={p.totals}>
         {/* Genuine DEC-090 exception: this form submits via a client onSubmit
             (elements.submit → server action → confirmPayment), not a form action, so
             useFormStatus/<SubmitButton> never sees pending; the local `submitting` state

@@ -17,7 +17,9 @@ import type { EventId } from "@core/domain/ids.js";
 import { formatCents } from "@core/reservations/calendar-detail.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
 import { buildManageView } from "@core/reservations/manage-view.js";
-import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
+import { cancellationTerms } from "@core/reservations/refund-terms.js";
+import { hasFlex } from "@core/reservations/booking-invoice.js";
+import { flexChargedCents } from "@core/reservations/discount.js";
 import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { Badge } from "../../../components/ui/badge";
@@ -125,6 +127,7 @@ export default async function ManagePage({
     .filter((p) => p.receiptUrl !== undefined)
     .map((p) => ({ id: String(p.id), url: p.receiptUrl!, amountCents: p.amountCents }));
   const taxAndFees = m.taxCents + serviceFeeCents;
+  const insured = hasFlex(booking.reservation.invoice);
   const cancelled = detail.status === "cancelled";
   // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
   const statusLabel = cancelled ? "Cancelled" : phase === "completed" ? "Completed" : "Confirmed";
@@ -242,6 +245,11 @@ export default async function ManagePage({
                 <Row label={`Fare — ${detail.offeringName ?? "your cruise"}`} value={formatCents(m.fareCents)} mono />
                 {m.gratuityCents > 0 && <Row label="Tip · 100% to crew" value={formatCents(m.gratuityCents)} mono />}
                 <Row label="Tax + service fee" value={formatCents(taxAndFees)} mono />
+                {/* Cancellation insurance (16.8): what was charged for it, off the frozen invoice —
+                    so a comp that took it to $0 still shows the booking has it. */}
+                {insured && (
+                  <Row label="Cancellation insurance" value={formatCents(flexChargedCents(booking.reservation.invoice!))} mono />
+                )}
                 {view.paidInFull ? (
                   <Row label="Paid in full" value={formatCents(m.paidCents)} mono strong />
                 ) : (
@@ -315,7 +323,7 @@ export default async function ManagePage({
                 <RequestForm code={code} kind="cancel" placeholder="Anything we should know? (optional)" />
               </details>
               <p className="pt-2 text-[11.5px] text-muted" data-testid="cancellation-terms">
-                {CANCELLATION_TERMS}
+                {cancellationTerms(insured)}
               </p>
               <p className="pt-2 text-[11.5px] text-muted">
                 Cancellations and changes are handled by our team — we’ll confirm by text or email.

@@ -11,11 +11,12 @@
  * whoever holds a link. Anything else is `missing`, the same answer as no row at all.
  */
 import type { BookingInvoice, Reservation } from "../domain/entities.js";
-import type { CheckoutQuote } from "./checkout-quote.js";
+import type { CheckoutQuote, ScreenTotals } from "./checkout-quote.js";
 import type { ReservationId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { attachPaymentIntent } from "./create-departure-payment-intent.js";
+import { flexChargedCents } from "./discount.js";
 
 /** What a payment link opens onto. The `/p` page renders one state per kind. */
 export type PayLinkState =
@@ -44,15 +45,28 @@ export function payLinkState(r: Reservation | null): PayLinkState {
  * The invoice keeps the extras' total but not how many guests the fare covers or the per-guest
  * price, so those come back as 0 and the summary labels the rows "Fare" and "Extra guests" rather
  * than inventing a count from live config (the same call as the operator's pane, issue #1104).
+ *
+ * **`totals` are the invoice's own figures, never a recompute** (16.8). The tip and the insurance
+ * are fixed here, so there is nothing to re-total — and an unpaid booking frozen under an older fee
+ * rule (DEC-196 moved the tip into the fee's base) must show what it will actually be charged.
  */
 export function payLinkMoney(inv: BookingInvoice): {
   money: Omit<CheckoutQuote, "tiers" | "defaultBps">;
   tip: { bps: number; tipCents: number };
+  totals: ScreenTotals;
 } {
-  const dueNowBeforeTipCents = inv.amountDueNowCents - inv.gratuityCents;
-  const pretipTotal = inv.totalCents - inv.gratuityCents;
-  const depositMode = dueNowBeforeTipCents < pretipTotal;
+  const depositMode = inv.amountDueNowCents < inv.totalCents;
+  // The tip- and insurance-free share of the charge, for the shape's sake — the screen reads `totals`.
+  const dueNowBeforeTipCents = inv.amountDueNowCents - inv.gratuityCents - flexChargedCents(inv);
   return {
+    totals: {
+      tipCents: inv.gratuityCents,
+      flexCents: inv.flexCents ?? 0,
+      taxCents: inv.taxCents,
+      serviceFeeCents: inv.serviceFeeCents,
+      totalCents: inv.totalCents,
+      dueNowCents: inv.amountDueNowCents,
+    },
     money: {
       // Undiscounted, with the discount as its own row (DEC-194) — the summary subtracts it.
       fareCents: inv.fareCents + inv.extrasCents,
@@ -68,7 +82,8 @@ export function payLinkMoney(inv: BookingInvoice): {
       serviceFeeBps: inv.serviceFeeBps,
       dueNowBeforeTipCents,
       depositMode,
-      balanceLaterCents: depositMode ? pretipTotal - dueNowBeforeTipCents : 0,
+      balanceLaterCents: depositMode ? inv.totalCents - inv.amountDueNowCents : 0,
+      flexCents: inv.flexCents ?? 0,
     },
     tip: { bps: inv.gratuityBps, tipCents: inv.gratuityCents },
   };

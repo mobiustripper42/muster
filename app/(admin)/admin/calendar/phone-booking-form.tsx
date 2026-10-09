@@ -7,8 +7,9 @@ import { gratuityCentsFor } from "@core/reservations/pricing.js";
 import { Field } from "../../../../components/ui/field";
 import { Input } from "../../../../components/ui/input";
 import { CheckoutSummary } from "../../../../components/checkout/checkout-summary";
+import { InsuranceBox } from "../../../../components/checkout/insurance-box";
 import { ContactFields, type ContactValues } from "../../../../components/checkout/contact-fields";
-import type { CheckoutMoney, TipTier } from "../../../../components/checkout/money";
+import { totalsFor, type CheckoutMoney, type TipTier } from "../../../../components/checkout/money";
 import { PayBar } from "../../../../components/checkout/pay-bar";
 import { TipTiles } from "../../../../components/checkout/tip-tiles";
 import { SubmitButton } from "../../../../components/ui/submit-button";
@@ -27,6 +28,10 @@ import { bookPhoneReservation } from "./book-actions";
  * **What it adds: the discount box** (16.5, DEC-194) — the operator's own dollars off, which the
  * customer's checkout never has. Tax, fee, every tip tile and the total re-price on what is left.
  *
+ * **Cancellation insurance** (16.8) is the customer's own box, after the tip, with a hint telling the
+ * operator to ask. Bought here it is frozen on the booking, and the payment link shows it fixed.
+ * The discount reaches it last, so typing the whole fare plus $30 comps it too.
+ *
  * **Submits as a plain server-action post**, not the customer's client `onSubmit` into Stripe:
  * `bookPhoneReservation` checks the admin and `bookForCustomer` owns every rule. The tip rides a
  * hidden input (`TipTiles`' `inputName`), the slot and party ride hidden inputs, and the contact
@@ -37,6 +42,7 @@ export function PhoneBookingForm({
   slot,
   money,
   tiers,
+  insuranceHint,
   initial,
   restored,
 }: {
@@ -44,8 +50,10 @@ export function PhoneBookingForm({
   slot: { date: string; time: string; vesselId: string; offeringId: string; guests: number; view: string };
   money: CheckoutMoney;
   tiers: TipTier[];
+  /** The line under the insurance box — what to ask the caller (16.8). */
+  insuranceHint: string;
   /** Defaults — the offering's preselected tip, or what the operator typed before a refusal. */
-  initial: ContactValues & { gratuityBps: number; discount: string };
+  initial: ContactValues & { gratuityBps: number; discount: string; hasFlex: boolean };
   /** The fields were refilled from a refused submit: already unsaved, so guard from the start. */
   restored: boolean;
 }) {
@@ -58,6 +66,8 @@ export function PhoneBookingForm({
     tiers.some((t) => t.bps === initial.gratuityBps) ? initial.gratuityBps : tiers[0]!.bps,
   );
   const [discount, setDiscount] = useState(initial.discount);
+  const [hasFlex, setHasFlex] = useState(initial.hasFlex);
+  const flexCents = hasFlex ? money.flexCents : 0;
   // The money on screen, re-totalled as the box is typed in — through `applyDiscount`, the same
   // function `priceBooking` freezes with, so what is read out on the phone is what is charged.
   // A value that doesn't parse prices as no discount; the server refuses it by name on Book it.
@@ -68,16 +78,14 @@ export function PhoneBookingForm({
     taxRateBps: money.taxRateBps,
     serviceFeeBps: money.serviceFeeBps,
     gratuityBps: tipBps,
+    flexCents,
   });
   const shownTiers = tiers.map((t) => ({ bps: t.bps, tipCents: gratuityCentsFor(d.baseCents, t.bps) }));
   const tip = shownTiers.find((t) => t.bps === tipBps) ?? shownTiers[0]!;
-  const shown: CheckoutMoney = {
-    ...money,
-    discountCents: d.discountCents,
-    taxCents: d.taxCents,
-    serviceFeeCents: d.serviceFeeCents,
-    dueNowBeforeTipCents: d.baseCents + d.taxCents + d.serviceFeeCents,
-  };
+  const shown: CheckoutMoney = { ...money, discountCents: d.discountCents };
+  // The same sum `applyDiscount` made, through the same `chargeTotals` — the figure read out on the
+  // phone is the figure frozen.
+  const totals = totalsFor(shown, tip.tipCents, flexCents);
 
   return (
     <form action={bookPhoneReservation} className="flex flex-col">
@@ -96,11 +104,18 @@ export function PhoneBookingForm({
           onChange={(field, value) => setContact((c) => ({ ...c, [field]: value }))}
         />
         <TipTiles tiers={shownTiers} selectedBps={tip.bps} onSelect={setTipBps} inputName="gratuityBps" />
+        <InsuranceBox
+          checked={hasFlex}
+          onChange={setHasFlex}
+          priceCents={money.flexCents}
+          hint={insuranceHint}
+          inputName="hasFlex"
+        />
         {/* Deposits are not in use (§2.8.4a), and the box re-totals in full-payment terms only. */}
         {money.depositMode ? null : (
           <DiscountBox value={discount} onChange={setDiscount} invalid={parsed === null} comped={d.comped} />
         )}
-        <CheckoutSummary m={shown} tipBps={tip.bps} tipCents={tip.tipCents} />
+        <CheckoutSummary m={shown} tipBps={tip.bps} t={totals} />
         <p className="pt-3 text-xs text-muted">
           {d.comped
             ? "Nothing to pay, so no payment link is sent. It books straight away and they get their confirmation."
@@ -108,7 +123,7 @@ export function PhoneBookingForm({
         </p>
       </div>
 
-      <PayBar m={shown} tipCents={tip.tipCents}>
+      <PayBar m={shown} t={totals}>
         <span data-testid="book-phone" className="ml-auto">
           <SubmitButton className="btn-primary btn-lg">
             Book it

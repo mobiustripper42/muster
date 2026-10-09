@@ -85,8 +85,8 @@ Muster be built perfect for one niche (BrewBoat) and still be sellable later wit
   detail. Only the admin-facing *surfaces* of payments are in scope.~~ — **EXPIRED (DEC-105/107/124).**
   Payments landed **in 2026**, not later: the full amount is charged at booking (§2.8.4a),
   Stripe is in (card checkout only, no wallets — DEC-139), and tips come in as collect-and-expose
-  (DEC-124). The **refund schedule** is decided and written down — §2.8.4c. What still blocks
-  self-service cancel is flex insurance not being attached to a booking (issue #683).
+  (DEC-124). The **refund schedule** is decided and written down — §2.8.4c — and cancellation
+  insurance is sold with the booking (DEC-195). Self-service cancel is its own task (issue #1074).
 - **Native vs PWA** for the crew app — decided at the infrastructure stage.
 - ~~**Historical Xola data migration** — leaning read-only archive.~~ — **SETTLED by DEC-105: never
   migrate.** Xola stays a read-only archive; nothing is brought across but the one-time cutover import
@@ -1535,6 +1535,8 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > **Amended by DEC-188 — 2.8.4's checkout step: the box is the cancellation terms, not waiver consent, and it is not recorded**
 > **Amended by DEC-193 — 2.8.4: a departure inside the booking cutoff is not offered and is refused at checkout**
 > **Amended by DEC-194 — 2.8.4a gains a discount component and the $2 comp floor; 2.8.6 gains a second, named confirm for a comp**
+> **Amended by DEC-195 — 2.8.4a gains a cancellation-insurance component and the discount reaches it last; 2.8.4c sells it and replaces the fee with it; 2.8.14 settles the reversal**
+> **Amended by DEC-196 — 2.8.4a: the fee base gains insurance and the tip; tax gains insurance; the fee is the provider's and untaxed**
 <!-- /amended-by-dec -->
 
 > **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
@@ -1692,20 +1694,28 @@ section before it is a change to any code.
 |---|---|---|---|---|
 | **Fare** | the trip's price | yes | yes | yes |
 | **Extra guests** | per head beyond the number the fare includes | yes | yes | yes |
-| **Tax** | fare + extras | — | **no** | yes |
-| **Service fee** | fare + extras | **no** | — | yes |
-| **Tip** | fare + extras (a tier percentage) | **no** | **no** | yes |
-| **Discount** | off fare + extras, in dollars, set by the operator (2.10.6) | lowers the taxed base | lowers the fee base | — what was paid is what returns |
+| **Cancellation insurance** | flat $30, optional, chosen by the customer (or asked on the phone, 2.10.6) | yes | yes | yes — but kept on an insured customer cancellation (2.8.4c) |
+| **Tip** | fare + extras (a tier percentage) | **no** | yes | yes |
+| **Service fee** | everything but tax: fare + extras + insurance + tip | **no** | — | yes |
+| **Tax** | fare + extras + insurance | — | **no** | yes |
+| **Discount** | off fare + extras, then off insurance, in dollars, set by the operator (2.10.6) | lowers the taxed base | lowers the fee base | — what was paid is what returns |
+
+**The rule, in the operator's words (2026-10-09, DEC-196).** What reaches the operator's bank — fare,
+extras, add-ons, insurance — is taxed. The service fee is on everything except tax. The total charged
+is every line plus tax plus the service fee. Worked: a $499 fare with a 20% tip ($99.80) at 7.25% is
+$499 + $99.80 + fee $17.96 + tax $36.18 = **$652.94**; with insurance, $499 + $30 + $99.80 + fee $18.86
++ tax $38.35 = **$686.01**.
 
 **Tax is a configured rate, not a constant.** It lives in payment configuration because it is a
 jurisdiction's rate, and it is **8%** where BrewBoat operates. There is no admin surface to change it
 today; the code carries a fallback for deploys with no configuration row, and that fallback is not the
-rate. Tax applies to what the operator sells — the fare and extra guests — and never to the service fee
-or the tip.
+rate. Tax applies to what the operator sells — the fare, extra guests and insurance — and never to the
+service fee or the tip.
 
-**The service fee is the operator's, and it is 3%.** A configured rate on what the operator is paid for
-the trip. It is **not** charged on tax (which is not the operator's money) and **not** on the tip
-(which is the crew's). A customer who tips more does not pay a larger fee.
+**The service fee goes to the provider, not the operator, and it is 3%.** A configured rate on
+everything charged except tax — the tip included. It is **not taxed**: tax is on what reaches the
+operator's bank, and the fee does not (operator, 2026-10-09; whether Ohio taxes a provider's fee was
+not researched, and the answer is an operator call). A customer who tips more pays a larger fee.
 
 **The tip is the crew's money and is untaxed.** Charged in full on top, never split across payments. **The customer must pick a tier — there is no decline.** The tiers and the preselected one are
 already per-offering configuration, editable by the operator; the defaults are 15/20/25 with 20%
@@ -1717,21 +1727,31 @@ be tip-free. This was previously filed as waiting on a zero-crew rental to force
 vessel and will not be (every vessel has manning — see the manning note above), so the gap stands on
 its own until an offering needs to be tip-free for some other reason.
 
+**Cancellation insurance is a flat $30 line, taxed and in the fee base like the fare** (DEC-195,
+DEC-196) — but not in the tip base: the tip is a tier of fare plus extras only. It is charged in full
+with the first payment, like the tip. What it buys is in 2.8.4c; the invoice stores it as its own line
+when it is bought and not at all when it is not.
+
 **A discount comes off fare plus extras, and everything charged on that base follows it** (DEC-194).
 Tax, the service fee and the tip are recomputed on the discounted base, at the rates already frozen
 on the invoice — the rates the customer was quoted do not move, only the base does. The discount is
-a dollar amount, capped at fare plus extras. The invoice keeps the fare and extras undiscounted and
-stores the discount as its own line, so a receipt can say what came off.
+a dollar amount. The invoice keeps the fare and extras undiscounted and stores the discount as its
+own line, so a receipt can say what came off.
+
+**The discount reaches insurance last** (DEC-195). It comes off fare plus extras first; only what is
+left after the whole fare comes off the insurance, so a partial discount never touches it. The cap is
+fare plus extras plus the insurance — typing the whole of both comps the insurance too. A comp keeps
+the insurance: the booking still has the 72-hour window, at $0 paid for it.
 
 **Under $2 due is a comp.** If a discount would leave less than $2 to pay, it is raised to the whole
-of fare plus extras and everything recomputes to $0. The box says so before it saves. The $2 is a code
+of fare plus extras (and the insurance, when bought) and everything recomputes to $0. The box says so before it saves. The $2 is a code
 constant, not a setting, and sits above Stripe's own $0.50 minimum charge: collecting a dollar or
 two is not worth anyone's time. **A comp zeroes the tip** — a free cruise that bills the crew's
 share is not free. Crew on a comped trip get no tip through Muster, and the payroll report showing
 $0 for it is correct, not a fault.
 
-**Muster charges the full amount at booking** — fare, extras, tax, service fee and gratuity, in one
-payment, with nothing collected later. That whole total is the **amount due now**, frozen with
+**Muster charges the full amount at booking** — fare, extras, tax, service fee, gratuity and any
+insurance, in one payment, with nothing collected later. That whole total is the **amount due now**, frozen with
 everything else. Deposits are a **future capability, not a current option**: the configuration exists
 in code, no deployment uses it, and switching it on is its own project (issue #712,
 `docs/FUTURE_IDEAS.md`).
@@ -1790,14 +1810,17 @@ The terms, as published:
 
 | Who | When | What comes back |
 |---|---|---|
-| **The customer** | 14 days or more before departure | everything paid, **minus $50** |
-| **The customer** | less than 14 days before, or a no-show | **nothing** |
-| **The operator** | any notice at all — weather, crew shortage, mechanical | **everything paid, no fee** |
+| **The customer, no insurance** | 14 days or more before departure | everything paid, **minus $50** |
+| **The customer, no insurance** | less than 14 days before, or a no-show | **nothing** |
+| **The customer, insured** | 72 hours or more before departure | everything paid **except the insurance** — no $50 |
+| **The customer, insured** | less than 72 hours before, or a no-show | **nothing** |
+| **The operator** | any notice at all — weather, crew shortage, mechanical | **everything paid, no fee**, the insurance included |
 
-**"Everything paid" means everything.** The fare, extras, add-ons, tax, the service fee and the tip —
-every component in 2.8.4a. The published terms deduct the $50 and nothing else, so anything netted out
-before the refund is computed is a deduction that was never published. An operator cancellation returns
-the whole amount and takes no fee, because the operator is the one who could not deliver.
+**"Everything paid" means everything.** The fare, extras, add-ons, insurance, tax, the service fee and
+the tip — every component in 2.8.4a. The terms name one deduction each way — the $50, or the insurance
+— so anything else netted out before the refund is computed is a deduction that was never published.
+An operator cancellation returns the whole amount and takes no fee, because the operator is the one who
+could not deliver.
 
 **A non-refundable cancellation keeps everything, service fee included.** Inside the window the
 customer is owed nothing, and nothing is what they get. The service fee does not come back separately.
@@ -1808,15 +1831,27 @@ a zero refund — never a negative one, and never a charge.
 **The 14-day boundary is inclusive.** Exactly 14 days out is refundable. The published wording reads
 inclusive and the edge favours the customer.
 
-**Flex insurance narrows the window; it does not waive the fee.** $30 buys a 72-hour cancellation
-window instead of 14 days. The $50 still applies. It is a **boolean on the reservation that selects
-which window applies** — deliberately not an add-on line item, because an add-on is taxed and fee'd
-like revenue (2.8.4a) and this is neither. Do not model it as one.
+**Cancellation insurance moves the line to 72 hours and replaces the fee** (operator, 2026-10-09).
+$30 buys a 72-hour window instead of 14 days, and **no $50**: an insured customer cancelling in time
+gets everything paid back except the insurance itself. What is kept is what was charged for it — a
+discount that reached it lowers it, and a comp that took it to $0 keeps nothing but still has the
+72-hour window. The insurance's own tax comes back with everything else. The published sentence never
+mentioned the fee; until 2026-10-09 this section read it as still applying, which was an inference.
 
-**Flex cannot currently be sold** — there is no way for a customer to buy it, so no booking has it and
-the 14-day window governs every reservation today. The term is published regardless, which is why it is
-written here: it is a promise that exists whether or not the software can honour it. Selling it is
-add-ons work (issue #683, issue #622).
+What the refund policy reads is the insurance charged, as a number — never the invoice line behind
+it. It is its own line rather than an add-on (DEC-195): it is kept on cancellation, and an add-on
+would not be.
+
+**It is sold with the booking, and only then.** A box after the tip at checkout — "Add cancellation
+insurance — $30", optional — and the same box on the operator's phone booking, where the line under
+it tells the operator to ask. On the payment link it is shown as bought or not, never offered. There
+is no buying it afterwards. In code it is "flex" (`flexCents`, `hasFlex`); on every screen it is
+"Cancellation insurance".
+
+**The terms follow the box.** Without insurance the customer reads the 14-day terms and the fourth
+sentence offering insurance; with it, 72 hours, a full refund less the insurance, and no offer. Checkout, the payment
+link, the booking page and the confirmation's short clause all pick by the booking. Ticking or
+unticking the box clears the terms tick, because the customer agrees to the terms they read.
 
 **Self-service cancellation is not built.** A customer requests a cancellation and the operator acts on
 it. That is a surface decision, not a policy one — the terms above are what get applied either way.
@@ -2174,8 +2209,8 @@ the largest boat is not a booking this system takes.
 **2.8.14 What this surface is NOT.** No seats — BrewBoat sells the whole boat and party size only has
 to fit. No customer-chosen vessel. No separate hold object. No money computed after the customer has
 been quoted. No booking assembled from data Stripe hands back. No wallets (card only). Self-service
-cancellation stays out until flex insurance can be attached to a booking (issue #683) — the
-refund schedule itself is settled, in §2.8.4c.
+cancellation is not built yet (issue #1074) — the refund schedule and the insurance it depends on
+are both settled, in §2.8.4c.
 
 **And no add-ons.** BrewBoat sells none — the plausible ones are ice, party hats, a trivia night, and
 none exists. An `AddOn` entity, an admin editor and an offering attachment all ship; nothing sells
@@ -2183,12 +2218,11 @@ them, and that is now a decision rather than a gap (issue #622). **Design it aga
 someone wants to sell**, not against Xola's catalog — that is what produced Flex insurance as a cart
 item.
 
-**Flex insurance is the worked example, and it is mid-reversal.** DEC-113 modelled it as a policy
-boolean; the operator chose an `add_ons` row on 2026-08-06 (recorded in `refund-terms.ts`, which warns
-readers not to treat it as settled); and §2.8.4c returns it to a boolean — because an add-on is taxed
-and charged the service fee like revenue and insurance is neither. **§2.8.4c is the current answer.**
-DEC-113 and issue #683 still describe the add-on route and are owed the correction; until they get it,
-a reader following either will find the older position.
+**Cancellation insurance is the worked example.** Xola's catalog sold it as a cart item. It went
+from a policy boolean (DEC-113) to an operator-chosen `add_ons` row (2026-08-06) and back, and the
+reversal is settled (DEC-195). It is taxed and in the fee base like an add-on would be, but the customer
+keeps no claim on it at cancellation, which is why it is its own line in 2.8.4a rather than a row in a
+picker. §2.8.4c is what it buys.
 
 Two things settled in advance so a future design does not re-litigate them: **an add-on would be taxed
 and in the service-fee base**, exactly like extra guests — it is revenue the operator collects. And **a
@@ -2292,8 +2326,8 @@ revert of something proven. The code is in the history of `task/15.18-remove-pos
 - ~~**Does the balance freeze its tax?**~~ **Deferred with deposits.** 2.8.4 says frozen numbers are
   never recomputed and the dormant balance path recomputes tax from live settings. Nothing charges a
   balance today, so this is answered when deposits return, not before.
-- The refund schedule is settled — §2.8.4c states all three outcomes. Self-service cancellation
-  is still blocked, but by flex insurance (issue #683), not by the schedule.
+- The refund schedule is settled — §2.8.4c states all three outcomes, and cancellation insurance is
+  sold with the booking (DEC-195). Self-service cancellation is its own task (issue #1074).
 
 ---
 
@@ -2983,8 +3017,8 @@ now. Building any of these is out of scope until its trigger condition is met.
   are a future capability, not a supported mode: the configuration exists in code and no deployment
   uses it. The recommendation above turns out to have been right for launch.
 - ~~**Refund schedule numbers** (the partial-refund tiers) — Drew.~~ **DECIDED** — the published
-  terms are §2.8.4c, implemented in `src/reservations/refund-terms.ts` and tested. Self-service
-  cancel is blocked by flex insurance (issue #683), not by this.
+  terms are §2.8.4c, implemented in `src/reservations/refund-terms.ts` and tested. Cancellation
+  insurance is sold with the booking (DEC-195); self-service cancel is issue #1074.
 - **Credit-vs-cash default ordering** in the cancel flow — lean credit-first, cash always available;
   confirm with Drew. *(Still open — §3.3 refund cascade is parked by DEC-107.)*
 - ~~**Balance-capture timing** if deposits are used (tie to a horizon?).~~

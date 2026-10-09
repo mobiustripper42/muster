@@ -202,6 +202,15 @@ describe("deposit→balance arithmetic (the DEC-134 no-second-fee pin)", () => {
     expect(closed).toBe(0);
   });
 
+  it("insurance is netted out like the tip — the balance is still the remaining fare (16.8)", () => {
+    const flex = 3000;
+    const depositCharge = chargeNowCents(fare, tax, fee, config) + gratuity + flex;
+    const deposit = { status: "succeeded" as const, amountCents: depositCharge, gratuityCents: gratuity, serviceFeeCents: fee, flexCents: flex };
+    expect(balanceOwedCents(fare, taxRateBps, [deposit])).toBe(fare - 12475);
+    // A refund of just the insurance is attributed off-fare first, like a tip refund.
+    expect(balanceOwedCents(fare, taxRateBps, [{ ...deposit, status: "partially_refunded", refundedCents: flex }])).toBe(fare - 12475);
+  });
+
   it("a fee-less legacy payment nets exactly as before (serviceFeeCents absent ⇒ 0)", () => {
     const owed = balanceOwedCents(fare, taxRateBps, [
       { status: "succeeded", amountCents: 12475 + tax },

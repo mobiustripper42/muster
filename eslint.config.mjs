@@ -508,6 +508,42 @@ const LAYOUT_ONLY_SELECTORS = [
 ];
 
 /**
+ * ## A control wears the control edge (issue #484, part C)
+ *
+ * `--color-line` is a card's hairline: 1.20:1 on white, an edge for something you read. Fields,
+ * chips and the secondary button already wear `--color-line-strong` (3.65:1, past WCAG 1.4.11's 3:1
+ * for a control boundary). Before this, 14 boxes you could press still wore the hairline — the
+ * booking arrows, the start-time rows and tip tiles, the "+ Add" links, the price-variation
+ * buttons — and read as cards a few pixels from the real ones.
+ *
+ * So a pressable element (`button`, `a`, `AppLink`, `summary`) whose className, read whole like
+ * the surface rule's, holds the box radius with `border-line` is refused. The shared control looks
+ * are `btn-secondary` (`btn-sm`), `btn-icon` and `btn-add` in `app/globals.css`, `tileLook` and
+ * `chipLook` in `components/ui/choice.tsx`. Two pale edges stay right and pass: a row that cannot
+ * be pressed is not one of these elements, and a segment's divider inside `.segmented` has no
+ * radius. A class from a variable or a function (`offeringOpenClass`, a calendar block) is not read.
+ */
+const PALE_EDGE = /(?<![\w:-])border-line(?![\w-])/;
+const BOX_RADIUS = /(?<![\w:-])rounded-box(?![\w-])/;
+const CONTROL_EDGE_MESSAGE =
+  "A control wears the control edge (issue #484): --color-line-strong, the edge fields, chips and buttons share. Use btn-secondary (btn-sm), btn-icon for a glyph, btn-add for \"+ Add\" (app/globals.css), tileLook(on) for a choice tile or chipLook for a filter (components/ui/choice.tsx). border-line is a card's hairline: a pressable box drawn with it reads as a card.";
+const controlEdgeRule = {
+  meta: { type: "problem", schema: [] },
+  create(context) {
+    return {
+      "JSXOpeningElement[name.name=/^(button|a|AppLink|summary)$/] > JSXAttribute[name.name='className']"(node) {
+        const value = node.value?.type === "JSXExpressionContainer" ? node.value.expression : node.value;
+        if (!value) return;
+        const whole = classPieces(value)
+          .map((p) => p.text)
+          .join(" ");
+        if (BOX_RADIUS.test(whole) && PALE_EDGE.test(whole)) context.report({ node, message: CONTROL_EDGE_MESSAGE });
+      },
+    };
+  },
+};
+
+/**
  * ## A label names its control (issue #484, part 6)
  *
  * A label not tied to its control looks identical to one that is, and fails two ways nobody
@@ -595,6 +631,7 @@ const APP_RULES = {
 const CLASS_RULES = {
   surface: classStringRule(SURFACE_PATTERNS, [CARD_HEADER_SELECTOR]),
   pill: classStringRule(PILL_PATTERNS),
+  "control-edge": controlEdgeRule,
 };
 const RESTRICTED_SYNTAX = builtinRules.get("no-restricted-syntax");
 const muster = {

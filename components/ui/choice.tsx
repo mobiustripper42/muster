@@ -117,6 +117,21 @@ export function chipLook(on: boolean, density: FieldDensity): string {
   return join(CHIP_SHAPE, CHIP_SIZE[density], on ? CHIP_ON : CHIP_OFF);
 }
 
+/**
+ * The face of a choice tile (issue #484, part C): a box you pick from a set — a start time, a tip,
+ * what kind of block. A chip is a short label that toggles; a tile carries content (a time and its
+ * price, a percent and its amount) and is picked rather than toggled. Unpicked wears the control
+ * edge, `--color-line-strong`; picked is the accent ring. The start-time rows and the tip tiles drew
+ * that picked look twice before this, both over the card's pale edge. Size and layout are the
+ * caller's.
+ */
+const TILE_SHAPE = "rounded-box border";
+const TILE_OFF = "border-line-strong bg-card hover:border-accent";
+const TILE_ON = "border-accent bg-accent/5 ring-1 ring-accent";
+export function tileLook(on: boolean): string {
+  return join(TILE_SHAPE, on ? TILE_ON : TILE_OFF);
+}
+
 export function Chip({
   type,
   className,

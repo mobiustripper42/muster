@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Chip, chipLook } from "./choice";
+import { Chip, chipLook, tileLook } from "./choice";
 
 /**
  * One chip look (issue #484). A `<Chip>` is a toggle input under a pill face; a filter link
@@ -47,5 +47,24 @@ describe("chipLook, the chip face for a link", () => {
     const touch = chipLook(false, "touch").split(" ");
     expect(touch).toContain("min-h-[44px]");
     expect(touch).not.toContain("rounded-full");
+  });
+});
+
+/**
+ * The tile face (issue #484, part C). `muster/control-edge` cannot read a class built by a function,
+ * so these hold the one thing it would have: an unpicked tile wears the control edge, never the
+ * card's hairline.
+ */
+describe("tileLook, the choice tile face", () => {
+  it("unpicked, wears the control edge and a card fill — not the card's hairline", () => {
+    const off = tileLook(false).split(" ");
+    for (const c of ["rounded-box", "border", "border-line-strong", "bg-card"]) expect(off).toContain(c);
+    expect(off).not.toContain("border-line");
+  });
+
+  it("picked, is the accent ring", () => {
+    const on = tileLook(true).split(" ");
+    for (const c of ["rounded-box", "border", "border-accent", "ring-1", "ring-accent"]) expect(on).toContain(c);
+    expect(on).not.toContain("border-line-strong");
   });
 });

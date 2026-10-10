@@ -1,7 +1,8 @@
 /**
  * Customer "request cancellation / change" — the out-of-band operator notice (Phase 12.6, #459,
- * option (b)). Self-service cancel/refund is deferred (needs the #472 refund policy + Flex
- * wiring); until then the manage page lets the customer REQUEST a cancel or a date/time change,
+ * option (b)). Self-service cancel/refund is deferred to 16.9 (issue #1074) — the refund policy and
+ * cancellation insurance it needed are both built (#472, 16.8); until then the manage page lets
+ * the customer REQUEST a cancel or a date/time change,
  * and the operator handles it manually. This module is the pure email body the app-side action
  * sends to the operator inbox (best-effort via `EmailChannel`).
  *

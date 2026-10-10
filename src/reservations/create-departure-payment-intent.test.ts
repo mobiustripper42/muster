@@ -116,6 +116,27 @@ function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new Fake
   return { deps, alert, confirm, soldOut, payments };
 }
 
+describe("createDeparturePaymentIntent — cancellation insurance (16.8)", () => {
+  it("ticked: frozen on the row, and charged in full up front on top of the deposit", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const r = await createDeparturePaymentIntent(repo, pay, { ...req, hasFlex: true }, now);
+    expect(r.ok).toBe(true);
+    const [row] = await repo.listAllReservations();
+    expect(row!.invoice!.flexCents).toBe(3000);
+    // Deposit 12475 + tax 3835 (7.25% of fare + insurance) + fee 1886 (3% of fare + insurance + tip)
+    // + tip 9980 + the whole $30.
+    expect(pay.intents[0]!.amountCents).toBe(12475 + 3835 + 1886 + 9980 + 3000);
+  });
+
+  it("not ticked: no insurance on the row", async () => {
+    const repo = await seededRepo();
+    await createDeparturePaymentIntent(repo, new FakePaymentPort(), { ...req, hasFlex: false }, now);
+    const [row] = await repo.listAllReservations();
+    expect(row!.invoice).not.toHaveProperty("flexCents");
+  });
+});
+
 describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, DEC-134)", () => {
   it("acquires a hold, charges deposit + full tax + full fee + full tip, freezes it all", async () => {
     const repo = await seededRepo();
@@ -125,10 +146,10 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     if (r.ok) expect(r.clientSecret).toBe("pi_fake_1_secret_test");
     expect(await repo.listAllReservations()).toHaveLength(1); // the pending row IS the claim (14.7)
 
-    // fare 49900 (4 guests ≤ 6 included → no extras); tax 3618; fee 1497; tip 9980;
-    // deposit share 12475 → amount = 12475 + 3618 + 1497 + 9980 = 27570.
+    // fare 49900 (4 guests ≤ 6 included → no extras); tax 3618; fee 1796 (3% of fare + tip,
+    // DEC-196); tip 9980; deposit share 12475 → amount = 12475 + 3618 + 1796 + 9980 = 27869.
     const intent = pay.intents[0]!;
-    expect(intent.amountCents).toBe(27570);
+    expect(intent.amountCents).toBe(27869);
     expect(intent.currency).toBe("usd");
     // Stripe is told the amount and nothing else (15.6). The frozen money lives on OUR row.
     expect(intent.metadata).toEqual({});
@@ -139,12 +160,12 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
       extrasCents: 0,
       taxCents: 3618,
       taxRateBps: 725,
-      serviceFeeCents: 1497,
+      serviceFeeCents: 1796,
       serviceFeeBps: 300,
       gratuityCents: 9980,
       gratuityBps: 2000,
-      totalCents: 64995,
-      amountDueNowCents: 27570,
+      totalCents: 65294,
+      amountDueNowCents: 27869,
     });
     expect(row!.eventId).toBeNull(); // no Event yet — the row names the slot
   });
@@ -223,15 +244,15 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     const r = await createDeparturePaymentIntent(repo, pay, { ...req, guestCount: 8 }, now);
     expect(r.ok).toBe(true);
     // The composed fare is frozen on the ROW, not sent to Stripe (15.6).
-    // fare = 49900 + 6 × 5000 = 79900; fee = 3% = 2397; tax = 5793; tip 20% = 15980.
+    // fare = 49900 + 6 × 5000 = 79900; tip 20% = 15980; fee = 3% of fare + tip = 2876; tax = 5793.
     const [row] = await repo.listAllReservations();
     expect(row!.invoice).toMatchObject({
       extrasCents: 30000,
-      serviceFeeCents: 2397,
+      serviceFeeCents: 2876,
       taxCents: 5793,
       gratuityCents: 15980,
     });
-    expect(pay.intents[0]!.amountCents).toBe(Math.round(79900 * 0.25) + 5793 + 2397 + 15980);
+    expect(pay.intents[0]!.amountCents).toBe(Math.round(79900 * 0.25) + 5793 + 2876 + 15980);
   });
 });
 
@@ -286,7 +307,7 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     const { deps, confirm, alert } = makeDeps(repo, pay);
 
     const m = pay.intents[0]!.metadata;
-    const r = await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, m), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, piEvent("pi_fake_1", 27869, m), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "booked" });
 
     const evId = eventIdForSlot(SMALL, DATE, TIME);
@@ -306,10 +327,10 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     expect(payments[0]).toMatchObject({
       id: "pay_pi_fake_1",
       kind: "deposit",
-      amountCents: 27570,
+      amountCents: 27869,
       taxCents: 3618,
       gratuityCents: 9980,
-      serviceFeeCents: 1497,
+      serviceFeeCents: 1796,
       stripePaymentIntentId: "pi_fake_1",
       status: "succeeded",
     });
@@ -615,21 +636,22 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     await repo.saveOffering(tripOffering({ includedGuestCount: 2 }));
     await createDeparturePaymentIntent(repo, new FakePaymentPort(), { ...req, guestCount: 8 }, now);
     const [row] = await pendingRows(repo);
-    // fare 49900 + 6 extras × 5000 = 79900 → tax 7.25% = 5793, fee 3% = 2397, tip 20% = 15980.
+    // fare 49900 + 6 extras × 5000 = 79900 → tax 7.25% = 5793, tip 20% = 15980, fee 3% of fare +
+    // tip = 2876.
     expect(row!.invoice).toEqual({
       fareCents: 49900,
       extrasCents: 30000,
       taxCents: 5793,
       taxRateBps: 725,
-      serviceFeeCents: 2397,
+      serviceFeeCents: 2876,
       serviceFeeBps: 300,
       gratuityCents: 15980,
       gratuityBps: 2000,
-      totalCents: 49900 + 30000 + 5793 + 2397 + 15980,
+      totalCents: 49900 + 30000 + 5793 + 2876 + 15980,
       // The whole quote above; what the deposit charge actually asks for below (15.4). This stays
       // a `toEqual` rather than a `toMatchObject` precisely so a component silently appearing
       // fails here.
-      amountDueNowCents: 19975 + 5793 + 2397 + 15980,
+      amountDueNowCents: 19975 + 5793 + 2876 + 15980,
     });
   });
 
@@ -645,8 +667,8 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     const pay = new FakePaymentPort();
     await createDeparturePaymentIntent(repo, pay, { ...req, guestCount: 8 }, now);
     const [row] = await pendingRows(repo);
-    // fare 79900 → deposit 25% = 19975, + tax 5793 + fee 2397 (both in full) + tip 15980.
-    expect(row!.invoice!.amountDueNowCents).toBe(19975 + 5793 + 2397 + 15980);
+    // fare 79900 → deposit 25% = 19975, + tax 5793 + fee 2876 (both in full) + tip 15980.
+    expect(row!.invoice!.amountDueNowCents).toBe(19975 + 5793 + 2876 + 15980);
     // What Stripe was actually asked for, and the row, are one number.
     expect(pay.intents[0]!.amountCents).toBe(row!.invoice!.amountDueNowCents);
     // And it is NOT the quote — the assertion that makes deposit mode the discriminating case.

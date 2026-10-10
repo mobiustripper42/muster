@@ -2015,6 +2015,10 @@ export function runRepositoryContract(
       expect("serviceFeeCents" in got!).toBe(false);
       await repo.savePayment(payment({ id: asId<"PaymentId">("pay-4"), serviceFeeCents: 1497, stripeCheckoutSessionId: "cs_test_4" }));
       expect((await repo.getPayment(asId<"PaymentId">("pay-4")))!.serviceFeeCents).toBe(1497);
+      // flexCents (16.8): absent stays omitted; present round-trips
+      expect("flexCents" in got!).toBe(false);
+      await repo.savePayment(payment({ id: asId<"PaymentId">("pay-4f"), flexCents: 3000, stripeCheckoutSessionId: "cs_test_4f" }));
+      expect((await repo.getPayment(asId<"PaymentId">("pay-4f")))!.flexCents).toBe(3000);
       // receiptUrl (#679): absent stays omitted; present round-trips. Absent is the normal
       // state for every payment written before #679 and for any whose lookup failed, so the
       // omitted case is the one the guest page actually branches on.

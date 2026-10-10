@@ -14,6 +14,7 @@
 import type { BookingInvoiceInput } from "./booking-invoice.js";
 import { priceBooking } from "./booking-invoice.js";
 import { effectiveIncludedGuests, GRATUITY_DEFAULT_BPS, gratuityKindsFor, gratuityTiersFor } from "./pricing.js";
+import { FLEX_INSURANCE_CENTS } from "./refund-terms.js";
 
 export interface CheckoutQuote {
   /** Base + extras, cents, undiscounted — what tax, fee and every tip tier are a percentage of
@@ -42,9 +43,31 @@ export interface CheckoutQuote {
   tiers: { bps: number; tipCents: number }[];
   /** The tier preselected: the offering's default when it is one of its tiers, else the first. */
   defaultBps: number;
+  /**
+   * Cancellation insurance's price (16.8), undiscounted — what ticking the box adds. Every figure
+   * above leaves it out, the way they leave out the tip: it is untaxed, outside the fee and tip
+   * bases and outside the deposit split, so the screen adds it back on top (`totalsWithTip`).
+   */
+  flexCents: number;
 }
 
-export function checkoutQuote(input: Omit<BookingInvoiceInput, "gratuityBps">): CheckoutQuote {
+/**
+ * What a checkout screen shows once the tip and the insurance are chosen (16.8) — the summary's
+ * tax, fee and insurance rows and both totals. The fee moves with the tip and the insurance, and
+ * the tax with the insurance (DEC-196), so these are re-totalled through `chargeTotals` on the
+ * checkout and the operator's form, and read straight off the frozen invoice on the payment link.
+ */
+export interface ScreenTotals {
+  tipCents: number;
+  /** The insurance row, at its price; 0 is no row. */
+  flexCents: number;
+  taxCents: number;
+  serviceFeeCents: number;
+  totalCents: number;
+  dueNowCents: number;
+}
+
+export function checkoutQuote(input: Omit<BookingInvoiceInput, "gratuityBps" | "hasFlex">): CheckoutQuote {
   const tiersBps = gratuityTiersFor(input.offering);
   // Tip-free: with a 0 tier, the invoice's due-now and total are exactly the figures the screen
   // adds the chosen tip to. The tip is outside the deposit split and untaxed (DEC-124), so adding
@@ -77,5 +100,6 @@ export function checkoutQuote(input: Omit<BookingInvoiceInput, "gratuityBps">): 
       tipCents: priceBooking({ ...input, gratuityBps: bps }).gratuityCents,
     })),
     defaultBps: tiersBps.includes(preferred) ? preferred : tiersBps[0]!,
+    flexCents: FLEX_INSURANCE_CENTS,
   };
 }

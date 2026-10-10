@@ -11,8 +11,9 @@
  * with 20% preselected (DEC-124).
  *
  * Money pins for 2 guests at 15:30 (fare $499.00, no extras):
- *   tax $36.18 · fee $14.97 · tip20 $99.80 → total $649.95, and due-now is the SAME $649.95
- *   because nothing is deferred · tip15 $74.85 → total $625.00.
+ *   tax $36.18 · tip20 $99.80 · fee $17.96 (3% of fare + tip, DEC-196) → total $652.94, and
+ *   due-now is the SAME $652.94 because nothing is deferred · tip15 $74.85 → fee $17.22 → total
+ *   $627.25.
  *
  * **This spec inherits the default deliberately.** Pinning it to an explicit `deposit` override
  * would have kept these numbers stable and hidden the flip from the suite entirely — which is
@@ -100,16 +101,16 @@ test.describe("public /book/checkout", () => {
     await expect(page.getByText(`Fare — up to ${INCLUDED} guests`)).toBeVisible();
     await expect(page.getByTestId("summary-tip")).toContainText("$99.80");
     await expect(page.getByText("Tax · 7.25%")).toBeVisible();
-    await expect(page.getByTestId("summary-fee")).toContainText("$14.97");
+    await expect(page.getByTestId("summary-fee")).toContainText("$17.96");
     await expect(page.getByTestId("summary-fee")).toContainText("3%");
-    await expect(page.getByTestId("summary-total")).toContainText("$649.95");
+    await expect(page.getByTestId("summary-total")).toContainText("$652.94");
 
     // FULL payment (issue #617): one charge, nothing deferred. The deposit/balance block does
     // not render at all — asserted by absence, because its presence would mean the customer is
     // being quoted a balance that no mechanism collects.
     await expect(page.getByTestId("summary-due-now")).toHaveCount(0);
     await expect(page.getByText("Balance · due before your trip")).toHaveCount(0);
-    await expect(page.getByTestId("due-now")).toHaveText("$649.95");
+    await expect(page.getByTestId("due-now")).toHaveText("$652.94");
 
     // The inert future gift-card row renders disabled, not clickable-looking.
     await expect(page.getByText("Apply gift card or discount code")).toBeVisible();
@@ -125,13 +126,15 @@ test.describe("public /book/checkout", () => {
     await expect(page.getByTestId("tip-1500")).toHaveAttribute("aria-pressed", "true");
     // Full payment (#617): due-now IS the total, so these two must agree — a divergence would
     // mean something is being deferred again.
-    await expect(page.getByTestId("due-now")).toHaveText("$625.00");
-    await expect(page.getByTestId("summary-total")).toContainText("$625.00");
+    await expect(page.getByTestId("due-now")).toHaveText("$627.25");
+    await expect(page.getByTestId("summary-total")).toContainText("$627.25");
     await expect(page.getByTestId("summary-tip")).toContainText("$74.85");
+    // The fee moves with the tip (DEC-196).
+    await expect(page.getByTestId("summary-fee")).toContainText("$17.22");
 
     await page.getByTestId("tip-2500").click();
-    // tip25 = $124.75 → 499.00 + 36.18 + 14.97 + 124.75 = $674.90.
-    await expect(page.getByTestId("due-now")).toHaveText("$674.90");
+    // tip25 = $124.75, fee 3% of 499 + 124.75 = $18.71 → 499.00 + 36.18 + 124.75 + 18.71 = $678.64.
+    await expect(page.getByTestId("due-now")).toHaveText("$678.64");
     await expect(page).toHaveURL(/time=15/); // same server render — the island did the math
   });
 
@@ -203,9 +206,8 @@ test.describe("public /book/checkout", () => {
     await expect(terms).toContainText("no-shows");
     await expect(terms).toContainText("full refund");
 
-    // Flex insurance is a published term nothing can sell yet (#683) — it must NOT appear
-    // at the point of sale.
-    await expect(terms).not.toContainText(/insurance/i);
+    // The fourth sentence offers the insurance that can now be bought (16.8).
+    await expect(terms).toContainText("Optional cancellation insurance ($30) moves the 14 days to 72 hours.");
 
     // "Before the pay button" is the acceptance criterion, so assert the ORDER, not just
     // co-presence: the terms box precedes the sticky pay bar in the document.
@@ -214,6 +216,50 @@ test.describe("public /book/checkout", () => {
       return el.compareDocumentPosition(pay) & Node.DOCUMENT_POSITION_FOLLOWING ? "before" : "after";
     });
     expect(order).toBe("before");
+  });
+
+  /**
+   * Cancellation insurance (16.8, issue #683): optional, $30 flat, taxed and in the fee base, never
+   * in the tip. Ticking it adds the row and re-totals the tax and fee, and the terms box beside the
+   * pay button turns to the insured terms. A tick given to the 14-day terms is not agreement to
+   * these, so it is cleared.
+   */
+  test("cancellation insurance adds a $30 row, re-totals tax and fee, and the terms turn to 72 hours", async ({ page }, info) => {
+    await page.goto(CHECKOUT);
+    const box = page.getByTestId("add-insurance");
+    await expect(page.getByText("Add cancellation insurance — $30")).toBeVisible();
+    await expect(page.getByText("Cancel up to 72 hours before your cruise instead of 14 days, with no cancellation fee.")).toBeVisible();
+    await expect(box).not.toBeChecked();
+    await expect(page.getByTestId("summary-insurance")).toHaveCount(0);
+
+    await setCheckedHydrated(page.getByTestId("agree-terms"), true);
+    await setCheckedHydrated(box, true);
+
+    // The operator's grid (DEC-196): insurance is taxed and in the fee base, the tip is not taxed.
+    // Tax 7.25% of 499 + 30 = $38.35; fee 3% of 499 + 30 + 99.80 = $18.86; total $686.01.
+    await expect(page.getByTestId("summary-insurance")).toHaveText(/Cancellation insurance\s*\$30\.00/);
+    await expect(page.getByText("Tax · 7.25%").locator("..")).toContainText("$38.35");
+    await expect(page.getByTestId("summary-fee")).toContainText("$18.86");
+    await expect(page.getByTestId("summary-tip")).toContainText("$99.80");
+    await expect(page.getByTestId("summary-total")).toContainText("$686.01");
+    await expect(page.getByTestId("due-now")).toHaveText("$686.01");
+    // The row sits after the service fee, before the total.
+    const top = async (id: string) => (await page.getByTestId(id).boundingBox())!.y;
+    expect(await top("summary-fee")).toBeLessThan(await top("summary-insurance"));
+    expect(await top("summary-insurance")).toBeLessThan(await top("summary-total"));
+
+    await expect(page.getByTestId("cancellation-terms")).toHaveText(
+      "Cancel 72 hours or more before your cruise for a full refund, less the $30 insurance. Cancellations less than 72 hours out are non-refundable, as are no-shows. If we cancel for inclement weather, you'll receive a full refund.",
+    );
+    await expect(page.getByTestId("agree-terms")).not.toBeChecked();
+    await expect(page.getByTestId("book-pay")).toBeDisabled();
+    await page.screenshot({ path: info.outputPath("checkout-insurance.png"), fullPage: true });
+
+    // Unticked, everything goes back.
+    await setCheckedHydrated(box, false);
+    await expect(page.getByTestId("summary-insurance")).toHaveCount(0);
+    await expect(page.getByTestId("due-now")).toHaveText("$652.94");
+    await expect(page.getByTestId("cancellation-terms")).toContainText("Cancel 14 days or more");
   });
 
   test("a stale link to a sold-out slot gets an honest notice, not a doomed form", async ({ page }) => {

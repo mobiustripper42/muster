@@ -18,7 +18,7 @@
 import type { Block, Event, Location, Offering, Reservation, Vessel } from "@core/domain/entities.js";
 import { vesselDateOf } from "@core/config/tenant.js";
 import { deriveVirtualAvailability, hasDeparted, insideBookingCutoff } from "@core/reservations/availability.js";
-import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
+import { cancellationTerms, insuranceHint } from "@core/reservations/refund-terms.js";
 import { LockedWhilePaying, PaymentLockProvider } from "../../../../components/checkout/payment-lock";
 import {
   bookHref,
@@ -315,7 +315,8 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             money={money}
             tiers={tiers}
             defaultBps={defaultBps}
-            cancellationTerms={CANCELLATION_TERMS}
+            cancellationTerms={{ standard: cancellationTerms(false), flex: cancellationTerms(true) }}
+            insuranceHint={insuranceHint("customer")}
           />
         </div>
       </Card>

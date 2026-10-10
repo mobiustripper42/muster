@@ -160,6 +160,30 @@ describe("processBookingWebhook", () => {
     expect(alert).not.toHaveBeenCalled();
   });
 
+  it("carves the insurance charged out of the payment, so a deposit balance is not $30 short (16.8)", async () => {
+    const repo = new InMemoryRepository();
+    // $510 off a $500 fare with insurance: $10 of the discount reached it, $20 was charged, and
+    // its 7.25% tax ($1.45) — the only tax on the booking, since the fare is all discounted.
+    const invoice = { ...pendingRow().invoice!, discountCents: 51000, flexCents: 3000, taxCents: 145, totalCents: 2145, amountDueNowCents: 2145 };
+    await seedPending(repo, { invoice });
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, bookingPi(PI, 2145), FAKE_SIGNATURE);
+
+    // The insurance AND its tax: neither is fare, nor the fare's tax.
+    expect((await repo.listPaymentsForReservation(PEND))[0]).toMatchObject({ amountCents: 2145, flexCents: 2145 });
+  });
+
+  it("no insurance writes no insurance carve-out", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    expect((await repo.listPaymentsForReservation(PEND))[0]).not.toHaveProperty("flexCents");
+  });
+
   it("already: a re-delivered webhook is idempotent — no second flip or payment", async () => {
     const repo = new InMemoryRepository();
     await seedPending(repo);

@@ -106,10 +106,11 @@ describe("gratuity is required, no decline (DEC-124)", () => {
     await repo.setPaymentConfig({ depositMode: "deposit", depositPercent: 25, taxRateBps: 0 }, NOW);
     const pay = new FakePaymentPort();
     await createDeparturePaymentIntent(repo, pay, req(2000), now); // fare 49900, 20% tip
-    // deposit 25% of 49900 = 12475 (fare only); service fee 3% of 49900 = 1497 charged in full;
-    // gratuity 9980 charged in full, NOT split → 12475 + 1497 + 9980 = 23952. (The old hosted
-    // builder hardcoded the fee to 0 and asserted 22455 — a total Muster never charged, #793.)
-    expect(pay.intents[0]!.amountCents).toBe(23952);
+    // deposit 25% of 49900 = 12475 (fare only); service fee 3% of fare + tip (DEC-196) = 1796
+    // charged in full; gratuity 9980 charged in full, NOT split → 12475 + 1796 + 9980 = 24251.
+    // (The old hosted builder hardcoded the fee to 0 and asserted 22455 — a total Muster never
+    // charged, #793.)
+    expect(pay.intents[0]!.amountCents).toBe(24251);
     const [row] = await repo.listAllReservations();
     expect(row!.invoice!.gratuityCents).toBe(9980);
     // Deposit is now DERIVED, not a metadata key: charged less than the whole quote.

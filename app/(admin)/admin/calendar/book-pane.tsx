@@ -1,6 +1,7 @@
 import type { Offering } from "@core/domain/entities.js";
 import { checkoutQuote } from "@core/reservations/checkout-quote.js";
 import type { PaymentConfig } from "@core/reservations/payment-config.js";
+import { insuranceHint } from "@core/reservations/refund-terms.js";
 import { Field } from "../../../../components/ui/field";
 import { Input, Select } from "../../../../components/ui/input";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -266,12 +267,14 @@ function CheckoutStep({
           slot={{ date: data.day, time: p.time, vesselId: p.vesselId, offeringId: String(offering.id), guests, view: data.view }}
           money={money}
           tiers={tiers}
+          insuranceHint={insuranceHint("operator")}
           initial={{
             name: draft?.get("customerName") ?? "",
             phone: draft?.get("phone") ?? "",
             email: draft?.get("email") ?? "",
             gratuityBps: Number.isInteger(draftTip) && draftTip > 0 ? draftTip : defaultBps,
             discount: draft?.get("discount") ?? "",
+            hasFlex: draft?.get("hasFlex") === "1",
           }}
           restored={draft !== null}
         />

@@ -18,8 +18,10 @@ import { asId } from "../domain/ids.js";
 import { guestPricing } from "./availability-screen.js";
 import { priceBooking } from "./booking-invoice.js";
 import { checkoutQuote } from "./checkout-quote.js";
+import { chargeTotals } from "./discount.js";
 import { PAYMENT_CONFIG_DEFAULTS, chargeNowCents, feeCentsFor, taxCentsFor, type PaymentConfig } from "./payment-config.js";
 import { GRATUITY_DEFAULT_BPS, gratuityCentsFor, gratuityKindsFor, gratuityTiersFor } from "./pricing.js";
+import { FLEX_INSURANCE_CENTS } from "./refund-terms.js";
 
 const V12 = asId<"VesselId">("v-12");
 const DATE = "2026-07-04";
@@ -64,6 +66,8 @@ function oldPageArithmetic(o: Offering, boatCapacity: number, baseCents: number,
     balanceLaterCents,
     tiers: tiersBps.map((bps) => ({ bps, tipCents: gratuityCentsFor(fare.fareCents, bps) })),
     defaultBps: tiersBps.includes(defaultBps) ? defaultBps : tiersBps[0]!,
+    // Not on the old page: the insurance on offer (16.8), added by the screen when ticked.
+    flexCents: FLEX_INSURANCE_CENTS,
   };
 }
 
@@ -114,9 +118,18 @@ describe("checkoutQuote agrees with what is charged, at every tip tier", () => {
           date: DATE, time: TIME, guestCount: 11, gratuityBps: tier.bps,
         });
         expect(tier.tipCents).toBe(invoice.gratuityCents);
-        // What the pay bar shows is what Stripe is asked for.
-        expect(q.dueNowBeforeTipCents + tier.tipCents).toBe(invoice.amountDueNowCents);
-        expect(q.fareCents + q.taxCents + q.serviceFeeCents + tier.tipCents).toBe(invoice.totalCents);
+        // What the pay bar shows is what Stripe is asked for. The fee moves with the tip
+        // (DEC-196), so the screen re-totals through `chargeTotals`, and the balance left for
+        // later is what the tip and the fee do not touch.
+        const t = chargeTotals({
+          baseCents: q.fareCents,
+          flexDueCents: 0,
+          gratuityCents: tier.tipCents,
+          taxRateBps: q.taxRateBps,
+          serviceFeeBps: q.serviceFeeBps,
+        });
+        expect(t.totalCents).toBe(invoice.totalCents);
+        expect(t.totalCents - q.balanceLaterCents).toBe(invoice.amountDueNowCents);
       }
     });
   }

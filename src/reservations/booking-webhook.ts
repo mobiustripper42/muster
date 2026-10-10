@@ -49,7 +49,7 @@ import {
 } from "../domain/ids.js";
 import type { CheckoutCompleted, DisputeUpdated, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
-import { bookedFareCents } from "./discount.js";
+import { bookedFareCents, flexCarveOutCents } from "./discount.js";
 import { balanceOwedCents } from "./payment-config.js";
 import type { SoldOutContact } from "./sold-out-notice.js";
 import { confirmPendingRow, type ConfirmResult } from "./write-booking.js";
@@ -1207,6 +1207,8 @@ async function recordPayment(
     ...((invoice?.gratuityCents ?? 0) > 0 ? { gratuityCents: invoice!.gratuityCents } : {}),
     // The service fee bundled into amountCents (DEC-134) — same carve-out, same reason.
     ...((invoice?.serviceFeeCents ?? 0) > 0 ? { serviceFeeCents: invoice!.serviceFeeCents } : {}),
+    // The insurance actually charged plus its tax (16.8) — neither is fare or the fare's tax.
+    ...(invoice && flexCarveOutCents(invoice) > 0 ? { flexCents: flexCarveOutCents(invoice) } : {}),
     currency: charge.currency,
     // `stripeCheckoutSessionId` is not set on this path and its spread was a no-op from 14.5
     // (15.19). The balance path sets it directly from its own session.

@@ -236,6 +236,64 @@ test.describe("admin phone booking", () => {
     await page.screenshot({ path: info.outputPath("comp-pane.png"), fullPage: true });
   });
 
+  /**
+   * Cancellation insurance on the phone (16.8): the customer's own box, after the tip and before the
+   * discount, with a line telling the operator to ask. Ticked, it is $30 on the quote, frozen on the
+   * booking, and on the pane.
+   */
+  test("insurance asked on the phone: $30 on the quote, on the booking, on the pane", async ({ page }, info) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto(`${BOOK}&guests=2`);
+    await expect(page.getByText("Ask them — it's $30 and moves their cancel window to 72 hours.")).toBeVisible();
+    const top = async (id: string) => (await page.getByTestId(id).boundingBox())!.y;
+    expect(await top("tip-2000")).toBeLessThan(await top("add-insurance"));
+    expect(await top("add-insurance")).toBeLessThan(await top("discount"));
+
+    const before = (await page.getByTestId("due-now").textContent())!.trim();
+    await clickHydrated(page.getByTestId("add-insurance"));
+    await expect(page.getByTestId("summary-insurance")).toContainText("$30.00");
+    await expect(page.getByTestId("due-now")).not.toHaveText(before);
+    const insured = (await page.getByTestId("due-now").textContent())!.trim();
+    // The public checkout's figure for the same trip and tip with the box ticked — the two surfaces
+    // price insurance through one function, so they must agree to the cent.
+    expect(insured).toBe("$686.01");
+    expect(before).toBe("$652.94");
+    await page.screenshot({ path: info.outputPath("phone-insurance-form.png"), fullPage: true });
+
+    await fillHydrated(page.getByPlaceholder("Guest’s full name"), "Insured Caller");
+    await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0197");
+    await page.getByTestId("book-phone").click();
+    await page.waitForURL(/\/admin\/calendar\/resv-/);
+    const pane = page.getByTestId("reservation-detail");
+    await expect(pane.getByTestId("money-insurance")).toContainText("$30.00");
+    await expect(pane.getByTestId("money-owes")).toHaveText(insured);
+    await page.screenshot({ path: info.outputPath("phone-insurance-pane.png"), fullPage: true });
+  });
+
+  test("insurance can be comped: the whole fare plus $30 off books at once", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto(`${BOOK}&guests=2`);
+    await clickHydrated(page.getByTestId("add-insurance"));
+    // The whole $499 fare off still leaves the $30 to pay, with its tax ($2.18) and fee ($0.90) —
+    // not a comp.
+    await fillHydrated(page.getByTestId("discount"), "499");
+    await expect(page.getByTestId("due-now")).toHaveText("$33.08");
+    await expect(page.getByTestId("discount-comp")).toHaveCount(0);
+    // $30 more takes the insurance off too.
+    await fillHydrated(page.getByTestId("discount"), "529");
+    await expect(page.getByTestId("discount-comp")).toBeVisible();
+    await expect(page.getByTestId("due-now")).toHaveText("$0.00");
+
+    await fillHydrated(page.getByPlaceholder("Guest’s full name"), "Comped Insured");
+    await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0196");
+    await page.getByTestId("book-phone").click();
+    await page.waitForURL(/\/admin\/calendar\/resv-.*comped=1/);
+    const pane = page.getByTestId("reservation-detail");
+    await expect(pane.getByTestId("booking-state")).toHaveText("Booked");
+    // Still insured — the 72-hour window — at $0 charged.
+    await expect(pane.getByTestId("money-insurance")).toContainText("$0.00");
+  });
+
   test("a discount that isn't dollars is refused, and the form keeps what was typed", async ({ page }) => {
     await signInAsAdmin(page, "eric");
     await page.goto(`${BOOK}&guests=2`);

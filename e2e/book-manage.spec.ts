@@ -84,7 +84,8 @@ test.describe("public /b/<code>", () => {
       "Cancel 14 days or more before your cruise for a refund minus a $50 cancellation fee.",
     );
     await expect(terms).toContainText("no-shows");
-    await expect(terms).not.toContainText(/insurance/i); // unsellable yet (#683)
+    // An uninsured booking reads the published terms whole, the insurance sentence included (16.8).
+    await expect(terms).toContainText("Optional cancellation insurance ($30) moves the 14 days to 72 hours.");
   });
 
   test("an unknown code shows a generic invalid-link state, not the booking", async ({ page }) => {

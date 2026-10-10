@@ -39,9 +39,11 @@ export interface OperatorBookingRequest {
   /** Required and canonicalized — the customer's identity key (DEC-132), and where the link goes. */
   phone: string;
   email?: string | undefined;
-  /** Dollars off, in cents (16.5, DEC-194). Absent or 0 is none; capped at fare + extras, and
-   *  anything leaving under $2 due becomes a comp (`applyDiscount`). */
+  /** Dollars off, in cents (16.5, DEC-194). Absent or 0 is none; capped at fare + extras (+ the
+   *  insurance, when bought), and anything leaving under $2 due becomes a comp (`applyDiscount`). */
   discountCents?: number | undefined;
+  /** Cancellation insurance, asked on the phone (16.8). Absent is none. */
+  hasFlex?: boolean | undefined;
 }
 
 export type OperatorBookingResult =
@@ -135,6 +137,7 @@ export async function bookForCustomer(
           // Off the base, with tax, fee and tip on what is left (DEC-194). A comp freezes $0 due
           // and is confirmed by the caller through §2.8.6's comp confirm, not a payment link.
           discountCents,
+          hasFlex: req.hasFlex === true,
         }),
         phone: phone.phone,
         ...(email ? { email } : {}),

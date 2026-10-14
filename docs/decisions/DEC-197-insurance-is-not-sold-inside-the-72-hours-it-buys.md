@@ -27,5 +27,7 @@ Operator, 2026-10-13, reviewing 16.8 (issue #683). See also DEC-195.
   is inclusive the same way. The two can't drift apart.
 - **Refused, not dropped.** A page that offered it can outlive the line. Dropping the $30 on submit
   would charge a total the customer never saw, so the write refuses by name and charges nothing.
+- **The sale is when it's priced.** An intent or payment link priced outside the line stays
+  payable after it passes. The customer saw that total, and refusing it would strand them.
 - **The operator too.** The phone booking gets the same rule. An operator passes the booking cutoff
   because it protects their own notice. This rule protects the customer.

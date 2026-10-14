@@ -1853,8 +1853,8 @@ dropped from a total the customer has already seen. The 14-day terms the custome
 nothing about insurance; the box's own line sells it (operator, 2026-10-13). In code it is "flex" (`flexCents`, `hasFlex`); on every screen it is
 "Cancellation insurance".
 
-**The terms follow the box.** Without insurance the customer reads the 14-day terms and the fourth
-sentence offering insurance; with it, 72 hours, a full refund less the insurance, and no offer. Checkout, the payment
+**The terms follow the box.** Without insurance the customer reads the 14-day terms, which say nothing
+about insurance; with it, 72 hours, a full refund less the insurance. Checkout, the payment
 link, the booking page and the confirmation's short clause all pick by the booking. Ticking or
 unticking the box clears the terms tick, because the customer agrees to the terms they read.
 

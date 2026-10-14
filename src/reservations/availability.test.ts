@@ -16,6 +16,7 @@ import {
   deriveVirtualAvailability,
   eventIdForSlot,
   insideBookingCutoff,
+  insuranceOnSale,
   isActiveMusterClaim,
   isSlotBlocked,
   slotIdentity,
@@ -1012,6 +1013,26 @@ describe("insideBookingCutoff — the booking cutoff (DEC-193)", () => {
 
   it("0 hours cuts nothing off — not even a departed trip, which is `departed`'s job", () => {
     expect(insideBookingCutoff("2026-07-04", "13:30", "2026-07-04T18:00:00.000Z", 0)).toBe(false);
+  });
+});
+
+/**
+ * Insurance is sold only while it can still be used (16.8): it buys a refund for cancelling 72
+ * hours or more out, so inside 72 hours it buys nothing. The 13:30 departure on 2026-07-04 is
+ * 17:30Z; 72 hours before it is 2026-07-01T17:30Z.
+ */
+describe("insuranceOnSale — not inside the 72 hours it buys", () => {
+  it("is on sale at exactly 72 hours out — the refund's own inclusive line", () => {
+    expect(insuranceOnSale("2026-07-04", "13:30", "2026-07-01T17:30:00.000Z")).toBe(true);
+  });
+
+  it("is off sale a millisecond later", () => {
+    expect(insuranceOnSale("2026-07-04", "13:30", "2026-07-01T17:30:00.001Z")).toBe(false);
+  });
+
+  it("is on sale well before, and off sale on the day", () => {
+    expect(insuranceOnSale("2026-07-04", "13:30", "2026-06-20T12:00:00.000Z")).toBe(true);
+    expect(insuranceOnSale("2026-07-04", "13:30", "2026-07-04T12:00:00.000Z")).toBe(false);
   });
 });
 

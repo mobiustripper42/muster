@@ -124,13 +124,13 @@ describe("the copy quotes the constants, not hardcoded dollars", () => {
 });
 
 describe("the copy picks the window the booking bought (16.8)", () => {
-  it("without insurance: the 14-day terms, and the fourth sentence offering it", () => {
+  it("without insurance: the 14-day terms, and no sentence selling insurance (operator, 2026-10-13)", () => {
     expect(cancellationTerms(false)).toBe(
       "Cancel 14 days or more before your cruise for a refund minus a $50 cancellation fee. " +
         "Cancellations less than 14 days out are non-refundable, as are no-shows. If we cancel for " +
-        "inclement weather, you'll receive a full refund. Optional cancellation insurance ($30) " +
-        "moves the 14 days to 72 hours.",
+        "inclement weather, you'll receive a full refund.",
     );
+    expect(cancellationTerms(false)).not.toContain("insurance");
   });
 
   it("with insurance: 72 hours, a full refund less the insurance, no fee, and no offer of what they have", () => {

@@ -14,8 +14,8 @@
  *
  * All four rules are encoded and rendered here. Cancellation insurance ("flex" in code) is sold
  * with the booking since 16.8 (issue #683): a checkbox at checkout and on the phone booking, frozen
- * onto the invoice as `flexCents`. The copy picks the terms the booking bought — a booking without
- * insurance is told it exists; one with it is told its 72 hours.
+ * onto the invoice as `flexCents`. The copy picks the terms the booking bought — 14 days without
+ * insurance, 72 hours with it.
  *
  * **What insurance buys** (operator, 2026-10-09): a 72-hour line instead of 14 days, and **no $50
  * fee** — a cancellation 72 hours or more out gets everything paid back except the insurance itself.
@@ -110,21 +110,19 @@ function windowWords(hasFlex: boolean): string {
 
 /**
  * Customer-facing terms — checkout (beside the insurance box), the payment link and the manage
- * page. Quotes the constants above so the prose can never drift from the math. Without insurance
- * the fourth sentence offers it; with it, 72 hours, a full refund less the insurance, and no fee.
+ * page. Quotes the constants above so the prose can never drift from the math. With insurance,
+ * 72 hours, a full refund less the insurance, and no fee. Without it, the 14-day terms and nothing
+ * about insurance: a sentence selling it read as nonsense on a booking that could no longer buy it,
+ * which is every booking after checkout (operator, 2026-10-13). The box's own hint sells it.
  */
 export function cancellationTerms(hasFlex: boolean): string {
   const w = windowWords(hasFlex);
   const deduction = hasFlex
     ? `a full refund, less the ${dollars(FLEX_INSURANCE_CENTS)} insurance`
     : `a refund minus a ${dollars(CANCELLATION_FEE_CENTS)} cancellation fee`;
-  const terms =
-    `Cancel ${w} or more before your cruise for ${deduction}. Cancellations less than ${w} out are ` +
-    `non-refundable, as are no-shows. If we cancel for inclement weather, you'll receive a full refund.`;
-  if (hasFlex) return terms;
   return (
-    `${terms} Optional cancellation insurance (${dollars(FLEX_INSURANCE_CENTS)}) moves the ` +
-    `${windowWords(false)} to ${windowWords(true)}.`
+    `Cancel ${w} or more before your cruise for ${deduction}. Cancellations less than ${w} out are ` +
+    `non-refundable, as are no-shows. If we cancel for inclement weather, you'll receive a full refund.`
   );
 }
 

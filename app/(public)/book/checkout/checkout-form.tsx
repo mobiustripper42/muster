@@ -74,6 +74,8 @@ export interface CheckoutFormProps {
   cancellationTerms: { standard: string; flex: string };
   /** The line under the insurance box (16.8). Unused in pay mode, which shows no box. */
   insuranceHint: string;
+  /** False inside the 72 hours insurance buys (16.8): no box. Absent in pay mode, which shows none. */
+  insuranceOffered?: boolean;
   /** Present ⇒ pay mode: the payment link for a booking the operator took (issue #1082 part B). */
   pay?: PayMode;
 }
@@ -334,17 +336,19 @@ function InnerForm(p: InnerProps) {
               onChange={(field, value) => setContact((c) => ({ ...c, [field]: value }))}
             />
             <TipTiles tiers={p.tiers} selectedBps={p.tipBps} onSelect={p.setTipBps} />
-            <InsuranceBox
-              checked={p.hasFlex}
-              onChange={(on) => {
-                p.setFlexChosen(on);
-                // The terms box's label changes with this choice, so a tick given to the other
-                // version is not agreement to this one — the customer ticks the terms they read.
-                setAgreed(false);
-              }}
-              priceCents={p.money.flexCents}
-              hint={p.insuranceHint}
-            />
+            {p.insuranceOffered ? (
+              <InsuranceBox
+                checked={p.hasFlex}
+                onChange={(on) => {
+                  p.setFlexChosen(on);
+                  // The terms box's label changes with this choice, so a tick given to the other
+                  // version is not agreement to this one — the customer ticks the terms they read.
+                  setAgreed(false);
+                }}
+                priceCents={p.money.flexCents}
+                hint={p.insuranceHint}
+              />
+            ) : null}
           </>
         )}
 

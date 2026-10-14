@@ -43,6 +43,7 @@ export function PhoneBookingForm({
   money,
   tiers,
   insuranceHint,
+  insuranceOffered,
   initial,
   restored,
 }: {
@@ -52,6 +53,8 @@ export function PhoneBookingForm({
   tiers: TipTier[];
   /** The line under the insurance box — what to ask the caller (16.8). */
   insuranceHint: string;
+  /** False inside the 72 hours insurance buys (16.8): no box, so nothing to ask. */
+  insuranceOffered: boolean;
   /** Defaults — the offering's preselected tip, or what the operator typed before a refusal. */
   initial: ContactValues & { gratuityBps: number; discount: string; hasFlex: boolean };
   /** The fields were refilled from a refused submit: already unsaved, so guard from the start. */
@@ -104,13 +107,15 @@ export function PhoneBookingForm({
           onChange={(field, value) => setContact((c) => ({ ...c, [field]: value }))}
         />
         <TipTiles tiers={shownTiers} selectedBps={tip.bps} onSelect={setTipBps} inputName="gratuityBps" />
-        <InsuranceBox
-          checked={hasFlex}
-          onChange={setHasFlex}
-          priceCents={money.flexCents}
-          hint={insuranceHint}
-          inputName="hasFlex"
-        />
+        {insuranceOffered ? (
+          <InsuranceBox
+            checked={hasFlex}
+            onChange={setHasFlex}
+            priceCents={money.flexCents}
+            hint={insuranceHint}
+            inputName="hasFlex"
+          />
+        ) : null}
         {/* Deposits are not in use (§2.8.4a), and the box re-totals in full-payment terms only. */}
         {money.depositMode ? null : (
           <DiscountBox value={discount} onChange={setDiscount} invalid={parsed === null} comped={d.comped} />

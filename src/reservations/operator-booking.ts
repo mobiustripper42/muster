@@ -18,6 +18,7 @@ import type { Reservation } from "../domain/entities.js";
 import type { OfferingId, VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { canonicalizePhone } from "../customers/identity.js";
+import { insuranceOnSale } from "./availability.js";
 import { priceBooking } from "./booking-invoice.js";
 import { claimDepartureSlot, OPERATOR_RULES } from "./claim.js";
 import { mintPendingReservationId } from "./create-departure-payment-intent.js";
@@ -69,7 +70,9 @@ export type OperatorBookingResult =
         /** An operator block covers the slot — unblock it on the calendar first. */
         | "blocked"
         /** Another trip or a live checkout holds the hull over this departure. */
-        | "busy";
+        | "busy"
+        /** Insurance asked for inside the 72 hours it buys (16.8). */
+        | "insurance_closed";
     };
 
 export async function bookForCustomer(
@@ -89,6 +92,10 @@ export async function bookForCustomer(
   const offering = await repo.getOffering(req.offeringId);
   if (offering && !gratuityTiersFor(offering).includes(req.gratuityBps)) {
     return { ok: false, reason: "gratuity_required" };
+  }
+  // Not sold inside the 72 hours it buys (16.8) — the operator passes the cutoff, not this.
+  if (req.hasFlex === true && !insuranceOnSale(req.date, req.time, now())) {
+    return { ok: false, reason: "insurance_closed" };
   }
   const config = await repo.getPaymentConfig();
   const events = await repo.listEvents();

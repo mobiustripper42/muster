@@ -200,6 +200,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-194 — A discount is dollars off the fare; a comp confirms by name, without a payment
 - DEC-195 — Cancellation insurance is a flat line on the invoice, not an add-on
 - DEC-196 — The service fee is on everything but tax, and is not taxed
+- DEC-197 — Insurance is not sold inside the 72 hours it buys
 
 ### Check-in & waivers
 - DEC-187 — Check-in & waivers is in scope, specced in its own files that SPEC.md indexes

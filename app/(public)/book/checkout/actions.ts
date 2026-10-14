@@ -64,6 +64,10 @@ const REASON_MESSAGES: Record<string, string> = {
   already_paid:
     "This booking has already been paid — check your texts and email for the confirmation. You have not been charged twice.",
   gratuity_required: "Please pick a crew tip to continue.",
+  // 16.8. Reachable the way `cutoff` is: the page offered insurance, and the 72-hour line passed
+  // while they typed. Refused rather than dropped, so the total charged is the one they saw.
+  insurance_closed:
+    "Cancellation insurance isn't available this close to departure. Reload the page to check out without it — you have not been charged.",
 };
 
 /**

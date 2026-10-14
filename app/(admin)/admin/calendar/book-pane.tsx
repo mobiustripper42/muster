@@ -1,4 +1,5 @@
 import type { Offering } from "@core/domain/entities.js";
+import { insuranceOnSale } from "@core/reservations/availability.js";
 import { checkoutQuote } from "@core/reservations/checkout-quote.js";
 import type { PaymentConfig } from "@core/reservations/payment-config.js";
 import { insuranceHint } from "@core/reservations/refund-terms.js";
@@ -69,6 +70,7 @@ const ERR_COPY: Record<BookErr, string> = {
   vessel_not_offered: "That cruise doesn’t run on this boat.",
   blocked: "This departure is blocked. Unblock it on the calendar first, then book it.",
   busy: "The boat is out on another trip then, or a customer is checking out for it right now.",
+  insurance_closed: "Cancellation insurance isn’t sold inside 72 hours of departure — book it without.",
   unreachable: "Couldn’t save that just now — nothing was booked. Try again in a moment.",
 };
 
@@ -247,6 +249,8 @@ function CheckoutStep({
   const changeHref = bookHref(data, p, { offering: String(offering.id), party: String(guests) });
   const error = errCopyFor(ERR_COPY, sp.bookErr, "unreachable");
   const draftTip = Number(draft?.get("gratuityBps"));
+  // Not offered inside the 72 hours it buys (16.8); the write refuses it there too.
+  const insuranceOffered = insuranceOnSale(data.day, p.time, new Date().toISOString());
 
   return (
     <>
@@ -268,13 +272,14 @@ function CheckoutStep({
           money={money}
           tiers={tiers}
           insuranceHint={insuranceHint("operator")}
+          insuranceOffered={insuranceOffered}
           initial={{
             name: draft?.get("customerName") ?? "",
             phone: draft?.get("phone") ?? "",
             email: draft?.get("email") ?? "",
             gratuityBps: Number.isInteger(draftTip) && draftTip > 0 ? draftTip : defaultBps,
             discount: draft?.get("discount") ?? "",
-            hasFlex: draft?.get("hasFlex") === "1",
+            hasFlex: insuranceOffered && draft?.get("hasFlex") === "1",
           }}
           restored={draft !== null}
         />

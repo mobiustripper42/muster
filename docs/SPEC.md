@@ -1537,6 +1537,7 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > **Amended by DEC-194 — 2.8.4a gains a discount component and the $2 comp floor; 2.8.6 gains a second, named confirm for a comp**
 > **Amended by DEC-195 — 2.8.4a gains a cancellation-insurance component and the discount reaches it last; 2.8.4c sells it and replaces the fee with it; 2.8.14 settles the reversal**
 > **Amended by DEC-196 — 2.8.4a: the fee base gains insurance and the tip; tax gains insurance; the fee is the provider's and untaxed**
+> **Amended by DEC-197 — 2.8.4c: insurance is not offered inside 72 hours of departure, and is refused there**
 <!-- /amended-by-dec -->
 
 > **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
@@ -1845,7 +1846,11 @@ would not be.
 **It is sold with the booking, and only then.** A box after the tip at checkout — "Add cancellation
 insurance — $30", optional — and the same box on the operator's phone booking, where the line under
 it tells the operator to ask. On the payment link it is shown as bought or not, never offered. There
-is no buying it afterwards. In code it is "flex" (`flexCents`, `hasFlex`); on every screen it is
+is no buying it afterwards. **It is not sold inside 72 hours of departure** (DEC-197, operator,
+2026-10-13), because there it buys nothing. Neither box is shown, and a submit that still asks for it
+(a page left open across the line) is refused by name, with nothing charged. It is never silently
+dropped from a total the customer has already seen. The 14-day terms the customer agrees to say
+nothing about insurance; the box's own line sells it (operator, 2026-10-13). In code it is "flex" (`flexCents`, `hasFlex`); on every screen it is
 "Cancellation insurance".
 
 **The terms follow the box.** Without insurance the customer reads the 14-day terms and the fourth

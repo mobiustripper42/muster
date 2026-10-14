@@ -117,10 +117,13 @@ function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new Fake
 }
 
 describe("createDeparturePaymentIntent — cancellation insurance (16.8)", () => {
+  // NOW is 90 minutes before the departure, inside the 72 hours insurance buys; this is outside.
+  const early = () => "2026-07-01T12:00:00.000Z";
+
   it("ticked: frozen on the row, and charged in full up front on top of the deposit", async () => {
     const repo = await seededRepo();
     const pay = new FakePaymentPort();
-    const r = await createDeparturePaymentIntent(repo, pay, { ...req, hasFlex: true }, now);
+    const r = await createDeparturePaymentIntent(repo, pay, { ...req, hasFlex: true }, early);
     expect(r.ok).toBe(true);
     const [row] = await repo.listAllReservations();
     expect(row!.invoice!.flexCents).toBe(3000);
@@ -134,6 +137,15 @@ describe("createDeparturePaymentIntent — cancellation insurance (16.8)", () =>
     await createDeparturePaymentIntent(repo, new FakePaymentPort(), { ...req, hasFlex: false }, now);
     const [row] = await repo.listAllReservations();
     expect(row!.invoice).not.toHaveProperty("flexCents");
+  });
+
+  it("ticked inside 72 hours: refused before any claim or Stripe call — it would buy nothing", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const r = await createDeparturePaymentIntent(repo, pay, { ...req, hasFlex: true }, now);
+    expect(r).toEqual({ ok: false, reason: "insurance_closed" });
+    expect(await repo.listAllReservations()).toHaveLength(0);
+    expect(pay.intents).toHaveLength(0);
   });
 });
 

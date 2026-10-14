@@ -40,6 +40,7 @@ import {
 } from "./hull-busy.js";
 import { zonedWallClockToInstant } from "../config/tenant.js";
 import { isLivePending, pendingLiveSince } from "./pending.js";
+import { FLEX_CANCEL_HOURS_BEFORE } from "./refund-terms.js";
 
 export interface EventAvailability {
   eventId: EventId;
@@ -186,6 +187,20 @@ export function hasDeparted(date: string, time: string, asOf: string): boolean {
 export function insideBookingCutoff(date: string, time: string, asOf: string, hours: number): boolean {
   if (!(hours > 0)) return false;
   return hasDeparted(date, time, new Date(Date.parse(asOf) + hours * 3_600_000).toISOString());
+}
+
+/**
+ * Is cancellation insurance on sale for this departure at `asOf` (16.8, SPEC §2.8.4c)? It buys a
+ * refund for cancelling `FLEX_CANCEL_HOURS_BEFORE` or more out, so inside that line it buys nothing
+ * and is not offered (operator, 2026-10-13).
+ *
+ * **Inclusive at exactly 72 hours**, unlike the cutoff's `<=` — the line is `refundOwedCents`'
+ * own, and that one is inclusive: insurance bought at 72:00 out can still be used at 72:00 out.
+ * The checkout page, the phone booking and both writes ask this one function.
+ */
+export function insuranceOnSale(date: string, time: string, asOf: string): boolean {
+  const msBefore = zonedWallClockToInstant(date, time).getTime() - Date.parse(asOf);
+  return msBefore >= FLEX_CANCEL_HOURS_BEFORE * 3_600_000;
 }
 
 /** The physical boat-slot identity for a Muster event (DEC-125 guardrail). ONE Brew 3

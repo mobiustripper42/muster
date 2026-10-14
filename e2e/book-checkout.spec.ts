@@ -206,8 +206,8 @@ test.describe("public /book/checkout", () => {
     await expect(terms).toContainText("no-shows");
     await expect(terms).toContainText("full refund");
 
-    // The fourth sentence offers the insurance that can now be bought (16.8).
-    await expect(terms).toContainText("Optional cancellation insurance ($30) moves the 14 days to 72 hours.");
+    // The terms don't sell insurance — the box above does (operator, 2026-10-13).
+    await expect(terms).not.toContainText("insurance");
 
     // "Before the pay button" is the acceptance criterion, so assert the ORDER, not just
     // co-presence: the terms box precedes the sticky pay bar in the document.

@@ -9,7 +9,8 @@ import { priceBooking } from "./booking-invoice.js";
 import { applyDiscount, COMP_FLOOR_CENTS } from "./discount.js";
 import { PAYMENT_CONFIG_DEFAULTS } from "./payment-config.js";
 
-// 8% tax, 3% fee, 20% tip on a $500 trip: 50000 + 4000 + 1500 + 10000 = 65500.
+// 8% tax, 3% fee, 20% tip on a $500 trip: 50000 + 4000 tax + 10000 tip + 1800 fee (3% of fare
+// AND tip, operator 2026-10-09) = 65800.
 const rates = { taxRateBps: 800, serviceFeeBps: 300, gratuityBps: 2000 };
 
 describe("applyDiscount", () => {
@@ -19,16 +20,17 @@ describe("applyDiscount", () => {
       discountCents: 10000,
       baseCents: 40000,
       taxCents: 3200,
-      serviceFeeCents: 1200,
+      serviceFeeCents: 1440, // 3% of 40000 + 8000
       gratuityCents: 8000,
-      totalCents: 52400,
+      flexDueCents: 0,
+      totalCents: 52640,
       comped: false,
     });
   });
 
   it("no discount is the undiscounted charge", () => {
     const d = applyDiscount({ fareAndExtrasCents: 50000, requestedCents: 0, ...rates });
-    expect(d).toMatchObject({ discountCents: 0, baseCents: 50000, totalCents: 65500, comped: false });
+    expect(d).toMatchObject({ discountCents: 0, baseCents: 50000, totalCents: 65800, comped: false });
   });
 
   it("caps the discount at fare plus extras — more than the trip is a comp, never a negative charge", () => {
@@ -44,22 +46,23 @@ describe("applyDiscount", () => {
       taxCents: 0,
       serviceFeeCents: 0,
       gratuityCents: 0,
+      flexDueCents: 0,
       totalCents: 0,
       comped: true,
     });
   });
 
   it("anything under $2 due is raised to a comp", () => {
-    // $1 of base left → 100 + 8 + 3 + 20 = 131 cents due, under the floor.
+    // $1 of base left → 100 + 8 tax + 20 tip + 4 fee = 132 cents due, under the floor.
     const d = applyDiscount({ fareAndExtrasCents: 50000, requestedCents: 49900, ...rates });
     expect(COMP_FLOOR_CENTS).toBe(200);
     expect(d).toMatchObject({ discountCents: 50000, totalCents: 0, comped: true });
   });
 
   it("$2 or more due stands as a partial discount", () => {
-    // $1.53 of base → 153 + 12 + 5 + 31 = 201 cents due.
+    // $1.53 of base → 153 + 12 tax + 31 tip + 6 fee (3% of 184) = 202 cents due.
     const d = applyDiscount({ fareAndExtrasCents: 50000, requestedCents: 49847, ...rates });
-    expect(d).toMatchObject({ discountCents: 49847, totalCents: 201, comped: false });
+    expect(d).toMatchObject({ discountCents: 49847, totalCents: 202, comped: false });
   });
 });
 
@@ -103,12 +106,12 @@ describe("priceBooking with a discount", () => {
       discountCents: 10000,
       taxCents: 4000,
       taxRateBps: 800,
-      serviceFeeCents: 1500,
+      serviceFeeCents: 1800,
       serviceFeeBps: 300,
       gratuityCents: 10000,
       gratuityBps: 2000,
-      totalCents: 65500,
-      amountDueNowCents: 65500,
+      totalCents: 65800,
+      amountDueNowCents: 65800,
     });
   });
 

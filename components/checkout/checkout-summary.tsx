@@ -1,6 +1,6 @@
 "use client";
 
-import { money, totalsWithTip, type CheckoutMoney } from "./money";
+import { money, type CheckoutMoney, type ScreenTotals } from "./money";
 
 /**
  * The money block (16.1d, issue #1092) — fare, extras, tip, tax, fee, total, and in deposit mode
@@ -11,19 +11,24 @@ import { money, totalsWithTip, type CheckoutMoney } from "./money";
  * `frozen` is the payment link's (issue #1082 part B): its figures come off an invoice frozen at
  * booking, which keeps the extras' total but not the guest count the fare covers or the per-guest
  * price — so the rows read "Fare" and "Extra guests" rather than a count read off live config.
+ *
+ * `t` carries the figures that move with the tip and the insurance (16.8) — tax, fee, the
+ * insurance row and both totals — computed by the caller (`totalsFor`, or a frozen invoice). The
+ * insurance row shows only when bought, at its price; any discount that reached it is already in
+ * the Discount row above.
  */
 export function CheckoutSummary({
   m,
   tipBps,
-  tipCents,
+  t,
   frozen = false,
 }: {
   m: CheckoutMoney;
   tipBps: number;
-  tipCents: number;
+  t: ScreenTotals;
   frozen?: boolean;
 }) {
-  const { dueNowCents, totalCents } = totalsWithTip(m, tipCents);
+  const { tipCents, flexCents, dueNowCents, totalCents } = t;
   return (
     <div className="pt-5">
       <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Summary</div>
@@ -49,13 +54,16 @@ export function CheckoutSummary({
         />
         <SummaryRow
           label={`Tax · ${(m.taxRateBps / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`}
-          value={money(m.taxCents)}
+          value={money(t.taxCents)}
         />
         <SummaryRow
           label={`Service fee · ${(m.serviceFeeBps / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`}
-          value={money(m.serviceFeeCents)}
+          value={money(t.serviceFeeCents)}
           testId="summary-fee"
         />
+        {flexCents > 0 && (
+          <SummaryRow label="Cancellation insurance" value={money(flexCents)} testId="summary-insurance" />
+        )}
         <div
           className="mt-1 flex justify-between border-t border-line pt-2 text-[15px] font-bold"
           data-testid="summary-total"

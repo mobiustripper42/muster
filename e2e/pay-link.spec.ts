@@ -195,6 +195,26 @@ test.describe("the payment link", () => {
     await expect(customer.getByRole("link", { name: "Can’t make it? Cancel this booking" })).toBeVisible();
   });
 
+  test("insurance sold on the phone: a row on the pay page, the 72-hour terms, no box to untick (16.8)", async ({ page, browser, baseURL }, info) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto(BOOK);
+    await clickHydrated(page.getByTestId("add-insurance"));
+    await fillHydrated(page.getByPlaceholder("Guest’s full name"), "Phone Caller");
+    await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0199");
+    await page.getByTestId("book-phone").click();
+    await page.waitForURL(/\/admin\/calendar\/resv-/);
+    const owes = (await page.getByTestId("money-owes").textContent())!.trim();
+    const customer = await asCustomer(browser, page, baseURL, await copiedLink(page));
+
+    await expect(customer.getByTestId("summary-insurance")).toContainText("$30.00");
+    await expect(customer.getByTestId("due-now")).toHaveText(owes);
+    await expect(customer.getByTestId("summary-total")).toContainText(owes);
+    await expect(customer.getByTestId("cancellation-terms")).toContainText("Cancel 72 hours or more before your cruise");
+    // The operator already asked: the customer sees what was bought, not a box to change it.
+    await expect(customer.getByTestId("add-insurance")).toHaveCount(0);
+    await customer.screenshot({ path: info.outputPath("pay-link-insurance.png"), fullPage: true });
+  });
+
   test("while a payment is in flight, the cancel is locked and greyed with the form", async ({ page, browser, baseURL }) => {
     await bookByPhone(page);
     const path = await copiedLink(page);

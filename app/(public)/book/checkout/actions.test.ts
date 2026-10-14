@@ -102,6 +102,7 @@ describe("startElementsCheckout — the gates still answer for themselves", () =
     time: "13:30",
     guests: 4,
     gratuityBps: 2000,
+    hasFlex: false,
     customerName: "Mary Brody",
     email: "m@x.io",
     phone: "+12165550148",

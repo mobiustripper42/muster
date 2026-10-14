@@ -477,6 +477,7 @@ const toPayment = (r: any): Payment => ({
   createdAt: r.created_at,
   ...opt("gratuityCents", r.gratuity_cents),
   ...opt("serviceFeeCents", r.service_fee_cents),
+  ...opt("flexCents", r.flex_cents),
   ...opt("stripeCheckoutSessionId", r.stripe_checkout_session_id),
   ...opt("stripePaymentIntentId", r.stripe_payment_intent_id),
   ...opt("receiptUrl", r.receipt_url),
@@ -1432,8 +1433,8 @@ export class PostgresRepository implements Repository {
       // NOT rewrite created_at (or, once refund reconciliation lands, reset status) — so
       // do nothing on a duplicate id rather than overwrite. Idempotent by construction.
       `insert into payments(id, reservation_id, method, kind, amount_cents, tax_cents, gratuity_cents, service_fee_cents, currency,
-         stripe_checkout_session_id, stripe_payment_intent_id, status, refunded_cents, created_at, receipt_url)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         stripe_checkout_session_id, stripe_payment_intent_id, status, refunded_cents, created_at, receipt_url, flex_cents)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        on conflict (id) do nothing`,
       [
         p.id,
@@ -1451,6 +1452,7 @@ export class PostgresRepository implements Repository {
         p.refundedCents ?? null,
         p.createdAt,
         p.receiptUrl ?? null,
+        p.flexCents ?? null,
       ],
     );
   }

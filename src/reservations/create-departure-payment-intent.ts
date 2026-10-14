@@ -32,6 +32,7 @@ import type { Reservation } from "../domain/entities.js";
 import { asId, type OfferingId, type ReservationId, type VesselId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
+import { insuranceOnSale } from "./availability.js";
 import { priceBooking } from "./booking-invoice.js";
 import { claimDepartureSlot } from "./claim.js";
 import { recordTrail } from "./trail.js";
@@ -48,6 +49,9 @@ export interface DeparturePaymentIntentRequest {
   /** Chosen gratuity tier in basis points (DEC-124) — REQUIRED, must be one of the offering's
    *  tiers (no decline). The tip is a % of the fare, charged in full on top, untaxed. */
   gratuityBps: number;
+  /** Cancellation insurance ticked at checkout (16.8). Absent is none. Like the tip, re-frozen on
+   *  every attempt, so ticking it after a failed card reprices the row and the intent. */
+  hasFlex?: boolean;
   customerName: string;
   email?: string;
   phone?: string;
@@ -78,6 +82,9 @@ export type DeparturePaymentIntentStart =
         | "blocked"
         | "sold_out"
         | "gratuity_required"
+        /** Insurance ticked inside the 72 hours it buys (16.8) — the page stopped offering it
+         *  while the customer was typing. */
+        | "insurance_closed"
         /** The intent this checkout already minted has been PAID, in another tab, moments ago
          *  (15.8). Not a failure — the customer is booked or about to be, and the one thing that
          *  must not happen is handing them a second payable charge. */
@@ -100,6 +107,12 @@ export async function createDeparturePaymentIntent(
   const offeringForTiers = await repo.getOffering(req.offeringId);
   if (offeringForTiers && !gratuityTiersFor(offeringForTiers).includes(req.gratuityBps)) {
     return { ok: false, reason: "gratuity_required" };
+  }
+
+  // Insurance is not sold inside the 72 hours it buys (16.8). Refused, not dropped: dropping it
+  // would charge a total the customer was never shown. Before the claim, so no boat is parked.
+  if (req.hasFlex === true && !insuranceOnSale(req.date, req.time, now())) {
+    return { ok: false, reason: "insurance_closed" };
   }
 
   // Everything the builder below prices from, read once. A null `offering` falls through to the
@@ -138,6 +151,7 @@ export async function createDeparturePaymentIntent(
       time: req.time,
       guestCount: req.guestCount,
       gratuityBps: req.gratuityBps,
+      hasFlex: req.hasFlex === true,
     });
     return {
       // The SAME row on a retry — its id is the booking's for life. Reserved time is set on the

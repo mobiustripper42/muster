@@ -29,6 +29,8 @@ export interface StartElementsCheckoutInput {
   time: string;
   guests: number;
   gratuityBps: number;
+  /** Cancellation insurance ticked (16.8). Priced on the server, never trusted as an amount. */
+  hasFlex: boolean;
   customerName: string;
   email: string;
   phone: string;
@@ -62,6 +64,10 @@ const REASON_MESSAGES: Record<string, string> = {
   already_paid:
     "This booking has already been paid — check your texts and email for the confirmation. You have not been charged twice.",
   gratuity_required: "Please pick a crew tip to continue.",
+  // 16.8. Reachable the way `cutoff` is: the page offered insurance, and the 72-hour line passed
+  // while they typed. Refused rather than dropped, so the total charged is the one they saw.
+  insurance_closed:
+    "Cancellation insurance isn't available this close to departure. Reload the page to check out without it — you have not been charged.",
 };
 
 /**
@@ -222,6 +228,8 @@ async function startCheckout(
       time: input.time,
       guestCount: input.guests,
       gratuityBps: input.gratuityBps,
+      // `=== true`: a raw post carrying anything else buys no insurance, rather than a truthy string.
+      hasFlex: input.hasFlex === true,
       customerName,
       ...(email ? { email } : {}),
       // Store the CANONICAL form so the reservation's phone and the customer's identity key

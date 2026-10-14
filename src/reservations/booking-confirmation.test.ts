@@ -6,7 +6,9 @@ import type { Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { ChannelPort, OutboundMessage, SendResult } from "../ports/channel.js";
 import { sendBookingConfirmation } from "./booking-confirmation.js";
-import { CANCELLATION_TERMS_SHORT } from "./refund-terms.js";
+import { cancellationTermsShort } from "./refund-terms.js";
+
+const CANCELLATION_TERMS_SHORT = cancellationTermsShort(false);
 import { nonGsm7Chars } from "./sms-alphabet.js";
 
 const BASE = "https://muster.app";
@@ -118,7 +120,20 @@ describe("sendBookingConfirmation", () => {
     // long paragraph would cost a second segment on every confirmation.
     expect(email.sent[0]!.body).toContain(CANCELLATION_TERMS_SHORT);
     expect(sms.sent[0]!.body).toContain(CANCELLATION_TERMS_SHORT);
-    expect(sms.sent[0]!.body.toLowerCase()).not.toContain("insurance"); // unsellable (#683)
+  });
+
+  it("a booking with cancellation insurance is told its 72-hour window (16.8)", async () => {
+    const sms = capturing();
+    const insured: Reservation = {
+      ...reservation(),
+      invoice: {
+        fareCents: 50000, extrasCents: 0, taxCents: 0, taxRateBps: 0, serviceFeeCents: 0, serviceFeeBps: 0,
+        gratuityCents: 0, gratuityBps: 0, flexCents: 3000, totalCents: 53000, amountDueNowCents: 53000,
+      },
+    };
+    await sendBookingConfirmation({ sms, linkBase: BASE }, insured, CODE);
+    expect(sms.sent[0]!.body).toContain(cancellationTermsShort(true));
+    expect(sms.sent[0]!.body).not.toContain(CANCELLATION_TERMS_SHORT);
   });
 
   it("email-only reservation ⇒ only the email side fires", async () => {

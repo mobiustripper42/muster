@@ -113,6 +113,50 @@ describe("a discounted booking paid in full owes nothing", () => {
   });
 });
 
+describe("an insured booking whose discount went past the fare (16.8)", () => {
+  // $509 off a $499 trip with insurance: $499 off the fare, $10 off the $30 → $20 charged, taxed
+  // at 7.25% ($1.45) and in the fee base (3% = $0.60).
+  const insuredInvoice: BookingInvoice = {
+    ...invoice,
+    discountCents: 50900,
+    flexCents: 3000,
+    taxCents: 145,
+    serviceFeeCents: 60,
+    gratuityCents: 0,
+    totalCents: 2205,
+    amountDueNowCents: 2205,
+  };
+  const insured: Reservation = { ...booked, invoice: insuredInvoice };
+  const paid: Payment = { ...paidInFull, amountCents: 2205, taxCents: 145, gratuityCents: 0, serviceFeeCents: 60, flexCents: 2145 };
+
+  it("the pane shows the fare's share of the discount, the insurance charged, and the tax on it", () => {
+    const v = buildReservationDetail({ reservation: insured, event, payments: [paid], gratuities: [], taxRateBps: TAX_BPS });
+    expect(v.money.fareCents).toBe(0);
+    expect(v.money.discountCents).toBe(49900);
+    expect(v.money.flexCents).toBe(2000);
+    expect(v.money.insured).toBe(true);
+    // The fare's tax (none) plus the insurance's — what the customer was actually charged.
+    expect(v.money.taxCents).toBe(145);
+    expect(v.money.balanceCents).toBe(0);
+  });
+
+  it("the purchases list owes nothing", () => {
+    const [row] = buildPurchaseRows({
+      reservations: [insured],
+      eventsById: new Map([[String(EVENT_ID), event]]),
+      paymentsByReservation: new Map([[String(RESV_ID), [paid]]]),
+      taxRateBps: TAX_BPS,
+    });
+    expect(row?.balanceCents).toBe(0);
+  });
+
+  it("an uninsured booking reads no insurance", () => {
+    const v = buildReservationDetail({ reservation: booked, event, payments: [paidInFull], gratuities: [], taxRateBps: TAX_BPS });
+    expect(v.money.flexCents).toBe(0);
+    expect(v.money.insured).toBe(false);
+  });
+});
+
 describe("an unpaid discounted booking", () => {
   const pending: Reservation = { ...booked, eventId: null, status: "pending", source: "admin" };
 

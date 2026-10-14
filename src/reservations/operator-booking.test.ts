@@ -153,6 +153,21 @@ describe("bookForCustomer — the operator's phone booking (16.1)", () => {
   });
 });
 
+describe("bookForCustomer — cancellation insurance (16.8)", () => {
+  it("sells it 72 hours or more out", async () => {
+    const repo = await seededRepo();
+    const res = await bookForCustomer(repo, ask({ hasFlex: true }), now);
+    expect(res.ok && res.reservation.invoice?.flexCents).toBe(3000);
+  });
+
+  it("refuses it inside 72 hours, writing nothing — it would buy nothing", async () => {
+    const repo = await seededRepo();
+    const res = await bookForCustomer(repo, ask({ hasFlex: true }), () => "2026-07-03T12:00:00.000Z");
+    expect(res).toEqual({ ok: false, reason: "insurance_closed" });
+    expect(await repo.listAllReservations()).toHaveLength(0);
+  });
+});
+
 describe("bookForCustomer — the operator's discount (16.5, DEC-194)", () => {
   it("freezes the discount on the invoice, priced by the same model", async () => {
     const repo = await seededRepo();

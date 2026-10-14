@@ -53,8 +53,10 @@ export interface CancelQuoteInput {
    *  never by concatenating the vessel-local date and time into a `Date`. */
   departureAt: Date;
   now: Date;
-  /** Flex insurance narrows the window to 72h. Unsellable today (#683) ⇒ effectively false. */
-  hasFlex?: boolean;
+  /** Cancellation insurance (16.8): what was charged for it — `insuranceOf(reservation.invoice)` —
+   *  or null for none. Required, so no caller can quote the 14-day terms and the $50 to a booking
+   *  that paid for 72 hours and no fee. */
+  insurance: { chargedCents: number } | null;
 }
 
 export interface CancelQuote {
@@ -73,9 +75,10 @@ const MS_PER_HOUR = 3_600_000;
  * What the published terms produce for this cancellation. Pure — no repo, no clock of its own.
  *
  * **One base for both policies: everything still refundable.** The published terms name exactly
- * three outcomes — full refund when we cancel, paid minus $50 when the customer cancels 14+ days
- * out, nothing inside the window or for a no-show — and the only deduction anywhere in them is
- * that $50. Gratuity and the service fee are not a second and a third; #797.
+ * outcomes — full refund when we cancel; paid minus $50 when the customer cancels 14+ days out, or
+ * paid minus the insurance when an insured customer cancels 72+ hours out (16.8); nothing inside
+ * the window or for a no-show — and the only deduction anywhere in them is that $50 or that
+ * insurance. Gratuity and the service fee are not a second and a third; #797.
  */
 export function quoteCancelRefund(input: CancelQuoteInput): CancelQuote {
   const paidCents = refundableTotalFor(input.payments);
@@ -84,11 +87,7 @@ export function quoteCancelRefund(input: CancelQuoteInput): CancelQuote {
   const refundCents =
     input.by === "operator"
       ? operatorCancelRefundCents(paidCents)
-      : refundOwedCents({
-          paidCents,
-          hoursBeforeDeparture,
-          ...(input.hasFlex !== undefined ? { hasFlex: input.hasFlex } : {}),
-        });
+      : refundOwedCents({ paidCents, hoursBeforeDeparture, insurance: input.insurance ?? undefined });
   return { by: input.by, paidCents, hoursBeforeDeparture, refundCents };
 }
 

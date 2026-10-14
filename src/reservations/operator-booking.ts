@@ -18,6 +18,7 @@ import type { Reservation } from "../domain/entities.js";
 import type { OfferingId, VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { canonicalizePhone } from "../customers/identity.js";
+import { insuranceOnSale } from "./availability.js";
 import { priceBooking } from "./booking-invoice.js";
 import { claimDepartureSlot, OPERATOR_RULES } from "./claim.js";
 import { mintPendingReservationId } from "./create-departure-payment-intent.js";
@@ -39,9 +40,11 @@ export interface OperatorBookingRequest {
   /** Required and canonicalized — the customer's identity key (DEC-132), and where the link goes. */
   phone: string;
   email?: string | undefined;
-  /** Dollars off, in cents (16.5, DEC-194). Absent or 0 is none; capped at fare + extras, and
-   *  anything leaving under $2 due becomes a comp (`applyDiscount`). */
+  /** Dollars off, in cents (16.5, DEC-194). Absent or 0 is none; capped at fare + extras (+ the
+   *  insurance, when bought), and anything leaving under $2 due becomes a comp (`applyDiscount`). */
   discountCents?: number | undefined;
+  /** Cancellation insurance, asked on the phone (16.8). Absent is none. */
+  hasFlex?: boolean | undefined;
 }
 
 export type OperatorBookingResult =
@@ -67,7 +70,9 @@ export type OperatorBookingResult =
         /** An operator block covers the slot — unblock it on the calendar first. */
         | "blocked"
         /** Another trip or a live checkout holds the hull over this departure. */
-        | "busy";
+        | "busy"
+        /** Insurance asked for inside the 72 hours it buys (16.8). */
+        | "insurance_closed";
     };
 
 export async function bookForCustomer(
@@ -87,6 +92,10 @@ export async function bookForCustomer(
   const offering = await repo.getOffering(req.offeringId);
   if (offering && !gratuityTiersFor(offering).includes(req.gratuityBps)) {
     return { ok: false, reason: "gratuity_required" };
+  }
+  // Not sold inside the 72 hours it buys (16.8) — the operator passes the cutoff, not this.
+  if (req.hasFlex === true && !insuranceOnSale(req.date, req.time, now())) {
+    return { ok: false, reason: "insurance_closed" };
   }
   const config = await repo.getPaymentConfig();
   const events = await repo.listEvents();
@@ -135,6 +144,7 @@ export async function bookForCustomer(
           // Off the base, with tax, fee and tip on what is left (DEC-194). A comp freezes $0 due
           // and is confirmed by the caller through §2.8.6's comp confirm, not a payment link.
           discountCents,
+          hasFlex: req.hasFlex === true,
         }),
         phone: phone.phone,
         ...(email ? { email } : {}),

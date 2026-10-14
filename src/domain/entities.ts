@@ -825,13 +825,21 @@ export interface BookingInvoice {
   /** The mandatory tier (DEC-124), on fare + extras. */
   gratuityCents: number;
   gratuityBps: number;
-  /** Sum of the five cents fields — the trip's price, not necessarily what was charged now. */
+  /**
+   * Cancellation insurance (16.8, SPEC §2.8.4a/§2.8.4c), undiscounted: `FLEX_INSURANCE_CENTS`
+   * when bought, absent when not. Untaxed and outside the fee and tip bases. Its presence is what
+   * the refund policy reads (`hasFlex`) — a comp that discounted it to $0 still has it. What was
+   * actually charged for it is `flexChargedCents`, because the discount reaches it last.
+   */
+  flexCents?: number;
+  /** fare + extras − discount + tax + fee + tip + insurance — the trip's price, not necessarily
+   *  what was charged now. */
   totalCents: number;
   /**
    * What was asked of the provider for THIS charge, frozen at the same instant as the components
    * above (15.4). Under `depositMode: "full"` it equals `totalCents`; under `"deposit"` it is the
-   * deposit share of the fare plus tax and service fee in full plus the whole gratuity, and the
-   * remainder is collected later against this same invoice.
+   * deposit share of the fare plus tax and service fee in full plus the whole gratuity and the
+   * whole insurance, and the remainder is collected later against this same invoice.
    *
    * **It is here because it cannot be recomputed from the row.** Every other field is a component
    * or a rate; this one needs `depositMode`/`depositPercent`, which live in live `PaymentConfig`
@@ -910,6 +918,13 @@ export interface Payment {
    * ⇒ 0 (a balance payment, or a pre-12.5 hosted booking).
    */
   serviceFeeCents?: number;
+  /**
+   * Cancellation-insurance portion of `amountCents`, cents (16.8) — what was charged for it after
+   * any discount, PLUS the tax on it (`flexCarveOutCents`), in full with the first charge. Neither
+   * is fare or the fare's tax, so `balanceOwedCents` nets it out like the gratuity and the fee.
+   * Optional/absent ⇒ 0 (no insurance, or a balance payment).
+   */
+  flexCents?: number;
   /** ISO-4217 lowercase, e.g. "usd". */
   currency: string;
   /** Stripe Checkout session id (hosted-Checkout payments; absent on an Elements

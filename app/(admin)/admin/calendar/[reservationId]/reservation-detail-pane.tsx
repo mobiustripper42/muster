@@ -647,6 +647,13 @@ function ChargeRows({ v }: { v: ReservationDetailView }) {
             <Cents cents={inv.serviceFeeCents} />
           </Row>
         )}
+        {/* At its price, as the checkout summary shows it: any discount that reached it is
+            already in the Discount line above (16.8). */}
+        {(inv.flexCents ?? 0) > 0 && (
+          <Row label="Cancellation insurance" testId="money-insurance">
+            <Cents cents={inv.flexCents!} />
+          </Row>
+        )}
       </>
     );
   }
@@ -667,6 +674,12 @@ function ChargeRows({ v }: { v: ReservationDetailView }) {
           <Cents cents={g.amountCents} />
         </Row>
       ))}
+      {/* What was charged for it (16.8) — $0.00 on a comp, which still has the 72-hour window. */}
+      {v.money.insured && (
+        <Row label="Cancellation insurance" testId="money-insurance">
+          <Cents cents={v.money.flexCents} />
+        </Row>
+      )}
     </>
   );
 }

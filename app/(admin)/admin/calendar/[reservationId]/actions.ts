@@ -6,6 +6,7 @@ import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { asId } from "@core/domain/ids.js";
 import { createBalanceCheckout } from "@core/reservations/create-balance-checkout.js";
 import { payLinkState } from "@core/reservations/pay-by-link.js";
+import { insuranceOf } from "@core/reservations/booking-invoice.js";
 import { recordTrail } from "@core/reservations/trail.js";
 import {
   cancelReservation,
@@ -369,12 +370,15 @@ export async function cancelBooking(formData: FormData): Promise<void> {
   try {
     const payments = await getRepo().listPaymentsForReservation(asId<"ReservationId">(reservationId));
     const event = result.freedEventId ? await getRepo().getEvent(result.freedEventId) : null;
+    const row = await getRepo().getReservation(asId<"ReservationId">(reservationId));
     if (event) {
       quotedCents = quoteCancelRefund({
         by,
         payments,
         departureAt: zonedWallClockToInstant(event.date, event.time),
         now: new Date(),
+        // What the customer bought (16.8): insurance makes it 72 hours and no $50, keeping itself.
+        insurance: insuranceOf(row?.invoice),
       }).refundCents;
     }
   } catch (e) {

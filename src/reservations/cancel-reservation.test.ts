@@ -336,6 +336,7 @@ describe("quoteCancelRefund", () => {
       by: "operator",
       payments: paidWithTipAndFee,
       departureAt,
+      insurance: null,
       now: new Date("2026-08-20T19:00:00.000Z"), // two hours out
     });
     expect(q.refundCents).toBe(75415);
@@ -346,6 +347,7 @@ describe("quoteCancelRefund", () => {
       by: "customer",
       payments: paid,
       departureAt,
+      insurance: null,
       now: new Date("2026-08-01T12:00:00.000Z"), // ~19 days out
     });
     expect(q.refundCents).toBe(53625 - 5000);
@@ -358,6 +360,7 @@ describe("quoteCancelRefund", () => {
       by: "customer",
       payments: paidWithTipAndFee,
       departureAt,
+      insurance: null,
       now: new Date("2026-08-01T12:00:00.000Z"), // ~19 days out
     });
     expect(q.refundCents).toBe(75415 - 5000);
@@ -368,9 +371,22 @@ describe("quoteCancelRefund", () => {
       by: "customer",
       payments: paid,
       departureAt,
+      insurance: null,
       now: new Date("2026-08-15T12:00:00.000Z"), // ~5 days out
     });
     expect(q.refundCents).toBe(0);
+  });
+
+  it("with cancellation insurance, 72 hours out refunds everything but the insurance, no $50 (16.8)", () => {
+    const insured = [payment({ amountCents: 53625 + 3000, flexCents: 3000 })];
+    const at = (now: string) =>
+      quoteCancelRefund({ by: "customer", payments: insured, departureAt, insurance: { chargedCents: 3000 }, now: new Date(now) });
+    expect(at("2026-08-15T12:00:00.000Z").refundCents).toBe(53625); // ~5 days out
+    expect(at("2026-08-19T12:00:00.000Z").refundCents).toBe(0); // inside 72 hours
+    // The same five days without insurance is nothing.
+    expect(quoteCancelRefund({ by: "customer", payments: insured, departureAt, insurance: null, now: new Date("2026-08-15T12:00:00.000Z") }).refundCents).toBe(0);
+    // We cancel: everything back, the insurance included.
+    expect(quoteCancelRefund({ by: "operator", payments: insured, departureAt, insurance: { chargedCents: 3000 }, now: new Date("2026-08-19T12:00:00.000Z") }).refundCents).toBe(53625 + 3000);
   });
 
   it("nets money already refunded — the same dollar cannot be quoted twice", () => {
@@ -378,6 +394,7 @@ describe("quoteCancelRefund", () => {
       by: "operator",
       payments: [payment({ refundedCents: 20000, status: "partially_refunded" })],
       departureAt,
+      insurance: null,
       now: new Date("2026-08-01T12:00:00.000Z"),
     });
     expect(q.refundCents).toBe(33625);
@@ -388,6 +405,7 @@ describe("quoteCancelRefund", () => {
       by: "operator",
       payments: [payment({ refundedCents: 53625, status: "refunded" })],
       departureAt,
+      insurance: null,
       now: new Date("2026-08-01T12:00:00.000Z"),
     });
     expect(q.refundCents).toBe(0);

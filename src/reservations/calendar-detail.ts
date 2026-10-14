@@ -39,7 +39,14 @@ import type {
   Shift,
   Vessel,
 } from "../domain/entities.js";
-import { bookedFareCents, chargedFareCents } from "./discount.js";
+import { hasFlex } from "./booking-invoice.js";
+import {
+  bookedFareCents,
+  chargedFareCents,
+  fareDiscountCents,
+  flexCarveOutCents,
+  flexChargedCents,
+} from "./discount.js";
 import { balanceDueCents, countsAsPaid, taxCentsFor } from "./payment-config.js";
 
 export interface ReservationDetailInput {
@@ -60,9 +67,15 @@ export interface DetailMoney {
   /** `Event.price` base + frozen `extrasCents` − the discount — the taxable, tip-free party
    *  fare, i.e. what tax was actually charged on (DEC-194). */
   fareCents: number;
-  /** The operator's dollars off (16.5, DEC-194), 0 when none. `fareCents + discountCents` is the
-   *  fare before it — what the pane shows on the Fare line, with this beneath it. */
+  /** The operator's dollars off the FARE (16.5, DEC-194), 0 when none. `fareCents + discountCents`
+   *  is the fare before it — what the pane shows on the Fare line, with this beneath it. Any part
+   *  that went on past the fare onto insurance is already out of `flexCents`, not counted here. */
   discountCents: number;
+  /** Cancellation insurance bought (16.8) — the booking has the 72-hour window. A comp that took
+   *  it to $0 still has it, which is why this is not `flexCents > 0`. */
+  insured: boolean;
+  /** What was charged for insurance, after any discount that reached it. 0 when none. */
+  flexCents: number;
   taxCents: number;
   /** Σ gratuity rows — crew money, NOT part of fare+tax and NOT part of the balance. */
   gratuityCents: number;
@@ -164,7 +177,9 @@ export function buildUnpaidBookingDetail(input: {
     gratuityRows: [],
     money: {
       fareCents: inv ? chargedFareCents(inv) : 0,
-      discountCents: inv?.discountCents ?? 0,
+      discountCents: inv ? fareDiscountCents(inv) : 0,
+      insured: hasFlex(inv),
+      flexCents: inv ? flexChargedCents(inv) : 0,
       taxCents: inv?.taxCents ?? 0,
       gratuityCents: inv?.gratuityCents ?? 0,
       paidCents: 0,
@@ -187,7 +202,10 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
   const priceKnown = typeof event.price === "number";
   // Less the discount (DEC-194): `Event.price` is the undiscounted fare.
   const fareCents = bookedFareCents(event.price ?? 0, r);
-  const taxCents = taxCentsFor(fareCents, taxRateBps);
+  // The fare's tax, derived like the balance — plus the insurance's, which is taxed too (DEC-196)
+  // and sits outside fare + tax in the carve-out, frozen on the invoice.
+  const flexTaxCents = r.invoice ? flexCarveOutCents(r.invoice) - flexChargedCents(r.invoice) : 0;
+  const taxCents = taxCentsFor(fareCents, taxRateBps) + Math.max(0, flexTaxCents);
   const gratuityCents = gratuities.reduce((sum, g) => sum + g.amountCents, 0);
   // `countsAsPaid`, shared with `balanceOwedCents` — a partially refunded row is still
   // money the customer paid, shown gross here with `refundedCents` on its own line (#522).
@@ -218,7 +236,9 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
       .map((g) => ({ kind: g.kind, amountCents: g.amountCents, bps: g.bps })),
     money: {
       fareCents,
-      discountCents: r.invoice?.discountCents ?? 0,
+      discountCents: r.invoice ? fareDiscountCents(r.invoice) : 0,
+      insured: hasFlex(r.invoice),
+      flexCents: r.invoice ? flexChargedCents(r.invoice) : 0,
       taxCents,
       gratuityCents,
       paidCents,

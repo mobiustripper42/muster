@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { money, totalsWithTip, type CheckoutMoney } from "./money";
+import { money, type CheckoutMoney, type ScreenTotals } from "./money";
 
 /**
  * The sticky bar at the foot of a checkout (16.1d, issue #1092) — what is due now, the total
@@ -11,8 +11,17 @@ import { money, totalsWithTip, type CheckoutMoney } from "./money";
  * The button is a slot because the two surfaces submit differently: the customer's is a client
  * `onSubmit` into Stripe, the operator's a server-action post. The bar owns the figures only.
  */
-export function PayBar({ m, tipCents, children }: { m: CheckoutMoney; tipCents: number; children: ReactNode }) {
-  const { dueNowCents, totalCents } = totalsWithTip(m, tipCents);
+export function PayBar({
+  m,
+  t,
+  children,
+}: {
+  m: CheckoutMoney;
+  /** The same figures the summary shows (`totalsFor`, or a frozen invoice). */
+  t: ScreenTotals;
+  children: ReactNode;
+}) {
+  const { dueNowCents, totalCents } = t;
   return (
     <div className="sticky bottom-0 z-10 flex items-center gap-3.5 border-t border-line bg-card px-4 py-3">
       <div className="flex flex-col">

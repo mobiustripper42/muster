@@ -1,7 +1,6 @@
 ---
 name: promote-production
 description: Promote the active trunk (`main`) to the `production` deploy branch via fast-forward merge, then push. Each promotion is a production release: dev projects patch-bump + tag the trunk here, then advance `production` to it (`/retro` owns the phase-close minor, `/bump-major` the major). Use when work on `main` is ready to ship. Requires `origin/production` to exist.
-tools: Read, Edit, Write, Bash, Grep
 ---
 
 You are promoting `main` → `production`. `main` is the always-active trunk and `production` is a downstream deploy pointer that Vercel (or whatever host) watches. Each promotion is a production release: this skill **patch-bumps + tags** the trunk (dev projects), then ff-merges `main` into `production` and pushes — the deploy moment. `/retro` owns the phase-close minor bump; `/bump-major` the major. A `main` HEAD that already carries a fresh `v*` tag (e.g. `/retro`'s minor) ships as-is, without a second bump.

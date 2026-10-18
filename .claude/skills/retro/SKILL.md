@@ -1,7 +1,6 @@
 ---
 name: retro
 description: Phase-end retrospective. Closes the current phase and writes a retro that fits on one screen — one line of numbers, a short account of what happened, the operator's own take, and a one-paragraph PM read. Marks PROJECT_PLAN.md `[x]`, reconciles drift, writes RETROSPECTIVES.md, runs version bumps (patch per merged PR + minor at phase close on dev projects). Optionally chains into `/start-phase`.
-tools: Read, Edit, Write, Bash, Glob, Grep, Agent
 ---
 
 You are running the phase-end retrospective. Work for this phase is complete (or you've decided to call it done and move scope).

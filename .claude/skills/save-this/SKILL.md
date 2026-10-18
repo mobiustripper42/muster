@@ -1,7 +1,6 @@
 ---
 name: save-this
 description: Between tasks, right before /clear. Writes what this conversation knows and the files don't — the next task, open pull requests, standing rules, the parking lot, and what the next task needs from this one — into the open session file's Next Steps, then commits and pushes the sessions branch. The cleared context reads it back.
-tools: Read, Edit, Bash, Glob, Grep
 ---
 
 You are saving what a `/clear` would lose. The plan holds which task is next; it does not hold what came up while working — deferred forks, follow-ups, rules in force, what the last task left behind for the next. That exists only in this conversation until this skill writes it down.

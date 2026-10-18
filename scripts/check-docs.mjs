@@ -384,6 +384,29 @@ export function checkRosterDocsExist(rosters = ROSTERS, docs = DOCS) {
 }
 
 /**
+ * No skill's frontmatter carries `tools:` (DEC-J018).
+ *
+ * `tools:` is an AGENT key. A skill does not read it, so every jig skill carried a line that
+ * looked like a restriction and restricted nothing. The skill key is `allowed-tools:`, which
+ * PRE-APPROVES the tools it lists — the opposite of what the dead line seemed to say — so the fix
+ * was deletion, not a rename, and this gate keeps the line from being copied back in.
+ *
+ * @param {{path: string, text: string}[]} skills each `.claude/skills/<name>/SKILL.md`
+ */
+export function checkSkillKeys(skills) {
+  const failures = []
+  for (const { path, text } of skills) {
+    // A Windows checkout writes CRLF and some editors a BOM; split on either, or the gate cannot fire there.
+    const lines = text.replace(/^﻿/, '').split(/\r?\n/)
+    if (lines[0] !== '---') continue
+    for (let i = 1; i < lines.length && lines[i] !== '---'; i++) {
+      if (/^["']?tools["']?\s*:/.test(lines[i])) failures.push(`${at(path, i)} — \`tools:\` is an agent key; a skill ignores it. Delete the line`)
+    }
+  }
+  return failures
+}
+
+/**
  * @param {{path: string, text: string}[]} [sources] injected documents; defaults to the real doc
  *   set. @param {object} [world] injected disk state. Both exist so every red branch is testable —
  *   a checker whose failure paths never run is a checker nobody knows still fires.
@@ -423,6 +446,10 @@ export function check(sources, world) {
     scripts: existsSync('package.json') ? JSON.parse(readFileSync('package.json', 'utf8')).scripts : null,
     skills: dirNames('.claude/skills', false),
     agents: dirNames('.claude/agents', true),
+    skillFiles: [...dirNames('.claude/skills', false)]
+      .map((s) => `.claude/skills/${s}/SKILL.md`)
+      .filter((p) => existsSync(p))
+      .map((path) => ({ path, text: readFileSync(path, 'utf8') })),
   }
 
   return [
@@ -432,6 +459,7 @@ export function check(sources, world) {
     ...checkIssueLinks(docs),
     ...checkRosters(docs, w),
     ...checkPaths(docs),
+    ...checkSkillKeys(w.skillFiles ?? []),
     // Same resolver as `check-context`, deliberately — one implementation, two corpora, the same
     // argument as `resolves()` above it. It matters more here than it looks: seeds has no
     // `.claude/CLAUDE-context.md`, so `check-context` never runs in this repo. Without this line
@@ -458,7 +486,7 @@ if (process.argv[1]?.endsWith('check-docs.mjs')) {
   const foreign = Object.keys(FOREIGN_DECS).length
   console.log(
     `✓ docs — ${DOCS.length} docs: DEC refs, npm scripts and issue links resolve, ` +
-      `skill/agent rosters match disk both ways, paths and § sections resolve ` +
+      `skill/agent rosters match disk both ways, paths and § sections resolve, no skill carries \`tools:\` ` +
       `(${exempt} historical ledger${exempt === 1 ? '' : 's'} exempt` +
       `${foreign ? `, ${foreign} citing another repo's record` : ''})${trustNote()}`,
   )

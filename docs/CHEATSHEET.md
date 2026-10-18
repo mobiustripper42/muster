@@ -7,6 +7,10 @@ SESSION
   /its-alive       start. opens the session file, reads context,
                    runs the drift + permission-policy checks,
                    recommends a task. waits for confirmation.
+  /build-task      3+ point task, spec in the issue. @test-writer
+                   writes failing tests, @implementer makes them
+                   pass, the Lead verifies and runs /kill-this.
+                   running it approves the spec.
   /kill-this       per task. build + commit + PR + @code-review.
                    run it once per task, not once per session.
   /save-this       between tasks, before /clear. writes next task,
@@ -34,6 +38,8 @@ AGENTS
   @code-review     Sonnet. wired into /kill-this.
   @pm              Sonnet. progress, risk, scope cuts.
   @ui-reviewer     Sonnet. design quality. reads ui-context.md.
+  @test-writer     Opus. failing tests from the issue spec.
+  @implementer     Sonnet. makes the tests pass. can't edit them.
 
 GATES  ( npm run verify )
   check:decisions  record shape, index freshness, dangling refs
@@ -43,10 +49,11 @@ GATES  ( npm run verify )
   check:docs       rosters, links, and the rest of the doc set
 
 THE STOP
-  built is not shipped. report what changed, show anything a
-  person looks at, and wait. /kill-this is invoked by the
-  operator, never by the session. reaching the same end state
-  by hand skips @code-review and announces that to nobody.
+  proof passes -> the session runs /kill-this itself, then
+  stops with the PR link and shows anything a person looks
+  at. no proof, or a decision the plan didn't settle -> stop
+  and ask, unshipped. reaching the same end state by hand
+  skips @code-review and announces that to nobody. (DEC-J014)
 
 NOT CARRIED  ( these existed in seeds and do not here )
   read-the-tape pause-this restart-this doc-consistency-check

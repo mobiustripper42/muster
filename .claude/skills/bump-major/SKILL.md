@@ -1,7 +1,6 @@
 ---
 name: bump-major
 description: Manually bump the project's major version. Use for breaking changes — new data model, removed feature, anything users would notice on upgrade. Versioned projects only (requires a `package.json` with a `version` field). Writes a CHANGELOG.md entry and tags on the active trunk (`main`).
-tools: Read, Edit, Write, Bash, Grep
 ---
 
 You are bumping the project's major version. Major bumps are manual because they signal a breaking change — there's no automatic trigger that knows what counts as breaking.

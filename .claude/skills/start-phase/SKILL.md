@@ -1,7 +1,6 @@
 ---
 name: start-phase
 description: Materialize a phase from PROJECT_PLAN.md into GitHub Issues. Reads the phase's task rows, creates one Issue per task (with phase:N and points:X labels), and writes issue numbers back into PROJECT_PLAN.md. Run at phase boundaries — paired with /retro at phase end.
-tools: Read, Edit, Write, Bash, Glob, Grep
 ---
 
 You are materializing a phase from `docs/PROJECT_PLAN.md` into GitHub Issues.

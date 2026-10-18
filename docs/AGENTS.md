@@ -7,11 +7,12 @@ This file is installed byte-identical in every project, so it describes the rost
 repo's progress through it. What ships is what appears here: a file in `.claude/skills/` with no
 entry is an unclassified file, which is the state this workflow keeps finding defects in.
 
-## Skills — eight
+## Skills — nine
 
 | Skill | When | What |
 |-------|------|------|
 | `/its-alive` | Session start | Open the per-session file on the orphan `sessions` branch, read context, run the drift and permission-policy checks, recommend a task |
+| `/build-task` | A 3+ point task that changes behaviour, spec in the issue | Readback by `@test-writer`, then failing tests, then `@implementer` until they pass; the Lead locks the tests by committing them first, runs the proof itself, then `/kill-this`. Running it approves the spec. The spec template, `task-spec.md`, ships in the skill's folder |
 | `/kill-this` | Per task | Build check, commit, `@code-review`, open the PR with `closes #<issue>`, append a `## Task <N>` block. Step 3.5 reads Blast-Radius Triggers and runs `/security-review` when the diff hits one |
 | `/save-this` | Between tasks, before `/clear` | Replace the session file's Next Steps with the next task, open PRs, standing rules (word for word), the parking lot (nothing dropped unless closed) and a carry-over for the next task; push the `sessions` branch. The cleared context reads it back at the spec step |
 | `/its-dead` | Session end, once | Stamp `ended:`, tally points, display wall clock, close the session file. No time math, no version bump |
@@ -29,7 +30,7 @@ entry is an unclassified file, which is the state this workflow keeps finding de
 | `doc-consistency-check` | **0 invocations** across 60 retained transcripts, 2026-07-26 → 2026-08-26 |
 | `pause-this`, `restart-this` | Sat marked "review" through the whole first pass and were never resolved in either direction |
 
-## Agents — four
+## Agents — six
 
 | Agent | Model | When | Purpose |
 |-------|-------|------|---------|
@@ -37,6 +38,8 @@ entry is an unclassified file, which is the state this workflow keeps finding de
 | `@code-review` | Sonnet | After every commit, wired into `/kill-this` | Catch issues early. Advisory — flags, does not block |
 | `@pm` | Sonnet | Session start and end, via skills | Progress, timeline risk, scope cuts |
 | `@ui-reviewer` | Sonnet | After UI work, phase boundaries | Design quality against the project's design system, read from `.claude/ui-context.md` |
+| `@test-writer` | Opus | `/build-task`: readback, then tests | Reads the issue spec; reports what it leaves open, or writes failing tests named for each acceptance criterion. Never writes production code |
+| `@implementer` | Sonnet | `/build-task`, after the tests | The smallest change that makes the tests pass. May not edit them; stops and reports a test it believes is wrong |
 
 The three reviewers are `context` class: they arrive as install-time starting points and each
 project owns its copy afterwards. They reason about a project's *substance*, so a good one is
@@ -46,7 +49,8 @@ upstream is a deliberate act.
 
 `@pm` is `logic`, identical everywhere (DEC-J011). It holds no project substance — its facts come
 from the plan, the session files and the retro log — and as `context` it silently fell out of step
-with `/retro`.
+with `/retro`. `@test-writer` and `@implementer` are `logic` for the same reason: each reads the
+project from the issue spec and the context file at run time.
 
 **Descriptions are project-agnostic.** An earlier generation carried `[Project]` in the
 `description:` frontmatter, filled in per install, which made every agent permanently differ from
@@ -96,7 +100,9 @@ silently. It is written down because the gate cannot.
 
 ## Model selection
 
-Agents pin model and effort in frontmatter. `@architect` is `model: opus`; the reviewers are
-`model: sonnet`; all four run `effort: high`, so they hold their level when the session default is
-`medium`. New agents start at `sonnet` and `high`. Aliases only, never a version: an alias resolves
-forward on its own, so no per-release edit is needed (DEC-J009).
+Agents pin model and effort in frontmatter, fixed per agent rather than chosen per task. The rule
+is the cheapest model and effort that does the job at full quality (DEC-J016). `@architect` and
+`@test-writer` are `model: opus` — one judges designs, the other's tests define what correct means;
+the rest are `model: sonnet`. All six run `effort: high`, so they hold their level when the
+session default is `medium`. New agents start at `sonnet` and `high`. Aliases only, never a
+version: an alias resolves forward on its own, so no per-release edit is needed.

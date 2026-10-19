@@ -149,7 +149,7 @@ const Z_INDEX_MENU_MESSAGE =
 /**
  * Nothing claims an overlay's z-index while its overlay is shut (issue #1163). **Four selectors for
  * two rules**, a class string being a `Literal` or a template element. Both match a whole token — a
- * `(variant:)*z-<n>` run between whitespace — so `lg:z-50` is read as written and `has-[details[open]]:z-[100]`
+ * `(variant:)*z-<n>` run between whitespace, Tailwind's important `!` allowed before `z-` or after the value (`!z-50`, `z-50!`) — so `lg:z-50` is read as written and `has-[details[open]]:z-[100]`
  * is a token whose variant merely mentions `open`.
  *
  * - 40–99 (`z-40`, `z-[60]`) is the overlay tier: reported unless some variant in the token is exactly
@@ -163,20 +163,20 @@ const Z_INDEX_MENU_MESSAGE =
 const Z_INDEX_SELECTORS = [
   {
     selector:
-      "Literal[value=/(?:^|\\s)(?:(?!(?:group-)?open:)[^\\s:]+:)*z-(?:[4-9]\\d|\\[[4-9]\\d\\])(?=\\s|$)/]",
+      "Literal[value=/(?:^|\\s)(?:(?!(?:group-)?open:)[^\\s:]+:)*!?z-(?:[4-9]\\d|\\[[4-9]\\d\\])!?(?=\\s|$)/]",
     message: Z_INDEX_OVERLAY_MESSAGE,
   },
   {
     selector:
-      "TemplateElement[value.cooked=/(?:^|\\s)(?:(?!(?:group-)?open:)[^\\s:]+:)*z-(?:[4-9]\\d|\\[[4-9]\\d\\])(?=\\s|$)/]",
+      "TemplateElement[value.cooked=/(?:^|\\s)(?:(?!(?:group-)?open:)[^\\s:]+:)*!?z-(?:[4-9]\\d|\\[[4-9]\\d\\])!?(?=\\s|$)/]",
     message: Z_INDEX_OVERLAY_MESSAGE,
   },
   {
-    selector: "Literal[value=/(?:^|\\s)(?:[^\\s:]+:)*z-(?:\\d{3,}|\\[\\d{3,}\\])(?=\\s|$)/]",
+    selector: "Literal[value=/(?:^|\\s)(?:[^\\s:]+:)*!?z-(?:\\d{3,}|\\[\\d{3,}\\])!?(?=\\s|$)/]",
     message: Z_INDEX_MENU_MESSAGE,
   },
   {
-    selector: "TemplateElement[value.cooked=/(?:^|\\s)(?:[^\\s:]+:)*z-(?:\\d{3,}|\\[\\d{3,}\\])(?=\\s|$)/]",
+    selector: "TemplateElement[value.cooked=/(?:^|\\s)(?:[^\\s:]+:)*!?z-(?:\\d{3,}|\\[\\d{3,}\\])!?(?=\\s|$)/]",
     message: Z_INDEX_MENU_MESSAGE,
   },
 ];

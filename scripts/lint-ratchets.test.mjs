@@ -416,6 +416,12 @@ const CASES = [
       ['<div className="open:z-[100]" />;', "the menu tier, open-gated — still the menus' alone"],
       ['<div className="group-open:z-[120]" />;', "the menu tier, group-open-gated"],
       ['<div className="pointer-events-none fixed z-[9999]" />;', "above the menu tier"],
+      ['<div className="relative !z-50" />;', "AC5: a leading-important z-50"],
+      ['<div className="lg:!z-50" />;', "AC5: a leading-important z-50 behind a non-gate variant"],
+      ['<div className="relative z-50!" />;', "AC5: a trailing-important z-50 (Tailwind v4)"],
+      ['<div className="lg:z-50!" />;', "AC5: a trailing-important z-50 behind a non-gate variant"],
+      ['<div className="relative !z-[100]" />;', "AC7: the menu tier, leading-important"],
+      ['<div className="relative z-[100]!" />;', "AC7: the menu tier, trailing-important"],
     ],
     good: [
       ['<summary className="relative group-open:z-50 flex">QR</summary>;', "group-open-gated z-50"],
@@ -430,6 +436,7 @@ const CASES = [
       ['<div className="sticky top-0 z-20" />;', "z-20, a pinned row"],
       ['<div className="relative z-10" />;', "z-10"],
       ['<div className="z-0" />;', "z-0"],
+      ['<summary className="relative group-open:z-50! flex">QR</summary>;', "AC6: group-open-gated z-50, important"],
     ],
   },
 ];

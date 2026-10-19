@@ -1,7 +1,6 @@
 ---
 name: its-dead
 description: Session end. Stamps `ended:` on the open session file, tallies total points from per-task blocks, displays wall_clock to screen for gut-check, commits + pushes the sessions branch. No time math, no version bump, no merge handshake — those moved to `/retro`. Run once at the end of a Claude window after every task's `/kill-this` has shipped its PR.
-tools: Read, Edit, Write, Bash, Glob, Grep
 ---
 
 You are closing the session. This is a one-action skill: stamp `ended:`, write `status: closed`, commit + push to the orphan `sessions` branch. All time math (wall_clock and active = wall_clock − breaks, via transcript break inference) and version bumps moved to `/retro`. The session file becomes atomic — never modified after this runs.
@@ -144,7 +143,7 @@ git -C .sessions-worktree commit -m "Close Session <N>"
 git -C .sessions-worktree push origin sessions
 ```
 
-No version bump. No CHANGELOG. No tag. No branch cleanup (task branches and their PRs are managed by the user per-task at `/kill-this` time and via the GitHub merge button).
+No version bump. No CHANGELOG. No tag. No branch cleanup (each task's branch and PR are made by `/kill-this`, and merging them is the operator's call, via the GitHub merge button).
 
 ## Step 6 — Closing summary
 

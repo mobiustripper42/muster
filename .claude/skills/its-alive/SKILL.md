@@ -1,7 +1,6 @@
 ---
 name: its-alive
 description: Session start. Stamps the start time, opens a per-session file on the orphan `sessions` branch via `.sessions-worktree/`, captures the active JSONL transcript path, reads last session context, reads the project plan, and presents a briefing with task recommendation. Waits for confirmation before any work begins.
-tools: Read, Edit, Write, Bash, Glob, Grep, Agent
 ---
 
 You are executing the session start ritual.

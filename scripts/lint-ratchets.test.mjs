@@ -393,6 +393,45 @@ const CASES = [
       ['<button type="button" className="rounded-box border border-line-strong hover:border-line">x</button>;', "a pale edge as a state only"],
     ],
   },
+  {
+    /**
+     * Nothing claims an overlay's z-index while its overlay is shut (issue #1163). The crew check-in
+     * QR summary sat at a bare `z-50` and painted over the open ☰ menu — the second of its kind after
+     * the calendar pane's pinned Close row. 40–99 is the overlay tier and must be `open:`- or
+     * `group-open:`-gated; 100 and up is the menu tier and belongs to the two menu files alone, gated
+     * or not. The `good` cases are the gated overlay classes the QR sheet legitimately keeps, and
+     * everything a page pins at `z-30` and below.
+     */
+    rule: "a high z-index is an open overlay's; the menu tier is the menus' (issue #1163)",
+    ruleId: "muster/z-index",
+    filePath: "app/(admin)/admin/probe/page.tsx",
+    bad: [
+      ['<div className="fixed inset-x-0 bottom-0 z-40" />;', "a bare z-40"],
+      ['<summary className="relative z-50 flex w-full">QR</summary>;', "a bare z-50 — the QR summary's bug"],
+      ['<div className="fixed z-[60]" />;', "a bare arbitrary z-[60]"],
+      ["<div className={`${base} z-50`} />;", "inside a template literal"],
+      ['const c = "relative z-50";', "hoisted out of the JSX into a const"],
+      ['<div className="lg:z-50" />;', "behind a variant that is not an open gate"],
+      ['<div className="relative z-[100]" />;', "the menu tier, bare"],
+      ['<div className="open:z-[100]" />;', "the menu tier, open-gated — still the menus' alone"],
+      ['<div className="group-open:z-[120]" />;', "the menu tier, group-open-gated"],
+      ['<div className="pointer-events-none fixed z-[9999]" />;', "above the menu tier"],
+    ],
+    good: [
+      ['<summary className="relative group-open:z-50 flex">QR</summary>;', "group-open-gated z-50"],
+      ['<div className="open:z-50" />;', "open-gated z-50"],
+      [
+        "<details className=\"group open:before:fixed open:before:inset-0 open:before:z-40 open:before:content-['']\" />;",
+        "an open-gated backdrop on a pseudo-element",
+      ],
+      ['<div className="fixed inset-x-0 bottom-0 group-open:z-40" />;', "the sheet panel, gated"],
+      ['<div className="lg:group-open:z-50" />;', "an open gate anywhere in the variant chain"],
+      ['<nav className="sticky top-0 z-30" />;', "z-30, what a page bar uses"],
+      ['<div className="sticky top-0 z-20" />;', "z-20, a pinned row"],
+      ['<div className="relative z-10" />;', "z-10"],
+      ['<div className="z-0" />;', "z-0"],
+    ],
+  },
 ];
 
 describe.each(CASES)("$rule", ({ ruleId, filePath, bad, good }) => {
@@ -541,6 +580,41 @@ describe("role-glyph.tsx is exempt from the radius rule and nothing else", () =>
   it("and the exemption is that file's alone", async () => {
     expect(await violations(MARK, "components/probe.tsx", "muster/radius")).not.toHaveLength(0);
   });
+});
+
+/**
+ * The two nav menus own the menu tier (issue #1163): the crew ☰ drawer's backdrop, panel and ✕
+ * climb to `z-[100]`–`z-[120]`, and the admin `<nav>` rises to `z-[100]` while a menu in it is
+ * open. Their FILES are exempt from the z-index rule — one named rule off, the role-glyph way — and
+ * pinned from both sides: nothing else in those files goes quiet, and no other file is exempt, the
+ * QR sheet included.
+ */
+describe("the menu files are exempt from the z-index rule and nothing else", () => {
+  const MENUS = [["components/crew/crew-menu.tsx"], ["components/admin/admin-nav.tsx"]];
+  const MENU_CODE = [
+    ['const c = "relative z-50";', "a bare overlay-tier class"],
+    ['const c = "fixed right-0 top-0 z-[110]";', "a bare menu-tier class"],
+    ['const c = "sticky top-0 z-30 has-[details[open]]:z-[100]";', "the nav's rise"],
+  ];
+
+  describe.each(MENUS)("%s", (file) => {
+    it.each(MENU_CODE)("stays quiet on %s (%s)", async (code) => {
+      expect(await violations(code, file, "muster/z-index")).toHaveLength(0);
+    });
+
+    it("still fires on #951's token ban there", async () => {
+      expect(await violations('const c = "text-faint";', file, "muster/faint-text")).not.toHaveLength(0);
+    });
+  });
+
+  it.each([["components/crew/trip-qr-sheet.tsx"], ["components/probe.tsx"]])(
+    "and the exemption is theirs alone — %s is reported",
+    async (filePath) => {
+      for (const [code] of MENU_CODE) {
+        expect(await violations(code, filePath, "muster/z-index"), code).not.toHaveLength(0);
+      }
+    },
+  );
 });
 
 /**

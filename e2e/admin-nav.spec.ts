@@ -222,6 +222,46 @@ test.describe("admin nav", () => {
     await expect(burger).toHaveAttribute("aria-expanded", "false");
   });
 
+  /**
+   * Issue #1163. The drawer and the group panels live inside this sticky `<nav>`, which is a `z-30`
+   * stacking context, so they cannot rise past a page control by their own z-index. The nav itself
+   * rises to `z-[100]` while any of its menus is open, and drops back to `z-30` when they are shut.
+   */
+  test("AC4: the nav sits at z-index 30 shut and 100 while the mobile drawer is open", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "the drawer is the 375px rendering");
+    await signInAsAdmin(page, "eric");
+    const nav = page.getByRole("navigation", { name: "Admin" });
+    const burger = page.getByRole("button", { name: "Open menu" });
+    await expect(nav).toHaveCSS("z-index", "30");
+
+    await clickHydrated(burger);
+    await expect(burger).toHaveAttribute("aria-expanded", "true");
+    await expect(nav).toHaveCSS("z-index", "100");
+
+    await clickHydrated(page.getByRole("button", { name: "Close menu" }));
+    await expect(burger).toHaveAttribute("aria-expanded", "false");
+    await expect(nav).toHaveCSS("z-index", "30");
+  });
+
+  test("AC4: the nav sits at z-index 30 shut and 100 while a desktop group is open", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "the groups are the desktop rendering");
+    await signInAsAdmin(page, "eric");
+    const nav = page.getByRole("navigation", { name: "Admin" });
+    await expect(nav).toHaveCSS("z-index", "30");
+
+    // A group, and Account — the other `<details>` in the same accordion.
+    for (const label of ["Bookings", "Account"]) {
+      await clickHydrated(nav.locator("summary:visible").filter({ hasText: label }));
+      await expect(nav.locator("details[open]")).toHaveCount(1);
+      await expect(nav, `${label} open`).toHaveCSS("z-index", "100");
+
+      // An outside click shuts it (the island's document listener — hence clickHydrated).
+      await clickHydrated(page.locator("h1").first());
+      await expect(nav.locator("details[open]")).toHaveCount(0);
+      await expect(nav, `${label} shut`).toHaveCSS("z-index", "30");
+    }
+  });
+
   test("#655: a group survives focus landing nowhere — the iPhone tap", async ({ page }) => {
     // Reported on an iPhone: open a nav group, tap Payroll or Time off, and the menu just
     // closes without navigating. Ungrouped links (Shifts, Calendar) were fine, and Android was

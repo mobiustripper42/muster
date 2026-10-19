@@ -150,7 +150,16 @@ export function AdminNav({
     // `z-30`, above anything a page pins (those use `z-10`/`z-20`). The menus below are layered
     // inside this bar, so the bar's own level is theirs: at `z-20` it tied with the calendar pane's
     // pinned Close ✕ row, and the later element won — the Close row painted over the Crew menu.
-    <nav ref={navRef} aria-label="Admin" className="sticky top-0 z-30 border-b border-line bg-card lg:h-[3.25rem]">
+    //
+    // While a menu is open the bar rises to `z-[100]`, the menu tier (issue #1163): the drawer lives
+    // inside this stacking context, so it cannot rise by its own z-index, and an open menu has to be
+    // drawn above every other layer on the page. The mobile drawer is the `open` state;
+    // a desktop group is a `<details>`, so `has-[details[open]]` reads it off the DOM.
+    <nav
+      ref={navRef}
+      aria-label="Admin"
+      className={`sticky top-0 ${open ? "z-[100]" : "z-30"} has-[details[open]]:z-[100] border-b border-line bg-card lg:h-[3.25rem]`}
+    >
       {/* Wider than the `max-w-3xl` page shell on purpose (#586). The nav is chrome, not reading
           copy: borrowing the body-copy width capped nav content at 768px no matter how wide the
           monitor was, so a 1440px screen had ~830px of empty white bar on either side while the

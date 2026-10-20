@@ -79,12 +79,19 @@ export function CrewMenu({
           `list-none` + the marker reset kills the default disclosure triangle in both engines. */}
       <summary
         aria-label="Open menu"
-        className="relative group-open:z-[120] flex size-[44px] list-none items-center justify-center rounded-box text-ink [&::-webkit-details-marker]:hidden"
+        className="relative group-open:fixed group-open:right-4 group-open:top-[22px] group-open:z-[120] flex size-[44px] list-none items-center justify-center rounded-box text-ink [&::-webkit-details-marker]:hidden"
       >
         {/* `group-open:z-[120]` puts the control ABOVE the panel. Without it, at 375px the panel
             (w-64, max-w-[80vw]) covers the top-right corner and there is NO visible way to close
             the drawer — the bug the operator hit. The icon swaps to an ✕ so the control reads as
-            "close" once open, and both states share one 44px box so nothing shifts. */}
+            "close" once open, and both states share one 44px box so nothing shifts.
+
+            `group-open:fixed right-4 top-[22px]` pins the ✕ to the WINDOW's corner, where the panel
+            is. Shut, the summary sits in the header row inside the `max-w-md` page column; past
+            ~448px that column stops short of the window's edge and the ✕ landed mid-panel on the
+            "Muster" heading (operator, 2026-10-20). `top-[22px]` centres it on that heading's 44px
+            row (the panel's `pt-[22px]`, below). The grid keeps its 44px column, so nothing moves
+            when it leaves the flow. */}
         <svg
           width="22"
           height="22"

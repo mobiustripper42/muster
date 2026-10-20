@@ -153,6 +153,33 @@ test.describe("crew header (#644)", () => {
       await expect(page.locator("details[open]")).toHaveCount(0);
     });
 
+    test("wider than the page column, the ✕ is still in the panel's corner, beside its heading", async ({ page }) => {
+      // The summary lives in the header row, inside a `max-w-md` column centred in the window;
+      // the panel is pinned to the WINDOW's right edge. Past ~448px they part, and the ✕ landed
+      // on the "Muster" heading mid-panel (operator, 2026-10-20). 375px could never show it —
+      // the column fills the window there.
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await signInAsCrew(page, "crew-quint");
+      await page.goto("/crew/time");
+      const summary = page.locator(`summary[aria-label="Open menu"]`);
+      await summary.click();
+
+      const b = (await summary.boundingBox())!;
+      const panel = (await page.locator("div[data-crew-menu-panel]").boundingBox())!;
+      const heading = (await page.locator("div[data-crew-menu-panel] > p").boundingBox())!;
+      expect(panel.x + panel.width - (b.x + b.width), "the ✕ sits at the panel's right edge").toBeLessThanOrEqual(24);
+      expect(Math.abs(b.y + b.height / 2 - (heading.y + heading.height / 2)), "level with the heading").toBeLessThanOrEqual(2);
+
+      // Still the topmost thing at its own centre, and a real click there still shuts it.
+      const hit = await page.evaluate(
+        ({ x, y }) => !!document.elementFromPoint(x, y)?.closest("summary[aria-label='Open menu']"),
+        { x: b.x + b.width / 2, y: b.y + b.height / 2 },
+      );
+      expect(hit, "the close control must be the topmost thing at its own centre").toBe(true);
+      await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+      await expect(page.locator("details[open]")).toHaveCount(0);
+    });
+
     test("the page behind is INERT — its controls can't be operated", async ({ page }) => {
       // "it's grey but you can select anything when the draw is open". The backdrop blocks the
       // pointer, but focus does not care: the pay-period select still changed value.

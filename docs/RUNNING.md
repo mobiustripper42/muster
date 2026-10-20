@@ -74,6 +74,19 @@ A VSCode port-forward of 3000 works too. The app honors whatever host you arrive
 redirects are host-relative), so all three — `mill-dev`, a port-forward, `localhost` on the box —
 work without config.
 
+### One browser at a time
+**Test with one phone or browser connected to the dev server at a time.** Under `npm run dev`, a
+second browser opening a page can make the server push a full reload to every connected browser
+(the terminal logs `Fast Refresh had to perform a full reload`), with no file edited. A page
+reloaded mid-flow looks like a product bug: a phone booking landed back on `/book/checkout` instead
+of "You're booked!" this way, while the booking itself went through (operator, 2026-10-20). If a
+page jumps back with that line in the log, close the other browsers and repeat before filing it.
+
+`npm run dev` stays the test server. The production build (`VERCEL_ENV=preview npm start`) has no
+Fast Refresh, but over `http://mill-dev:3000` you can't sign in to it: under `NODE_ENV=production`
+the session cookie is `Secure` (`app/lib/auth.ts`), and a browser drops a `Secure` cookie on a plain
+`http://` page, so every code entry lands back on the sign-in screen.
+
 ## Seeing the crew app (it needs a sign-in code)
 The crew surfaces require a session, so you can't visit `/crew` cold — you sign in with a code:
 

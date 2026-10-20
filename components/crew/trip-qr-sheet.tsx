@@ -39,7 +39,7 @@ export function TripQrSheet({
       className="group open:before:fixed open:before:inset-0 open:before:z-30 open:before:bg-ink/40 open:before:content-['']"
     >
       <summary
-        className={`${big ? "btn-primary min-h-[120px] text-2xl" : "btn-secondary min-h-[52px] text-base"} relative z-50 flex w-full list-none items-center justify-center gap-2 font-semibold group-open:fixed group-open:bottom-4 group-open:left-1/2 group-open:w-[calc(100%-2rem)] group-open:max-w-[26rem] group-open:-translate-x-1/2 group-open:min-h-[52px] group-open:text-base [&::-webkit-details-marker]:hidden`}
+        className={`${big ? "btn-primary min-h-[120px] text-2xl" : "btn-secondary min-h-[52px] text-base"} relative group-open:z-50 flex w-full list-none items-center justify-center gap-2 font-semibold group-open:fixed group-open:bottom-4 group-open:left-1/2 group-open:w-[calc(100%-2rem)] group-open:max-w-[26rem] group-open:-translate-x-1/2 group-open:min-h-[52px] group-open:text-base [&::-webkit-details-marker]:hidden`}
       >
         <span className="group-open:hidden">{big ? "Show the QR to sign" : "QR · scan to sign"}</span>
         <span className="hidden group-open:inline">Done</span>
@@ -49,7 +49,7 @@ export function TripQrSheet({
         role="dialog"
         aria-modal="true"
         aria-label="Scan to sign"
-        className="fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md flex-col items-center gap-4 rounded-t-box bg-white px-6 pb-24 pt-6 text-center"
+        className="fixed inset-x-0 bottom-0 group-open:z-40 mx-auto flex max-w-md flex-col items-center gap-4 rounded-t-box bg-white px-6 pb-24 pt-6 text-center"
       >
         {url ? (
           <TripQr url={url} className="w-full max-w-[320px]" />

@@ -28,7 +28,7 @@ import { CrewMenuModal } from "./crew-menu-modal";
  *
  * 1. **No visible way to close it at 375px.** The panel is `w-64 max-w-[80vw]` pinned right, which
  *    covers the top-right corner where the summary lives — so the only control that could shut the
- *    drawer was underneath it. `group-open:z-50` lifts the summary above the panel and the icon
+ *    drawer was underneath it. `group-open:z-[120]` lifts the summary above the panel and the icon
  *    swaps to an ✕. **The e2e test did not catch this** because Playwright clicks an element by
  *    handle, not by screen position, so it happily "clicked" a covered control.
  * 2. **The page behind stayed operable.** The backdrop blocks the pointer, but focus does not care
@@ -62,24 +62,36 @@ export function CrewMenu({
   return (
     <details
       data-crew-menu
-      className="group relative justify-self-end group-open:before:content-[''] open:before:fixed open:before:inset-0 open:before:z-30 open:before:bg-ink/40 open:before:content-['']"
+      className="group relative justify-self-end group-open:before:content-[''] open:before:fixed open:before:inset-0 open:before:z-[100] open:before:bg-ink/40 open:before:content-['']"
     >
       {/* The backdrop is a `::before` on the DETAILS, not on the summary. It was on the summary
-          first, which broke the drawer outright once the summary needed `z-50` to sit above the
-          panel: `z-50` makes the summary a stacking context, so its `::before` can no longer paint
-          BELOW the z-40 panel however negative its z-index — it covered the panel and swallowed
+          first, which broke the drawer outright once the summary needed `z-[120]` to sit above the
+          panel: a z-index makes the summary a stacking context, so its `::before` can no longer paint
+          BELOW the z-[110] panel however negative its z-index — it covered the panel and swallowed
           every link in it. The details carries `position: relative` with `z-index: auto`, which is
-          not a stacking context, so z-30 here means what it says: over the page, under the panel.
+          not a stacking context, so z-[100] here means what it says: over the page, under the panel.
+
+          The 100–120 tier is the menu tier (issue #1163): an open menu is drawn above everything
+          else on the page, including the QR sheet's `z-50` summary, which painted over the drawer and
+          its backdrop when it claimed that layer while shut. `muster/z-index` keeps anything else out
+          of it; this file and `admin-nav.tsx` are its only claimants.
 
           `list-none` + the marker reset kills the default disclosure triangle in both engines. */}
       <summary
         aria-label="Open menu"
-        className="relative z-50 flex size-[44px] list-none items-center justify-center rounded-box text-ink [&::-webkit-details-marker]:hidden"
+        className="relative group-open:fixed group-open:right-4 group-open:top-[22px] group-open:z-[120] flex size-[44px] list-none items-center justify-center rounded-box text-ink [&::-webkit-details-marker]:hidden"
       >
-        {/* `group-open:z-50` puts the control ABOVE the panel. Without it, at 375px the panel
+        {/* `group-open:z-[120]` puts the control ABOVE the panel. Without it, at 375px the panel
             (w-64, max-w-[80vw]) covers the top-right corner and there is NO visible way to close
             the drawer — the bug the operator hit. The icon swaps to an ✕ so the control reads as
-            "close" once open, and both states share one 44px box so nothing shifts. */}
+            "close" once open, and both states share one 44px box so nothing shifts.
+
+            `group-open:fixed right-4 top-[22px]` pins the ✕ to the WINDOW's corner, where the panel
+            is. Shut, the summary sits in the header row inside the `max-w-md` page column; past
+            ~448px that column stops short of the window's edge and the ✕ landed mid-panel on the
+            "Muster" heading (operator, 2026-10-20). `top-[22px]` centres it on that heading's 44px
+            row (the panel's `pt-[22px]`, below). The grid keeps its 44px column, so nothing moves
+            when it leaves the flow. */}
         <svg
           width="22"
           height="22"
@@ -148,7 +160,7 @@ export function CrewMenu({
         // Do NOT try to confirm any of this in the e2e suite. Playwright's Chromium has a static
         // viewport with no collapsing toolbar and renders the drawer full-height either way — a
         // green test here would assert nothing and claim everything.
-        className="fixed right-0 top-0 z-40 flex h-dvh w-64 max-w-[80vw] flex-col gap-1 border-l border-line bg-card px-4 pb-4 pt-[22px] shadow-lg"
+        className="fixed right-0 top-0 z-[110] flex h-dvh w-64 max-w-[80vw] flex-col gap-1 border-l border-line bg-card px-4 pb-4 pt-[22px] shadow-lg"
       >
         {/* The heading comes to the ✕, not the other way round (#709). The ✕ IS the `<summary>`,
             which lives in the page header row OUTSIDE this panel and cannot move without giving

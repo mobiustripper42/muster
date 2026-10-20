@@ -141,6 +141,46 @@ const FAINT_TEXT_SELECTORS = [
   { selector: "TemplateElement[value.cooked=/(?<!disabled:)\\btext-faint\\b/]", message: FAINT_MESSAGE },
 ];
 
+const Z_INDEX_OVERLAY_MESSAGE =
+  "A z-index of 40–99 is an open overlay's, and a bare one is painted while the overlay is SHUT (issue #1163): the crew check-in QR summary sat at a bare `z-50` and painted over the open ☰ menu and its backdrop, the second of its kind after the calendar pane's pinned Close row. Gate it with `open:` or `group-open:` (`group-open:z-50`) so it claims the layer only while its overlay is open. A page pins at `z-30` and below. A genuine always-on layer (the dev/preview environment tell) takes an eslint-disable-next-line muster/z-index saying why.";
+const Z_INDEX_MENU_MESSAGE =
+  "`z-100` and up is the menu tier, and it belongs to the two nav menus' files alone (`components/crew/crew-menu.tsx`, `components/admin/admin-nav.tsx`) — gated or not (issue #1163). An open menu is drawn above every other layer on the page; a second claimant at that height is the next menu painted over by something that is not one. Use `group-open:z-50` and below for an overlay, or take an eslint-disable-next-line muster/z-index saying why this one outranks the menus.";
+
+/**
+ * Nothing claims an overlay's z-index while its overlay is shut (issue #1163). **Four selectors for
+ * two rules**, a class string being a `Literal` or a template element. Both match a whole token — a
+ * `(variant:)*z-<n>` run between whitespace, Tailwind's important `!` allowed before `z-` or after the value (`!z-50`, `z-50!`) — so `lg:z-50` is read as written and `has-[details[open]]:z-[100]`
+ * is a token whose variant merely mentions `open`.
+ *
+ * - 40–99 (`z-40`, `z-[60]`) is the overlay tier: reported unless some variant in the token is exactly
+ *   `open:` or `group-open:`.
+ * - 100 and up is the menu tier: reported whatever its variants, because the two menu files are the
+ *   only claimants and they are switched off by file (the `role-glyph.tsx` way).
+ *
+ * `z-30` and below is what a page pins and is never reported. A z-class assembled from a variable
+ * at runtime is invisible to a source-string rule; nothing builds one today.
+ */
+const Z_INDEX_SELECTORS = [
+  {
+    selector:
+      "Literal[value=/(?:^|\\s)(?:(?!(?:group-)?open:)[^\\s:]+:)*!?z-(?:[4-9]\\d|\\[[4-9]\\d\\])!?(?=\\s|$)/]",
+    message: Z_INDEX_OVERLAY_MESSAGE,
+  },
+  {
+    selector:
+      "TemplateElement[value.cooked=/(?:^|\\s)(?:(?!(?:group-)?open:)[^\\s:]+:)*!?z-(?:[4-9]\\d|\\[[4-9]\\d\\])!?(?=\\s|$)/]",
+    message: Z_INDEX_OVERLAY_MESSAGE,
+  },
+  {
+    selector: "Literal[value=/(?:^|\\s)(?:[^\\s:]+:)*!?z-(?:\\d{3,}|\\[\\d{3,}\\])!?(?=\\s|$)/]",
+    message: Z_INDEX_MENU_MESSAGE,
+  },
+  {
+    selector: "TemplateElement[value.cooked=/(?:^|\\s)(?:[^\\s:]+:)*!?z-(?:\\d{3,}|\\[\\d{3,}\\])!?(?=\\s|$)/]",
+    message: Z_INDEX_MENU_MESSAGE,
+  },
+];
+
 const RAW_SUBMIT_SELECTOR = {
   selector: "JSXAttribute[name.name='type'][value.value='submit']",
   message:
@@ -625,6 +665,7 @@ const APP_RULES = {
   "redirect-in-try": [REDIRECT_IN_TRY_SELECTOR],
   clock: [CLOCK_SELECTOR],
   "faint-text": FAINT_TEXT_SELECTORS,
+  "z-index": Z_INDEX_SELECTORS,
   "layout-only": LAYOUT_ONLY_SELECTORS,
 };
 // The two that read a class string whole, which a selector cannot (`classStringRule`).
@@ -1180,6 +1221,13 @@ export default tseslint.config(
     // and every other mark carries a `mark (issue #484)` disable where it is drawn.
     files: ["components/ui/role-glyph.tsx"],
     rules: { "muster/radius": "off" },
+  },
+  {
+    // The two nav menus own the menu tier, `z-[100]` and up (issue #1163): the crew ☰ drawer climbs
+    // to `z-[100]`–`z-[120]` and the admin `<nav>` rises to `z-[100]` while a menu in it is open.
+    // Their files are exempt from the z-index rule and nothing else in them goes quiet.
+    files: ["components/crew/crew-menu.tsx", "components/admin/admin-nav.tsx"],
+    rules: { "muster/z-index": "off" },
   },
   {
     // The framework-free domain core, and the scripts that drive it (#757).

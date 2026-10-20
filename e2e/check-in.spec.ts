@@ -47,6 +47,52 @@ const checkedIn = (page: Page) => page.locator("details", { has: page.locator("s
 const saved = (page: Page) =>
   page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname.includes("/check-in/"));
 
+// ── issue #1163: the ☰ menu draws above the QR button, and the QR sheet above the ☰ ──────────
+const crewMenu = (page: Page) => page.locator("details[data-crew-menu]");
+const crewMenuSummary = (page: Page) => page.locator("details[data-crew-menu] > summary");
+const qrSheet = (page: Page) => page.locator("details[data-qr-sheet]");
+const qrSummary = (page: Page) => page.locator("details[data-qr-sheet] > summary");
+
+/**
+ * The two points AC1 hit-tests on the QR button, both at its vertical centre: on the backdrop strip
+ * left of the menu panel, and under the panel. At 375px the 256px right-pinned panel covers the
+ * button's centre, which is why it takes two.
+ */
+async function qrPointsWithMenuOpen(page: Page): Promise<{ strip: { x: number; y: number }; underPanel: { x: number; y: number } }> {
+  const qr = (await qrSummary(page).boundingBox())!;
+  const panel = (await page.locator("div[data-crew-menu-panel]").boundingBox())!;
+  // The setup the AC describes, checked rather than assumed: the button starts left of the panel
+  // and runs under it.
+  expect(qr.x, "the QR button starts left of the panel").toBeLessThan(panel.x);
+  expect(qr.x + qr.width, "the QR button runs under the panel").toBeGreaterThan(panel.x);
+  const y = qr.y + qr.height / 2;
+  const underRight = Math.min(qr.x + qr.width, panel.x + panel.width);
+  return {
+    strip: { x: (qr.x + panel.x) / 2, y },
+    underPanel: { x: (panel.x + underRight) / 2, y },
+  };
+}
+
+/** What the page's own hit-test finds at a point — the element a real tap there would land on. */
+async function hitAt(page: Page, x: number, y: number) {
+  return page.evaluate(
+    ([px, py]) => {
+      const el = document.elementFromPoint(px, py);
+      const within = (sel: string) => !!el?.closest(sel);
+      return {
+        // The opening tag, for the failure message.
+        tag: el ? el.outerHTML.slice(0, el.outerHTML.indexOf(">") + 1).slice(0, 120) : "nothing",
+        inCrewMenu: within("details[data-crew-menu]"),
+        inCrewMenuPanel: within("div[data-crew-menu-panel]"),
+        inCrewMenuSummary: within("details[data-crew-menu] > summary"),
+        inQrSheet: within("details[data-qr-sheet]"),
+        inQrSummary: within("details[data-qr-sheet] > summary"),
+      };
+    },
+    [x, y] as const,
+  );
+}
+
 test.describe("crew check-in", () => {
   test.beforeEach(async ({ page }) => {
     await resetAndSeed("crew");
@@ -410,5 +456,67 @@ test.describe("crew check-in", () => {
       await page.locator("summary", { hasText: "QR · scan to sign" }).click();
       await expect(page.getByRole("img", { name: /^QR code for / })).toBeVisible();
     });
+
+    // Issue #1163. JS off, because hydrated `CrewMenuModal` makes the page behind `inert`, which
+    // hides the paint-order defect from `elementFromPoint` and from a tap alike — and a crew phone
+    // before hydration is exactly this page.
+
+    test("AC1a: with the ☰ menu open, the strip left of the panel over the QR button hit-tests as the menu's backdrop", async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name !== "mobile", "375px: the panel only covers the QR button at phone width");
+      await smiths();
+      await page.goto(PAGE);
+      await crewMenuSummary(page).click();
+      await expect(crewMenu(page)).toHaveAttribute("open", "");
+
+      const { strip } = await qrPointsWithMenuOpen(page);
+      const hit = await hitAt(page, strip.x, strip.y);
+      expect(hit.inQrSummary, `hit ${hit.tag}: the QR button paints over the backdrop`).toBe(false);
+      expect(hit.inCrewMenu, `hit ${hit.tag}: not the menu's backdrop`).toBe(true);
+    });
+
+    test("AC1b: with the ☰ menu open, the QR button under the panel hit-tests as the panel", async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name !== "mobile", "375px: the panel only covers the QR button at phone width");
+      await smiths();
+      await page.goto(PAGE);
+      await crewMenuSummary(page).click();
+      await expect(crewMenu(page)).toHaveAttribute("open", "");
+
+      const { underPanel } = await qrPointsWithMenuOpen(page);
+      const hit = await hitAt(page, underPanel.x, underPanel.y);
+      expect(hit.inQrSummary, `hit ${hit.tag}: the QR button paints over the panel`).toBe(false);
+      expect(hit.inCrewMenuPanel, `hit ${hit.tag}: not the menu's panel`).toBe(true);
+    });
+
+    test("AC1c: with the QR sheet open and the ☰ menu shut, the ☰ button hit-tests as the sheet's backdrop", async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name !== "mobile", "the AC is pinned at 375px");
+      await smiths();
+      await page.goto(PAGE);
+      await qrSummary(page).click();
+      await expect(qrSheet(page)).toHaveAttribute("open", "");
+      await expect(crewMenu(page)).not.toHaveAttribute("open", "");
+
+      const box = (await crewMenuSummary(page).boundingBox())!;
+      const hit = await hitAt(page, box.x + box.width / 2, box.y + box.height / 2);
+      expect(hit.inCrewMenuSummary, `hit ${hit.tag}: the ☰ button paints over the QR sheet`).toBe(false);
+      expect(hit.inQrSheet, `hit ${hit.tag}: not the QR sheet's backdrop`).toBe(true);
+    });
+  });
+
+  test("AC1a: hydrated, a real tap on the strip left of the panel closes the ☰ menu and leaves the QR sheet shut", async ({ page }, testInfo) => {
+    // A regression guard only: in Chromium this already passes, because the hydrated modal makes
+    // the page behind `inert`. A positional `page.mouse.click`, never a locator click — a locator
+    // click hits a covered control by handle (`components/crew/crew-menu.tsx`).
+    test.skip(testInfo.project.name !== "mobile", "375px: the panel only covers the QR button at phone width");
+    await smiths();
+    await page.goto(PAGE);
+    await expect(page.locator("details[data-crew-menu-ready]")).toBeAttached();
+    await expect(page.locator("details[data-qr-sheet-ready]")).toBeAttached();
+    await crewMenuSummary(page).click();
+    await expect(crewMenu(page)).toHaveAttribute("open", "");
+
+    const { strip } = await qrPointsWithMenuOpen(page);
+    await page.mouse.click(strip.x, strip.y);
+    await expect(crewMenu(page)).not.toHaveAttribute("open", "");
+    await expect(qrSheet(page)).not.toHaveAttribute("open", "");
   });
 });

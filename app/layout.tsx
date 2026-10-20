@@ -98,9 +98,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             The two conditions are mutually exclusive: Vercel sets NODE_ENV=production
             on both preview and prod builds, so `development` only matches local. */}
         {process.env.NODE_ENV === "development" && (
+          // eslint-disable-next-line muster/z-index -- the dev/preview tell paints over everything on purpose and takes no pointer events
           <div className="pointer-events-none fixed inset-x-0 top-0 z-[9999] h-1 bg-red-600" />
         )}
         {process.env.VERCEL_ENV === "preview" && (
+          // eslint-disable-next-line muster/z-index -- the dev/preview tell paints over everything on purpose and takes no pointer events
           <div className="pointer-events-none fixed inset-x-0 top-0 z-[9999] h-1 bg-yellow-400" />
         )}
         {children}

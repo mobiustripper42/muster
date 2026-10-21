@@ -54,6 +54,8 @@ const PHONE_TEXT = "text-[calc(1rem+1px)]";
  * two stand level on desktop (issue #1194).
  */
 export const FIELD_HEIGHT = "min-h-[44px] sm:min-h-0 sm:h-[calc(2rem+1px)]";
+/** A square at that height — an icon button (✕) beside a field. Derived, so it stays square. */
+export const FIELD_SQUARE = `${FIELD_HEIGHT} min-w-[44px] sm:min-w-0 sm:w-[calc(2rem+1px)] sm:px-0`;
 
 const LOOK = "rounded-box border border-line-strong bg-card text-ink placeholder:text-muted";
 const DENSITY: Record<FieldDensity, string> = {

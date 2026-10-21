@@ -9,7 +9,7 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { Swatch } from "../../../../components/ui/choice";
 import { Field } from "../../../../components/ui/field";
-import { FIELD_HEIGHT, Input, Select, Textarea } from "../../../../components/ui/input";
+import { FIELD_HEIGHT, FIELD_SQUARE, Input, Select, Textarea } from "../../../../components/ui/input";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
@@ -273,7 +273,7 @@ function CrewRows({
               disabled={shown.length === 1}
               formNoValidate
               // Square at both sizes: 44px on a phone, the field's 31px beside it on desktop (issue #1194).
-              className={`btn-secondary ${FIELD_HEIGHT} min-w-[44px] sm:w-[calc(2rem+1px)] sm:min-w-0 sm:px-0`}
+              className={`btn-secondary ${FIELD_SQUARE}`}
             >
               <span aria-hidden="true">✕</span>
               <span className="sr-only">Remove this role</span>

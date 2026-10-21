@@ -234,6 +234,39 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
     }
   });
 
+  /**
+   * Issue #1194, PR #1208 review: the punch forms' Add and Save end a row of In / Out fields, so
+   * they are buttons beside a field too — they stood 44px next to the 31px boxes on desktop.
+   */
+  async function punchButtons(page: import("@playwright/test").Page) {
+    await signInAsAdmin(page, "eric");
+    await page.goto("/admin/time-clock?day=2026-07-04");
+    await page.locator("#add-in").fill("09:00");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await page.waitForURL(/added=1/);
+    const save = page.getByRole("button", { name: "Save", exact: true }).first();
+    const rowIn = page.locator("form", { has: save }).locator('input[name="inTime"]');
+    return {
+      Add: { button: (await page.getByRole("button", { name: "Add", exact: true }).boundingBox())!, field: (await page.locator("#add-in").boundingBox())! },
+      Save: { button: (await save.boundingBox())!, field: (await rowIn.boundingBox())! },
+    };
+  }
+
+  test("AC10: on desktop the punch forms' Add and Save are the field's 31px and level with In", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "the desktop half; the 375px half runs on mobile");
+    for (const [name, { button, field }] of Object.entries(await punchButtons(page))) {
+      expect(button.height, `${name} height`).toBeCloseTo(31, 0);
+      expect(Math.abs(button.y + button.height - (field.y + field.height)), `${name} bottom level with In`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("AC10: at 375px the punch forms' Add and Save keep the 44px floor", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "the 375px half; the desktop half runs on desktop");
+    for (const [name, { button }] of Object.entries(await punchButtons(page))) {
+      expect(button.height, `${name} height`).toBeGreaterThanOrEqual(44);
+    }
+  });
+
   test("signed out, the page refuses rather than rendering", async ({ page }) => {
     await page.goto("/admin/time-clock");
     await expect(page.getByRole("heading", { name: "Time clock" })).toHaveCount(0);

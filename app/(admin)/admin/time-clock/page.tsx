@@ -455,7 +455,7 @@ function PunchCard({
         </Checkbox>
         {/* Disabled until something in this row actually changes — a column of live
             Save buttons on rows you're only reading is noise. */}
-        <DirtySubmit className="btn-primary min-h-[44px]">
+        <DirtySubmit className={`btn-primary ${FIELD_HEIGHT}`}>
           Save
         </DirtySubmit>
       </form>
@@ -564,7 +564,7 @@ function AddPunchForm({
         >
           Out is next day
         </Checkbox>
-        <SubmitButton className="btn-primary min-h-[44px]">
+        <SubmitButton className={`btn-primary ${FIELD_HEIGHT}`}>
           Add
         </SubmitButton>
       </Card>

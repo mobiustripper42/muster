@@ -373,6 +373,9 @@ function CodeStep({ email, err }: { email: string; err?: string }) {
             name="code"
             inputMode="numeric"
             autoComplete="one-time-code"
+            // Server-rendered, no JS: the cursor is in the box on arrival (issue #1194). iOS usually
+            // still waits for a tap to raise the keyboard; `one-time-code` is what offers the code.
+            autoFocus
             pattern="[0-9]*"
             maxLength={6}
             required

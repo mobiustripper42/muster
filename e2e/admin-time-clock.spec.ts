@@ -192,6 +192,48 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
     await expect(page.getByText(/· all crew/i)).toBeVisible();
   });
 
+  /**
+   * Issue #1194: the day view's ‹ › and Today set the 44px tap floor by hand, so on desktop they
+   * stood 44px beside the 31px Day field. From `sm:` up they take the field's height; a phone keeps
+   * 44px. A day that isn't today, so Today is there to measure.
+   */
+  async function dayNav(page: import("@playwright/test").Page) {
+    await signInAsAdmin(page, "eric");
+    await page.goto("/admin/time-clock?day=2026-07-04");
+    const field = page.locator("#day");
+    await expect(field).toBeVisible();
+    const box = async (name: string) =>
+      (await page.getByRole("link", { name, exact: true }).boundingBox())!;
+    return {
+      field: (await field.boundingBox())!,
+      controls: { "Previous day": await box("Previous day"), "Next day": await box("Next day"), Today: await box("Today") },
+    };
+  }
+
+  test("AC10: on desktop ‹ › and Today are the field's 31px and level with the Day field", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "the desktop half; the 375px half runs on mobile");
+    const { field, controls } = await dayNav(page);
+    expect(field.height, "the touch field's desktop height").toBeCloseTo(31, 0);
+    for (const [name, b] of Object.entries(controls)) {
+      expect(b.height, `${name} height`).toBeCloseTo(31, 0);
+      expect(Math.abs(b.y - field.y), `${name} top level with the field's`).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(b.y + b.height - (field.y + field.height)),
+        `${name} bottom level with the field's`,
+      ).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("AC10: at 375px ‹ › and Today keep the 44px floor", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "the 375px half; the desktop half runs on desktop");
+    const { controls } = await dayNav(page);
+    for (const [name, b] of Object.entries(controls)) {
+      expect(b.height, `${name} height`).toBeGreaterThanOrEqual(44);
+    }
+  });
+
   test("signed out, the page refuses rather than rendering", async ({ page }) => {
     await page.goto("/admin/time-clock");
     await expect(page.getByRole("heading", { name: "Time clock" })).toHaveCount(0);

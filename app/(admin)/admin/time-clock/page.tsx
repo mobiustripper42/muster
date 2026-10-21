@@ -31,7 +31,7 @@ import {
 } from "./actions";
 import { Checkbox } from "../../../../components/ui/choice";
 import { Field } from "../../../../components/ui/field";
-import { Input, Select } from "../../../../components/ui/input";
+import { FIELD_HEIGHT, Input, Select } from "../../../../components/ui/input";
 import { Card } from "../../../../components/ui/card";
 
 /**
@@ -244,7 +244,7 @@ export default async function AdminTimeClock({
             <AppLink
               href={`/admin/time-clock?day=${addDays(day, -1)}`}
               aria-label="Previous day"
-              className="btn-secondary min-h-[44px]"
+              className={`btn-secondary ${FIELD_HEIGHT}`}
             >
               ‹
             </AppLink>
@@ -262,14 +262,14 @@ export default async function AdminTimeClock({
             <AppLink
               href={`/admin/time-clock?day=${addDays(day, 1)}`}
               aria-label="Next day"
-              className="btn-secondary min-h-[44px]"
+              className={`btn-secondary ${FIELD_HEIGHT}`}
             >
               ›
             </AppLink>
             {day !== today && (
               <AppLink
                 href={`/admin/time-clock?day=${today}`}
-                className="min-h-[44px] px-2 py-2 text-sm text-accent underline"
+                className={`${FIELD_HEIGHT} px-2 py-2 text-sm text-accent underline sm:flex sm:items-center sm:py-0`}
               >
                 Today
               </AppLink>

@@ -203,7 +203,9 @@ export default defineConfig({
       // cookie `next dev` would have set (see `loadSavedSession`).
       name: "iphone",
       dependencies: ["setup"],
-      testMatch: /admin-nav\.spec\.ts/,
+      // field-text (issue #1194): the 16px-on-a-phone check, because the zoom it prevents is
+      // Safari's. Its desktop half runs on `desktop`; each test skips on the other project.
+      testMatch: /(admin-nav|field-text)\.spec\.ts/,
       ...DEV,
       use: { ...devices["iPhone 13"], ...DEV.use },
     },

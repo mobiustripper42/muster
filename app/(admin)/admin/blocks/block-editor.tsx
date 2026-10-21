@@ -144,9 +144,11 @@ export function BlockEditor({
           <input type="hidden" name="id" value={selected ? String(selected.id) : ""} />
           <input type="hidden" name="kind" value={choice} />
 
+          {/* Editing, the target is plain text, not a picker: its label names the group, not a field
+              that isn't there (issue #1194). */}
           {choice === "location" ? (
             <>
-              <Field className="my-2" label="Which location" htmlFor="blk-target">
+              <Field className="my-2" label="Which location" htmlFor={editing ? undefined : "blk-target"} group={editing}>
                 {editing ? (
                   <>
                     <input type="hidden" name="locationId" value={loc ? String(loc.locationId) : ""} />
@@ -200,7 +202,7 @@ export function BlockEditor({
             </>
           ) : (
             <>
-              <Field className="my-2" label="Which boat" htmlFor="blk-target">
+              <Field className="my-2" label="Which boat" htmlFor={editing ? undefined : "blk-target"} group={editing}>
                 {editing ? (
                   <>
                     <input type="hidden" name="vesselId" value={ves ? String(ves.vesselId) : ""} />

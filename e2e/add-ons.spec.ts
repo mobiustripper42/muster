@@ -88,4 +88,42 @@ test.describe("admin /admin/add-ons", () => {
     expect(height, "the label wraps to two lines at 375px").toBeGreaterThan(40);
     expect(radius, "corners, not round ends").toBeLessThan(height / 2);
   });
+
+  // Issue #1194 (folded in from issue #1193): an `AppLink` without `spinner` wraps its label in
+  // `NavLinkLabel`, which grew to fit the whole name, so the row's `truncate` had no edge to cut
+  // against and a long name ran out of the side-list card at 375px.
+  test("AC8: at 375px a 60-character name ends in … inside its side-list card", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "the 375px rendering runs on the mobile project");
+    const name = "Charcuterie and local cheese board for the whole party, too!";
+    expect(name).toHaveLength(60);
+    await signInAsAdmin(page, "eric");
+    await page.goto("/admin/add-ons?sel=new");
+    await page.fill('input[name="label"]', name);
+    await page.fill('input[name="amount"]', "45.00");
+    await page.getByRole("button", { name: "Create" }).click();
+    await page.waitForURL(/saved=1/);
+
+    const row = page.getByRole("link", { name });
+    await expect(row).toBeVisible();
+    const m = await row.evaluate((a, label) => {
+      const card = a.closest("nav")!;
+      // The name's own element: the deepest one whose text holds the name.
+      let el: Element = a;
+      for (;;) {
+        const inner = [...el.children].find((c) => c.textContent?.includes(label));
+        if (!inner) break;
+        el = inner;
+      }
+      return {
+        rowRight: a.getBoundingClientRect().right,
+        cardRight: card.getBoundingClientRect().right,
+        isName: el.textContent === label,
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      };
+    }, name);
+    expect(m.isName, "found the name's own element").toBe(true);
+    expect(m.rowRight, "the row's right edge is inside the card").toBeLessThanOrEqual(m.cardRight);
+    expect(m.scrollWidth, "the name is cut by its own box").toBeGreaterThan(m.clientWidth);
+  });
 });

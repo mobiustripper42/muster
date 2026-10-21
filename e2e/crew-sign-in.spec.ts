@@ -49,6 +49,19 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
     await expect(page.getByLabel(/enter your code/i)).toBeVisible();
   });
 
+  // Issue #1194: the cursor waits in the code box, so the person types the code without a tap
+  // first. Loaded fresh at `?stage=code` — the arrival, not the click that led there.
+  test("AC11: having asked for a code, /crew?stage=code loads with the code box focused", async ({ page }) => {
+    await page.goto("/crew");
+    await page.getByLabel(/sign in with your crew email/i).fill(QUINT_EMAIL);
+    await page.getByRole("button", { name: /email me a code/i }).click();
+    await expect(page.getByText(CODE_SENT)).toBeVisible();
+
+    await page.goto("/crew?stage=code");
+    await expect(page.getByLabel(/enter your code/i)).toBeVisible();
+    await expect(page.locator("#code")).toBeFocused();
+  });
+
   test("past the per-network limit, a crew email and a stranger's get the same wait message (18.3a)", async ({
     page,
   }) => {

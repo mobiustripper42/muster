@@ -13,10 +13,14 @@ import { join } from "./join";
  * near-white `--color-line` vanished inside a card, and the gray-fill "well" vanished outside one.
  *
  * **Two densities.**
- *   - `touch` (default) — 44px tap floor, 16px text. 16px is also the size below which iOS
- *     Safari zooms the page on focus, so a public form at 15px jumped every time it was tapped.
- *   - `dense` — 36px, 14px text, for admin filter bars and in-row edits where six controls
- *     share a line.
+ *   - `touch` (default) — 44px tap floor. Text is 16px below `sm:` and `text-base` (15px under
+ *     the 15px root, `app/globals.css`) from `sm:` up.
+ *   - `dense` — 36px, for admin filter bars and in-row edits where six controls share a line.
+ *     Text is 16px below `sm:` and `text-sm` (13.125px under the 15px root) from `sm:` up.
+ * 16px is the size below which iOS Safari zooms the page on focus, so a phone field at 15px
+ * jumped every time it was tapped (issue #1194). It is `calc(1rem + 1px)` because `text-base`
+ * is 15px here: in rem, so a raised browser font still scales it. It stops at `sm:` because the
+ * desktop boxes below were measured on the smaller text; an iPad wider than `sm:` still zooms.
  * Named `density` rather than `size` because `size` is already a native `<input>` attribute.
  *
  * **Desktop is one box (issue #1200).** From `sm:` up the tap floor goes and every field has the
@@ -42,15 +46,26 @@ import { join } from "./join";
  */
 export type FieldDensity = "touch" | "dense";
 
+/** 16px under the 15px root, below `sm:` only (issue #1194). */
+const PHONE_TEXT = "text-[calc(1rem+1px)]";
+/**
+ * The touch field's height: the 44px floor on a phone, the desktop box (31px) from `sm:` up.
+ * Written once — `DENSITY.touch` and the buttons that sit in a row beside a field wear it, so the
+ * two stand level on desktop (issue #1194).
+ */
+export const FIELD_HEIGHT = "min-h-[44px] sm:min-h-0 sm:h-[calc(2rem+1px)]";
+/** A square at that height — an icon button (✕) beside a field. Derived, so it stays square. */
+export const FIELD_SQUARE = `${FIELD_HEIGHT} min-w-[44px] sm:min-w-0 sm:w-[calc(2rem+1px)] sm:px-0`;
+
 const LOOK = "rounded-box border border-line-strong bg-card text-ink placeholder:text-muted";
 const DENSITY: Record<FieldDensity, string> = {
-  touch: "min-h-[44px] px-3 text-base sm:min-h-0 sm:h-[calc(2rem+1px)] sm:px-2 sm:leading-[normal]",
-  dense: "min-h-9 px-2 text-sm sm:min-h-0 sm:h-[calc(2rem-1px)] sm:px-2 sm:leading-[normal]",
+  touch: `${FIELD_HEIGHT} px-3 ${PHONE_TEXT} sm:text-base sm:px-2 sm:leading-[normal]`,
+  dense: `min-h-9 px-2 ${PHONE_TEXT} sm:min-h-0 sm:h-[calc(2rem-1px)] sm:text-sm sm:px-2 sm:leading-[normal]`,
 };
 // A textarea's height comes from `rows`, so it takes the padding and text size, not the floor.
 const TEXTAREA_DENSITY: Record<FieldDensity, string> = {
-  touch: "px-3 py-2 text-base sm:px-2 sm:py-1",
-  dense: "px-2 py-1.5 text-sm sm:px-2 sm:py-1",
+  touch: `px-3 py-2 ${PHONE_TEXT} sm:text-base sm:px-2 sm:py-1`,
+  dense: `px-2 py-1.5 ${PHONE_TEXT} sm:text-sm sm:px-2 sm:py-1`,
 };
 // The arrow is drawn on desktop so it can sit 9px in like the text; the browser's own is pinned
 // about 6px from the edge whatever the padding. `sm:pr-8` keeps long option text clear of it.

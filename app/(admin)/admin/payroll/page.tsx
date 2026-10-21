@@ -1,5 +1,5 @@
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
-import { Select } from "../../../../components/ui/input";
+import { FIELD_HEIGHT, Select } from "../../../../components/ui/input";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
@@ -127,7 +127,7 @@ export default async function AdminPayroll({
             })}
           </Select>
         </div>
-        <GetFormSubmit className="btn-primary min-h-[44px]">
+        <GetFormSubmit className={`btn-primary ${FIELD_HEIGHT}`}>
           View
         </GetFormSubmit>
       </Card>

@@ -9,7 +9,7 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { Swatch } from "../../../../components/ui/choice";
 import { Field } from "../../../../components/ui/field";
-import { Input, Select, Textarea } from "../../../../components/ui/input";
+import { FIELD_HEIGHT, FIELD_SQUARE, Input, Select, Textarea } from "../../../../components/ui/input";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
@@ -272,7 +272,8 @@ function CrewRows({
               value={`remove-crew-${i}`}
               disabled={shown.length === 1}
               formNoValidate
-              className="btn-secondary min-h-[44px] min-w-[44px]"
+              // Square at both sizes: 44px on a phone, the field's 31px beside it on desktop (issue #1194).
+              className={`btn-secondary ${FIELD_SQUARE}`}
             >
               <span aria-hidden="true">✕</span>
               <span className="sr-only">Remove this role</span>
@@ -285,7 +286,7 @@ function CrewRows({
           name="intent"
           value="add-crew"
           formNoValidate
-          className="btn-secondary min-h-[44px] self-start"
+          className={`btn-secondary ${FIELD_HEIGHT} self-start`}
         >
           + Add a role
         </SubmitButton>

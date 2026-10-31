@@ -24,7 +24,8 @@
       "$comment": "enum injected at validate time from docs/decisions/_config.json"
     },
     "status": {
-      "enum": ["active", "superseded", "withdrawn"]
+      "enum": ["draft", "active", "superseded", "withdrawn"],
+      "$comment": "`draft` until something is built on the decision: rewritten in place, never superseded. `active` from the pull request that first builds on it: a change of mind is then a new record that supersedes it."
     },
     "date": {
       "type": "string",

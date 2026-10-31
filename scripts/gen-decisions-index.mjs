@@ -165,6 +165,31 @@ export function parseFrontmatter(text) {
     const top = raw.match(/^(\w+): ?(.*)$/)
     if (top) {
       if (LISTS.has(top[1])) {
+        /**
+         * A VALUE ON THE LIST KEY'S OWN LINE WAS DROPPED. `CLAUDE.md` shows `supersedes: [DEC-<id>]`;
+         * the parser opened an empty list and ignored the rest, so the rewrite deleted the key and the
+         * gate blamed the successor. The flow form is read for `supersedes`, whose items are bare ids,
+         * and the writer turns it into block form. Anything else here is refused, never skipped.
+         */
+        const value = top[2].trim()
+        // An empty flow list is valid YAML for every list key, and parsed as empty before this
+        // branch existed; keep it that way.
+        if (value === '[]') {
+          meta[top[1]] = []
+          list = null
+          entry = null
+          continue
+        }
+        if (value) {
+          const flow = value.match(/^\[(.*)\]$/)
+          if (top[1] !== 'supersedes' || !flow) {
+            throw new Error(`\`${top[1]}: ${value}\` — write the list in block form, one \`  - \` item per line`)
+          }
+          meta[top[1]] = flow[1].split(',').map((s) => unquote(s.trim())).filter(Boolean)
+          list = null
+          entry = null
+          continue
+        }
         list = top[1]
         // Initialize ON OPEN rather than seeding every known list up front. `amends_spec`
         // keeps its seed below so an absent one still reads as `[]` — but an absent `claims`

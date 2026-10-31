@@ -7,7 +7,7 @@ SESSION
   /its-alive       start. opens the session file, reads context,
                    runs the drift + permission-policy checks,
                    recommends a task. waits for confirmation.
-  /build-task      3+ point task, spec in the issue. @test-writer
+  /build-task      behaviour task, spec in the issue. @test-writer
                    writes failing tests, @implementer makes them
                    pass, the Lead verifies and runs /kill-this.
                    running it approves the spec.

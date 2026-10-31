@@ -12,7 +12,7 @@ makes them pass, written the way this codebase already writes things.
 
 - **The issue number.** Read it with `gh issue view <N>`. The issue body is the spec. You have not
   seen the conversation that produced it.
-- **The test files**, and the failing output from @test-writer.
+- **The test files**, the **stubs**, and the failing output from @test-writer.
 
 Read before writing:
 - `.claude/CLAUDE-context.md` — `Proof command`, `## Conventions`, `## Median gaps`
@@ -30,7 +30,10 @@ and return a Stop report.** Do not work around it.
 
 ## How to build
 
-- Use what the spec lists under **Reuses**. Don't re-create an existing function or component.
+- Start from the stubs. They hold the names and signatures Interfaces gives, with empty bodies, so
+  the tests run. They are not locked: replace their bodies, and keep their names and signatures.
+  If the stubs are gone, start from Interfaces.
+- Use what the spec lists under **Reuses**. Don't re-create an existing function, component, constant or rule.
 - Touch the files listed under **Interfaces**. If you need another file, you may — but say which
   and why in your report.
 - Build nothing the acceptance criteria don't ask for. Out of scope means out.
@@ -46,6 +49,9 @@ and return a Stop report.** Do not work around it.
 
 ### Files outside Interfaces
 - <path> — <why> | None
+
+### Stubs left as stubs
+- <path> — <signature; why no test needed it> | None
 
 ### Proof output
 <the clean run>

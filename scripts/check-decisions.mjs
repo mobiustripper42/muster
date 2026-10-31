@@ -345,7 +345,8 @@ export function supersessionProblems(rewritten, seenIds) {
       } else {
         fail(d.path, `superseded_by ${d.superseded_by}, which has not been rewritten and so carries no status`)
       }
-    } else if (target.status !== 'active') {
+    } else if (target.status !== 'active' && target.status !== 'draft') {
+      // A draft is a live record too: the replacement for a built decision is usually not built yet.
       fail(d.path, `superseded_by ${d.superseded_by}, whose status is ${target.status} — point at the live record`)
     } else if (!(target.supersedes ?? []).includes(id)) {
       /**
@@ -372,6 +373,16 @@ export function supersessionProblems(rewritten, seenIds) {
         // Absent from the map AND absent from disk is a dangling claim. Absent from the map but
         // present on disk is frozen or legacy, and there is nothing to say about it from here.
         if (!seenIds.has(b)) fail(d.path, `supersedes ${b}, which has no decision file`)
+        continue
+      }
+      /**
+       * A DRAFT IS REWRITTEN, NOT SUPERSEDED. Nothing is built on it, so a chain over it records a
+       * history nobody needs. Reported on the new record, because the fix is to fold it back into
+       * the draft. A draft already flipped to `superseded` reads as a built decision from here,
+       * which is the limit of what frontmatter can tell.
+       */
+      if (target.status === 'draft') {
+        fail(d.path, `supersedes ${b}, but ${b} is a draft — edit it in place instead of superseding it`)
         continue
       }
       /**

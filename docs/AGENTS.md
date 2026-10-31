@@ -12,7 +12,7 @@ entry is an unclassified file, which is the state this workflow keeps finding de
 | Skill | When | What |
 |-------|------|------|
 | `/its-alive` | Session start | Open the per-session file on the orphan `sessions` branch, read context, run the drift and permission-policy checks, recommend a task |
-| `/build-task` | A 3+ point task that changes behaviour, spec in the issue | Readback by `@test-writer`, then failing tests, then `@implementer` until they pass; the Lead locks the tests by committing them first, runs the proof itself, then `/kill-this`. Running it approves the spec. The spec template, `task-spec.md`, ships in the skill's folder |
+| `/build-task` | A task that changes behaviour, spec in the issue | Readback by `@test-writer`, then failing tests, then `@implementer` until they pass; the Lead locks the tests by committing them first, runs the proof itself, then `/kill-this`. Running it approves the spec. The spec template, `task-spec.md`, ships in the skill's folder |
 | `/kill-this` | Per task | Build check, commit, `@code-review`, open the PR with `closes #<issue>`, append a `## Task <N>` block. Step 3.5 reads Blast-Radius Triggers and runs `/security-review` when the diff hits one |
 | `/save-this` | Between tasks, before `/clear` | Replace the session file's Next Steps with the next task, open PRs, standing rules (word for word), the parking lot (nothing dropped unless closed) and a carry-over for the next task; push the `sessions` branch. The cleared context reads it back at the spec step |
 | `/its-dead` | Session end, once | Stamp `ended:`, tally points, display wall clock, close the session file. No time math, no version bump |
@@ -38,7 +38,7 @@ entry is an unclassified file, which is the state this workflow keeps finding de
 | `@code-review` | Sonnet | After every commit, wired into `/kill-this` | Catch issues early. Advisory — flags, does not block |
 | `@pm` | Sonnet | Session start and end, via skills | Progress, timeline risk, scope cuts |
 | `@ui-reviewer` | Sonnet | After UI work, phase boundaries | Design quality against the project's design system, read from `.claude/ui-context.md` |
-| `@test-writer` | Opus | `/build-task`: readback, then tests | Reads the issue spec; reports what it leaves open, or writes failing tests named for each acceptance criterion. Never writes production code |
+| `@test-writer` | Opus | `/build-task`: readback, then tests | Reads the issue spec; reports what it leaves open, or writes failing tests named for each acceptance criterion, with empty stubs so each test fails on its own assertion. Writes stubs, never behaviour |
 | `@implementer` | Sonnet | `/build-task`, after the tests | The smallest change that makes the tests pass. May not edit them; stops and reports a test it believes is wrong |
 
 The three reviewers are `context` class: they arrive as install-time starting points and each

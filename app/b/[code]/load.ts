@@ -180,3 +180,31 @@ export async function loadBookingByCode(
     return { kind: "unknown" };
   }
 }
+
+/**
+ * The refund figure the cancelled-page notice prints (16.9, issue #1074): the `quotedCents` on the
+ * booking's customer `cancelled` trail row, which `cancelByCustomer` wrote with the figure it tried
+ * to refund. The notice never reads a figure from the URL — a forwarded link with a crafted amount
+ * must not print it — so with no such row (a booking the operator cancelled, a link someone typed)
+ * there is `null` and the page shows no notice.
+ *
+ * Read only when the page is opened at `?cancelled=1`. Best-effort: a failed read costs the notice,
+ * never the page.
+ */
+export async function loadCancelledFigure(booking: LoadedBooking): Promise<number | null> {
+  try {
+    const rows = await getRepo().listTrailEventsFor(
+      booking.reservation.id,
+      booking.reservation.paymentIntentIds ?? [],
+    );
+    // Oldest first; the latest such row is the cancel that stands.
+    for (const row of [...rows].reverse()) {
+      const cents = row.metadata.quotedCents;
+      if (row.type === "cancelled" && row.actorKind === "customer" && typeof cents === "number") return cents;
+    }
+    return null;
+  } catch (e) {
+    logSwallowed("b/[code]:cancelledFigure", e, "the cancelled notice's figure could not be read");
+    return null;
+  }
+}

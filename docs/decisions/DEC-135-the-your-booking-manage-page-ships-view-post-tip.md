@@ -3,7 +3,7 @@ schema: 1
 id: DEC-135
 title: "Cancelling is a request to the operator, not self-service"
 topic: "Reservations & payments"
-status: "active"
+status: "superseded"
 date: "2026-07-17"
 ruling: "A customer asking to cancel or change sends the operator a request rather than doing it themselves. The refund policy exists in code, but flex insurance is not attached to a booking, so nothing can tell which terms a customer bought."
 claims:
@@ -15,6 +15,7 @@ claims:
     target: "src/reservations/refund-terms.ts"
   - kind: "unverifiable"
     target: "no customer-facing cancel action exists under app/b/, and no reservation carries a flex flag"
+superseded_by: DEC-198
 revisit_if: "issue #683 makes flex insurance sellable, which is the last thing self-service cancel is missing"
 ---
 

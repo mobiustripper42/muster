@@ -12,16 +12,26 @@
  * implementation with every test still green.
  */
 import type { Page } from "@playwright/test";
+import { addDays } from "../src/config/tenant.js";
+import { formatShortDay } from "../src/reservations/availability-screen.js";
 import {
   test,
   expect,
+  bookingCodeFor,
   cancelReservationRow,
   eventIdOfReservation,
   moveEventDate,
   plantWaiverTemplate,
+  reservationIdFor,
   resetAndSeed,
 } from "./fixtures.js";
-import { BOOKED, demoBookingCode, demoRevokedBookingCode, demoReservationId } from "./reservation-demo.js";
+import {
+  BOOKED,
+  TODAY,
+  demoBookingCode,
+  demoRevokedBookingCode,
+  demoReservationId,
+} from "./reservation-demo.js";
 
 const RID = demoReservationId(BOOKED.date, BOOKED.time);
 const CODE = demoBookingCode(RID);
@@ -183,5 +193,158 @@ test.describe("public /b/<code>", () => {
     await page.getByRole("button", { name: "Send request" }).last().click();
     await page.waitForURL(/requested=cancel/);
     await expect(page.getByText(/sent your cancellation request/)).toBeVisible();
+  });
+});
+
+/**
+ * Self-service cancellation (16.9, issue #1074). The seeds, in the order the issue's hand pass runs
+ * them: `self-cancel` books Rhea Tallis 20 days out (Cancel offered, the $50 fee), Gil Moreau 5 days
+ * out (inside the window — the request form), and Pell Ostrander 20 days out and then cancelled by
+ * the customer, with a real `issued` refund on `FakePaymentPort`. `insurance` books Quint Harlan,
+ * paid and insured, 5 days out.
+ *
+ * **No case here presses Cancel booking.** The server loads `.env.local`, so on a box with Stripe
+ * test keys the press reaches test-mode Stripe and the outcome depends on the machine. The refund
+ * leg is unit-tested on `FakePaymentPort` in `src/reservations/customer-cancel.test.ts`.
+ */
+test.describe("self-service cancel on /b/<code> (16.9)", () => {
+  test.beforeEach(async () => {
+    await resetAndSeed("reservation", "insurance", "self-cancel");
+  });
+
+  const FIGURE = /\$[\d,]+\.\d{2}/;
+  const CONFIRM_LINE = "This can’t be undone.";
+  const cancelLink = (page: Page) => page.getByRole("link", { name: /Cancel booking/ });
+  /** The control for every "not offered" case: the same seed's 20-day booking IS offered. */
+  async function expectRheaOffered(page: Page): Promise<void> {
+    await page.goto(`/b/${await bookingCodeFor("Rhea Tallis")}`);
+    await expect(cancelLink(page)).toBeVisible();
+  }
+
+  test("AC13: the confirm for a 20-day uninsured booking reads the fee lines", async ({ page }) => {
+    const code = await bookingCodeFor("Rhea Tallis");
+    await page.goto(`/b/${code}?cancel=1`);
+
+    await expect(page.getByText(`Cancel your 3:30 PM trip on ${formatShortDay(addDays(TODAY, 20))}?`)).toBeVisible();
+    await expect(page.getByText(/You’ll get \$[\d,]+\.\d{2} back to your card\./)).toBeVisible();
+    await expect(page.getByText("That’s what you paid, less the $50 cancellation fee.")).toBeVisible();
+    await expect(page.getByText(CONFIRM_LINE)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cancel booking" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Keep it" })).toBeVisible();
+  });
+
+  test("AC13: the confirm for an insured booking reads the insurance lines", async ({ page }) => {
+    const code = await bookingCodeFor("Quint Harlan");
+    await page.goto(`/b/${code}?cancel=1`);
+
+    await expect(page.getByText(`Cancel your 5:30 PM trip on ${formatShortDay(addDays(TODAY, 5))}?`)).toBeVisible();
+    await expect(page.getByText(/You’ll get \$[\d,]+\.\d{2} back to your card\./)).toBeVisible();
+    await expect(page.getByText("That’s what you paid, less the $30 cancellation insurance.")).toBeVisible();
+    await expect(page.getByText("less the $50 cancellation fee")).toHaveCount(0);
+  });
+
+  test("AC13: Keep it changes nothing", async ({ page }) => {
+    const code = await bookingCodeFor("Rhea Tallis");
+    await page.goto(`/b/${code}?cancel=1`);
+    await expect(page.getByText(CONFIRM_LINE)).toBeVisible();
+
+    await page.getByRole("link", { name: "Keep it" }).click();
+    await page.waitForURL((url) => url.pathname === `/b/${code}` && url.search === "");
+
+    await expect(page.getByText(CONFIRM_LINE)).toHaveCount(0);
+    await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
+    await expect(cancelLink(page)).toBeVisible();
+  });
+
+  test("AC13: a booking inside its window shows the request form and no Cancel action", async ({ page }) => {
+    await expectRheaOffered(page);
+    const code = await bookingCodeFor("Gil Moreau");
+    await page.goto(`/b/${code}`);
+
+    await expect(page.getByText("Request cancellation")).toBeVisible();
+    await expect(cancelLink(page)).toHaveCount(0);
+  });
+
+  test("AC3: ?cancel=1 on a booking inside its window shows no confirm; the request form stays", async ({ page }) => {
+    await expectRheaOffered(page);
+    const code = await bookingCodeFor("Gil Moreau");
+    await page.goto(`/b/${code}?cancel=1`);
+
+    await expect(page.getByText("Request cancellation")).toBeVisible();
+    await expect(page.getByText(CONFIRM_LINE)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Cancel booking" })).toHaveCount(0);
+  });
+
+  test("AC13: a departed booking shows no Cancel action", async ({ page }) => {
+    await expectRheaOffered(page);
+    const code = await bookingCodeFor("Rhea Tallis");
+    await moveEventDate(await eventIdOfReservation(await reservationIdFor("Rhea Tallis")), "2026-01-02");
+
+    await page.goto(`/b/${code}`);
+    await expect(page.getByText("Your booking", { exact: true })).toBeVisible();
+    await expect(cancelLink(page)).toHaveCount(0);
+    await page.goto(`/b/${code}?cancel=1`);
+    await expect(page.getByText(CONFIRM_LINE)).toHaveCount(0);
+  });
+
+  test("AC13: an already-cancelled booking at ?cancelled=1&refund=issued shows the issued notice with its trail figure", async ({
+    page,
+  }) => {
+    const code = await bookingCodeFor("Pell Ostrander");
+    await page.goto(`/b/${code}?cancelled=1&refund=issued`);
+
+    await expect(page.getByText("Cancelled", { exact: true })).toBeVisible();
+    const notice = page.getByText(/Your booking is cancelled\.\s*\$[\d,]+\.\d{2} is on its way back to your card\./);
+    await expect(notice).toBeVisible();
+    // The figure is the trail row's — the one the refund actually took, which the Refunded row shows.
+    const figure = FIGURE.exec((await notice.textContent()) ?? "")?.[0];
+    expect(figure).toBeDefined();
+    await expect(page.getByText(`−${figure}`, { exact: true })).toBeVisible();
+  });
+
+  test("AC8: ?cancelled=1&refund=failed shows the failed notice with the trail figure", async ({ page }) => {
+    const code = await bookingCodeFor("Pell Ostrander");
+    await page.goto(`/b/${code}?cancelled=1&refund=failed`);
+
+    const notice = page.getByText(/Your booking is cancelled, but your \$[\d,]+\.\d{2} refund didn’t go through yet\./);
+    await expect(notice).toBeVisible();
+    await expect(page.getByText("Our team has been told and will send it.", { exact: false })).toBeVisible();
+    const figure = FIGURE.exec((await notice.textContent()) ?? "")?.[0];
+    await expect(page.getByText(`−${figure}`, { exact: true })).toBeVisible();
+  });
+
+  test("AC10: with no customer cancelled row, ?cancelled=1 shows no notice — the URL carries no figure", async ({ page }) => {
+    const code = await bookingCodeFor("Gil Moreau");
+    await page.goto(`/b/${code}?cancelled=1&refund=issued&amount=99999`);
+
+    await expect(page.getByText("Your booking", { exact: true })).toBeVisible();
+    await expect(page.getByText(/is on its way back to your card/)).toHaveCount(0);
+    await expect(page.getByText("$999.99")).toHaveCount(0);
+  });
+
+  test("AC6: cancel_changed re-opens the confirm under its notice", async ({ page }) => {
+    const code = await bookingCodeFor("Rhea Tallis");
+    await page.goto(`/b/${code}?cancel=1&error=cancel_changed`);
+
+    await expect(page.getByText(/The refund changed since you opened this\./)).toBeVisible();
+    await expect(page.getByText(/nothing has been cancelled/)).toBeVisible();
+    await expect(page.getByText(CONFIRM_LINE)).toBeVisible();
+  });
+
+  test("AC6: cancel_closed renders the request form under its notice", async ({ page }) => {
+    const code = await bookingCodeFor("Gil Moreau");
+    await page.goto(`/b/${code}?error=cancel_closed`);
+
+    await expect(page.getByText(/It’s too close to your trip to cancel online now\./)).toBeVisible();
+    await expect(page.getByText("Request cancellation")).toBeVisible();
+    await expect(cancelLink(page)).toHaveCount(0);
+  });
+
+  test("AC6: cancel_failed says nothing changed", async ({ page }) => {
+    const code = await bookingCodeFor("Rhea Tallis");
+    await page.goto(`/b/${code}?error=cancel_failed`);
+
+    await expect(page.getByText(/Couldn’t cancel just now\./)).toBeVisible();
+    await expect(page.getByText(/Nothing changed — try again in a moment\./)).toBeVisible();
   });
 });

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { bookingChangeRequestEmail, customerCancelledUnpaidEmail } from "./booking-change-request.js";
+import {
+  bookingChangeRequestEmail,
+  customerCancelledEmail,
+  customerCancelledUnpaidEmail,
+} from "./booking-change-request.js";
+import { formatCents } from "./calendar-detail.js";
 
 describe("bookingChangeRequestEmail", () => {
   const base = {
@@ -60,5 +65,29 @@ describe("customerCancelledUnpaidEmail — the customer cancelled from the payme
     expect(mail.text).toContain("Contact: +12165550199");
     expect(mail.text).toContain("Open the booking: https://app.example.com/admin/calendar/resv-1");
     expect(mail.text).not.toContain("requested");
+  });
+});
+
+describe("customerCancelledEmail — the customer cancelled a paid booking from the manage page (16.9)", () => {
+  const base = {
+    reservationId: "resv-1",
+    customerName: "Rhea Tallis",
+    tripLabel: "Wed, Oct 21 · 3:30 PM · Reservation Demo Cruise",
+    phone: "216-555-1074",
+    paneUrl: "https://app.example.com/admin/calendar/resv-1",
+  };
+
+  it("AC11: an issued refund states the figure refunded and links the booking's pane", () => {
+    const mail = customerCancelledEmail({ ...base, refund: { kind: "issued", cents: 41240 } });
+    expect(mail.text).toContain(formatCents(41240));
+    expect(mail.text).toContain(base.paneUrl);
+    expect(mail.text).not.toContain("did not go through");
+  });
+
+  it("AC11: a failed refund says the figure did not go through and links the booking's pane", () => {
+    const mail = customerCancelledEmail({ ...base, refund: { kind: "failed", cents: 41240, movedCents: 0 } });
+    expect(mail.text).toContain(formatCents(41240));
+    expect(mail.text).toContain("did not go through");
+    expect(mail.text).toContain(base.paneUrl);
   });
 });

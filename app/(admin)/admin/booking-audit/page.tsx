@@ -14,7 +14,7 @@ import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
-import { Select } from "../../../../components/ui/input";
+import { FIELD_HEIGHT, Select } from "../../../../components/ui/input";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { TrailRow } from "../../../../components/admin/trail-row";
@@ -157,13 +157,13 @@ function FilterForm({ sp }: { sp: Search }) {
           ))}
         </Select>
       </div>
-      <GetFormSubmit className="btn-primary min-h-[44px]">
+      <GetFormSubmit className={`btn-primary ${FIELD_HEIGHT}`}>
         Filter
       </GetFormSubmit>
       {(sp.type || sp.actor) && (
         <AppLink
           href="/admin/booking-audit"
-          className="min-h-[44px] self-end px-2 py-2 text-sm text-muted underline"
+          className={`${FIELD_HEIGHT} self-end px-2 py-2 text-sm text-muted underline sm:flex sm:items-center sm:py-0`}
         >
           Clear
         </AppLink>

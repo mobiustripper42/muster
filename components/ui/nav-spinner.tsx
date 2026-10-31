@@ -11,13 +11,16 @@ import { useHeld } from "./use-held";
  * not appending — means **no layout shift**: the link doesn't grow and its siblings
  * don't move (the bug an appended spinner caused). Matches `<SubmitButton>`'s in-
  * button spinner. currentColor, held for a minimum beat. Used by `<AppLink>` inline.
+ *
+ * `max-w-full` on the wrapper and `min-w-0` on the label give a `truncate` child an edge to cut
+ * against, so a long name ends in "…" inside its card instead of overflowing it (issue #1194).
  */
 export function NavLinkLabel({ children }: { children: ReactNode }) {
   const { pending } = useLinkStatus();
   const showing = useHeld(pending);
   return (
-    <span className="relative inline-flex items-center">
-      <span className={showing ? "opacity-0" : undefined}>{children}</span>
+    <span className="relative inline-flex max-w-full items-center">
+      <span className={showing ? "min-w-0 opacity-0" : "min-w-0"}>{children}</span>
       {showing && (
         <span
           role="status"

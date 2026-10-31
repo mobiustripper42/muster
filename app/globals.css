@@ -225,7 +225,9 @@ body {
  * `muster/button-kind` does not name them (issue #484, part C):
  *
  *   btn-icon       a 30px square holding one glyph — the booking flow's ‹ › arrows; faded when
- *                  `aria-disabled="true"`
+ *                  `aria-disabled="true"`. Its tap area is 44px: a transparent `::before` reaches
+ *                  7px past the face on every side, so two side by side need 14px between them
+ *                  (issue #1194)
  *   btn-add        dashed, accent text — "+ Add …", "+ New …": makes a new one
  *
  * Every boxed control here wears the control edge, `--color-line-strong`; `muster/control-edge`
@@ -304,6 +306,7 @@ body {
   /* A link-button that cannot be pressed yet (`aria-disabled`, e.g. Continue before a slot is
    * picked) fades like a disabled <button>; the base layer already gives it "not allowed". */
   .btn-icon {
+    position: relative;
     display: inline-flex;
     flex: none;
     align-items: center;
@@ -314,6 +317,13 @@ body {
     border-radius: var(--radius-box);
     background: var(--color-card);
     color: var(--color-muted);
+  }
+  /* The face stays 30px and the tap area is 44px: 7px past the border box on every side. An
+   * absolute box is placed from the PADDING box, 1px inside the border, so the inset is -8px. */
+  .btn-icon::before {
+    content: "";
+    position: absolute;
+    inset: -8px;
   }
   .btn-add {
     display: inline-flex;

@@ -27,8 +27,17 @@
  *
  * Runs desktop + 375px (registered in the mobile testMatch): the one screen, two native layouts.
  */
-import { test, expect, resetAndSeed, clickHydrated, plantPendingReservation, plantVesselBlock } from "./fixtures.js";
-import { BOOKED, DEMO, DEMO_MONTH_LABEL, TODAY_MONTH_LABEL } from "./reservation-demo.js";
+import type { Locator, Page } from "@playwright/test";
+import {
+  test,
+  expect,
+  resetAndSeed,
+  clickHydrated,
+  plantPendingReservation,
+  plantVesselBlock,
+  signInAsAdmin,
+} from "./fixtures.js";
+import { BOOKED, DEMO, DEMO_MONTH_LABEL, OPEN_TIME, TODAY_MONTH_LABEL } from "./reservation-demo.js";
 
 /** The fixture's sole live offering — the one `/book` opens straight into. */
 const DEMO_OFFERING = "offering-reservation-demo";
@@ -300,4 +309,154 @@ test.describe("public /book availability", () => {
     const after = await page.evaluate(() => window.scrollY);
     expect(after, "navigation scrolled back to the top").toBeGreaterThan(0);
   });
+
+  // ── The arrows' tap area (issue #1194) ─────────────────────────────────────────────────────────
+  // The booking flow's ‹ › are 30px faces (`.btn-icon`), under the 44px floor the rest of the app
+  // holds for anything tapped on a phone. The face stays 30px; the tap area grows to 44px, 7px past
+  // each edge. A hit 6px outside the face is inside that and outside the old one.
+
+  test("AC5: at 375px /book's back ‹ and month ‹ › keep a 30px face and take a tap 6px outside it", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "the 375px rendering runs on the mobile project");
+    // The back ‹ renders only with two live offerings (`book/page.tsx`), so make the second the
+    // way the operator would, as `e2e/add-ons.spec.ts` does.
+    await addSecondLiveOffering(page);
+    await page.goto("/book?offering=offering-reservation-demo");
+    // Page forward one month so the month ‹ is live rather than the faded span.
+    const before = page.url();
+    await page.getByRole("link", { name: "Next month" }).click();
+    await page.waitForURL((u) => u.toString() !== before);
+
+    for (const name of ["Back to cruises", "Previous month", "Next month"]) {
+      await expectFaceAndTapArea(page.getByRole("link", { name, exact: true }), name);
+    }
+  });
+
+  test("AC5: at 375px /book/checkout's back ‹ keeps a 30px face and takes a tap 6px outside it", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "the 375px rendering runs on the mobile project");
+    await page.goto(`/book/checkout?offering=offering-reservation-demo&date=${BOOKED.date}&time=${OPEN_TIME}&guests=2`);
+    await expectFaceAndTapArea(page.getByRole("link", { name: "Back to date & time" }), "Back to date & time");
+  });
+
+  test("AC6: at 375px the month ‹ and › tap areas don't overlap, with and without a previous month", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "the 375px rendering runs on the mobile project");
+    const next = page.getByRole("link", { name: "Next month" });
+
+    // Today's month: nothing to page back to, so the ‹ is the faded span.
+    await page.goto("/book");
+    const inactive = page.locator('span[aria-disabled="true"]', { hasText: "‹" });
+    await expect(inactive).toHaveCount(1);
+    expect((await hitsAround(next)).left, "6px left of › lands on ›").toBe(true);
+    expect((await hitsAround(inactive)).right, "6px right of the faded ‹ lands on it").toBe(true);
+
+    // A later month: both live.
+    const before = page.url();
+    await next.click();
+    await page.waitForURL((u) => u.toString() !== before);
+    expect((await hitsAround(next)).left, "6px left of › lands on ›").toBe(true);
+    expect(
+      (await hitsAround(page.getByRole("link", { name: "Previous month" }))).right,
+      "6px right of ‹ lands on ‹",
+    ).toBe(true);
+  });
+
+  test("AC7: at 375px the calendar header row fits the calendar and the month label is not clipped", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "the 375px rendering runs on the mobile project");
+    await page.goto("/book");
+    await expectHeaderFits(page);
+    const before = page.url();
+    await page.getByRole("link", { name: "Next month" }).click();
+    await page.waitForURL((u) => u.toString() !== before);
+    await expectHeaderFits(page);
+  });
 });
+
+/** Make a second LIVE offering through `/admin/offerings?sel=new`, on the seed's dock and Brew 3. */
+async function addSecondLiveOffering(page: Page): Promise<void> {
+  await signInAsAdmin(page, "eric");
+  await page.goto("/admin/offerings?sel=new");
+  await page.locator('input[name="status"][value="live"]').check({ force: true });
+  await page.fill('input[name="name"]', "Second Cruise");
+  await page.selectOption('select[name="locationId"]', { label: "Reservation Demo Dock" });
+  await page.locator(`input[name="vesselIds"][value="${DEMO.vesselId}"]`).check({ force: true });
+  await page.fill('input[name="seasonStart"]', DEMO.season.start);
+  await page.fill('input[name="seasonEnd"]', DEMO.season.end);
+  await page.locator('input[name="weekday"][value="5"]').check({ force: true });
+  await page.fill('input[name="basePrice"]', "499.00");
+  await page.fill('input[name="extraGuestPrice"]', "40.00");
+  await page.getByRole("button", { name: "Create" }).click();
+  await page.waitForURL(/saved=1/);
+}
+
+/**
+ * For each side of a control's face, whether a hit 6px outside it lands on the control (or inside
+ * it). `elementFromPoint`, like `e2e/crew-header.spec.ts`'s drawer tests: what a thumb would hit,
+ * paint order included.
+ */
+async function hitsAround(control: Locator): Promise<Record<"left" | "right" | "top" | "bottom", boolean>> {
+  await control.scrollIntoViewIfNeeded();
+  return control.evaluate((el) => {
+    const d = 6;
+    const r = el.getBoundingClientRect();
+    const midX = r.left + r.width / 2;
+    const midY = r.top + r.height / 2;
+    const on = (x: number, y: number) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit !== null && el.contains(hit);
+    };
+    return {
+      left: on(r.left - d, midY),
+      right: on(r.right + d, midY),
+      top: on(midX, r.top - d),
+      bottom: on(midX, r.bottom + d),
+    };
+  });
+}
+
+async function expectFaceAndTapArea(arrow: Locator, name: string): Promise<void> {
+  await expect(arrow, `${name} is on the page`).toBeVisible();
+  const face = (await arrow.boundingBox())!;
+  expect(face.width, `${name}: face width`).toBeCloseTo(30, 0);
+  expect(face.height, `${name}: face height`).toBeCloseTo(30, 0);
+  expect(await hitsAround(arrow), `${name}: a tap 6px outside each side lands on it`).toEqual({
+    left: true,
+    right: true,
+    top: true,
+    bottom: true,
+  });
+}
+
+/** The month label and both arrows sit inside the calendar's width, and the label shows whole. */
+async function expectHeaderFits(page: Page): Promise<void> {
+  const next = page.getByRole("link", { name: "Next month" });
+  await expect(next).toBeVisible();
+  const m = await next.evaluate((a) => {
+    const row = a.parentElement!;
+    const calendar = row.parentElement!.getBoundingClientRect();
+    const label = row.querySelector("b")!;
+    const parts = [...row.children]
+      .filter((c) => c.textContent?.trim())
+      .map((c) => {
+        const r = c.getBoundingClientRect();
+        return { text: c.textContent!.trim(), left: r.left, right: r.right };
+      });
+    return {
+      calendar: { left: calendar.left, right: calendar.right },
+      parts,
+      label: { text: label.textContent, scrollWidth: label.scrollWidth, clientWidth: label.clientWidth },
+    };
+  });
+  expect(m.parts.map((p) => p.text), "the row is the month label, ‹ and ›").toEqual([m.label.text, "‹", "›"]);
+  for (const p of m.parts) {
+    expect(p.left, `${p.text} starts inside the calendar`).toBeGreaterThanOrEqual(m.calendar.left - 0.5);
+    expect(p.right, `${p.text} ends inside the calendar`).toBeLessThanOrEqual(m.calendar.right + 0.5);
+  }
+  expect(m.label.scrollWidth, "the month label is not clipped").toBeLessThanOrEqual(m.label.clientWidth);
+}

@@ -343,7 +343,8 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
               {/* calendar */}
               <div>
                 <div className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Pick a date</div>
-                <div className="mb-2 flex items-center gap-2">
+                {/* 14px between the arrows: each has a 44px tap area (`.btn-icon`), 7px past its 30px face (issue #1194). */}
+                <div className="mb-2 flex items-center gap-[14px]">
                   <b className="text-sm font-semibold">{calendar.label}</b>
                   <span className="flex-1" />
                   {canPrev ? (

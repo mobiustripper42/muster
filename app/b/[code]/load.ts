@@ -17,8 +17,8 @@
 import type { Event, Gratuity, Location, Offering, Payment, Reservation, Seat, Vessel } from "@core/domain/entities.js";
 import { deriveVirtualAvailability } from "@core/reservations/availability.js";
 import { bookingCodeRefusal, normalizeBookingCode, type BookingCodeRefusal } from "@core/reservations/booking-code.js";
-import { liveBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { shiftForEvent } from "@core/reservations/calendar-detail.js";
+import { cancelledNoticeFrom } from "@core/reservations/customer-cancel.js";
 import { getRepo } from "../../lib/repo";
 import { logSwallowed } from "../../lib/swallowed";
 
@@ -33,8 +33,8 @@ export interface LoadedBooking {
   shift: { shift: import("@core/domain/entities.js").Shift; seats: readonly Seat[] } | undefined;
   taxRateBps: number;
   /** The same contact's OTHER reservations (DEC-122 bearer-token loosening — one link surfaces
-   *  the contact's trips), each with its own manage link. Empty when the reservation has no
-   *  `customerId`. Computed from the already-loaded lists — no extra reads. */
+   *  the contact's trips), listed and never linked (DEC-198, issue #1213). Empty when the
+   *  reservation has no `customerId`. Computed from the already-loaded lists — no extra reads. */
   pastTrips: PastTrip[];
 }
 
@@ -43,9 +43,6 @@ export interface PastTrip {
   date: string;
   time: string;
   status: Reservation["status"];
-  /** This trip's own `/b/<code>` href. ABSENT when that booking has no live code — an imported
-   *  or pre-#741 booking. The row still renders, just not as a link. */
-  href?: string;
 }
 
 /** What the presented code resolved to. */
@@ -123,11 +120,9 @@ export async function loadBookingByCode(
     // The contact's other trips — filtered from the already-loaded reservations + events, newest
     // first (DEC-122's bearer-token loosening: one link surfaces the contact's trips).
     //
-    // Each row's href needs THAT booking's own live code, which the HMAC scheme could derive for
-    // free and a stored code cannot. So this reads one code list per other trip — bounded by how
-    // many trips one contact has — and **mints nothing**: a page render is a GET, and minting
-    // here would create credentials on prefetch. A trip with no live code renders unlinked
-    // rather than as a link that fails, which is why `href` is optional.
+    // Rows only, never links: a row's link would be THAT booking's own live code, so one booking's
+    // code would open every booking of the same contact (DEC-198, issue #1213). This resolves no other
+    // booking's code, so none reaches the page or its server-component data.
     const eventById = new Map(allEvents.map((e) => [String(e.id), e]));
     const otherTrips = reservation.customerId
       ? allReservations
@@ -141,18 +136,12 @@ export async function loadBookingByCode(
           .filter((row): row is { x: Reservation; evt: Event } => row.evt !== undefined)
           .sort((a, b) => `${b.evt.date}${b.evt.time}`.localeCompare(`${a.evt.date}${a.evt.time}`))
       : [];
-    const pastTrips: PastTrip[] = await Promise.all(
-      otherTrips.map(async ({ x, evt }) => {
-        const live = await liveBookingCode(repo, x.id, now);
-        return {
-          reservationId: String(x.id),
-          date: evt.date,
-          time: evt.time,
-          status: x.status,
-          ...(live ? { href: `/b/${live}` } : {}),
-        };
-      }),
-    );
+    const pastTrips: PastTrip[] = otherTrips.map(({ x, evt }) => ({
+      reservationId: String(x.id),
+      date: evt.date,
+      time: evt.time,
+      status: x.status,
+    }));
 
     return {
       kind: "ok",
@@ -178,5 +167,29 @@ export async function loadBookingByCode(
     // surface is indistinguishable from someone mistyping a link.
     logSwallowed("b/[code]", e, "the booking read failed and was rendered to the customer as an unknown code");
     return { kind: "unknown" };
+  }
+}
+
+/**
+ * The cancelled-page notice (16.9, issue #1074): which one shows and its figure, from the booking's
+ * trail via `cancelledNoticeFrom`. The notice never reads either from the URL — a forwarded link with
+ * a crafted amount or outcome must not print it — so with no customer `cancelled` row (a booking the
+ * operator cancelled, a link someone typed) there is `null` and the page shows no notice.
+ *
+ * Read only when the page is opened at `?cancelled=1`. Best-effort: a failed read costs the notice,
+ * never the page.
+ */
+export async function loadCancelledFigure(
+  booking: LoadedBooking,
+): Promise<ReturnType<typeof cancelledNoticeFrom>> {
+  try {
+    const rows = await getRepo().listTrailEventsFor(
+      booking.reservation.id,
+      booking.reservation.paymentIntentIds ?? [],
+    );
+    return cancelledNoticeFrom(rows);
+  } catch (e) {
+    logSwallowed("b/[code]:cancelledFigure", e, "the cancelled notice could not be read");
+    return null;
   }
 }

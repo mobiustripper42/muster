@@ -6,8 +6,9 @@
  *
  * Re-expresses the "Your booking" mockup in Muster tokens (DEC-021). Customer-facing rules the
  * mockup settled (2026-07-17): the BOAT is never named (crew are, once assigned); "Message us"
- * reaches the operator, never crew. Cancel/change are option (b) — a request emailed to the
- * operator; self-service cancel/refund is deferred (#472 + Flex wiring). Deferred here and
+ * reaches the operator, never crew. A date/time change is a request emailed to the operator. A
+ * cancel the published terms refund is the customer's own action (16.9, issue #1074, `?cancel=1` →
+ * a two-step confirm); inside the window, or at a $0 refund, it stays a request. Deferred here and
  * flagged: crew NAMES (view model gives counts), the guest waiver roster (no per-attendee
  * roster, DEC-110), leave-a-review, email-receipt.
  */
@@ -17,7 +18,8 @@ import type { EventId } from "@core/domain/ids.js";
 import { formatCents } from "@core/reservations/calendar-detail.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
 import { buildManageView } from "@core/reservations/manage-view.js";
-import { cancellationTerms } from "@core/reservations/refund-terms.js";
+import { customerCancelQuote, manageHref, type CustomerCancelQuote } from "@core/reservations/customer-cancel.js";
+import { cancellationTerms, dollars } from "@core/reservations/refund-terms.js";
 import { hasFlex } from "@core/reservations/booking-invoice.js";
 import { flexChargedCents } from "@core/reservations/discount.js";
 import { AppLink } from "../../../components/ui/app-link";
@@ -26,17 +28,33 @@ import { Badge } from "../../../components/ui/badge";
 import { SubmitButton } from "../../../components/ui/submit-button";
 import { getRepo } from "../../lib/repo";
 import { logSwallowed } from "../../lib/swallowed";
-import { requestBookingChange } from "./actions";
-import { loadBookingByCode } from "./load";
+import { cancelFromManagePage, requestBookingChange } from "./actions";
+import { loadBookingByCode, loadCancelledFigure } from "./load";
 import { Textarea } from "../../../components/ui/input";
 import { Card, Well } from "../../../components/ui/card";
 
 export const dynamic = "force-dynamic";
 
-type Search = { requested?: string; error?: string };
+type Search = { requested?: string; error?: string; cancel?: string; cancelled?: string };
 
-const ERROR_COPY: Record<string, string> = {
+const ERROR_COPY: Record<string, React.ReactNode> = {
   link: "That didn’t work — please reopen your booking link.",
+  cancel_changed: (
+    <>
+      <b>The refund changed since you opened this.</b> Here’s the new figure — nothing has been cancelled.
+    </>
+  ),
+  cancel_closed: (
+    <>
+      <b>It’s too close to your trip to cancel online now.</b> Nothing has been cancelled — send us a request below
+      and our team will help.
+    </>
+  ),
+  cancel_failed: (
+    <>
+      <b>Couldn’t cancel just now.</b> Nothing changed — try again in a moment.
+    </>
+  ),
 };
 
 export default async function ManagePage({
@@ -129,6 +147,18 @@ export default async function ManagePage({
   const taxAndFees = m.taxCents + serviceFeeCents;
   const insured = hasFlex(booking.reservation.invoice);
   const cancelled = detail.status === "cancelled";
+  // Cancel is offered only when the terms refund something (16.9); otherwise the request form stays.
+  const cancelQuote = cancelled
+    ? null
+    : customerCancelQuote({
+        reservation: booking.reservation,
+        event: booking.event,
+        payments: booking.payments,
+        now,
+      });
+  // The notice (which one, and its figure) is the trail's, never the URL's: `?cancelled=1` only says to
+  // look. Read only once a cancel is claimed.
+  const cancelledNotice = cancelled && sp.cancelled === "1" ? await loadCancelledFigure(booking) : null;
   // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
   const statusLabel = cancelled ? "Cancelled" : phase === "completed" ? "Completed" : "Confirmed";
   const waivers =
@@ -164,6 +194,20 @@ export default async function ManagePage({
           {sp.error && ERROR_COPY[sp.error] && (
             <div className="mb-4">
               <Notice tone="bad">{ERROR_COPY[sp.error]}</Notice>
+            </div>
+          )}
+          {cancelledNotice !== null && (
+            <div className="mb-4">
+              {cancelledNotice.kind === "issued" ? (
+                <Notice tone="ok">
+                  <b>Your booking is cancelled.</b> {formatCents(cancelledNotice.cents)} is on its way back to your card.
+                </Notice>
+              ) : (
+                <Notice tone="bad">
+                  <b>Your booking is cancelled, but your {formatCents(cancelledNotice.cents)} refund didn’t go through yet.</b>{" "}
+                  Our team has been told and will send it.
+                </Notice>
+              )}
             </div>
           )}
           {sp.requested && (
@@ -308,25 +352,37 @@ export default async function ManagePage({
                 ⟲ Book again
               </AppLink>
 
-              {/* Option (b): request cancel/change — emailed to the operator (self-service is #616;
-                  the terms it will enforce are `refund-terms.ts`, rendered below since #619). */}
+              {/* A date/time change is always a request, emailed to the operator. */}
               <details className="border-b border-line-soft py-3">
                 <summary className="btn-quiet list-none text-[13.5px]">
                   ↻ Request a date/time change
                 </summary>
                 <RequestForm code={code} kind="change" placeholder="Any preferred dates or times?" />
               </details>
-              <details className="py-3">
-                <summary className="btn-quiet list-none text-[13.5px] text-bad">
-                  ✕ Request cancellation
-                </summary>
-                <RequestForm code={code} kind="cancel" placeholder="Anything we should know? (optional)" />
-              </details>
+              {/* Cancel: the customer's own action when the terms refund something (16.9), else the
+                  request form — the "call us" path. The terms it enforces are `refund-terms.ts`. */}
+              {cancelQuote ? (
+                <CancelRow
+                  code={code}
+                  quote={cancelQuote}
+                  confirming={sp.cancel === "1"}
+                  date={booking.event.date}
+                  time={booking.event.time}
+                />
+              ) : (
+                <details className="py-3">
+                  <summary className="btn-quiet list-none text-[13.5px] text-bad">
+                    ✕ Request cancellation
+                  </summary>
+                  <RequestForm code={code} kind="cancel" placeholder="Anything we should know? (optional)" />
+                </details>
+              )}
               <p className="pt-2 text-[11.5px] text-muted" data-testid="cancellation-terms">
                 {cancellationTerms(insured)}
               </p>
               <p className="pt-2 text-[11.5px] text-muted">
-                Cancellations and changes are handled by our team — we’ll confirm by text or email.
+                {cancelQuote ? "Changes" : "Cancellations and changes"} are handled by our team — we’ll confirm by text
+                or email.
               </p>
             </Section>
           )}
@@ -334,35 +390,21 @@ export default async function ManagePage({
           {/* past trips */}
           {booking.pastTrips.length > 0 && (
             <Section title="Your other trips">
-              {booking.pastTrips.map((p) => {
-                const label = (
-                  <>
-                    <span>
-                      {formatShortDay(p.date)} · {formatClock(p.time)}
-                    </span>
-                    {/* The ternary here used to be `text-faint` for cancelled, `text-muted`
-                        otherwise. #951 moved both to `text-muted` and `sonarjs` then pointed
-                        out the branch was doing nothing — which it wasn't, really, even
-                        before: the next line already writes the word "Cancelled". */}
-                    <span className="text-[12px] font-semibold text-muted">
-                      {p.status === "cancelled" ? "Cancelled" : "Trip"}
-                      {p.href ? " ›" : ""}
-                    </span>
-                  </>
-                );
-                const row = "flex items-center justify-between border-b border-line-soft py-2.5 text-[13px] last:border-0";
-                // No live code for that booking (imported, or pre-#741) ⇒ it still LISTS, it just
-                // isn't a link. Rendering a link that lands on "isn't valid" is worse than none.
-                return p.href ? (
-                  <AppLink key={p.reservationId} href={p.href} spinner="none" className={row}>
-                    {label}
-                  </AppLink>
-                ) : (
-                  <div key={p.reservationId} className={row}>
-                    {label}
-                  </div>
-                );
-              })}
+              {/* Plain rows, never links: a link would carry that booking's own code, so one booking's
+                  code would open the contact's others (DEC-198, issue #1213). */}
+              {booking.pastTrips.map((p) => (
+                <div
+                  key={p.reservationId}
+                  className="flex items-center justify-between border-b border-line-soft py-2.5 text-[13px] last:border-0"
+                >
+                  <span>
+                    {formatShortDay(p.date)} · {formatClock(p.time)}
+                  </span>
+                  <span className="text-[12px] font-semibold text-muted">
+                    {p.status === "cancelled" ? "Cancelled" : "Trip"}
+                  </span>
+                </div>
+              ))}
             </Section>
           )}
         </div>
@@ -422,6 +464,75 @@ function Row({
         {value}
       </span>
     </div>
+  );
+}
+
+/** Row 4 of the Manage section when Cancel is offered: the link, or — at `?cancel=1` — the confirm. */
+function CancelRow({
+  code,
+  quote,
+  confirming,
+  date,
+  time,
+}: {
+  code: string;
+  quote: CustomerCancelQuote;
+  confirming: boolean;
+  date: string;
+  time: string;
+}) {
+  if (confirming) return <CancelConfirm code={code} quote={quote} date={date} time={time} />;
+  return (
+    <AppLink href={manageHref(code, { cancel: "1" })} className="btn-quiet flex items-center gap-2 py-3 text-[13.5px] text-bad">
+      ✕ Cancel booking
+    </AppLink>
+  );
+}
+
+/** What the refund is net of: the $50, the insurance, or — a comped insurance — nothing. */
+function keptLine(quote: CustomerCancelQuote): string {
+  if (quote.basis === "fee") return `That’s what you paid, less the ${dollars(quote.keptCents)} cancellation fee.`;
+  if (quote.keptCents > 0) return `That’s what you paid, less the ${dollars(quote.keptCents)} cancellation insurance.`;
+  return "That’s everything you paid.";
+}
+
+/**
+ * "✕ Cancel booking" → this confirm → a form post (16.9, issue #1074). The payment link's two-step
+ * (`app/(public)/p/[token]/page.tsx`): no client JS, `?cancel=1` opens it in place. It posts the
+ * figure it shows and the refunded-so-far token, so `cancelFromManagePage` can refuse by name if
+ * either has moved since this rendered.
+ */
+function CancelConfirm({
+  code,
+  quote,
+  date,
+  time,
+}: {
+  code: string;
+  quote: CustomerCancelQuote;
+  date: string;
+  time: string;
+}) {
+  return (
+    <form action={cancelFromManagePage} className="flex flex-col gap-2 py-3" data-testid="manage-cancel-confirm">
+      <input type="hidden" name="code" value={code} />
+      <input type="hidden" name="quotedCents" value={quote.refundCents} />
+      <input type="hidden" name="expectedRefunded" value={quote.expectedRefundedCents} />
+      <p className="text-sm font-medium text-ink">
+        Cancel your {formatClock(time)} trip on {formatShortDay(date)}?
+      </p>
+      <p className="text-[13px] text-muted">
+        <b className="text-ink">You’ll get {formatCents(quote.refundCents)} back to your card.</b>{" "}
+        {keptLine(quote)}
+      </p>
+      <p className="text-[13px] text-muted">This can’t be undone.</p>
+      <div className="flex gap-2">
+        <SubmitButton className="btn-danger min-h-[44px] flex-1">Cancel booking</SubmitButton>
+        <AppLink href={manageHref(code)} className="btn-secondary min-h-[44px] flex-1">
+          Keep it
+        </AppLink>
+      </div>
+    </form>
   );
 }
 

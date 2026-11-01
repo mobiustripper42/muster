@@ -1538,6 +1538,7 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > **Amended by DEC-195 — 2.8.4a gains a cancellation-insurance component and the discount reaches it last; 2.8.4c sells it and replaces the fee with it; 2.8.14 settles the reversal**
 > **Amended by DEC-196 — 2.8.4a: the fee base gains insurance and the tip; tax gains insurance; the fee is the provider's and untaxed**
 > **Amended by DEC-197 — 2.8.4c: insurance is not offered inside 72 hours of departure, and is refused there**
+> **Amended by DEC-198 — 2.8.12: cancelling is the customer's own action when the terms refund something; changing stays a request**
 <!-- /amended-by-dec -->
 
 > **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
@@ -1836,7 +1837,8 @@ inclusive and the edge favours the customer.
 $30 buys a 72-hour window instead of 14 days, and **no $50**: an insured customer cancelling in time
 gets everything paid back except the insurance itself. What is kept is what was charged for it — a
 discount that reached it lowers it, and a comp that took it to $0 keeps nothing but still has the
-72-hour window. The insurance's own tax comes back with everything else. The published sentence never
+72-hour window. The insurance's own tax comes back with everything else — BrewBoat absorbs it, and any tax on the $50
+fee it keeps (operator, 2026-10-20, 2026-10-24). The published sentence never
 mentioned the fee; until 2026-10-09 this section read it as still applying, which was an inference.
 
 What the refund policy reads is the insurance charged, as a number — never the invoice line behind
@@ -1858,8 +1860,21 @@ about insurance; with it, 72 hours, a full refund less the insurance. Checkout, 
 link, the booking page and the confirmation's short clause all pick by the booking. Ticking or
 unticking the box clears the terms tick, because the customer agrees to the terms they read.
 
-**Self-service cancellation is not built.** A customer requests a cancellation and the operator acts on
-it. That is a surface decision, not a policy one — the terms above are what get applied either way.
+**A customer cancels their own booking when the terms refund something** (16.9, DEC-198). From the
+manage page, outside the window and with more than $0 coming back, "Cancel booking" opens a confirm
+that states the refund and what is kept — the $50, or the insurance — and the press cancels the
+booking, frees the boat, tells the crew and refunds what the terms owe, with nobody at BrewBoat
+acting. Inside the window, or when the terms produce $0 (an uninsured booking with $50 or less
+paid), nothing is offered online: the page keeps the request form (§2.8.12) and a person decides,
+and a goodwill refund there is the operator's call (operator, 2026-10-23). The terms above are what
+get applied either way.
+
+**The figure is recomputed at the press.** If it differs from the one the confirm showed, nothing is
+cancelled: a figure still above $0 re-opens the confirm with the new one, and one now at $0 (a page
+left open across the window line) sends the customer to the request form. It is refused by name,
+never silently re-quoted. **Cancel first, then refund:** a refund that does not go through leaves the
+booking cancelled, and the operator is emailed to send it from the booking while the customer is told
+the team will. Money is refunded only by the press that did the cancelling.
 
 **2.8.5 Payment identity lives on our side.**
 
@@ -2177,11 +2192,13 @@ the crew. It also offers add-to-calendar, book-again, and the contact's other tr
 **The money comes from the same model the admin pane uses**, so the customer and the operator
 are never looking at two different totals for one booking.
 
-**Cancelling or changing is a request, not an action.** The customer fills in a short form, the
-published cancellation terms are shown next to it, and the operator gets an email. Nothing is
-cancelled and no money moves until a person acts on it. A customer who wants out therefore
-always reaches a human, which is the correct behaviour while the terms depend on a flag the
-booking cannot yet carry (§2.8.12's deferred list, and DEC-135).
+**Cancelling is the customer's action when the terms refund something; changing is a request**
+(DEC-198). A paid Muster booking outside its cancellation window, with more than $0 coming back,
+offers "Cancel booking": a two-step confirm, then the cancel and the refund in one press (§2.8.4c).
+Changing a date or time is a short form, with the published cancellation terms shown next to it, and
+the operator gets an email; nothing changes until a person acts on it. So does a cancel that earns no
+refund — inside the window, or at $0 — so a customer who would get nothing back always reaches a
+human first.
 
 Deferred, and named so nobody re-derives them as gaps: crew names, reviews, emailed receipts, and
 rescheduling a date or time. (A per-guest waiver roster was on this list; the check-in module builds
@@ -2213,9 +2230,9 @@ the largest boat is not a booking this system takes.
 
 **2.8.14 What this surface is NOT.** No seats — BrewBoat sells the whole boat and party size only has
 to fit. No customer-chosen vessel. No separate hold object. No money computed after the customer has
-been quoted. No booking assembled from data Stripe hands back. No wallets (card only). Self-service
-cancellation is not built yet (issue #1074) — the refund schedule and the insurance it depends on
-are both settled, in §2.8.4c.
+been quoted. No booking assembled from data Stripe hands back. No wallets (card only). Cancelling
+inside the window, or for a $0 refund, is not self-service: it stays a request to the operator
+(§2.8.12).
 
 **And no add-ons.** BrewBoat sells none — the plausible ones are ice, party hats, a trivia night, and
 none exists. An `AddOn` entity, an admin editor and an offering attachment all ship; nothing sells
@@ -2914,8 +2931,8 @@ it is a fan-out of money + comms across every booking the shift carried. For **e
 > **The customer-initiated branch is §2.8.4c.** The deferral above is stale — it sends the reader to
 > the customer portal as parked future work, and DEC-105 un-parked that scope. The terms themselves,
 > what "everything paid" means, and why an operator cancellation carries no fee all live in §2.8.4c
-> now. **Self-service cancellation is still not built** (§2.8.4c); the terms apply either way, because
-> they govern what is owed rather than who presses the button. §3.3 is the *operator's* fan-out across a whole
+> now. **A customer can cancel their own booking when the terms refund something** (§2.8.4c, §2.8.12);
+> the terms apply either way, because they govern what is owed rather than who presses the button. §3.3 is the *operator's* fan-out across a whole
 > shift's bookings, which is the 11pm decision Eric makes from the board, and step 1 below reads its
 > refund amounts from §2.8.4c rather than defining any.
 

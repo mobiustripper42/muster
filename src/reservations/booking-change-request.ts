@@ -1,14 +1,16 @@
 /**
  * Customer "request cancellation / change" — the out-of-band operator notice (Phase 12.6, #459,
- * option (b)). Self-service cancel/refund is deferred to 16.9 (issue #1074) — the refund policy and
- * cancellation insurance it needed are both built (#472, 16.8); until then the manage page lets
- * the customer REQUEST a cancel or a date/time change,
- * and the operator handles it manually. This module is the pure email body the app-side action
- * sends to the operator inbox (best-effort via `EmailChannel`).
+ * option (b)). A date/time change stays a REQUEST the operator handles by hand, and so does a
+ * cancel the customer cannot do themselves (inside the window, or at a $0 refund). A cancel the
+ * terms pay for is the customer's own action since 16.9 (issue #1074, `customer-cancel.ts`), and the
+ * operator hears of it with `customerCancelledEmail` below. This module is the pure email bodies the
+ * app-side actions send to the operator inbox (best-effort via `EmailChannel`).
  *
  * Deliberately NOT a customer→crew message (#119): it reaches the OPERATOR, never the crew line
  * (the same rule the mockup settled — "Message us reaches the operator, never the crew").
  */
+import type { CancelRefund } from "./customer-cancel.js";
+import { formatCents } from "./calendar-detail.js";
 
 export type ChangeRequestKind = "cancel" | "change";
 
@@ -32,10 +34,15 @@ export interface OperatorEmail {
   text: string;
 }
 
+/** The customer's phone and email on one line, or the plain fact that there is neither. */
+function contactLine(input: { phone?: string | undefined; email?: string | undefined }): string {
+  return [input.phone, input.email].filter(Boolean).join(" · ") || "no contact on file";
+}
+
 /** Compose the operator-facing email for a change/cancel request. Pure. */
 export function bookingChangeRequestEmail(input: ChangeRequestInput): OperatorEmail {
   const verb = input.kind === "cancel" ? "Cancellation" : "Change";
-  const contact = [input.phone, input.email].filter(Boolean).join(" · ") || "no contact on file";
+  const contact = contactLine(input);
   const lines = [
     `${input.customerName} requested a ${input.kind === "cancel" ? "cancellation" : "date/time change"}.`,
     "",
@@ -72,7 +79,7 @@ export interface CustomerCancelledInput {
  * the boat is already back on the calendar. Pure.
  */
 export function customerCancelledUnpaidEmail(input: CustomerCancelledInput): OperatorEmail {
-  const contact = [input.phone, input.email].filter(Boolean).join(" · ") || "no contact on file";
+  const contact = contactLine(input);
   const lines = [
     `${input.customerName} cancelled their unpaid phone booking from the payment link.`,
     "Nothing was charged, and the boat is free again.",
@@ -87,6 +94,48 @@ export function customerCancelledUnpaidEmail(input: CustomerCancelledInput): Ope
   ];
   return {
     subject: `Cancelled by the customer — ${input.customerName} (${input.tripLabel})`,
+    text: lines.join("\n"),
+  };
+}
+
+/** The refund's line in the cancel email. A partial failure names the remainder so a person refunds
+ *  only that, never the full figure again. */
+function refundLine(refund: CancelRefund, figure: string): string {
+  if (refund.kind === "issued") return `Refunded ${figure} to their card.`;
+  if (refund.movedCents <= 0) return `The refund of ${figure} did not go through — refund it from the booking.`;
+  return (
+    `${formatCents(refund.movedCents)} of the ${figure} refund went through; ` +
+    `${formatCents(refund.cents - refund.movedCents)} still needs refunding from the booking.`
+  );
+}
+
+/**
+ * The customer cancelled a paid booking from the manage page (16.9, issue #1074). DONE, not asked
+ * for: the booking is cancelled and the crew told. What is left for a person is only the money —
+ * and only when the refund did not go through, which is the case the email must not bury.
+ * `refund.cents` is the figure tried, in both outcomes. Pure.
+ */
+export function customerCancelledEmail(
+  input: CustomerCancelledInput & { refund: CancelRefund },
+): OperatorEmail {
+  const figure = formatCents(input.refund.cents);
+  const issued = input.refund.kind === "issued";
+  const lines = [
+    `${input.customerName} cancelled their booking from the booking page.`,
+    refundLine(input.refund, figure),
+    "",
+    `Trip: ${input.tripLabel}`,
+    `Booking: ${input.reservationId}`,
+    `Contact: ${contactLine(input)}`,
+    "",
+    `Open the booking: ${input.paneUrl}`,
+    "",
+    "— Muster",
+  ];
+  return {
+    subject: issued
+      ? `Cancelled by the customer — ${input.customerName} (${input.tripLabel})`
+      : `Refund needed — ${input.customerName} cancelled (${input.tripLabel})`,
     text: lines.join("\n"),
   };
 }

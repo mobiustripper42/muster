@@ -142,7 +142,8 @@ export async function cancelFromManagePage(formData: FormData): Promise<void> {
       { quotedCents: postedCents(formData, "quotedCents"), expectedRefundedCents: postedCents(formData, "expectedRefunded") },
     );
   } catch (e) {
-    // Thrown before the cancel committed (the refund leg never throws out of the core).
+    // `cancelByCustomer` rethrows only when a re-read finds the booking still booked, so nothing changed
+    // (a throw after the status write is carried on in the core), and the refund leg never throws out.
     logSwallowed("b/cancelFromManagePage", e, "the customer's cancel did not complete");
     redirect(manageHref(code, { error: "cancel_failed" }));
   }

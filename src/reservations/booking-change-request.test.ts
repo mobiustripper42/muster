@@ -90,4 +90,17 @@ describe("customerCancelledEmail — the customer cancelled a paid booking from 
     expect(mail.text).toContain("did not go through");
     expect(mail.text).toContain(base.paneUrl);
   });
+
+  it("AC11: a partial failure says what moved, the figure tried, and the remainder still to refund", () => {
+    const mail = customerCancelledEmail({ ...base, refund: { kind: "failed", cents: 41240, movedCents: 20000 } });
+    expect(mail.text).toContain(formatCents(20000));
+    expect(mail.text).toContain(formatCents(41240));
+    expect(mail.text).toContain(`${formatCents(21240)} still needs refunding`);
+  });
+
+  it("AC11: a full failure (nothing moved) does not mention a remainder", () => {
+    const mail = customerCancelledEmail({ ...base, refund: { kind: "failed", cents: 41240, movedCents: 0 } });
+    expect(mail.text).not.toContain("still needs refunding");
+    expect(mail.text).not.toContain(formatCents(0));
+  });
 });

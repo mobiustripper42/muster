@@ -98,6 +98,17 @@ export function customerCancelledUnpaidEmail(input: CustomerCancelledInput): Ope
   };
 }
 
+/** The refund's line in the cancel email. A partial failure names the remainder so a person refunds
+ *  only that, never the full figure again. */
+function refundLine(refund: CancelRefund, figure: string): string {
+  if (refund.kind === "issued") return `Refunded ${figure} to their card.`;
+  if (refund.movedCents <= 0) return `The refund of ${figure} did not go through — refund it from the booking.`;
+  return (
+    `${formatCents(refund.movedCents)} of the ${figure} refund went through; ` +
+    `${formatCents(refund.cents - refund.movedCents)} still needs refunding from the booking.`
+  );
+}
+
 /**
  * The customer cancelled a paid booking from the manage page (16.9, issue #1074). DONE, not asked
  * for: the booking is cancelled and the crew told. What is left for a person is only the money —
@@ -111,9 +122,7 @@ export function customerCancelledEmail(
   const issued = input.refund.kind === "issued";
   const lines = [
     `${input.customerName} cancelled their booking from the booking page.`,
-    issued
-      ? `Refunded ${figure} to their card.`
-      : `The refund of ${figure} did not go through — refund it from the booking.`,
+    refundLine(input.refund, figure),
     "",
     `Trip: ${input.tripLabel}`,
     `Booking: ${input.reservationId}`,

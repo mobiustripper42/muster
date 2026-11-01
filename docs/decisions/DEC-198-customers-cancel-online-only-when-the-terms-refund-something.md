@@ -28,13 +28,12 @@ amends_spec:
 Supersedes DEC-135, whose condition (insurance being sellable) fired. Issue #1074.
 
 - **Offered only when it pays.** Operator, 2026-10-23: customers do not cancel without a refund;
-  they call. Inside the window, or when the terms produce nothing, the request form stays and a
-  person decides. Goodwill refunds are the operator's call.
-- **Cancel first, then refund,** as the operator's own cancel does. The cancel frees the boat and
-  tells the crew. A refund that fails leaves the booking cancelled, a `refund_failed` row and an
+  they call. Inside the window, or when nothing is owed, the request form stays.
+- **Cancel first, then refund,** as the operator's cancel does. It frees the boat and tells the crew. A failed refund leaves the booking cancelled, a `refund_failed` row and an
   email to the operator. Refund-first leaves a refunded customer holding a boat.
 - **Refused by name, never re-quoted silently** (DEC-197's posture). The press posts the figure the
-  confirm showed; if it moved, nothing is cancelled. A page left open across the window line
-  cancels nothing and sends the customer to the team.
-- **One press moves money once.** Only the press that did the cancelling refunds.
+  confirm showed; if it moved, nothing is cancelled and the customer goes to the team.
+- **One press moves money once:** only the press that cancelled refunds.
 - **Tax is the operator's.** The refund is everything paid less the one published deduction.
+- **Other trips are rows, never links.** A link carries that booking's own code, so one code would
+  open every booking of the contact (issue #1213).

@@ -13,7 +13,7 @@
  */
 import type { Page } from "@playwright/test";
 import { addDays } from "../src/config/tenant.js";
-import { formatShortDay } from "../src/reservations/availability-screen.js";
+import { formatClock, formatShortDay } from "../src/reservations/availability-screen.js";
 import {
   test,
   expect,
@@ -27,6 +27,7 @@ import {
 } from "./fixtures.js";
 import {
   BOOKED,
+  BOOKED_3,
   TODAY,
   demoBookingCode,
   demoRevokedBookingCode,
@@ -187,6 +188,37 @@ test.describe("public /b/<code>", () => {
     });
   });
 
+  /**
+   * "Your other trips" (16.9 AC16, issue #1074). The seed books Marcus Webb twice on one phone,
+   * so his first booking's page lists the second — which has its own live code (the seed mints
+   * one for every booking). Customers merge on an unverified phone (issue #1213), so a link here
+   * would hand a stranger a manage page that can now cancel.
+   */
+  const OTHER_CODE = demoBookingCode(demoReservationId(BOOKED_3.date, BOOKED_3.time));
+  const otherTrips = (page: Page) =>
+    page.getByRole("heading", { name: "Your other trips", exact: true }).locator("xpath=..");
+
+  test("AC16: Your other trips lists the other booking as a plain row, never a link", async ({ page }) => {
+    await page.goto(manageUrl());
+
+    const section = otherTrips(page);
+    await expect(section).toBeVisible();
+    await expect(section).toContainText(`${formatShortDay(BOOKED_3.date)} · ${formatClock(BOOKED_3.time)}`);
+    await expect(section).toContainText("Trip");
+    await expect(section.locator("a")).toHaveCount(0);
+    await expect(section).not.toContainText("›");
+  });
+
+  test("AC16: no other booking's manage code reaches the page", async ({ request }) => {
+    // The raw response, not the DOM: an href dropped from the markup but still carried in the
+    // server-component payload would put the code in front of whoever holds this link.
+    const res = await request.get(manageUrl());
+    expect(res.status()).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Your other trips");
+    expect(html).not.toContain(OTHER_CODE);
+  });
+
   test("requesting a cancellation acknowledges the out-of-band request", async ({ page }) => {
     await page.goto(manageUrl());
     await page.getByText("Request cancellation").click(); // opens the <details>
@@ -302,15 +334,31 @@ test.describe("self-service cancel on /b/<code> (16.9)", () => {
     await expect(page.getByText(`−${figure}`, { exact: true })).toBeVisible();
   });
 
-  test("AC8: ?cancelled=1&refund=failed shows the failed notice with the trail figure", async ({ page }) => {
+  test("AC8: which notice shows comes from the trail — a refunded booking at ?cancelled=1&refund=failed shows the issued notice", async ({
+    page,
+  }) => {
+    // Pell Ostrander's refund went through (no refund_failed row), so a stale or crafted
+    // `refund=failed` changes nothing.
     const code = await bookingCodeFor("Pell Ostrander");
     await page.goto(`/b/${code}?cancelled=1&refund=failed`);
 
-    const notice = page.getByText(/Your booking is cancelled, but your \$[\d,]+\.\d{2} refund didn’t go through yet\./);
+    await expect(page.getByText("Cancelled", { exact: true })).toBeVisible();
+    const notice = page.getByText(/Your booking is cancelled\.\s*\$[\d,]+\.\d{2} is on its way back to your card\./);
     await expect(notice).toBeVisible();
-    await expect(page.getByText("Our team has been told and will send it.", { exact: false })).toBeVisible();
+    await expect(page.getByText(/refund didn’t go through yet/)).toHaveCount(0);
     const figure = FIGURE.exec((await notice.textContent()) ?? "")?.[0];
+    expect(figure).toBeDefined();
     await expect(page.getByText(`−${figure}`, { exact: true })).toBeVisible();
+  });
+
+  test("AC8: ?cancelled=1 alone says to show a notice — a refunded booking with no refund= shows the issued notice", async ({
+    page,
+  }) => {
+    const code = await bookingCodeFor("Pell Ostrander");
+    await page.goto(`/b/${code}?cancelled=1`);
+
+    await expect(page.getByText(/Your booking is cancelled\.\s*\$[\d,]+\.\d{2} is on its way back to your card\./)).toBeVisible();
+    await expect(page.getByText(/refund didn’t go through yet/)).toHaveCount(0);
   });
 
   test("AC10: with no customer cancelled row, ?cancelled=1 shows no notice — the URL carries no figure", async ({ page }) => {

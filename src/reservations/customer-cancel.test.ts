@@ -13,8 +13,10 @@ import { zonedWallClockToInstant } from "../config/tenant.js";
 import type { BookingInvoice, Event, Payment, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { seedFleet } from "../import/resource-map.js";
+import type { TrailEvent } from "../domain/reservation-trail.js";
 import {
   cancelByCustomer,
+  cancelledNoticeFrom,
   customerCancelQuote,
   manageRedirectFor,
   type CustomerCancelOutcome,
@@ -499,6 +501,41 @@ describe("cancelByCustomer", () => {
     ]);
   });
 
+  it("AC8: cancelReservation throwing after its status write carries on — the cancelled row is written and the refund issued", async () => {
+    // `cancelReservation` writes the status, then releases the hull through `cancelEventIfUnclaimed`
+    // (cancel-reservation.ts:241, :262). A throw there leaves the booking cancelled: the cancel has
+    // committed, so the press must still record it and send the money.
+    const repo = await seeded();
+    repo.cancelEventIfUnclaimed = async () => {
+      throw new Error("hull-day lock timed out");
+    };
+    const fake = new FakePaymentPort();
+
+    await expect(cancelByCustomer(deps(repo, fake), RESV, posted())).resolves.toEqual({
+      ok: true,
+      refund: { kind: "issued", cents: FEE_REFUND },
+    });
+    expect(await repo.getReservation(RESV)).toMatchObject({ status: "cancelled", cancelledBy: "customer" });
+    expect((await trail(repo)).filter((e) => e.type === "cancelled")).toMatchObject([
+      { actorKind: "customer", metadata: { reason: "cancelled by the customer from the booking page", quotedCents: FEE_REFUND } },
+    ]);
+    expect(fake.refunds).toHaveLength(1);
+    expect(refundedSum(fake)).toBe(FEE_REFUND);
+  });
+
+  it("AC8: cancelReservation throwing before its status write propagates the throw — nothing cancelled, refunded or written", async () => {
+    // The re-read finds the booking still booked: nothing changed, so the action's `cancel_failed`
+    // ("Nothing changed") is true and the throw must reach it.
+    const repo = await seeded();
+    repo.saveReservation = async () => {
+      throw new Error("database unreachable");
+    };
+    const fake = new FakePaymentPort();
+
+    await expect(cancelByCustomer(deps(repo, fake), RESV, posted())).rejects.toThrow("database unreachable");
+    await expectUntouched(repo, fake);
+  });
+
   it("AC9: a post for a departed booking that carries a figure refuses quote_changed at $0", async () => {
     // Insured, so only the departure — not the 14-day window — is between this and a refund.
     const repo = await seeded({ reservation: { invoice: INSURED_INVOICE }, payments: [insuredPayment()] });
@@ -556,6 +593,64 @@ describe("cancelByCustomer", () => {
 
     expect((await repo.getEvent(eventIdOf(FAR)))?.status).toBe("cancelled");
     expect(relayed).toHaveLength(1);
+  });
+});
+
+// ── cancelledNoticeFrom ────────────────────────────────────────────────────────
+
+describe("cancelledNoticeFrom", () => {
+  const QUOTED = 60800;
+  let seq = 0;
+  /** One trail row, timestamps rising in the order rows are built — the trail is oldest first. */
+  const row = (type: TrailEvent["type"], over: Partial<TrailEvent> = {}): TrailEvent => {
+    seq += 1;
+    return {
+      id: asId<"TrailEventId">(`${type}:${seq}`),
+      reservationId: RESV,
+      actorKind: "engine",
+      type,
+      timestamp: new Date(Date.parse(NOW) + seq * 1000).toISOString(),
+      metadata: {},
+      ...over,
+    };
+  };
+  const customerCancelled = () =>
+    row("cancelled", {
+      actorKind: "customer",
+      metadata: { reason: "cancelled by the customer from the booking page", quotedCents: QUOTED },
+    });
+  const refundFailed = () => row("refund_failed", { actorKind: "customer", metadata: { actualCents: 0 } });
+  const refunded = () => row("refunded", { actorKind: "stripe" });
+
+  it("AC8: a cancel whose refund went through is issued, at the cancelled row's quotedCents", () => {
+    expect(cancelledNoticeFrom([customerCancelled(), refunded()])).toEqual({ kind: "issued", cents: QUOTED });
+  });
+
+  it("AC8: a cancelled row alone is issued", () => {
+    expect(cancelledNoticeFrom([customerCancelled()])).toEqual({ kind: "issued", cents: QUOTED });
+  });
+
+  it("AC8: a refund_failed row after the customer cancelled row is failed", () => {
+    expect(cancelledNoticeFrom([customerCancelled(), refundFailed()])).toEqual({ kind: "failed", cents: QUOTED });
+  });
+
+  it("AC8: a refunded row after the refund_failed row is issued — the operator re-sent it", () => {
+    expect(cancelledNoticeFrom([customerCancelled(), refundFailed(), refunded()])).toEqual({
+      kind: "issued",
+      cents: QUOTED,
+    });
+  });
+
+  it("AC8: a refund_failed row before the customer cancelled row does not make it failed", () => {
+    // An earlier operator refund that failed is not this cancel's refund.
+    const earlier = row("refund_failed", { actorKind: "admin", metadata: { actualCents: 0 } });
+    expect(cancelledNoticeFrom([earlier, customerCancelled()])).toEqual({ kind: "issued", cents: QUOTED });
+  });
+
+  it("AC10: with no customer cancelled row there is no notice — an operator's cancel is not one", () => {
+    expect(cancelledNoticeFrom([customerCancelled()])).not.toBeNull(); // the control
+    expect(cancelledNoticeFrom([])).toBeNull();
+    expect(cancelledNoticeFrom([row("cancelled", { actorKind: "admin", metadata: { reason: "weather" } })])).toBeNull();
   });
 });
 

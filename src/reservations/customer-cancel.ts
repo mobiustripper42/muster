@@ -23,12 +23,13 @@ import { zonedWallClockToInstant } from "../config/tenant.js";
 import type { FormResult } from "../builder/form-shifts.js";
 import { isBooked, type Event, type Payment, type Reservation } from "../domain/entities.js";
 import { asId, type ReservationId } from "../domain/ids.js";
+import type { TrailEvent } from "../domain/reservation-trail.js";
 import { logSwallowed } from "../log.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { hasDeparted } from "./availability.js";
 import { insuranceOf } from "./booking-invoice.js";
-import { cancelReservation, quoteCancelRefund } from "./cancel-reservation.js";
+import { cancelReservation, quoteCancelRefund, type CancelOutcome } from "./cancel-reservation.js";
 import { refundedTotalFor, refundReservation, type RefundOutcome } from "./refund-payment.js";
 import { CANCELLATION_FEE_CENTS } from "./refund-terms.js";
 import { recordTrail } from "./trail.js";
@@ -146,15 +147,32 @@ export async function cancelByCustomer(
     return { ok: false, reason: "quote_changed", newRefundCents: quote.refundCents };
   }
 
-  const cancelled = await cancelReservation(
-    {
-      repo: deps.repo,
-      now: deps.now,
-      ...(deps.relayFormNotices ? { relayFormNotices: deps.relayFormNotices } : {}),
-    },
-    reservationId,
-    "customer",
-  );
+  let cancelled: CancelOutcome;
+  try {
+    cancelled = await cancelReservation(
+      {
+        repo: deps.repo,
+        now: deps.now,
+        ...(deps.relayFormNotices ? { relayFormNotices: deps.relayFormNotices } : {}),
+      },
+      reservationId,
+      "customer",
+    );
+  } catch (e) {
+    // `cancelReservation` writes the status and can still throw after it (releasing the hull). If the
+    // booking is now cancelled the cancel committed: carry on to the trail row and the refund, or the
+    // customer is told "nothing changed" about a booking that is cancelled and unrefunded. If not,
+    // nothing changed and the throw is the caller's to report.
+    const reread = await deps.repo
+      .getReservation(reservationId)
+      .catch((readErr: unknown) => {
+        logSwallowed("reservations:cancelByCustomer", readErr, `could not re-read ${reservationId} after cancelReservation threw`);
+        return null;
+      });
+    if (reread?.status !== "cancelled") throw e;
+    logSwallowed("reservations:cancelByCustomer", e, `${reservationId} is cancelled but cancelReservation threw after the write`);
+    cancelled = { ok: true, alreadyCancelled: false };
+  }
   if (!cancelled.ok) {
     return { ok: false, reason: cancelled.reason === "reservation_missing" ? "reservation_missing" : "not_offered" };
   }
@@ -241,6 +259,34 @@ async function refundedSince(
     logSwallowed("reservations:cancelByCustomer", e, `could not re-read ${reservationId}'s payments after a stale refund`);
     return 0;
   }
+}
+
+/**
+ * Which cancelled-page notice shows, and its figure, read from the booking's trail (oldest first) —
+ * never from the URL. `null` when there is no customer `cancelled` row.
+ */
+export function cancelledNoticeFrom(
+  rows: readonly TrailEvent[],
+): { kind: "issued" | "failed"; cents: number } | null {
+  let cancelledAt = -1;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const row = rows[i]!;
+    if (row.type === "cancelled" && row.actorKind === "customer" && typeof row.metadata.quotedCents === "number") {
+      cancelledAt = i;
+      break;
+    }
+  }
+  if (cancelledAt < 0) return null;
+  const cents = rows[cancelledAt]!.metadata.quotedCents!;
+
+  // Failed only while the last `refund_failed` after the cancel has no `refunded` row after it.
+  let lastFailed = -1;
+  let lastRefunded = -1;
+  for (let i = cancelledAt + 1; i < rows.length; i++) {
+    if (rows[i]!.type === "refund_failed") lastFailed = i;
+    else if (rows[i]!.type === "refunded") lastRefunded = i;
+  }
+  return { kind: lastFailed > lastRefunded ? "failed" : "issued", cents };
 }
 
 /**

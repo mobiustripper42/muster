@@ -35,7 +35,7 @@ import { Card, Well } from "../../../components/ui/card";
 
 export const dynamic = "force-dynamic";
 
-type Search = { requested?: string; error?: string; cancel?: string; cancelled?: string; refund?: string };
+type Search = { requested?: string; error?: string; cancel?: string; cancelled?: string };
 
 const ERROR_COPY: Record<string, React.ReactNode> = {
   link: "That didn’t work — please reopen your booking link.",
@@ -156,8 +156,9 @@ export default async function ManagePage({
         payments: booking.payments,
         now,
       });
-  // The notice's figure is the trail row's, never the URL's — and read only once a cancel is claimed.
-  const cancelledFigure = cancelled && sp.cancelled === "1" ? await loadCancelledFigure(booking) : null;
+  // The notice (which one, and its figure) is the trail's, never the URL's: `?cancelled=1` only says to
+  // look. Read only once a cancel is claimed.
+  const cancelledNotice = cancelled && sp.cancelled === "1" ? await loadCancelledFigure(booking) : null;
   // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
   const statusLabel = cancelled ? "Cancelled" : phase === "completed" ? "Completed" : "Confirmed";
   const waivers =
@@ -195,15 +196,15 @@ export default async function ManagePage({
               <Notice tone="bad">{ERROR_COPY[sp.error]}</Notice>
             </div>
           )}
-          {cancelledFigure !== null && (sp.refund === "issued" || sp.refund === "failed") && (
+          {cancelledNotice !== null && (
             <div className="mb-4">
-              {sp.refund === "issued" ? (
+              {cancelledNotice.kind === "issued" ? (
                 <Notice tone="ok">
-                  <b>Your booking is cancelled.</b> {formatCents(cancelledFigure)} is on its way back to your card.
+                  <b>Your booking is cancelled.</b> {formatCents(cancelledNotice.cents)} is on its way back to your card.
                 </Notice>
               ) : (
                 <Notice tone="bad">
-                  <b>Your booking is cancelled, but your {formatCents(cancelledFigure)} refund didn’t go through yet.</b>{" "}
+                  <b>Your booking is cancelled, but your {formatCents(cancelledNotice.cents)} refund didn’t go through yet.</b>{" "}
                   Our team has been told and will send it.
                 </Notice>
               )}
@@ -389,35 +390,21 @@ export default async function ManagePage({
           {/* past trips */}
           {booking.pastTrips.length > 0 && (
             <Section title="Your other trips">
-              {booking.pastTrips.map((p) => {
-                const label = (
-                  <>
-                    <span>
-                      {formatShortDay(p.date)} · {formatClock(p.time)}
-                    </span>
-                    {/* The ternary here used to be `text-faint` for cancelled, `text-muted`
-                        otherwise. #951 moved both to `text-muted` and `sonarjs` then pointed
-                        out the branch was doing nothing — which it wasn't, really, even
-                        before: the next line already writes the word "Cancelled". */}
-                    <span className="text-[12px] font-semibold text-muted">
-                      {p.status === "cancelled" ? "Cancelled" : "Trip"}
-                      {p.href ? " ›" : ""}
-                    </span>
-                  </>
-                );
-                const row = "flex items-center justify-between border-b border-line-soft py-2.5 text-[13px] last:border-0";
-                // No live code for that booking (imported, or pre-#741) ⇒ it still LISTS, it just
-                // isn't a link. Rendering a link that lands on "isn't valid" is worse than none.
-                return p.href ? (
-                  <AppLink key={p.reservationId} href={p.href} spinner="none" className={row}>
-                    {label}
-                  </AppLink>
-                ) : (
-                  <div key={p.reservationId} className={row}>
-                    {label}
-                  </div>
-                );
-              })}
+              {/* Plain rows, never links: a link would carry that booking's own code, so one booking's
+                  code would open the contact's others (DEC-198, issue #1213). */}
+              {booking.pastTrips.map((p) => (
+                <div
+                  key={p.reservationId}
+                  className="flex items-center justify-between border-b border-line-soft py-2.5 text-[13px] last:border-0"
+                >
+                  <span>
+                    {formatShortDay(p.date)} · {formatClock(p.time)}
+                  </span>
+                  <span className="text-[12px] font-semibold text-muted">
+                    {p.status === "cancelled" ? "Cancelled" : "Trip"}
+                  </span>
+                </div>
+              ))}
             </Section>
           )}
         </div>

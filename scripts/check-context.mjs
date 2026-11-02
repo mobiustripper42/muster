@@ -51,7 +51,14 @@ const walkMd = (d) =>
  * `✓ every path … resolves` and exit 0, with the file quietly absent from the list of what had
  * been checked. The one file every session loads could vanish behind five green gates.
  */
-export const DOCS = ['CLAUDE.md', '.claude/CLAUDE-context.md', ...walkMd('.claude/skills'), ...walkMd('.claude/agents')]
+export const DOCS = [
+  'CLAUDE.md',
+  '.claude/CLAUDE-context.md',
+  // Optional, like the skills: a project without a UI has no ui-context.md, and that is not a defect.
+  ...(existsSync('.claude/ui-context.md') ? ['.claude/ui-context.md'] : []),
+  ...walkMd('.claude/skills'),
+  ...walkMd('.claude/agents'),
+]
 
 // A backticked span, optionally written as the `ls <path>` command a reader would actually run.
 // That prefix is the docs' own convention for a pointer — "authoritative list: `ls

@@ -63,20 +63,27 @@ Capture `SUBJECT=$(git log -1 --format=%s)` for the PR title.
 
 ## Step 3 — Code review, in the background
 
-Do Step 3.5's trigger check **first**: it is a property of the diff and needs no review to answer. Then start every review this PR gets **in one message, each as a background agent** (`run_in_background: true`):
+Do Step 3.4's screen check and Step 3.5's trigger check **first**: each is a property of the diff and needs no review to answer. Then start every review this PR gets **in one message, each as a background agent** (`run_in_background: true`):
 
 - `@code-review` against `git diff HEAD~1`, always.
 - On a trigger hit, a `general-purpose` agent whose whole task is: *invoke `/security-review` with the Skill tool on this branch and return its report verbatim.*
+- On a screen in the diff, `@ui-reviewer` with the routes Step 3.4 listed and this scope: *in the languages and at the viewports `.claude/ui-context.md` names, only these routes. Name any route you could not reach as not reached; never review it from source and call it clean.*
 
 **Why `/security-review` runs inside its own agent.** Its closing instruction is that the final reply contains the markdown report and nothing else. Run in this turn, that instruction ended `/kill-this` there: from 2026-10-05 to 2026-10-09 every centerline run stopped after it and waited for the operator to type "please continue", and a sentence in this file telling the model to carry on past it changed nothing. Muster appeared not to stop only because its `@code-review` was still running in the background, and that agent's notification started the next turn. Inside an agent, the instruction governs the agent's reply, which is exactly where the report should go.
 
-**Then end the turn.** Ending it is correct here, not a stall: each agent's report arrives as a notification that starts a new turn. You started one agent, or two on a trigger hit; that count is how you know which notification is the last. On each one:
+**Then end the turn.** Ending it is correct here, not a stall: each agent's report arrives as a notification that starts a new turn. You started one agent, plus one on a trigger hit and one on a screen in the diff — up to three; that count is how you know which notification is the last. On each one:
 
 - **Another review is still out:** record this one's findings and end the turn again, with no reply to the operator.
 - **It is the last one:** carry on with Step 3.6 and Step 4 in that turn, without asking. Never ask the operator to continue; the wait is part of the ritual they already invoked.
 - **The operator speaks while a review is still out:** there is no timeout, so a hung agent is noticed by a person, not by this skill. Say which review has not reported, and offer to go on without it; if they agree, its Step 3.6 row is `✗ — never reported`.
 
 When addressing review findings before opening the PR: Read every file before editing it (parallel writes fail silently without a prior Read).
+
+### Step 3.4 — Screen check (does this PR want `@ui-reviewer`?)
+
+Get the project's UI rules from `.claude/ui-context.md` **with the Read tool**. **Absent:** no UI review; Step 3.6's row says why. Otherwise match its definition of a screen file against the branch diff (`git diff $(git merge-base HEAD main)...HEAD --name-only`). **No match:** no UI review. **A match:** list the routes the changed files reach, by its route rule, and start `@ui-reviewer` on them in Step 3.
+
+The scope is the screens this task touched, in the languages `ui-context.md` names for review (the project's default language when it names none). Every screen is `/retro`'s pass at phase end.
 
 ### Step 3.5 — High-blast-radius check (does this PR want `/security-review`?)
 
@@ -116,7 +123,12 @@ Review passes:
   ✓ @code-review       — <N> findings: <one-line verdict>
   ✓ /security-review   — <N> findings: <one-line verdict>      ← only when a trigger hit
   ⊘ /security-review   — not run (no blast-radius trigger)     ← otherwise
+  ✓ @ui-reviewer       — <N> findings: <one-line verdict>; not reached: <routes, or none>   ← on a screen in the diff
+  ⊘ @ui-reviewer       — not run (no screen in the diff)       ← otherwise
+  ⊘ @ui-reviewer       — not run (no .claude/ui-context.md)    ← when the file is absent
 ```
+
+A route `@ui-reviewer` could not reach stays on its row as not reached, so a partial review never reads as a clean one.
 
 **Why this is its own step.** With more than one possible pass, "no news" is ambiguous in the one direction that matters: a review that silently didn't run looks exactly like a review that ran clean. That ambiguity was reported once already — a trigger warning appeared and the operator could not tell from the output whether `@code-review` had run at all. The receipt is unconditional so absence never has to be inferred.
 

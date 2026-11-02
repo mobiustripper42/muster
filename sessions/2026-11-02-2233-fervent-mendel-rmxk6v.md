@@ -17,3 +17,4 @@ transcript: /root/.claude/projects/-home-user-muster/984f4ced-e667-5295-a2c7-9bb
 **Next Steps:**
 
 **Context:**
+- Cloud session. No jig checkout on this machine (`../jig` absent, `$JIG_REPO` unset), so the drift and settings-policy checks were skipped.

@@ -6,7 +6,7 @@ philosophy), `docs/design/DESIGN-REFERENCE.md` (how to consume mockups), `docs/d
 
 ## Stack
 - **Next.js (App Router)** — route groups `app/(admin)` / `app/(crew)` / `app/(public)` / `app/api`,
-  plus `app/reservations` (capability-URL customer pages). Server components by default; forms post to
+  plus `app/b/[code]` (capability-URL customer pages). Server components by default; forms post to
   **server actions** (no client JS unless a surface truly needs it).
 - **Tailwind v4** (`@tailwindcss/postcss`, CSS-first `@theme` in `app/globals.css`). **No third-party
   component library** (DEC-021) — surfaces are hand-built from utilities. Don't flag the absence of

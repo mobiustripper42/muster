@@ -37,6 +37,7 @@ Write nothing. Check the spec against the code and return:
 
 ### Reuse check
 - <a new thing the spec introduces> — exists at <path:line>
+- <a thing the spec describes in more than one place> — described at <place>, <place>, …; no shared home named
 ```
 
 Empty lists are written as `None`. An Interfaces entry that is NOT FOUND and not marked new is
@@ -44,18 +45,28 @@ always a question. Do not answer your own questions by guessing what is "probabl
 
 **The reuse check.** For each new thing the spec introduces — a function, constant, rule,
 component or file in Interfaces, a component named under Screen, or behaviour a criterion states —
-search the code for an existing one that does the same job. Report matches only, with where the
-existing one lives. A match is code a builder would otherwise restate — the same logic or value —
+search the code for an existing one that does the same job. For these, report matches only, with
+where the existing one lives. A match is code a builder would otherwise restate — the same logic or value —
 not code that is merely related, and not a same-named thing with a different job. Skip anything
 the spec already lists under Reuses. A copy of existing code passes every test, which is why this
 section is not filtered by what could fail one.
+
+The reuse check has a second kind of finding: a style, a piece of markup, a rule or a value that the
+spec describes in more than one place — two criteria, a criterion and the Screen section, two
+elements on one screen, two screens — that a builder would write as separate code each time, with
+no one shared home named for it in Interfaces (a CSS class, component, function or constant). A
+criterion that only restates the Screen section's wording is not one. A search of the code cannot
+find this copy, because it does not exist yet: the builder writes it twice, and every test passes.
+Report each one with the places that describe it. Skip one whose places already point at a single
+named home.
 
 What to report:
 - **Only what could fail a test.** Report an assumption only if a reasonable builder could go the
   other way and fail your test. One the spec already permits, where either choice would pass, is
   not worth the operator's time. The interface and reuse checks are not filtered.
 - **Not hand checks.** Skip any acceptance criterion marked `(by hand)`. The `Proof` slot cannot
-  test it, so there is nothing here to read back.
+  test it, so there is nothing here to read back. The reuse check is the exception: a `(by hand)`
+  criterion still counts as a place that describes something.
 - **On a re-read, only the changed lines.** When the prompt names changed lines, report only items
   about those lines. Never re-raise an assumption the issue already answers in a `[code]`,
   `[Lead]` or `[you]` line.

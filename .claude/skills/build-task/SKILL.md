@@ -32,8 +32,19 @@ The issue body is the spec. Agents are pointed at it by number. Never paraphrase
 The one exception is a second readback round, whose prompt names the lines that changed.
 
 When the gate passes, run `date -u +%Y-%m-%dT%H:%M:%SZ` and keep the time it prints: it is where
-Step 6's cost starts counting. Shell variables do not survive between calls, so keep it in the
-conversation, not in a variable.
+Step 6's cost starts counting.
+
+Shell variables do not survive between calls. Every value this skill names — the time, `START`,
+`TESTS`, `REF` and the test files — is kept in the conversation, and a command written with `$NAME`
+takes the value as printed.
+
+Keep what `git rev-parse HEAD` prints as `START`. Then, if `git status --porcelain` lists anything —
+work already in the tree before this run, such as a staged rename or an edit the operator made —
+commit it on its own: `git add -A`, name in one line the files `git diff --cached --name-only`
+lists, then `git commit -m "build-task: work already in the tree (squashed at ship)"`. It ships with
+the task but is not the build. Committed, it is out of reach of the test lock and of every stash
+below, which would otherwise take it with the build and delete it. Step 5 folds it back in; a run
+abandoned before then leaves it as a commit on the branch.
 
 ## Step 1 — Readback
 
@@ -41,8 +52,9 @@ Spawn `@test-writer` with: the issue number, and the instruction **readback only
 
 It returns four sections: **Assumptions** (things it would have to decide that the spec does
 not), **Questions**, an **Interface check**, and a **Reuse check** (existing code that already
-does something the spec would build). An Interfaces entry reported NOT FOUND and not marked new is
-a question. If all but the Interface check are empty, go to Step 2.
+does something the spec would build, and anything the spec describes in more than one place
+without naming one shared home for it). An Interfaces entry reported NOT FOUND and not marked new
+is a question. If all but the Interface check are empty, go to Step 2.
 
 Sort each item, and write every one you accept into the section of the issue it belongs to
 (`gh issue edit <N> --body-file`). An answer that lives only in this conversation is invisible to
@@ -55,12 +67,19 @@ both agents, and comes back as the same item next round.
 - **The operator would notice it in use** — stop. Put these to the operator one at a time, each
   with your recommendation. Write each answer as a `[you]` line.
 
-**A reuse match** goes into Reuses as a `[code]` line with the existing path — a Screen match into
-Screen's "Existing screen and components reused". Then the spec stops asking for the copy: the
+**A reuse match** goes into Reuses as a `[code]` line with the existing path — a Screen match onto that
+element's line in Screen, as its component. Then the spec stops asking for the copy: the
 criterion that restated it is reworded to point at it, its "New or changed signatures" entry is
 removed, and "Files touched" gains the existing file if reuse means exporting from it. When
 reusing it would change behaviour — the existing rule differs from the spec's — sort it as a
 `[you]` item above, with your recommendation. A match you reject is one `[Lead]` line saying why.
+
+**Something described twice with no shared home** gets one: a `[Lead]` line under Interfaces' "New
+or changed signatures" naming the CSS class, component, function or constant that holds it, marked
+new, with its file added to "Files touched". A CSS class is not a signature and gets no stub. Each
+place that described it is reworded to point at that home. When the places describe it differently,
+choosing one changes what a criterion does: sort it as a `[you]` item above, with your
+recommendation.
 
 Keep every `[code]` and `[Lead]` line, word for word, for the receipt.
 
@@ -68,13 +87,15 @@ Keep every `[code]` and `[Lead]` line, word for word, for the receipt.
 criterion does — a criterion's text, or a `[code]`/`[Lead]` line that adds behaviour no criterion
 states — and name the changed lines in its prompt. A reuse match counts only when reusing changes
 what a criterion does (the `[you]` case above); rewording a criterion to point at existing code,
-or adding a Reuses path, does not. **If round 2 changes behaviour again, stop and ask** — the spec
-needs rework, not a third read. An edit that only clarifies wording does not earn
+or adding a Reuses path, does not. Naming a shared home, and rewording the places to point at it,
+does not either. **If round 2 changes behaviour again, stop and ask** — the spec needs rework, not
+a third read. An edit that only clarifies wording does not earn
 another round; `@test-writer` can still stop in Step 2 and return a question.
 
-**Coming back to the spec later counts against the same rule.** A question from Step 2, or a spec
-fix from Step 3, is sorted as above and written into the issue. It earns a readback round only if
-it changed behaviour, and that round is the second: if one has already run, stop and ask.
+**Coming back to the spec later counts against the same rule.** A question from Step 2 is sorted
+as above and written into the issue. It earns a readback round only if it changed behaviour, and
+that round is the second: if one has already run, stop and ask. A Stop from Step 3 ends the run
+instead; what comes back after it is the operator's call.
 
 ## Step 2 — Tests
 
@@ -113,7 +134,8 @@ Check, in order:
    proves the behaviour it guards. Anything else goes back to `@test-writer`.
 3. **Lock the tests.** Commit every file `@test-writer` created or edited, except the stubs, on its
    own: `git add <files>` then `git commit -m "build-task: tests (squashed at ship)"`. Record
-   `TESTS=$(git rev-parse HEAD)`. The commit is the lock: it holds the original bytes, so a
+   `TESTS=$(git rev-parse HEAD)`, and keep the test files: every file a `@test-writer` report in
+   this run lists under Files. The commit is the lock: it holds the original bytes, so a
    violation can be undone, and `git diff` against it needs no working directory. Step 5 folds it
    back into one commit before `/kill-this`, so `@code-review` still sees the tests. The stubs stay
    in the tree, uncommitted: they are production files, and `@implementer` replaces them.
@@ -126,20 +148,26 @@ output from Step 2.
 It returns one of:
 
 - **Done** — a summary of what changed. Go to Step 4.
-- **Stop** — a test it believes is wrong, and why. Do not let it work around the test. Bring it to
-  the operator: either the spec was wrong (fix the issue body under Step 1's Rounds rule) or the test was
-  (set the implementation aside with `git stash push --include-untracked` and `git stash drop`,
-  uncommit the tests with `git reset --soft "$TESTS~1"` so they stay in the tree to be revised,
-  then Step 2 with the instruction **write the tests** followed by the finding, word for word; the
-  stubs went with the implementation, so Step 2 writes them again).
+- **Stop** — a test it believes is wrong, and why. Do not let it work around the test. Set the
+  build aside and keep it: `git stash push --include-untracked -m "build-task <N>: build"`. Find it
+  by its message, which prints its ref, `REF` (nothing printed means the build changed nothing):
+  `git stash list --format='%gd %s' | grep -F ': build-task <N>: build' | cut -d' ' -f1`. Then
+  write `git stash show -p --binary --include-untracked "$REF"` into a patch file in the scratchpad,
+  as a backup. Never show, apply or drop a bare `git stash`: `stash@{0}` may be the operator's.
+  Then stop, and bring the Stop to the operator with the stash's ref, the patch's path and
+  `START`. They decide whether the spec or the test was wrong, how it is fixed, and whether the
+  build comes back. A Stop is not a failed round. A run started again after it keeps this run's
+  `START`, so Step 5 still folds the earlier commits in.
 
 ## Step 4 — Verify
 
-1. `git diff --quiet "$TESTS" -- $(git diff-tree --no-commit-id --name-only -r "$TESTS")` — any
-   change to a file the tests commit holds fails the task. Set the implementation aside with
-   `git stash push --include-untracked` (the tests come back as committed; the stubs go with the
-   implementation), then `git stash drop`, and re-run Step 3 once, telling `@implementer` the stubs
-   are gone and giving no stub list. A second violation: stop and tell the operator.
+1. `git diff --quiet "$TESTS" -- <the test files>` — any change to a test file fails the task.
+   The list is kept, not read from the `TESTS` commit, because after Step 5's fold a review
+   route's `TESTS` commit holds only its own new test. Set the implementation aside with
+   `git stash push --include-untracked -m "build-task <N>: violation"` (the tests come back as
+   committed; the stubs go with the implementation), find its `REF` by that message as Step 3 does, then
+   `git stash drop "$REF"`, and re-run Step 3 once, telling `@implementer` the stubs are gone
+   and giving no stub list. A second violation: stop and tell the operator.
 2. Run the `Proof command` yourself. Green, or back to Step 3 with the failure output.
 3. Read `@implementer`'s "Stubs left as stubs". Anything but `None` is an empty function that no
    test needed and would ship as a silent no-op: remove it, or bring it to the operator.
@@ -150,13 +178,13 @@ which.
 
 ## Step 5 — Ship
 
-First `git reset --soft "$TESTS~1"`, so tests and code ship as one commit and `/kill-this`'s
-`git diff HEAD~1` shows both. Then run `/kill-this`. When it reaches code-review findings, route
-each one:
+First `git reset --soft "$START"`, so the work already in the tree, the tests and the code ship as
+one commit and `/kill-this`'s `git diff HEAD~1` shows all three. Then run `/kill-this`. When it
+reaches code-review findings, route each one:
 
 | Finding | Goes to |
 |---|---|
-| Real bug a test should have caught | `@test-writer` (new test, no stubs — it must fail against the current code on its own assertion; committed on its own; `TESTS` is that commit), then `@implementer` |
+| Real bug a test should have caught | `@test-writer` (new test, no stubs — it must fail against the current code on its own assertion; committed on its own; `TESTS` is that commit, and its file joins the test files), then `@implementer` |
 | Real bug, tests are fine | fresh `@implementer`, finding as its brief |
 | One-line cleanup, naming, a constant | fix it yourself |
 | Architectural | escalate to `@architect`, as `@code-review` already says |
@@ -174,7 +202,7 @@ Print it every time, before the hand-back, and append it to the pull request bod
   settled       — none | each [code] and [Lead] line added during the run, word for word, one per line
   test-writer   — <tests> tests across <criteria> criteria
   stubs         — <n> written, <n> left as stubs, <n> tests passing beside a partner
-  implementer   — <rounds> rounds
+  implementer   — <rounds> rounds, <stops> stops (a run started again after a Stop counts it)
   test lock     — intact | violated (<file>)
   review routes — <n> to test-writer, <n> to implementer, <n> fixed by Lead
   cost          — <first line of cost.mjs>

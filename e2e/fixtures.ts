@@ -17,6 +17,7 @@ import { serverOf, SLOW_PATH_FOR } from "./slow-path.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { pgConnectionConfig } from "../src/config/db-ssl.js";
 import { takeRateLimit, type RateLimitPolicy } from "../src/rate-limit/rate-limit.js";
+import { liveBookingCode } from "../src/reservations/ensure-booking-code.js";
 import { TODAY } from "./reservation-demo.js";
 
 /** Local tsx binary — resolved explicitly so we don't depend on PATH/npx. */
@@ -28,6 +29,8 @@ const SEED_SCRIPTS = {
   reservation: "db/seed-reservation-dev.ts",
   xola: "db/seed-xola-dev.ts",
   concurrent: "db/seed-concurrent-dev.ts",
+  insurance: "db/seed-insurance-dev.ts",
+  "self-cancel": "db/seed-self-cancel-dev.ts",
 } as const;
 
 type SeedName = keyof typeof SEED_SCRIPTS;
@@ -524,6 +527,38 @@ export async function reopenEvent(date: string, time: string): Promise<void> {
     );
     if (!target) throw new Error(`no muster event at ${date} ${time}`);
     await repo.saveEvent({ ...target, status: "scheduled" });
+  } finally {
+    await repo.close();
+  }
+}
+
+/**
+ * The id of the ONE reservation with this customer name (16.9). The seeds that book through
+ * `bookForCustomer` mint random ids (`src/reservations/operator-booking.ts:120`), so a spec finds
+ * its booking by the name the seed gave it. Throws unless exactly one matches — two would mean two
+ * seeds collided, and picking one would test whichever came first.
+ */
+export async function reservationIdFor(customerName: string): Promise<string> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const matches = (await repo.listAllReservations()).filter((r) => r.customerName === customerName);
+    if (matches.length !== 1) {
+      throw new Error(`reservationIdFor: expected one reservation for "${customerName}", found ${matches.length}`);
+    }
+    return String(matches[0]!.id);
+  } finally {
+    await repo.close();
+  }
+}
+
+/** That reservation's live `/b/<code>` code (16.9), picked the way the app picks it. */
+export async function bookingCodeFor(customerName: string): Promise<string> {
+  const reservationId = await reservationIdFor(customerName);
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const code = await liveBookingCode(repo, reservationId as never, () => new Date().toISOString());
+    if (!code) throw new Error(`bookingCodeFor: "${customerName}" has no live booking code`);
+    return code;
   } finally {
     await repo.close();
   }

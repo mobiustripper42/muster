@@ -27,6 +27,7 @@ import { operatorManageLink } from "../../../../lib/manage-link";
 import { mintPaymentLinkUrl } from "../../../../lib/payment-link";
 import { payLinkState } from "@core/reservations/pay-by-link.js";
 import { insuranceOf } from "@core/reservations/booking-invoice.js";
+import { owedAfterCustomerCancel } from "@core/reservations/customer-cancel.js";
 import { liveBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { getRepo } from "../../../../lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../../../lib/swallowed";
@@ -70,6 +71,46 @@ import {
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Where the standalone refund box starts (#616), lifted out of the page (#928). In order: right after
+ * a refund, what is still refundable — never the figure just spent; right after a cancel, the quote
+ * for the reason just chosen; after a customer's own cancel, what the terms still owe them; otherwise
+ * everything refundable. Capped at what Stripe can give back throughout.
+ */
+function refundPrefillCents(o: {
+  refundable: number;
+  refundedJustNow: boolean;
+  /** `?cancelled=`, the reason the cancel just posted. */
+  cancelledJustNow: string | undefined;
+  quoteFor: (by: CancelledBy) => number;
+  customerOwed: number | null;
+}): number {
+  if (o.refundedJustNow) return o.refundable;
+  if (o.cancelledJustNow !== undefined) {
+    return Math.min(o.refundable, o.quoteFor(o.cancelledJustNow === "operator" ? "operator" : "customer"));
+  }
+  if (o.customerOwed !== null) return Math.min(o.refundable, o.customerOwed);
+  return o.refundable;
+}
+
+/**
+ * After a customer's own cancel (16.9), what the terms still owe them — where the refund box starts,
+ * rather than at everything Stripe could give back, which includes the $50 or the insurance the terms
+ * kept, one press from the cancel email (PR #1214 review). `null` for any other booking. Best-effort:
+ * a failed read leaves the box where it always started.
+ */
+async function customerOwedFor(reservation: Reservation): Promise<number | null> {
+  if (reservation.status !== "cancelled") return null;
+  try {
+    return owedAfterCustomerCancel(
+      await getRepo().listTrailEventsFor(reservation.id, reservation.paymentIntentIds ?? []),
+    );
+  } catch (e) {
+    logSwallowed("admin/reservation:customerOwed", e, `the refund box fell back to the refundable total for ${reservation.id}`);
+    return null;
+  }
+}
+
 /** Decode a path segment, tolerating a malformed `%` rather than throwing a 500 at the user. */
 function safeDecode(segment: string): string {
   try {
@@ -94,7 +135,11 @@ function safeDecode(segment: string): string {
 // **59 → 61 at 16.1**, from the unpaid-phone-booking early return (measured the same way, with
 // `--no-inline-config`). The pane itself went to its own component so this function grew by the
 // branch and nothing else.
-// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 61
+//
+// **61 → 57 at PR #1214's review fixes**, measured the same way: the refund box's prefill and the
+// customer-cancel read it gained went out to `refundPrefillCents` and `customerOwedFor`, taking the
+// two baselined nested ternaries (#928) with them.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 57
 export default async function ReservationDetailPage({
   params,
   searchParams,
@@ -109,6 +154,8 @@ export default async function ReservationDetailPage({
       cancel?: string;
       cancelled?: string;
       cancelErr?: string;
+      /** The "Release the boat" repair ran on a booking already cancelled (PR #1214 review). */
+      released?: string;
       refunded?: string;
       refundErr?: string;
       refundConfirm?: string;
@@ -298,6 +345,8 @@ export default async function ReservationDetailPage({
     // paid for gets no refund box, so the post-cancel message must not promise one.
     const refundable = refundableTotalFor(payments);
 
+    const customerOwed = await customerOwedFor(reservation);
+
     // Which outcome to report, if the last action redirected back with one.
     //
     // **Errors are checked FIRST, and that ordering is load-bearing.** A partial refund
@@ -312,7 +361,7 @@ export default async function ReservationDetailPage({
     // (see `actionMessage`). Errors still win outright — a partial refund carries `refundErr`
     // AND an amount, and reporting that as a success is the defect security review caught.
     const outcome = (
-      ["cancelErr", "refundErr", "resendErr", "cancelled", "refunded", "resent"] as const
+      ["cancelErr", "refundErr", "resendErr", "cancelled", "released", "refunded", "resent"] as const
     )
       .map((k) => [k, sp[k]] as const)
       .find(([, val]) => val !== undefined);
@@ -339,14 +388,13 @@ export default async function ReservationDetailPage({
     // moved, so the box offers what is STILL refundable rather than re-offering the figure that
     // was just spent — the fastest way to refund the same amount twice is to leave it sitting
     // there looking unspent.
-    const prefillCents =
-      sp.refunded !== undefined
-        ? refundable
-        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-        : sp.cancelled !== undefined
-          // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-          ? Math.min(refundable, quoteFor(sp.cancelled === "operator" ? "operator" : "customer"))
-          : refundable;
+    const prefillCents = refundPrefillCents({
+      refundable,
+      refundedJustNow: sp.refunded !== undefined,
+      cancelledJustNow: sp.cancelled,
+      quoteFor,
+      customerOwed,
+    });
 
     /**
      * A refused action's own values (#780).

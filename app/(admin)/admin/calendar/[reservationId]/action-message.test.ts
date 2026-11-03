@@ -14,6 +14,34 @@ import { actionMessage } from "./reservation-detail-pane";
 
 const CONTACTS = { email: "marcus@example.com", phone: "+1 216 555 0148" };
 
+describe("actionMessage — released (PR #1214 review)", () => {
+  it("a repair press says the boat is released and that it refunded nothing", () => {
+    // The press cancelled nothing — the booking already was — so it must not read as a cancel, and
+    // must not imply money moved.
+    const m = actionMessage("released", "1");
+    expect(m).toContain("already cancelled");
+    expect(m).toContain("boat is released");
+    expect(m).toContain("Nothing was refunded");
+  });
+
+  it("a press that released nothing (a race's loser) claims no release (@code-review)", () => {
+    // The winner of the race owns the release and may still fail it; this press cannot know.
+    const m = actionMessage("released", "0");
+    expect(m).toContain("already cancelled");
+    expect(m).not.toContain("released and the crew");
+    expect(m).toContain("Nothing was refunded");
+  });
+
+  it("a cancel whose boat could not be released says the booking IS cancelled and nothing was refunded (@code-review)", () => {
+    // `cancelErr` is otherwise "nothing changed" territory; this one is not.
+    const m = actionMessage("cancelErr", "not_released");
+    expect(m).toContain("is cancelled");
+    expect(m).toContain("couldn’t be released");
+    expect(m).toContain("Release the boat");
+    expect(m).toContain("No refund was sent");
+  });
+});
+
 describe("actionMessage — resent", () => {
   it("names both contacts when both channels went", () => {
     const m = actionMessage("resent", "sent-sent", CONTACTS);

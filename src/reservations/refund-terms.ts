@@ -44,8 +44,9 @@ export const FLEX_CANCEL_HOURS_BEFORE = 72;
 
 const HOURS_PER_DAY = 24;
 
-/** `5000` → `"$50"`, `4950` → `"$49.50"`. Keeps the copy quoting the constants. */
-function dollars(cents: number): string {
+/** `5000` → `"$50"`, `4950` → `"$49.50"`. Keeps the copy quoting the constants. Exported for the
+ *  manage page's cancel confirm (16.9), which prints the kept $50 or insurance the same way. */
+export function dollars(cents: number): string {
   return `$${(cents / 100).toFixed(2).replace(/\.00$/, "")}`;
 }
 

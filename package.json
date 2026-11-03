@@ -27,6 +27,7 @@
     "db:seed:gratuity": "tsx db/seed-gratuity-dev.ts",
     "db:seed:reservation": "tsx db/seed-reservation-dev.ts",
     "db:seed:insurance": "tsx db/seed-insurance-dev.ts",
+    "db:seed:self-cancel": "tsx db/seed-self-cancel-dev.ts",
     "db:seed:booking-cutoff": "tsx db/seed-booking-cutoff-dev.ts",
     "db:seed:trail": "tsx db/seed-trail-dev.ts",
     "db:seed:reminders": "tsx db/seed-reminders-dev.ts",

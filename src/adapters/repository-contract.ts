@@ -1439,6 +1439,39 @@ export function runRepositoryContract(
       expect(await repo.cancelPendingIfUnpaid(rid("pend-1"), "operator", CANCEL_AT)).toBe(false);
     });
 
+    // ── cancelIfBooked — the cancel of a PAID booking, one press only (PR #1214 review) ──────
+    // The same guarded shape as `cancelPendingIfUnpaid`, for `booked`. Two presses that both read
+    // `booked` (a customer's double tap, or the customer and the operator at once) must not both
+    // own the cancel: the owner is the one that goes on to refund, so two owners meant two refund
+    // attempts and a false "refund failed" from the loser.
+    it("cancelIfBooked: cancels a booked row and records who and when", async () => {
+      expect((await confirm(pendingRow())).result).toBe("won");
+      expect(await repo.cancelIfBooked(rid("pend-1"), "customer", CANCEL_AT)).toBe(true);
+      expect((await repo.getReservation(rid("pend-1")))!).toMatchObject({
+        status: "cancelled",
+        cancelledBy: "customer",
+        updatedAt: CANCEL_AT,
+      });
+    });
+
+    it("cancelIfBooked: the second of two cancels writes nothing — the first answer stands", async () => {
+      expect((await confirm(pendingRow())).result).toBe("won");
+      expect(await repo.cancelIfBooked(rid("pend-1"), "customer", CANCEL_AT)).toBe(true);
+      expect(await repo.cancelIfBooked(rid("pend-1"), "operator", "2026-06-30T09:05:00.000Z")).toBe(false);
+      expect((await repo.getReservation(rid("pend-1")))!).toMatchObject({
+        status: "cancelled",
+        cancelledBy: "customer",
+        updatedAt: CANCEL_AT,
+      });
+    });
+
+    it("cancelIfBooked: false for a missing row, and for a pending one — which it leaves pending", async () => {
+      expect(await repo.cancelIfBooked(rid("pend-nope"), "customer", CANCEL_AT)).toBe(false);
+      await repo.saveReservation(pendingRow());
+      expect(await repo.cancelIfBooked(rid("pend-1"), "customer", CANCEL_AT)).toBe(false);
+      expect((await repo.getReservation(rid("pend-1")))?.status).toBe("pending");
+    });
+
     // ── Checkout holds — acquire / lifecycle (12.1, DEC-109) ───────────────────
     /**
      * Save the parent rows the reservations-era foreign keys require (DEC-131). Postgres now

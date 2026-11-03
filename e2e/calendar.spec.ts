@@ -17,6 +17,7 @@ import {
   fillHydrated,
   plantPayment,
   plantVesselBlock,
+  readTrailFor,
   reopenEvent,
   resetAndSeed,
   signInAsAdmin,
@@ -1138,10 +1139,16 @@ test.describe("admin reservation actions (#616)", () => {
     const repair = page.getByTestId("release-repair");
     await expect(repair).toContainText("never released");
     await repair.getByRole("button", { name: "Release the boat" }).click();
-    await page.waitForURL(/cancelled=|cancelErr=/);
+    await page.waitForURL(/released=/);
 
     // Repaired: the slot is back on sale and the repair prompt is gone.
     await expect(page.getByTestId("release-repair")).toHaveCount(0);
+    // The repair cancelled nothing, so it records no second cancel and attempts no refund. It used
+    // to write "cancelled by operator" after the real cancel and quote at the operator's rate — after
+    // a customer's own cancel, that is the $50 the terms kept (PR #1214 review).
+    await expect(page.getByTestId("action-done")).toContainText("already cancelled");
+    await expect(page.getByTestId("action-error")).toHaveCount(0);
+    expect((await readTrailFor(RESV)).filter((e) => e.type === "cancelled")).toHaveLength(1);
     await page.goto(`/admin/calendar?date=${BOOKED.date}`);
     await expect(openAt(page, shortLabel(BOOKED.time))).toBeVisible();
   });

@@ -259,9 +259,9 @@ export async function sendPaymentLinkAgain(formData: FormData): Promise<void> {
  * the reservation releases this slot for re-sale, the event releases every neighbouring
  * departure on that hull and collapses the crew shift. See `cancelReservation` for why both.
  *
- * **Moves no money.** The confirm screen quotes what the published terms produce and the
- * operator refunds separately, with a figure they can edit — cancelling and refunding are
- * different decisions and one press should not make both.
+ * **And refunds, in the same press** (operator, 2026-08-10) — the figure the confirm's box holds,
+ * or the published-terms figure for the reason posted when it is blank. It once moved no money and
+ * the operator refunded separately; see the refund leg below for the ordering that replaced it.
  */
 export async function cancelBooking(formData: FormData): Promise<void> {
   const subject = await readSubject();
@@ -304,6 +304,18 @@ export async function cancelBooking(formData: FormData): Promise<void> {
     redirect(back({ cancelErr: result.reason }));
   }
 
+  // **This press cancelled nothing** (PR #1214 review): the booking already was. Either it is the
+  // "Release the boat" repair, or it lost a race to another press, which owns the cancel and its
+  // refund. Both stop here. The repair used to carry on, writing a second `cancelled` row
+  // ("cancelled by operator", after a customer's own cancel) and refunding at the operator's rate —
+  // which after a customer cancel is the $50 the terms kept. `released=1` only when THIS press freed
+  // the boat; a race's loser cannot know whether the winner's release finished.
+  if (result.alreadyCancelled) {
+    await clearFormDraft("/admin/calendar");
+    if (result.releaseFailed) redirect(back({ cancelErr: "not_released" }));
+    redirect(back({ released: result.freedEventId ? "1" : "0" }));
+  }
+
   // ── The trail: the boat is back on the market (issue #1048) ─────────────────
   //
   // `cancelled` was projected from `reservations.status` until now, dated from `updated_at` —
@@ -317,8 +329,8 @@ export async function cancelBooking(formData: FormData): Promise<void> {
   // about the refund. An emit at the bottom would record nothing for a cancel whose refund was
   // refused, which is the case most worth having a record of.
   //
-  // A random id: an operator press has no redelivery, and `cancelReservation` refuses a row that
-  // is not bookable, so a second one cannot re-cancel anyway.
+  // A random id: an operator press has no redelivery, and a press that cancelled nothing (the
+  // repair, or a race's loser) has already returned above.
   await recordTrail(
     { repo: getRepo(), now: () => new Date().toISOString() },
     {
@@ -333,6 +345,16 @@ export async function cancelBooking(formData: FormData): Promise<void> {
       metadata: { reason: `cancelled by ${by}` },
     },
   );
+
+  // **The cancel committed but its boat was not released** (PR #1214 review): releasing threw, so the
+  // event still holds the hull and the crew were not told. The cancel is recorded just above — this
+  // is the press that made it, and the repair press records nothing. The refund waits for the
+  // operator: `cancelled` keeps the reason the box prefills from, and the stashed draft keeps the
+  // figure they typed. Before this, the cancel's own row and refund were left to the repair press.
+  if (result.releaseFailed) {
+    await stashFormDraft("/admin/calendar", formData);
+    redirect(back({ cancelled: by, cancelErr: "not_released" }));
+  }
 
   // ── and refund, in the same press (operator, 2026-08-10) ────────────────────
   //

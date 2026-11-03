@@ -309,6 +309,49 @@ describe("cancelReservation", () => {
     expect((await repo.getReservation(RESV))?.status).toBe("cancelled");
     expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");
   });
+
+  it("the loser of two racing cancels writes nothing and leaves the release to the winner (PR #1214 review)", async () => {
+    // Both presses read `booked` before either wrote. A whole-row save from each read let both own
+    // the cancel: both relabelled `cancelledBy`, both re-formed and relayed, and both callers went
+    // on to refund. The winner has already cancelled here; the loser's read is stale.
+    const repo = await seeded();
+    await cancelReservation(deps(repo), RESV, "customer");
+    const real = repo.getReservation.bind(repo);
+    repo.getReservation = async (id) => {
+      const row = await real(id);
+      if (!row) return row;
+      const { cancelledBy: _by, ...live } = row;
+      return { ...live, status: "booked" };
+    };
+    const relayed: unknown[] = [];
+
+    const result = await cancelReservation(
+      deps(repo, async (f) => {
+        relayed.push(f);
+      }),
+      RESV,
+      "operator",
+    );
+
+    expect(result).toEqual({ ok: true, alreadyCancelled: true });
+    expect((await real(RESV))?.cancelledBy).toBe("customer");
+    expect(relayed).toEqual([]);
+  });
+
+  it("a throw releasing the hull is reported, not thrown — the cancel has committed (PR #1214 review)", async () => {
+    // The status write has landed, so a throw would tell the caller nothing happened about a booking
+    // that is cancelled — and the customer's retry stops at "already cancelled" and cannot repair it.
+    const repo = await seeded();
+    repo.cancelEventIfUnclaimed = async () => {
+      throw new Error("hull-day lock timed out");
+    };
+
+    const result = await cancelReservation(deps(repo), RESV, "customer");
+
+    expect(result).toEqual({ ok: true, alreadyCancelled: false, releaseFailed: true });
+    expect((await repo.getReservation(RESV))?.status).toBe("cancelled");
+    expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");
+  });
 });
 
 describe("quoteCancelRefund", () => {

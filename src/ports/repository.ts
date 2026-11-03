@@ -406,6 +406,22 @@ export interface Repository {
   ): Promise<boolean>;
 
   /**
+   * Cancel a PAID booking: `status booked → cancelled`, with `cancelledBy` and `updatedAt`. Returns
+   * true iff THIS call made that transition; a missing, pending or already cancelled row returns
+   * false and writes nothing.
+   *
+   * The same guard as `cancelPendingIfUnpaid`, for the same reason: two presses that both read
+   * `booked` — a customer's double tap, or the customer and the operator at once — must not both
+   * own the cancel. The owner is the press that goes on to refund, and a whole-row save from each
+   * read made both of them owners (PR #1214 review).
+   */
+  cancelIfBooked(
+    reservationId: ReservationId,
+    by: CancelledBy,
+    at: string,
+  ): Promise<boolean>;
+
+  /**
    * The row carrying this Stripe PaymentIntent id in its `paymentIntentIds`, or null. How confirm
    * finds the pending row (issue #916). Matches ANY id the row has minted (§2.8.5, 14.6) — a
    * declined-then-retried or superseded intent still resolves to its reservation. One row per id:

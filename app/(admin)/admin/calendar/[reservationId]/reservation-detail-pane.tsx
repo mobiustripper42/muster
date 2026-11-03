@@ -117,6 +117,19 @@ function balanceErrorMessage(reason: string): string {
 }
 
 /**
+ * A press on a booking that was already cancelled (PR #1214 review): the "Release the boat" repair, or
+ * the loser of two presses at once. It cancelled nothing and moved no money, so it must not read as a
+ * cancel or a refund. `1` = this press released the boat; `0` = it did not, and cannot know whether the
+ * press that won has finished — the repair block says so if it has not. Its own function so
+ * `actionMessage`'s baselined complexity does not grow.
+ */
+function releasedMessage(value: string): string {
+  return value === "1"
+    ? "This booking was already cancelled. Its boat is released and the crew have been told. Nothing was refunded."
+    : "This booking was already cancelled, so this press changed nothing. Nothing was refunded.";
+}
+
+/**
  * Operator-facing copy for a refused or completed action (#616). Says what happened.
  *
  * `movedCents` is only meaningful for a PARTIAL refund failure, where some legs landed and
@@ -136,7 +149,9 @@ function balanceErrorMessage(reason: string): string {
 // REFACTOR QUEUE — cognitive complexity 55, against a ceiling of 40 (#909).
 // Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
 // ratchets down as the list shrinks, so this disable is meant to be deleted.
-// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 55
+// Measured 60 with `--no-inline-config` at PR #1214's review fixes, which added only flat cases; the
+// 55 written here before them had already drifted.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 60
 export function actionMessage(
   kind: string,
   value: string,
@@ -158,10 +173,8 @@ export function actionMessage(
       }
       return `${freed} No refund was sent — use the refund box if something is owed.`;
     }
-    // The "Release the boat" repair, on a booking that was already cancelled (PR #1214 review). It
-    // cancelled nothing and moved no money, so it must not read as a cancel or a refund.
     case "released":
-      return "This booking was already cancelled. Its boat is released and the crew have been told. Nothing was refunded.";
+      return releasedMessage(value);
     case "refunded":
       return `Refunded ${formatCents(Number(value) || 0)} to the card it came from.`;
     case "resent": {
@@ -261,6 +274,10 @@ export function actionMessage(
           return "That reservation no longer exists.";
         case "not_booked":
           return "This checkout hasn’t been paid, so there is nothing to cancel. It lapses on its own.";
+        // The status write landed and releasing the boat threw (PR #1214 review). Not "nothing
+        // changed": the booking IS cancelled, and the refund is the operator's to send.
+        case "not_released":
+          return "This booking is cancelled, but its boat couldn’t be released and the crew haven’t been told. Press Release the boat to finish it. No refund was sent — refund from the box.";
         default:
           return "Couldn’t cancel just now. Try again in a moment.";
       }

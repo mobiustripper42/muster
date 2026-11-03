@@ -710,6 +710,17 @@ describe("cancelledNoticeFrom", () => {
     });
   });
 
+  it("AC8: an operator's own failed refund afterwards does not replace the customer's failure (@code-review)", () => {
+    // The notice and the admin prefill read the customer's refund leg. An operator attempt that also
+    // fails partway is that attempt's fact, not a new figure for what the customer's leg moved.
+    const operatorFailed = row("refund_failed", { actorKind: "admin", metadata: { actualCents: 5000 } });
+    expect(cancelledNoticeFrom([customerCancelled(), refundFailed(20000), operatorFailed])).toEqual({
+      kind: "failed",
+      cents: QUOTED,
+      movedCents: 20000,
+    });
+  });
+
   it("AC8: the operator's refund from the booking after a failure is issued", () => {
     expect(cancelledNoticeFrom([customerCancelled(), refundFailed(20000), operatorRefund()])).toEqual({
       kind: "issued",

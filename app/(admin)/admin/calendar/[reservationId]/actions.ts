@@ -304,22 +304,16 @@ export async function cancelBooking(formData: FormData): Promise<void> {
     redirect(back({ cancelErr: result.reason }));
   }
 
-  // The status write landed but releasing the boat threw. `cancelReservation` used to throw here and
-  // now reports it (PR #1214 review); this keeps what the catch above did with that throw. The pane's
-  // "Release the boat" repair shows, because the event is still scheduled.
-  if (result.releaseFailed) {
-    await stashFormDraft("/admin/calendar", formData);
-    redirect(back({ cancelErr: "unreachable" }));
-  }
-
   // **This press cancelled nothing** (PR #1214 review): the booking already was. Either it is the
-  // "Release the boat" repair, which finished the release, or it lost a race to another press, which
-  // owns the cancel and its refund. Both stop here. The repair used to carry on, writing a second
-  // `cancelled` row ("cancelled by operator", after a customer's own cancel) and refunding at the
-  // operator's rate — which after a customer cancel is the $50 the terms kept.
+  // "Release the boat" repair, or it lost a race to another press, which owns the cancel and its
+  // refund. Both stop here. The repair used to carry on, writing a second `cancelled` row
+  // ("cancelled by operator", after a customer's own cancel) and refunding at the operator's rate —
+  // which after a customer cancel is the $50 the terms kept. `released=1` only when THIS press freed
+  // the boat; a race's loser cannot know whether the winner's release finished.
   if (result.alreadyCancelled) {
     await clearFormDraft("/admin/calendar");
-    redirect(back({ released: "1" }));
+    if (result.releaseFailed) redirect(back({ cancelErr: "not_released" }));
+    redirect(back({ released: result.freedEventId ? "1" : "0" }));
   }
 
   // ── The trail: the boat is back on the market (issue #1048) ─────────────────
@@ -351,6 +345,16 @@ export async function cancelBooking(formData: FormData): Promise<void> {
       metadata: { reason: `cancelled by ${by}` },
     },
   );
+
+  // **The cancel committed but its boat was not released** (PR #1214 review): releasing threw, so the
+  // event still holds the hull and the crew were not told. The cancel is recorded just above — this
+  // is the press that made it, and the repair press records nothing. The refund waits for the
+  // operator: `cancelled` keeps the reason the box prefills from, and the stashed draft keeps the
+  // figure they typed. Before this, the cancel's own row and refund were left to the repair press.
+  if (result.releaseFailed) {
+    await stashFormDraft("/admin/calendar", formData);
+    redirect(back({ cancelled: by, cancelErr: "not_released" }));
+  }
 
   // ── and refund, in the same press (operator, 2026-08-10) ────────────────────
   //

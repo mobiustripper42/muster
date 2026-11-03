@@ -291,11 +291,13 @@ export function cancelledNoticeFrom(
   // the booking settles it. A provider `refunded` row settles it only when that failure moved
   // nothing: after a PARTIAL failure, the `refunded` row is the webhook for the part that went
   // through, and settling on it told the customer the whole figure was on its way (PR #1214 review).
+  // Only the customer's own failure counts: an operator attempt that fails afterwards is that
+  // attempt's fact, and its `actualCents` is not what the customer's leg moved (@code-review).
   let failed: TrailEvent | null = null;
   let settled = false;
   for (let i = cancelledAt + 1; i < rows.length; i++) {
     const row = rows[i]!;
-    if (row.type === "refund_failed") {
+    if (row.type === "refund_failed" && row.actorKind === "customer") {
       failed = row;
       settled = false;
     } else if (failed && row.type === "refund_issued_by_operator") {

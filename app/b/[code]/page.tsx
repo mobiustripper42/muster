@@ -198,16 +198,7 @@ export default async function ManagePage({
           )}
           {cancelledNotice !== null && (
             <div className="mb-4">
-              {cancelledNotice.kind === "issued" ? (
-                <Notice tone="ok">
-                  <b>Your booking is cancelled.</b> {formatCents(cancelledNotice.cents)} is on its way back to your card.
-                </Notice>
-              ) : (
-                <Notice tone="bad">
-                  <b>Your booking is cancelled, but your {formatCents(cancelledNotice.cents)} refund didn’t go through yet.</b>{" "}
-                  Our team has been told and will send it.
-                </Notice>
-              )}
+              <CancelledNotice notice={cancelledNotice} />
             </div>
           )}
           {sp.requested && (
@@ -435,6 +426,36 @@ async function waiverLinks(eventId: EventId, eventDate: string): Promise<{ signH
     logSwallowed("b/[code]:waivers", e, "the manage page could not tell whether a waiver is in effect");
     return null;
   }
+}
+
+/** The notice above a self-cancelled booking, from its trail (`cancelledNoticeFrom`). */
+function CancelledNotice({ notice }: { notice: NonNullable<Awaited<ReturnType<typeof loadCancelledFigure>>> }) {
+  if (notice.kind === "issued") {
+    return (
+      <Notice tone="ok">
+        <b>Your booking is cancelled.</b> {formatCents(notice.cents)} is on its way back to your card.
+      </Notice>
+    );
+  }
+  // A partial failure says what did go back, or the customer is told none of it did (PR #1214 review).
+  if (notice.movedCents > 0) {
+    return (
+      <Notice tone="bad">
+        <b>
+          Your booking is cancelled, but {formatCents(notice.cents - notice.movedCents)} of your{" "}
+          {formatCents(notice.cents)} refund didn’t go through yet.
+        </b>{" "}
+        {formatCents(notice.movedCents)} is on its way back to your card. Our team has been told and will send the
+        rest.
+      </Notice>
+    );
+  }
+  return (
+    <Notice tone="bad">
+      <b>Your booking is cancelled, but your {formatCents(notice.cents)} refund didn’t go through yet.</b> Our team
+      has been told and will send it.
+    </Notice>
+  );
 }
 
 function Section({ title, named, children }: { title: string; named?: boolean; children: React.ReactNode }) {

@@ -1844,6 +1844,22 @@ export class PostgresRepository implements Repository {
     return (res.rowCount ?? 0) > 0;
   }
 
+  async cancelIfBooked(
+    reservationId: ReservationId,
+    by: CancelledBy,
+    at: string,
+  ): Promise<boolean> {
+    // One guarded statement: a second press's update waits on the first's row lock, re-evaluates
+    // `status='booked'` after it commits, and matches nothing.
+    const res = await this.#pool.query(
+      `update reservations
+          set status='cancelled', cancelled_by=$2, updated_at=$3
+        where id=$1 and status='booked'`,
+      [reservationId, by, at],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
   async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {
     // Matches ANY id the row minted (§2.8.5, 14.6). `@> array[$1]` is the GIN-indexed containment
     // form. A given intent is minted for exactly one checkout, so at most one row matches.

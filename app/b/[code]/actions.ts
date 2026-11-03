@@ -143,18 +143,18 @@ export async function cancelFromManagePage(formData: FormData): Promise<void> {
     );
   } catch (e) {
     // `cancelByCustomer` rethrows only when a re-read finds the booking still booked, so nothing changed
-    // (a throw after the status write is carried on in the core), and the refund leg never throws out.
+    // (a failed hull release is reported in the outcome), and the refund leg never throws out.
     logSwallowed("b/cancelFromManagePage", e, "the customer's cancel did not complete");
     redirect(manageHref(code, { error: "cancel_failed" }));
   }
 
   // Before the redirect, which throws. Only when THIS press cancelled it.
-  if (outcome.ok) await emailOperatorOfCancel(booking, outcome.refund);
+  if (outcome.ok) await emailOperatorOfCancel(booking, outcome.refund, outcome.releaseFailed === true);
   redirect(manageRedirectFor(code, outcome));
 }
 
 /** Best-effort, like the change request's: the cancel stands whether or not the inbox hears. */
-async function emailOperatorOfCancel(booking: LoadedBooking, refund: CancelRefund): Promise<void> {
+async function emailOperatorOfCancel(booking: LoadedBooking, refund: CancelRefund, releaseFailed: boolean): Promise<void> {
   try {
     const emailEnv = readEmailEnv();
     const to = process.env.OPERATOR_NOTIFY_EMAIL;
@@ -173,6 +173,7 @@ async function emailOperatorOfCancel(booking: LoadedBooking, refund: CancelRefun
       ...(r.email ? { email: r.email } : {}),
       paneUrl: `${appBaseUrl()}/admin/calendar/${encodeURIComponent(String(r.id))}`,
       refund,
+      releaseFailed,
     });
     await new EmailChannel(emailEnv).send({
       to: { email: to },

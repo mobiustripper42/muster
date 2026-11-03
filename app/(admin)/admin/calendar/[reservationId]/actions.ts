@@ -304,6 +304,14 @@ export async function cancelBooking(formData: FormData): Promise<void> {
     redirect(back({ cancelErr: result.reason }));
   }
 
+  // The status write landed but releasing the boat threw. `cancelReservation` used to throw here and
+  // now reports it (PR #1214 review); this keeps what the catch above did with that throw. The pane's
+  // "Release the boat" repair shows, because the event is still scheduled.
+  if (result.releaseFailed) {
+    await stashFormDraft("/admin/calendar", formData);
+    redirect(back({ cancelErr: "unreachable" }));
+  }
+
   // ── The trail: the boat is back on the market (issue #1048) ─────────────────
   //
   // `cancelled` was projected from `reservations.status` until now, dated from `updated_at` —

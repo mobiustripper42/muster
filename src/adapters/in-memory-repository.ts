@@ -829,6 +829,18 @@ export class InMemoryRepository implements Repository {
     return true;
   }
 
+  async cancelIfBooked(
+    reservationId: ReservationId,
+    by: CancelledBy,
+    at: string,
+  ): Promise<boolean> {
+    // Single-threaded ⇒ atomic, as above; Postgres gets it from `where status='booked'`.
+    const row = this.#reservations.get(reservationId);
+    if (!row || row.status !== "booked") return false;
+    this.#reservations.set(reservationId, { ...row, status: "cancelled", cancelledBy: by, updatedAt: at });
+    return true;
+  }
+
   async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {
     // Matches ANY id the row minted (§2.8.5, 14.6) — a superseded intent still resolves.
     const hit = [...this.#reservations.values()].find((r) =>

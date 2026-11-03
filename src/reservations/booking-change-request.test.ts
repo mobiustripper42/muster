@@ -103,4 +103,19 @@ describe("customerCancelledEmail — the customer cancelled a paid booking from 
     expect(mail.text).not.toContain("still needs refunding");
     expect(mail.text).not.toContain(formatCents(0));
   });
+
+  it("a boat that was not released says so, in the subject and the body (PR #1214 review)", () => {
+    // The only other trace is a log line and the pane's repair block, which shows only to someone
+    // who opens this booking.
+    const mail = customerCancelledEmail({ ...base, refund: { kind: "issued", cents: 41240 }, releaseFailed: true });
+    expect(mail.subject).toContain("Boat not released");
+    expect(mail.text).toContain("The boat was NOT released");
+    expect(mail.text).toContain(formatCents(41240));
+  });
+
+  it("a released boat says nothing about releasing", () => {
+    const mail = customerCancelledEmail({ ...base, refund: { kind: "issued", cents: 41240 } });
+    expect(mail.subject).not.toContain("Boat not released");
+    expect(mail.text).not.toContain("NOT released");
+  });
 });

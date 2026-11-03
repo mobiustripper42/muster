@@ -378,6 +378,30 @@ describe("cancelByCustomer", () => {
     expect(await trail(repo)).toEqual([]);
   });
 
+  it("AC7: two presses at once — one cancels and refunds, the other is already_cancelled, and nobody is told a refund failed (PR #1214 review)", async () => {
+    // A double tap. Both presses read `booked`; before the conditional write both owned the cancel,
+    // and the loser met the winner's refund lease, saw nothing refunded yet, and reported a failure
+    // — a "Refund needed" email to the operator while the real refund was landing.
+    const repo = await seeded();
+    const fake = new FakePaymentPort();
+
+    const outcomes = await Promise.all([
+      cancelByCustomer(deps(repo, fake), RESV, posted()),
+      cancelByCustomer(deps(repo, fake), RESV, posted()),
+    ]);
+
+    expect(outcomes).toEqual(
+      expect.arrayContaining([
+        { ok: true, refund: { kind: "issued", cents: FEE_REFUND } },
+        { ok: false, reason: "already_cancelled" },
+      ]),
+    );
+    expect(fake.refunds).toHaveLength(1);
+    const rows = await trail(repo);
+    expect(rows.filter((e) => e.type === "cancelled")).toHaveLength(1);
+    expect(rows.filter((e) => e.type === "refund_failed")).toEqual([]);
+  });
+
   it("AC7: a posted expectedRefundedCents that no longer matches refuses quote_changed with the current figure, and cancels nothing", async () => {
     // The figure is unchanged; only the refunded-so-far token is stale.
     const repo = await seeded();
@@ -501,10 +525,10 @@ describe("cancelByCustomer", () => {
     ]);
   });
 
-  it("AC8: cancelReservation throwing after its status write carries on — the cancelled row is written and the refund issued", async () => {
-    // `cancelReservation` writes the status, then releases the hull through `cancelEventIfUnclaimed`
-    // (cancel-reservation.ts:241, :262). A throw there leaves the booking cancelled: the cancel has
-    // committed, so the press must still record it and send the money.
+  it("AC8: a boat that could not be released after the status write — the cancel stands, the refund is issued, and the outcome says so (PR #1214 review)", async () => {
+    // `cancelReservation` writes the status, then releases the hull through `cancelEventIfUnclaimed`.
+    // A throw there leaves the booking cancelled with its boat still held and the crew untold. The
+    // customer's retry stops at `already_cancelled`, so the outcome has to carry it to the operator.
     const repo = await seeded();
     repo.cancelEventIfUnclaimed = async () => {
       throw new Error("hull-day lock timed out");
@@ -514,8 +538,10 @@ describe("cancelByCustomer", () => {
     await expect(cancelByCustomer(deps(repo, fake), RESV, posted())).resolves.toEqual({
       ok: true,
       refund: { kind: "issued", cents: FEE_REFUND },
+      releaseFailed: true,
     });
     expect(await repo.getReservation(RESV)).toMatchObject({ status: "cancelled", cancelledBy: "customer" });
+    expect((await repo.getEvent(eventIdOf(FAR)))?.status).toBe("scheduled");
     expect((await trail(repo)).filter((e) => e.type === "cancelled")).toMatchObject([
       { actorKind: "customer", metadata: { reason: "cancelled by the customer from the booking page", quotedCents: FEE_REFUND } },
     ]);
@@ -523,11 +549,31 @@ describe("cancelByCustomer", () => {
     expect(refundedSum(fake)).toBe(FEE_REFUND);
   });
 
+  it("AC8: the status write committing and then throwing carries on — refunded, and the boat reported unreleased", async () => {
+    // A write that lands and then loses its connection. The re-read finds the booking cancelled, so
+    // the cancel committed; the hull release never ran.
+    const repo = await seeded();
+    const realWrite = repo.cancelIfBooked.bind(repo);
+    repo.cancelIfBooked = async (...args) => {
+      await realWrite(...args);
+      throw new Error("connection reset");
+    };
+    const fake = new FakePaymentPort();
+
+    await expect(cancelByCustomer(deps(repo, fake), RESV, posted())).resolves.toEqual({
+      ok: true,
+      refund: { kind: "issued", cents: FEE_REFUND },
+      releaseFailed: true,
+    });
+    expect((await repo.getEvent(eventIdOf(FAR)))?.status).toBe("scheduled");
+    expect(refundedSum(fake)).toBe(FEE_REFUND);
+  });
+
   it("AC8: cancelReservation throwing before its status write propagates the throw — nothing cancelled, refunded or written", async () => {
     // The re-read finds the booking still booked: nothing changed, so the action's `cancel_failed`
     // ("Nothing changed") is true and the throw must reach it.
     const repo = await seeded();
-    repo.saveReservation = async () => {
+    repo.cancelIfBooked = async () => {
       throw new Error("database unreachable");
     };
     const fake = new FakePaymentPort();
@@ -619,8 +665,9 @@ describe("cancelledNoticeFrom", () => {
       actorKind: "customer",
       metadata: { reason: "cancelled by the customer from the booking page", quotedCents: QUOTED },
     });
-  const refundFailed = () => row("refund_failed", { actorKind: "customer", metadata: { actualCents: 0 } });
+  const refundFailed = (actualCents = 0) => row("refund_failed", { actorKind: "customer", metadata: { actualCents } });
   const refunded = () => row("refunded", { actorKind: "stripe" });
+  const operatorRefund = () => row("refund_issued_by_operator", { actorKind: "admin", metadata: { actualCents: 20000 } });
 
   it("AC8: a cancel whose refund went through is issued, at the cancelled row's quotedCents", () => {
     expect(cancelledNoticeFrom([customerCancelled(), refunded()])).toEqual({ kind: "issued", cents: QUOTED });
@@ -631,7 +678,42 @@ describe("cancelledNoticeFrom", () => {
   });
 
   it("AC8: a refund_failed row after the customer cancelled row is failed", () => {
-    expect(cancelledNoticeFrom([customerCancelled(), refundFailed()])).toEqual({ kind: "failed", cents: QUOTED });
+    expect(cancelledNoticeFrom([customerCancelled(), refundFailed()])).toEqual({
+      kind: "failed",
+      cents: QUOTED,
+      movedCents: 0,
+    });
+  });
+
+  it("AC8: a partial failure is failed and carries what did move (PR #1214 review)", () => {
+    expect(cancelledNoticeFrom([customerCancelled(), refundFailed(20000)])).toEqual({
+      kind: "failed",
+      cents: QUOTED,
+      movedCents: 20000,
+    });
+  });
+
+  it("AC8: after a partial failure, the webhook for the leg that DID move does not flip it to issued (PR #1214 review)", () => {
+    // That `refunded` row is the $200 that went through, not the rest. Flipping on it told the
+    // customer the whole figure was on its way back.
+    expect(cancelledNoticeFrom([customerCancelled(), refundFailed(20000), refunded()])).toEqual({
+      kind: "failed",
+      cents: QUOTED,
+      movedCents: 20000,
+    });
+    // The webhook can also land before the failure is recorded.
+    expect(cancelledNoticeFrom([customerCancelled(), refunded(), refundFailed(20000)])).toEqual({
+      kind: "failed",
+      cents: QUOTED,
+      movedCents: 20000,
+    });
+  });
+
+  it("AC8: the operator's refund from the booking after a failure is issued", () => {
+    expect(cancelledNoticeFrom([customerCancelled(), refundFailed(20000), operatorRefund()])).toEqual({
+      kind: "issued",
+      cents: QUOTED,
+    });
   });
 
   it("AC8: a refunded row after the refund_failed row is issued — the operator re-sent it", () => {

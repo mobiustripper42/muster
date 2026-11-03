@@ -56,7 +56,8 @@ export type CancelRefund =
   | { kind: "failed"; cents: number; movedCents: number };
 
 export type CustomerCancelOutcome =
-  | { ok: true; refund: CancelRefund }
+  /** `releaseFailed`: cancelled and refunded as below, but the boat is still held and the crew untold. */
+  | { ok: true; refund: CancelRefund; releaseFailed?: true }
   | {
       ok: false;
       reason: "not_offered" | "already_cancelled" | "quote_changed" | "reservation_missing";
@@ -159,10 +160,11 @@ export async function cancelByCustomer(
       "customer",
     );
   } catch (e) {
-    // `cancelReservation` writes the status and can still throw after it (releasing the hull). If the
-    // booking is now cancelled the cancel committed: carry on to the trail row and the refund, or the
-    // customer is told "nothing changed" about a booking that is cancelled and unrefunded. If not,
-    // nothing changed and the throw is the caller's to report.
+    // `cancelReservation` reports a failed hull release rather than throwing, so a throw comes from
+    // the status write itself — which can still have committed (the connection dropped after it). If
+    // the booking is now cancelled, carry on to the trail row and the refund, or the customer is told
+    // "nothing changed" about a booking that is cancelled and unrefunded; the release never ran. If
+    // not, nothing changed and the throw is the caller's to report.
     const reread = await deps.repo
       .getReservation(reservationId)
       .catch((readErr: unknown) => {
@@ -171,7 +173,7 @@ export async function cancelByCustomer(
       });
     if (reread?.status !== "cancelled") throw e;
     logSwallowed("reservations:cancelByCustomer", e, `${reservationId} is cancelled but cancelReservation threw after the write`);
-    cancelled = { ok: true, alreadyCancelled: false };
+    cancelled = { ok: true, alreadyCancelled: false, releaseFailed: true };
   }
   if (!cancelled.ok) {
     return { ok: false, reason: cancelled.reason === "reservation_missing" ? "reservation_missing" : "not_offered" };
@@ -188,8 +190,10 @@ export async function cancelByCustomer(
     metadata: { reason: CANCEL_REASON, quotedCents: quote.refundCents },
   });
 
+  // The release failed only on THIS press's cancel, so it rides on whatever the refund leg says.
+  const released = cancelled.releaseFailed ? { releaseFailed: true as const } : {};
   const refunded = await refundAfterCancel(deps, reservationId, quote, posted.expectedRefundedCents);
-  if (refunded.kind === "issued") return { ok: true, refund: refunded };
+  if (refunded.kind === "issued") return { ok: true, refund: refunded, ...released };
   if (refunded.kind === "other_press") return { ok: false, reason: "already_cancelled" };
 
   await recordTrail(deps, {
@@ -201,7 +205,11 @@ export async function cancelByCustomer(
     type: "refund_failed",
     metadata: { actualCents: refunded.movedCents, reason: refunded.reason },
   });
-  return { ok: true, refund: { kind: "failed", cents: quote.refundCents, movedCents: refunded.movedCents } };
+  return {
+    ok: true,
+    refund: { kind: "failed", cents: quote.refundCents, movedCents: refunded.movedCents },
+    ...released,
+  };
 }
 
 type RefundAttempt =
@@ -267,7 +275,7 @@ async function refundedSince(
  */
 export function cancelledNoticeFrom(
   rows: readonly TrailEvent[],
-): { kind: "issued" | "failed"; cents: number } | null {
+): { kind: "issued"; cents: number } | { kind: "failed"; cents: number; movedCents: number } | null {
   let cancelledAt = -1;
   for (let i = rows.length - 1; i >= 0; i--) {
     const row = rows[i]!;
@@ -279,14 +287,25 @@ export function cancelledNoticeFrom(
   if (cancelledAt < 0) return null;
   const cents = rows[cancelledAt]!.metadata.quotedCents!;
 
-  // Failed only while the last `refund_failed` after the cancel has no `refunded` row after it.
-  let lastFailed = -1;
-  let lastRefunded = -1;
+  // Failed while the last `refund_failed` after the cancel is unsettled. The operator refunding from
+  // the booking settles it. A provider `refunded` row settles it only when that failure moved
+  // nothing: after a PARTIAL failure, the `refunded` row is the webhook for the part that went
+  // through, and settling on it told the customer the whole figure was on its way (PR #1214 review).
+  let failed: TrailEvent | null = null;
+  let settled = false;
   for (let i = cancelledAt + 1; i < rows.length; i++) {
-    if (rows[i]!.type === "refund_failed") lastFailed = i;
-    else if (rows[i]!.type === "refunded") lastRefunded = i;
+    const row = rows[i]!;
+    if (row.type === "refund_failed") {
+      failed = row;
+      settled = false;
+    } else if (failed && row.type === "refund_issued_by_operator") {
+      settled = true;
+    } else if (failed && row.type === "refunded" && (failed.metadata.actualCents ?? 0) === 0) {
+      settled = true;
+    }
   }
-  return { kind: lastFailed > lastRefunded ? "failed" : "issued", cents };
+  if (!failed || settled) return { kind: "issued", cents };
+  return { kind: "failed", cents, movedCents: failed.metadata.actualCents ?? 0 };
 }
 
 /**

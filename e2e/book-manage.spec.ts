@@ -24,6 +24,7 @@ import {
   plantWaiverTemplate,
   reservationIdFor,
   resetAndSeed,
+  signInAsAdmin,
 } from "./fixtures.js";
 import {
   BOOKED,
@@ -332,6 +333,21 @@ test.describe("self-service cancel on /b/<code> (16.9)", () => {
     const figure = FIGURE.exec((await notice.textContent()) ?? "")?.[0];
     expect(figure).toBeDefined();
     await expect(page.getByText(`−${figure}`, { exact: true })).toBeVisible();
+  });
+
+  test("the operator's refund box after a customer's own cancel offers what is still owed, not the $50 the terms kept (PR #1214 review)", async ({
+    page,
+  }) => {
+    // Pell Ostrander's refund went through: the terms owe nothing more, and Stripe can still give back
+    // the kept $50. The box offered that $50, one press from the cancel email.
+    await signInAsAdmin(page, "eric");
+    await page.goto(
+      `/admin/calendar/${encodeURIComponent(await reservationIdFor("Pell Ostrander"))}?date=${addDays(TODAY, 20)}`,
+    );
+
+    const form = page.getByTestId("refund-form");
+    await expect(form.getByText("Refund up to $50.00")).toBeVisible();
+    await expect(form.locator('input[name="amount"]')).toHaveValue("0.00");
   });
 
   test("AC8: which notice shows comes from the trail — a refunded booking at ?cancelled=1&refund=failed shows the issued notice", async ({

@@ -19,6 +19,7 @@ import {
   cancelledNoticeFrom,
   customerCancelQuote,
   manageRedirectFor,
+  owedAfterCustomerCancel,
   type CustomerCancelOutcome,
 } from "./customer-cancel.js";
 
@@ -727,6 +728,31 @@ describe("cancelledNoticeFrom", () => {
     // An earlier operator refund that failed is not this cancel's refund.
     const earlier = row("refund_failed", { actorKind: "admin", metadata: { actualCents: 0 } });
     expect(cancelledNoticeFrom([earlier, customerCancelled()])).toEqual({ kind: "issued", cents: QUOTED });
+  });
+
+  describe("owedAfterCustomerCancel — what the operator's refund box offers after a customer's own cancel (PR #1214 review)", () => {
+    // The box used to offer everything still refundable, which after a customer cancel includes the
+    // $50 (or the insurance) the terms keep. One press from the cancel email refunded it.
+    it("a refund that went through owes nothing more", () => {
+      expect(owedAfterCustomerCancel([customerCancelled(), refunded()])).toBe(0);
+    });
+
+    it("a failed refund owes the whole figure", () => {
+      expect(owedAfterCustomerCancel([customerCancelled(), refundFailed()])).toBe(QUOTED);
+    });
+
+    it("a partial failure owes only what did not move", () => {
+      expect(owedAfterCustomerCancel([customerCancelled(), refundFailed(20000), refunded()])).toBe(QUOTED - 20000);
+    });
+
+    it("the operator's refund after a failure settles it", () => {
+      expect(owedAfterCustomerCancel([customerCancelled(), refundFailed(20000), operatorRefund()])).toBe(0);
+    });
+
+    it("null with no customer cancel — an operator's cancel keeps the box as it was", () => {
+      expect(owedAfterCustomerCancel([])).toBeNull();
+      expect(owedAfterCustomerCancel([row("cancelled", { actorKind: "admin", metadata: { reason: "weather" } })])).toBeNull();
+    });
   });
 
   it("AC10: with no customer cancelled row there is no notice — an operator's cancel is not one", () => {

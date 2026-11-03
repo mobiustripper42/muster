@@ -1,8 +1,7 @@
 /**
- * Cancel a Muster-native booking (#616) — the operator action that did not exist. Nothing in
- * the product ever wrote `status: "cancelled"` on a reservation; the only `saveReservation`
- * caller was the Xola importer, and the customer-facing "cancel" on the `/b/<code>` manage page
- * composes an EMAIL and persists nothing (`manage/actions.ts:64`).
+ * Cancel a Muster-native booking (#616) — the operator action that did not exist when this was
+ * written. Two callers now: the operator's pane (`cancelBooking`) and, since 16.9, the customer's own
+ * cancel from `/b/<code>` (`customer-cancel.ts`).
  *
  * **Cancelling writes TWO rows, and the second one is the point.** Marking the reservation
  * cancelled releases this slot for re-sale (the claim predicate filters `status='booked'`), but
@@ -18,9 +17,9 @@
  * forever. `bookPendingIfHullFree` resurrects it — see the comment there, and the Postgres test
  * that fails with `lost` without it.
  *
- * **This module moves no money.** Refunding is a separate, deliberate operator action
- * (`refund-payment.ts`) against a figure they can edit; `quoteCancelRefund` below only computes
- * what the published terms suggest, for the confirm screen to prefill.
+ * **This module moves no money; its callers do.** Each refunds after the cancel has committed,
+ * through `refund-payment.ts` — the operator against a figure they can edit, the customer at the
+ * published terms. `quoteCancelRefund` below only computes what those terms produce.
  */
 import { formShifts, type FormResult } from "../builder/form-shifts.js";
 import { logFormAudit } from "../oracle/audit-log.js";

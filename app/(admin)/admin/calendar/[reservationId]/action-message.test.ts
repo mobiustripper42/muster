@@ -14,6 +14,17 @@ import { actionMessage } from "./reservation-detail-pane";
 
 const CONTACTS = { email: "marcus@example.com", phone: "+1 216 555 0148" };
 
+describe("actionMessage — released (PR #1214 review)", () => {
+  it("a repair press says the boat is released and that it refunded nothing", () => {
+    // The press cancelled nothing — the booking already was — so it must not read as a cancel, and
+    // must not imply money moved.
+    const m = actionMessage("released", "1");
+    expect(m).toContain("already cancelled");
+    expect(m).toContain("boat is released");
+    expect(m).toContain("Nothing was refunded");
+  });
+});
+
 describe("actionMessage — resent", () => {
   it("names both contacts when both channels went", () => {
     const m = actionMessage("resent", "sent-sent", CONTACTS);

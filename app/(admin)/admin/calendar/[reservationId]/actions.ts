@@ -259,9 +259,9 @@ export async function sendPaymentLinkAgain(formData: FormData): Promise<void> {
  * the reservation releases this slot for re-sale, the event releases every neighbouring
  * departure on that hull and collapses the crew shift. See `cancelReservation` for why both.
  *
- * **Moves no money.** The confirm screen quotes what the published terms produce and the
- * operator refunds separately, with a figure they can edit — cancelling and refunding are
- * different decisions and one press should not make both.
+ * **And refunds, in the same press** (operator, 2026-08-10) — the figure the confirm's box holds,
+ * or the published-terms figure for the reason posted when it is blank. It once moved no money and
+ * the operator refunded separately; see the refund leg below for the ordering that replaced it.
  */
 export async function cancelBooking(formData: FormData): Promise<void> {
   const subject = await readSubject();
@@ -312,6 +312,16 @@ export async function cancelBooking(formData: FormData): Promise<void> {
     redirect(back({ cancelErr: "unreachable" }));
   }
 
+  // **This press cancelled nothing** (PR #1214 review): the booking already was. Either it is the
+  // "Release the boat" repair, which finished the release, or it lost a race to another press, which
+  // owns the cancel and its refund. Both stop here. The repair used to carry on, writing a second
+  // `cancelled` row ("cancelled by operator", after a customer's own cancel) and refunding at the
+  // operator's rate — which after a customer cancel is the $50 the terms kept.
+  if (result.alreadyCancelled) {
+    await clearFormDraft("/admin/calendar");
+    redirect(back({ released: "1" }));
+  }
+
   // ── The trail: the boat is back on the market (issue #1048) ─────────────────
   //
   // `cancelled` was projected from `reservations.status` until now, dated from `updated_at` —
@@ -325,8 +335,8 @@ export async function cancelBooking(formData: FormData): Promise<void> {
   // about the refund. An emit at the bottom would record nothing for a cancel whose refund was
   // refused, which is the case most worth having a record of.
   //
-  // A random id: an operator press has no redelivery, and `cancelReservation` refuses a row that
-  // is not bookable, so a second one cannot re-cancel anyway.
+  // A random id: an operator press has no redelivery, and a press that cancelled nothing (the
+  // repair, or a race's loser) has already returned above.
   await recordTrail(
     { repo: getRepo(), now: () => new Date().toISOString() },
     {

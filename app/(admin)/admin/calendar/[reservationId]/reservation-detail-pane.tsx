@@ -158,6 +158,10 @@ export function actionMessage(
       }
       return `${freed} No refund was sent — use the refund box if something is owed.`;
     }
+    // The "Release the boat" repair, on a booking that was already cancelled (PR #1214 review). It
+    // cancelled nothing and moved no money, so it must not read as a cancel or a refund.
+    case "released":
+      return "This booking was already cancelled. Its boat is released and the crew have been told. Nothing was refunded.";
     case "refunded":
       return `Refunded ${formatCents(Number(value) || 0)} to the card it came from.`;
     case "resent": {

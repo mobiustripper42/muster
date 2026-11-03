@@ -21,6 +21,8 @@ revisit_if: "The operator wants cancels inside the window handled online, or Xol
 amends_spec:
   - section: "2.8"
     scope: "2.8.12: cancelling is the customer's own action when the terms refund something; changing stays a request"
+  - section: "3.3"
+    scope: "the customer-initiated note: customers cancel their own (§2.8.12)"
 ---
 
 ## DEC-198: Customers cancel online only when the terms refund something
@@ -29,10 +31,10 @@ Supersedes DEC-135, whose condition (insurance being sellable) fired. Issue #107
 
 - **Offered only when it pays.** Operator, 2026-10-23: customers do not cancel without a refund;
   they call. Inside the window, or when nothing is owed, the request form stays.
-- **Cancel first, then refund,** as the operator's cancel does. It frees the boat and tells the crew. A failed refund leaves the booking cancelled, a `refund_failed` row and an
-  email to the operator. Refund-first leaves a refunded customer holding a boat.
-- **Refused by name, never re-quoted silently** (DEC-197's posture). The press posts the figure the
-  confirm showed; if it moved, nothing is cancelled and the customer goes to the team.
+- **Cancel first, then refund,** as the operator's cancel does. A failed refund leaves it cancelled,
+  with a `refund_failed` row and an operator email; refund-first leaves a refunded customer holding a boat.
+- **Refused by name, never re-quoted silently** (DEC-197's posture): if the confirm's figure moved,
+  nothing is cancelled.
 - **One press moves money once:** only the press that cancelled refunds.
 - **Tax is the operator's.** The refund is everything paid less the one published deduction.
 - **Other trips are rows, never links.** A link carries that booking's own code, so one code would

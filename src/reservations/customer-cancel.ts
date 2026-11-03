@@ -309,6 +309,18 @@ export function cancelledNoticeFrom(
 }
 
 /**
+ * What the terms still owe after a customer's own cancel, from its trail, or `null` when there is no
+ * customer cancel (an operator's cancel; nothing to say). The operator's refund box starts here
+ * rather than at everything Stripe could give back, which after a customer cancel includes the $50 or
+ * the insurance the terms keep — one press from the cancel email (PR #1214 review).
+ */
+export function owedAfterCustomerCancel(rows: readonly TrailEvent[]): number | null {
+  const notice = cancelledNoticeFrom(rows);
+  if (!notice) return null;
+  return notice.kind === "failed" ? notice.cents - notice.movedCents : 0;
+}
+
+/**
  * Where the manage page goes after the action: the outcome as a URL. Params carry codes only, never
  * a figure (`.claude/CLAUDE-context.md` § Error Handling) — the page reads the figure from the trail.
  */

@@ -119,7 +119,8 @@ export const countsAsPaid = (p: { status: PaymentStatus }): boolean =>
  * It would not have. `!== "refunded"` type-checks cleanly against any wider union, so adding
  * `disputed` to `PaymentStatus` would have compiled green and counted a chargeback as money in
  * all five call sites at once: `balanceOwedCents`, `/admin/purchases` (`purchases-view.ts`), the
- * calendar detail, the cancel refund math, and `refund-payment`'s own guard.
+ * calendar detail, the cancel refund math, and `refund-payment`'s own guard. (`balanceOwedCents`
+ * has since moved to `tookMoney`, issue #841, which is built from this set.)
  *
  * The `payments.status` column carries no CHECK constraint (deliberately — DEC-131), so nothing
  * at the database layer rejects an unexpected value either. This set is the only guard there is.

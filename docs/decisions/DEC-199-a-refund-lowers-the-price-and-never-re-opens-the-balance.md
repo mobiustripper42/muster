@@ -13,7 +13,7 @@ claims:
     target: "src/reservations/payment-config.ts"
   - kind: "file"
     target: "src/reservations/create-balance-checkout.ts"
-revisit_if: "A refund is meant to come off the balance instead of the card (issue #1222), or deposits return and a refund must re-open what is owed"
+revisit_if: "A refund comes off the balance, not the card (issue #1222), a refund must re-open what is owed, or a refunded duplicate stops counting as paid (audit F2)"
 amends_spec:
   - section: "2.8"
     scope: "2.8.10: a refund on a booking still going ahead lowers the price and the amount paid together, and never re-opens the balance"
@@ -29,7 +29,7 @@ Issue #841. Operator, 2026-11-04: a refund means the price went down.
 - **Rejected: tip-first netting (issue #522).** A refund came off tip and fee first, then reduced
   what counted as paid. A goodwill refund past them showed the customer a balance that
   `createBalanceCheckout` would charge unattended.
-- **Rejected: a gate on the live `depositMode` setting** (this issue's first proposal). It says what
+- **Rejected: a gate on the live `depositMode` setting** (the first proposal). It says what
   the operator sells today, not how this booking was paid.
 - **Unchanged.** A disputed or lost row contributes nothing and the balance link still refuses it.
   The overpay alert still fires on a negative balance.

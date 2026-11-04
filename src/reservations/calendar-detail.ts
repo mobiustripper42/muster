@@ -81,7 +81,7 @@ export interface DetailMoney {
   gratuityCents: number;
   /** Σ succeeded payments, gross (tip included) — what the card actually took. */
   paidCents: number;
-  /** `> 0` ⇒ still owed (deposit booking); `<= 0` ⇒ settled. */
+  /** `> 0` ⇒ still owed; `<= 0` ⇒ settled. */
   balanceCents: number;
   refundedCents: number;
   /**
@@ -207,8 +207,8 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
   const flexTaxCents = r.invoice ? flexCarveOutCents(r.invoice) - flexChargedCents(r.invoice) : 0;
   const taxCents = taxCentsFor(fareCents, taxRateBps) + Math.max(0, flexTaxCents);
   const gratuityCents = gratuities.reduce((sum, g) => sum + g.amountCents, 0);
-  // `countsAsPaid`, shared with `balanceOwedCents` — a partially refunded row is still
-  // money the customer paid, shown gross here with `refundedCents` on its own line (#522).
+  // `countsAsPaid` — a partially refunded row is still money the customer paid, shown gross
+  // here with `refundedCents` on its own line (#522). The balance reads `tookMoney` instead.
   const succeeded = payments.filter(countsAsPaid);
   const paidCents = succeeded.reduce((sum, p) => sum + p.amountCents, 0);
   const refundedCents = payments.reduce((sum, p) => sum + (p.refundedCents ?? 0), 0);

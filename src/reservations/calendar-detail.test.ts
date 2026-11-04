@@ -141,9 +141,8 @@ describe("money", () => {
 
   it("a CANCELLED booking owes nothing — the trip is off, so there is no balance to be due", () => {
     // issue #803. `balanceOwedCents` is fare+tax minus what was paid, which is a live number for
-    // a live trip and meaningless once the trip is cancelled. Worse after a refund: the refund
-    // reduces `paid`, so the balance goes back UP, and the guest's own page told them they owed
-    // $575.32 before a cruise that had been cancelled and refunded.
+    // a live trip and meaningless once the trip is cancelled. The guest's own page told them they
+    // owed $575.32 before a cruise that had been cancelled and refunded.
     const v = build({
       reservation: reservation({ status: "cancelled" }),
       payments: [payment({ amountCents: 12485, refundedCents: 12485, status: "refunded" })],

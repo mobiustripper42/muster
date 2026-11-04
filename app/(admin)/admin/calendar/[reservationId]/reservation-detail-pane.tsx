@@ -726,16 +726,17 @@ function tipLabel(g: ReservationDetailView["gratuityRows"][number]): string {
  * webhook writes the payment. Nothing is charged or written here, so re-minting is free and needs
  * no confirmation.
  *
- * **Three more states must hide it (#616, #723):**
+ * **Two more states must hide it (#616, #723):**
  *
  * - CANCELLED. `createBalanceCheckout` refuses it (`not_active`); a button whose only outcome is
  *   an error is a dead end on the common path.
- * - REFUNDED. A refund reduces `paid`, so `balanceOwedCents` goes back UP (`payment-config.ts`).
- *   Left alone, the pane would offer to re-bill a customer for money the operator had just handed
- *   back — and `createBalanceCheckout` would happily mint that charge.
- * - DISPUTED (issue #723). The same trap from the other direction, and worse: a chargeback sets no
- *   `refundedCents` and `countsAsPaid` excludes the disputed row, so the balance jumps back to the
- *   full amount. `createBalanceCheckout` refuses it server-side too (`reason: "disputed"`).
+ * - DISPUTED (issue #723). A chargeback sets no `refundedCents` and the balance goes through
+ *   `tookMoney`, which excludes the disputed row, so the balance jumps back to the full amount.
+ *   `createBalanceCheckout` refuses it server-side too (`reason: "disputed"`).
+ *
+ * A refund is not a state that hides it: a refund lowers the price and the amount paid together,
+ * so it never raises the balance (issue #841), and a real deposit balance stays collectable after
+ * a goodwill refund.
  *
  * `status === "booked"` also keeps it off an unpaid phone booking, whose payment link is 16.1a's.
  */
@@ -751,7 +752,6 @@ function BalanceLink({
     money.priceKnown &&
     money.balanceCents > 0 &&
     v.status === "booked" &&
-    money.refundedCents === 0 &&
     !money.disputed;
   if (!offered) return null;
   if (balance.url) {

@@ -1,8 +1,8 @@
 /**
  * Start a BALANCE checkout (Phase 11.2b, DEC-107) — collect the remaining balance on a
  * deposit booking, ON DEMAND. Computes the owed amount from the canonical deriver
- * (`balanceOwedCents` — total minus Σ succeeded payments, never a config recompute of the
- * deposit share) so it can't drift if `depositPercent`/price changed since the deposit,
+ * (`balanceOwedCents` — total minus what the payments that took money carried, never a config
+ * recompute of the deposit share) so it can't drift if `depositPercent`/price changed since the deposit,
  * and opens a Stripe Checkout for exactly that. **Writes nothing** — the `Payment{kind:'balance'}`
  * is written by the webhook on completion (`metadata.purpose="balance"`), against the
  * already-claimed reservation (no re-claim; the boat was won at deposit, DEC-109).
@@ -54,8 +54,8 @@ export async function createBalanceCheckout(
   // `<= 0` folds no_balance, already-paid, and full-mode into one predicate.
   if (owed <= 0) return { ok: false, reason: "no_balance" };
 
-  // A CHARGEBACK re-opens the balance exactly the way a refund does (issue #723): `countsAsPaid`
-  // excludes `disputed`, so `owed` above jumps back to the full amount. Without this guard the
+  // A CHARGEBACK re-opens the balance (issue #723): `tookMoney` excludes `disputed`, so `owed`
+  // above jumps back to the full amount. A refund does not (issue #841). Without this guard the
   // operator is offered a link that bills the customer AGAIN for the money their bank is
   // currently clawing back — which is the fastest way to turn one dispute into two.
   //

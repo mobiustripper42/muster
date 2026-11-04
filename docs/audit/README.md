@@ -85,7 +85,7 @@ Statuses are `open` unless a row says otherwise. IDs are each report's own; refe
 | F7 | S3 | `/book/success` tells a race loser they were refunded and texted before either happens | open |
 | F8 | S3 | Two concurrent self-cancel presses report a failed refund to both parties | check — likely fixed by pull request #1214 (`cancelIfBooked`) |
 | F9 | S3 | "Release the boat" after a self-cancel writes a second, misattributed `cancelled` row | check — likely fixed by pull request #1214 (`released=1|0`) |
-| F10 | S3 | The operator's cancel tells the customer nothing; §3.3's cascade is not built | open |
+| F10 | S3 | The operator's cancel tells the customer nothing; §3.3's cascade is not built | issue #1212 |
 | F11 | S3 | The offering form says the tip is exempt from the service fee; it is in the fee base | open |
 | F12 | S3 | `/admin/integrity` goes red for good after cancelling an unpaid phone booking | open |
 | F13 | S3 | `/admin/purchases` shows a lapsed pending row as "Pending" forever | open |
@@ -93,7 +93,7 @@ Statuses are `open` unless a row says otherwise. IDs are each report's own; refe
 | F15 | S4 | Tax rate: spec 8%, worked example and code fallback 7.25%, nothing seeds the row | open — the rate is a setting, 8% in production; do not raise the 7.25% code fallback (operator, 2026-10-10) |
 | F16 | S4 | §2.8.7 says a retry makes a second payment; the code reuses one PaymentIntent | open |
 | F17 | S4 | The cutoff's settings-page control is not built | open |
-| F18 | S4 | An override `Event` at the asker's slot: the read exempts it, the write does not (latent S1) | open |
+| F18 | S4 | An override `Event` at the asker's slot: the read exempts it, the write does not (latent S1) | issue #945 |
 | F19 | S4 | Slots under a live pending row are hidden on the operator grid, not drawn busy | open |
 | F20 | S4 | A `payment_intent.succeeded` that matches no row is acked silently | open |
 | F21 | S4 | The customer record is created before the flip, not in step 6 | open |

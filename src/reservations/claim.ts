@@ -175,12 +175,15 @@ export interface DepartureClaimRequest {
  * and a resubmit never moves the payment window forward) and is free to re-freeze everything else
  * — a changed tip reprices. `at` is the claim's clock, so the row's timestamps and the liveness
  * decisions made around it cannot disagree.
+ *
+ * **Null means the caller refuses this row** (issue #1217): nothing is written, and the claim
+ * stops rather than trying the next boat.
  */
 export type PendingRowBuilder = (
   vesselId: VesselId,
   prior: Reservation | null,
   at: string,
-) => Promise<Reservation> | Reservation;
+) => Promise<Reservation | null> | Reservation | null;
 
 export type DepartureClaimResult =
   | { claimed: Reservation; reused: false }
@@ -194,6 +197,12 @@ export type DepartureClaimResult =
    * emit from in here would record a change that never landed on the row.
    */
   | { claimed: Reservation; reused: true; prior: Reservation }
+  /**
+   * The builder returned null (issue #1217). **`prior` is the guest's own live pending row**
+   * wherever the claim refuses — handed back for the same reason `reused` hands it back — or null
+   * when they have none. The claim stops at a refusal and does not try the next boat.
+   */
+  | { refused: true; prior: Reservation | null }
   | { soldOut: true }
   | {
       unbookable:
@@ -428,16 +437,20 @@ export async function claimDepartureSlot(
   // fix needs the token to exist BEFORE the action runs, and a Next.js page cannot set a cookie
   // during render. Delete this comment when #806 ships.
   const holderToken = req.holderToken ?? null;
-  if (holderToken) {
-    const mine = reservations.find(
-      (r) =>
-        r.source === "muster" &&
-        r.holderToken === holderToken &&
-        isLivePending(r, liveSince) &&
-        String(r.offeringId) === String(req.offeringId) &&
-        r.date === req.date &&
-        r.time === req.time,
-    );
+  // Hoisted for the builder's refusal (issue #1217): a refusal hands this row back whether or not
+  // it still qualifies for reuse, so the caller can tell a stale total from an already-paid row.
+  const mine = holderToken
+    ? reservations.find(
+        (r) =>
+          r.source === "muster" &&
+          r.holderToken === holderToken &&
+          isLivePending(r, liveSince) &&
+          String(r.offeringId) === String(req.offeringId) &&
+          r.date === req.date &&
+          r.time === req.time,
+      )
+    : undefined;
+  if (mine) {
     // **A reused row gets the SAME scrutiny a fresh one would.** `candidates` re-applies fit and
     // blocks; `vesselIsAvailable` re-applies booked / hull-busy. Skipping either was a real gap:
     // an operator blocking a vessel for a mechanical fault at 10:00 would otherwise hand the
@@ -455,7 +468,10 @@ export async function claimDepartureSlot(
       // window forward (§2.8.7), and an operator edit mid-checkout must not change what this
       // booking meant (DEC-161). The caller lands the re-freeze on the row with
       // `recordCheckoutAttempt`, a guarded write that a concurrent confirm survives (#946).
-      return { claimed: await buildRow(mine.vesselId, mine, at), reused: true, prior: mine };
+      const reusedRow = await buildRow(mine.vesselId, mine, at);
+      // The builder refused this row (issue #1217): stop here. Nothing is written.
+      if (reusedRow === null) return { refused: true, prior: mine };
+      return { claimed: reusedRow, reused: true, prior: mine };
     }
     // A row that no longer qualifies is LEFT ALONE to lapse, never cancelled here. Releasing was
     // the second exploit `/security-review` found in the identity-keyed version: it let anyone
@@ -471,6 +487,9 @@ export async function claimDepartureSlot(
     // this would drift into a reused row being handed back on a boat the loop would have skipped.
     if (!vesselIsAvailable(vesselId)) continue;
     const row = await buildRow(vesselId, null, at);
+    // A refusal ends the claim: the next boat would be a different total the guest never saw
+    // (issue #1217). `mine` is handed back so the caller can tell a stale total from a paid row.
+    if (row === null) return { refused: true, prior: mine ?? null };
     // The CAS, under the hull-day lock. A `lost` here is a rival who committed between the read
     // above and this write — so try the NEXT boat rather than reporting sold-out, which is what
     // the separate hold step could not do: it had already picked the hull by the time the row

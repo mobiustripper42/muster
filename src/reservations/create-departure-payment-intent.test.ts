@@ -10,6 +10,7 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { Offering, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { PaymentEvent } from "../ports/payment.js";
+import { priceBooking } from "./booking-invoice.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
 import { createDeparturePaymentIntent } from "./create-departure-payment-intent.js";
 import { abandonedCheckouts } from "./abandonment.js";
@@ -1297,5 +1298,254 @@ describe("createDeparturePaymentIntent — the trail (issue #1051)", () => {
 
     expect(again.ok).toBe(true); // the refusal never reaches the customer
     expect(await trailOf(repo, "payment_superseded")).toHaveLength(0);
+  });
+});
+
+/**
+ * A guest is never charged a due-now total other than the one on their screen (issue #1217).
+ *
+ * The page's own figures through the write are AC1, in `components/checkout/money.test.ts`, because
+ * nothing under `src/` can import `components/`. Here the same number comes from `priceBooking`,
+ * which that file pins `totalsFor` to, read against the repo as it stands: what a page loaded right
+ * now would show for this party on this boat.
+ */
+describe("createDeparturePaymentIntent — the total the page showed (issue #1217)", () => {
+  const REFUSED = { ok: false, reason: "price_changed" };
+  const LATER = "2026-07-04T12:05:00.000Z"; // inside the payment window
+  const later = () => LATER;
+  const rival = { ...req, email: "dana@x.io", phone: "+14405550102", holderToken: TOKEN_B };
+
+  async function pageShows(repo: InMemoryRepository, vesselId: typeof SMALL): Promise<number> {
+    const vessels = await repo.listVessels();
+    return priceBooking({
+      offering: (await repo.getOffering(OFF))!,
+      vessel: vessels.find((v) => String(v.id) === String(vesselId))!,
+      vesselId,
+      events: await repo.listEvents(),
+      config: await repo.getPaymentConfig(),
+      date: DATE,
+      time: TIME,
+      guestCount: req.guestCount,
+      gratuityBps: req.gratuityBps,
+    }).amountDueNowCents;
+  }
+
+  /** Fails if a nothing-was-charged refusal went anywhere near the provider. */
+  function watchPort(pay: FakePaymentPort) {
+    return [
+      vi.spyOn(pay, "createPaymentIntent"),
+      vi.spyOn(pay, "updatePaymentIntentAmount"),
+      vi.spyOn(pay, "cancelPaymentIntent"),
+      vi.spyOn(pay, "getPaymentIntentState"),
+    ];
+  }
+
+  const MOVES: [string, (repo: InMemoryRepository) => Promise<void>][] = [
+    ["the offering's price, up", (repo) => repo.saveOffering(offering({ basePriceCents: 59900 }))],
+    ["the offering's price, down", (repo) => repo.saveOffering(offering({ basePriceCents: 39900 }))],
+    ["the tax rate, up", (repo) => repo.setPaymentConfig({ taxRateBps: 825 }, NOW)],
+    ["the tax rate, down", (repo) => repo.setPaymentConfig({ taxRateBps: 625 }, NOW)],
+    ["the service fee, up", (repo) => repo.setPaymentConfig({ serviceFeeBps: 400 }, NOW)],
+    ["the service fee, down", (repo) => repo.setPaymentConfig({ serviceFeeBps: 200 }, NOW)],
+    ["the deposit percent, up", (repo) => repo.setPaymentConfig({ depositPercent: 50 }, NOW)],
+    ["the deposit percent, down", (repo) => repo.setPaymentConfig({ depositPercent: 10 }, NOW)],
+  ];
+
+  for (const [label, move] of MOVES) {
+    it(`AC2: ${label} after the page loaded is refused`, async () => {
+      const repo = await seededRepo();
+      const shown = await pageShows(repo, SMALL);
+      await move(repo);
+      expect(await pageShows(repo, SMALL)).not.toBe(shown); // the move really did move the total
+
+      const r = await createDeparturePaymentIntent(
+        repo,
+        new FakePaymentPort(),
+        { ...req, shownDueNowCents: shown },
+        now,
+      );
+      expect(r).toEqual(REFUSED);
+    });
+  }
+
+  for (const [label, offBy] of [["a cent low", -1], ["a cent high", 1]] as const) {
+    it(`AC2: a total ${label} is refused — there is no tolerance`, async () => {
+      const repo = await seededRepo();
+      const shown = (await pageShows(repo, SMALL)) + offBy;
+      const r = await createDeparturePaymentIntent(
+        repo,
+        new FakePaymentPort(),
+        { ...req, shownDueNowCents: shown },
+        now,
+      );
+      expect(r).toEqual(REFUSED);
+    });
+  }
+
+  it("AC2: a total of zero is compared like any other — it is a number sent, not an absent one", async () => {
+    const repo = await seededRepo();
+    const r = await createDeparturePaymentIntent(
+      repo,
+      new FakePaymentPort(),
+      { ...req, shownDueNowCents: 0 },
+      now,
+    );
+    expect(r).toEqual(REFUSED);
+  });
+
+  it("AC3: a refused first attempt writes no row and never calls the payment port", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const port = watchPort(pay);
+    const shown = await pageShows(repo, SMALL);
+    await repo.saveOffering(offering({ basePriceCents: 59900 }));
+
+    const r = await createDeparturePaymentIntent(repo, pay, { ...req, shownDueNowCents: shown }, now);
+
+    expect(r).toEqual(REFUSED);
+    expect(await repo.listAllReservations()).toHaveLength(0);
+    for (const call of port) expect(call).not.toHaveBeenCalled();
+  });
+
+  it("AC3: another guest can claim the same boat straight after a refusal", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const stale = await pageShows(repo, SMALL);
+    await repo.saveOffering(offering({ basePriceCents: 59900 }));
+    await createDeparturePaymentIntent(repo, pay, { ...req, shownDueNowCents: stale }, now);
+
+    const other = await createDeparturePaymentIntent(
+      repo,
+      pay,
+      { ...rival, shownDueNowCents: await pageShows(repo, SMALL) },
+      now,
+    );
+
+    expect(other.ok).toBe(true);
+    const rows = await repo.listAllReservations();
+    expect(rows.map((r) => [r.holderToken, String(r.vesselId)])).toEqual([[TOKEN_B, "v-small"]]);
+  });
+
+  it("AC4: the first boat taken and the next boat's total differs: refused, no row on either boat", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const firstBoat = await pageShows(repo, SMALL);
+    await createDeparturePaymentIntent(repo, pay, rival, now); // paying on the first-choice boat
+    // An override Event is the only way two boats differ (`booking-invoice.ts`).
+    await repo.saveEvent({
+      id: eventIdForSlot(BIG, DATE, TIME),
+      vesselId: BIG,
+      date: DATE,
+      time: TIME,
+      capacity: 12,
+      status: "scheduled",
+      source: "muster",
+      price: 59900,
+    });
+    expect(await pageShows(repo, BIG)).not.toBe(firstBoat);
+
+    const r = await createDeparturePaymentIntent(repo, pay, { ...req, shownDueNowCents: firstBoat }, now);
+
+    expect(r).toEqual(REFUSED);
+    const rows = await repo.listAllReservations();
+    expect(rows.map((row) => row.holderToken)).toEqual([TOKEN_B]); // the rival's, and nothing of ours
+    expect(pay.intents).toHaveLength(1); // the rival's
+  });
+
+  it("AC4: the first boat taken and the next boat's total matches: the guest gets that boat at that total", async () => {
+    // No override here, unlike the case above: an unbooked Event still loses the write (issue #945).
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, rival, now);
+    const nextBoat = await pageShows(repo, BIG);
+
+    const r = await createDeparturePaymentIntent(repo, pay, { ...req, shownDueNowCents: nextBoat }, now);
+
+    expect(r.ok).toBe(true);
+    const mine = (await repo.listAllReservations()).find((row) => row.holderToken === TOKEN_A);
+    expect(String(mine!.vesselId)).toBe("v-big");
+    expect(pay.intents.at(-1)!.amountCents).toBe(nextBoat);
+  });
+
+  /** A checkout that got as far as a card, declined; then the price moved under it. */
+  async function declinedThenRepriced() {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const stale = await pageShows(repo, SMALL);
+    const first = await createDeparturePaymentIntent(repo, pay, { ...req, shownDueNowCents: stale }, now);
+    expect(first.ok).toBe(true);
+    const [before] = await repo.listAllReservations();
+    await repo.saveOffering(offering({ basePriceCents: 59900 }));
+    return { repo, pay, stale, before: before!, fresh: await pageShows(repo, SMALL) };
+  }
+
+  it("AC5: a retry with a stale total is refused and leaves the row and its intent exactly as they were", async () => {
+    const { repo, pay, stale, before } = await declinedThenRepriced();
+
+    const r = await createDeparturePaymentIntent(
+      repo,
+      pay,
+      { ...req, customerName: "Mary Brody", shownDueNowCents: stale },
+      later,
+    );
+
+    expect(r).toEqual(REFUSED);
+    // The whole row: the invoice, the reserved time and the intent ids are named in the criterion,
+    // and "nothing is written" is the rule that covers the rest.
+    expect(await repo.listAllReservations()).toEqual([before]);
+    expect(pay.intents).toHaveLength(1);
+    expect(pay.amountUpdates).toEqual([]);
+    expect(pay.cancelled).toEqual([]);
+    expect(pay.liveAmountCents.get("pi_fake_1")).toBe(stale);
+  });
+
+  it("AC5: the refusal survives the provider being unreadable, as the attach path does", async () => {
+    const { repo, pay, stale, before } = await declinedThenRepriced();
+    pay.intentStateError = new Error("stripe: 503");
+
+    const r = await createDeparturePaymentIntent(repo, pay, { ...req, shownDueNowCents: stale }, later);
+
+    expect(r).toEqual(REFUSED);
+    expect(await repo.listAllReservations()).toEqual([before]);
+  });
+
+  it("AC6: after the refusal, a reload's new total goes through on the same row at the new amount", async () => {
+    const { repo, pay, stale, before, fresh } = await declinedThenRepriced();
+    const refused = await createDeparturePaymentIntent(repo, pay, { ...req, shownDueNowCents: stale }, later);
+    expect(refused).toEqual(REFUSED);
+
+    const r = await createDeparturePaymentIntent(repo, pay, { ...req, shownDueNowCents: fresh }, later);
+
+    expect(r).toMatchObject({ ok: true, paymentIntentId: "pi_fake_1" });
+    const rows = await repo.listAllReservations();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.id).toBe(before.id);
+    expect(rows[0]!.reservedAt).toBe(before.reservedAt);
+    expect(rows[0]!.invoice!.amountDueNowCents).toBe(fresh);
+    expect(pay.amountUpdates).toEqual([{ paymentIntentId: "pi_fake_1", amountCents: fresh }]);
+    expect(pay.liveAmountCents.get("pi_fake_1")).toBe(fresh);
+  });
+
+  it("AC7: a paid row answers already_paid to a stale total — \"you have not been charged\" would be false", async () => {
+    const { repo, pay, stale, before } = await declinedThenRepriced();
+    pay.intentStates.set("pi_fake_1", "settled");
+
+    const r = await createDeparturePaymentIntent(repo, pay, { ...req, shownDueNowCents: stale }, later);
+
+    expect(r).toEqual({ ok: false, reason: "already_paid" });
+    expect(await repo.listAllReservations()).toEqual([before]);
+    expect(pay.intents).toHaveLength(1);
+  });
+
+  it("AC7: so does a paid row that no longer qualifies for reuse, where the claim falls to the next boat", async () => {
+    const { repo, pay, stale, before } = await declinedThenRepriced();
+    pay.intentStates.set("pi_fake_1", "settled");
+    await repo.saveBlock({ id: asId<"BlockId">("b-mech"), kind: "vesselHold", vesselId: SMALL, date: DATE, time: TIME });
+
+    const r = await createDeparturePaymentIntent(repo, pay, { ...req, shownDueNowCents: stale }, later);
+
+    expect(r).toEqual({ ok: false, reason: "already_paid" });
+    expect(await repo.listAllReservations()).toEqual([before]);
+    expect(pay.intents).toHaveLength(1);
   });
 });

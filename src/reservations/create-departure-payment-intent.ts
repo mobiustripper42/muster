@@ -30,7 +30,7 @@ import { randomUUID } from "node:crypto";
 import { logSwallowed } from "../log.js";
 import type { Reservation } from "../domain/entities.js";
 import { asId, type OfferingId, type ReservationId, type VesselId } from "../domain/ids.js";
-import type { PaymentPort } from "../ports/payment.js";
+import type { PaymentIntentState, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { insuranceOnSale } from "./availability.js";
 import { priceBooking } from "./booking-invoice.js";
@@ -61,6 +61,14 @@ export interface DeparturePaymentIntentRequest {
    * boat. Absent ⇒ mint every time, as before.
    */
   holderToken?: string;
+  /**
+   * The due-now total the page showed the guest, in cents (issue #1217). Compared with the total
+   * this attempt is about to freeze; a difference in either direction is refused as
+   * `price_changed`, before anything is written or charged. Optional at this layer: absent is no
+   * check, so the sandbox adapter and older callers are unchanged. The public action always
+   * passes one.
+   */
+  shownDueNowCents?: number;
 }
 
 export type DeparturePaymentIntentStart =
@@ -88,7 +96,10 @@ export type DeparturePaymentIntentStart =
         /** The intent this checkout already minted has been PAID, in another tab, moments ago
          *  (15.8). Not a failure — the customer is booked or about to be, and the one thing that
          *  must not happen is handing them a second payable charge. */
-        | "already_paid";
+        | "already_paid"
+        /** The total the page showed is not the total this attempt would charge (issue #1217).
+         *  Nothing was written and nothing was charged; the guest reloads to see the new one. */
+        | "price_changed";
     };
 
 export async function createDeparturePaymentIntent(
@@ -135,7 +146,7 @@ export async function createDeparturePaymentIntent(
   // departure and not another's. Everything about money stays here; everything about which boat
   // stays there. On a retry the claim hands back the session's existing row as `prior` and skips
   // the write entirely — the row already exists and already occupies the hull.
-  const buildPendingRow = (vesselId: VesselId, prior: Reservation | null, at: string): Reservation => {
+  const buildPendingRow = (vesselId: VesselId, prior: Reservation | null, at: string): Reservation | null => {
     // The vessel is guaranteed non-null — the claim only offers boats it read out of
     // `listVessels` — so assert it (a null must THROW, never silently zero extras and undercharge).
     const vessel = vesselById.get(String(vesselId));
@@ -153,6 +164,12 @@ export async function createDeparturePaymentIntent(
       gratuityBps: req.gratuityBps,
       hasFlex: req.hasFlex === true,
     });
+    // The total the guest saw is not the total this attempt would freeze (issue #1217): refuse the
+    // row. Here rather than at the call, because the price depends on the hull; and before any
+    // write, on both the fresh path and the retry path.
+    if (req.shownDueNowCents !== undefined && invoice.amountDueNowCents !== req.shownDueNowCents) {
+      return null;
+    }
     return {
       // The SAME row on a retry — its id is the booking's for life. Reserved time is set on the
       // FIRST write and never moved (§2.8.7): a resubmit must not park the hull indefinitely by
@@ -223,6 +240,14 @@ export async function createDeparturePaymentIntent(
   // Sold out means EVERY fitting hull was refused — by the read or by its own write CAS. Since
   // 14.7 a single lost write is no longer this: the claim moves to the next boat.
   if ("soldOut" in claim) return { ok: false, reason: "sold_out" };
+  // The builder refused the row (issue #1217). If the guest's own row was already paid in another
+  // tab, "you have not been charged" would be false, so say that instead.
+  if ("refused" in claim) {
+    if (claim.prior && (await priorIntentState(payments, claim.prior)) === "settled") {
+      return { ok: false, reason: "already_paid" };
+    }
+    return { ok: false, reason: "price_changed" };
+  }
 
   const pending = claim.claimed;
 
@@ -305,6 +330,23 @@ export interface IntentCharge {
 }
 
 /**
+ * The state of the last intent a row minted, or `unknown` when it has none or the port cannot say.
+ * One read for the refusal and the attach, so they cannot disagree about whether a row is paid.
+ */
+async function priorIntentState(payments: PaymentPort, row: Reservation): Promise<PaymentIntentState> {
+  const priorIntentId = row.paymentIntentIds?.at(-1);
+  if (!priorIntentId) return "unknown";
+  return payments.getPaymentIntentState(priorIntentId).catch((e: unknown) => {
+    logSwallowed(
+      "reservations:priorIntentState",
+      e,
+      `the payment port threw against its own contract for intent ${priorIntentId}; treating the state as unknown`,
+    );
+    return "unknown" as const;
+  });
+}
+
+/**
  * Put a payable intent on a pending row: reuse the one it already has, or retire it and mint a
  * fresh one (15.8, 15.10, 15.11) — the rules below, for every surface that takes a booking's money.
  *
@@ -349,16 +391,7 @@ export async function attachPaymentIntent(
   // live adapter honours that. A docstring is not a guarantee — an adapter that throws would
   // otherwise take down a checkout that could simply have minted a new intent, and "the comment
   // said it could not happen" is how three defects got past review this week.
-  const priorState = priorIntentId
-    ? await payments.getPaymentIntentState(priorIntentId).catch((e: unknown) => {
-        logSwallowed(
-          "reservations:priorIntentState",
-          e,
-          `the payment port threw against its own contract for intent ${priorIntentId}; treating the state as unknown`,
-        );
-        return "unknown" as const;
-      })
-    : ("unknown" as const);
+  const priorState = await priorIntentState(payments, pending);
 
   // **Already paid: refuse, never mint.** The row stays `pending` until the webhook lands or
   // `/book/success` runs, so there is an ordinary window — a dropped 3DS return, a closed tab, a

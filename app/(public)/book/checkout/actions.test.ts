@@ -34,7 +34,7 @@
  * read in a three-line function. Said out loud rather than papered over.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startElementsCheckout } from "./actions.js";
 // From its own module, not from the action file — `"use server"` turns every export into a
 // public POST endpoint, and this helper invokes a caller-supplied function. See its header.
@@ -107,6 +107,7 @@ describe("startElementsCheckout — the gates still answer for themselves", () =
     email: "m@x.io",
     phone: "+12165550148",
     agreedToTerms: true,
+    shownDueNowCents: 27869,
   };
 
   it("keeps the SPECIFIC message for a bad phone", async () => {
@@ -133,5 +134,53 @@ describe("startElementsCheckout — the gates still answer for themselves", () =
     delete process.env.STRIPE_SECRET_KEY;
     const res = await startElementsCheckout(VALID);
     expect(res.ok === false && res.message).toMatch(/not been charged|isn['’]t configured/i);
+  });
+
+  describe("the total the page showed (issue #1217)", () => {
+    const PRICE_CHANGED =
+      "The price changed while you were checking out — reload to see the new total. You have not been charged.";
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    /**
+     * "Touches no dependency", without a module mock. Past the gate the first dependency is the
+     * cookie jar, which throws outside a request, and `readOrMintHolderToken` logs that through
+     * `console.error`. So a silent console means the gate answered before the cookie was reached.
+     */
+    async function postWithoutDependencies(post: Parameters<typeof startElementsCheckout>[0]) {
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+      const res = await startElementsCheckout(post);
+      return { res, logged: logged.mock.calls.length };
+    }
+    const REFUSED_UNTOUCHED = { res: { ok: false, message: PRICE_CHANGED }, logged: 0 };
+
+    it("AC8: a post with no total gets the price-changed message and touches no dependency", async () => {
+      const { shownDueNowCents: _sent, ...withoutTotal } = VALID;
+      expect(await postWithoutDependencies(withoutTotal as typeof VALID)).toEqual(REFUSED_UNTOUCHED);
+    });
+
+    const NOT_WHOLE_CENTS: [string, unknown][] = [
+      ["null", null],
+      ["a numeric string", "27869"],
+      ["NaN", Number.NaN],
+      ["Infinity", Number.POSITIVE_INFINITY],
+      ["a fraction of a cent", 27869.5],
+    ];
+    for (const [label, sent] of NOT_WHOLE_CENTS) {
+      it(`AC8: a post whose total is ${label} gets the price-changed message and touches no dependency`, async () => {
+        expect(await postWithoutDependencies({ ...VALID, shownDueNowCents: sent as number })).toEqual(REFUSED_UNTOUCHED);
+      });
+    }
+
+    it("AC8: a bad phone keeps its own message when the total is bad too, because this gate sits after it", async () => {
+      const res = await startElementsCheckout({
+        ...VALID,
+        phone: "nonsense",
+        shownDueNowCents: Number.NaN,
+      });
+      expect(res.ok === false && res.message).toMatch(/mobile number/i);
+    });
   });
 });

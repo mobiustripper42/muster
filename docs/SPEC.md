@@ -1540,6 +1540,7 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > **Amended by DEC-196 — 2.8.4a: the fee base gains insurance and the tip; tax gains insurance; the fee is the provider's and untaxed**
 > **Amended by DEC-197 — 2.8.4c: insurance is not offered inside 72 hours of departure, and is refused there**
 > **Amended by DEC-198 — 2.8.12: cancelling is the customer's own action when the terms refund something; changing stays a request**
+> **Amended by DEC-200 — 2.8.4: the checkout compares the total the page showed with the one it would freeze, and refuses a difference**
 <!-- /amended-by-dec -->
 
 > **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
@@ -1635,6 +1636,19 @@ A time that is not one of the offering's published departures is **off-grid**; t
    browser what it needs to collect the card.
 5. **The customer's browser completes the payment** with Stripe directly.
 6. **Confirm** — 2.8.6.
+
+**The total the page showed.** Step 2 sends, with the form, the due-now total the customer saw. Step 3
+compares it with the due-now total it is about to freeze, on every attempt, and **refuses a
+difference in either direction**: `price_changed`, with nothing written, nothing charged and no boat
+held (DEC-200). A price, a fee, a tax rate or a deposit percent can move while a page is open, and
+charging either figure would charge a total the customer never agreed to. The comparison is made
+after pricing, because the price depends on the boat, and on a retry it runs before the row is
+touched: a refused retry leaves its row, its hold and its intent exactly as they were, and a reload
+picks them up at the new total. If that row's last intent has already been paid, the answer is
+`already_paid`, as in 2.8.5, since "you have not been charged" would be false. A refusal ends the
+claim; it does not fall through to the next boat. A post that carries no whole-cents total is refused
+the same way, before any dependency is touched. The payment link is not subject to this: it shows
+and charges the frozen invoice.
 
 **The booking cutoff.** A length of time before a departure, in hours, inside which the public site
 does not sell it (DEC-193). It is measured backwards from the departure time the way `departed` is
@@ -2274,6 +2288,10 @@ revert of something proven. The code is in the history of `task/15.18-remove-pos
 - [ ] A departure inside the booking cutoff is not offered on `/book`, says to call, and is refused
       at checkout with no row written. The operator can still book it. With the setting at its
       fallback, nothing is cut off.
+- [ ] A checkout whose due-now total differs from the one the page showed, higher or lower, is
+      refused as `price_changed` with no row written, no payment created and the boat free for the
+      next guest. A retry refused this way leaves its row and intent unchanged, and a reload then
+      pays at the new total on the same row.
 - [ ] Pressing "Book & pay" writes a `pending` reservation **before** any call to Stripe, and that row
       alone removes the trip from `/book`.
 - [ ] **Two concurrent bookings on one hull at overlapping times — 13:30 and 14:00, not the same

@@ -202,6 +202,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-196 — The service fee is on everything but tax, and is not taxed
 - DEC-197 — Insurance is not sold inside the 72 hours it buys
 - DEC-198 — Customers cancel online only when the terms refund something
+- DEC-200 — A checkout whose total changed is refused, not charged at either price
 
 ### Check-in & waivers
 - DEC-187 — Check-in & waivers is in scope, specced in its own files that SPEC.md indexes

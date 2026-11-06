@@ -36,11 +36,18 @@ export interface StartElementsCheckoutInput {
   phone: string;
   /** The cancellation-terms box (issue #1112). Gates the submit; stored nowhere. */
   agreedToTerms: boolean;
+  /** The due-now total the page showed, in cents (issue #1217). Required, so the form cannot omit
+   *  it; the server refuses the checkout if it is not the total it is about to freeze. */
+  shownDueNowCents: number;
 }
 
 export type StartElementsCheckoutResult =
   | { ok: true; clientSecret: string }
   | { ok: false; message: string };
+
+/** One copy for the reason map and the gate in `startElementsCheckout` (issue #1217). */
+const PRICE_CHANGED_MESSAGE =
+  "The price changed while you were checking out — reload to see the new total. You have not been charged.";
 
 const REASON_MESSAGES: Record<string, string> = {
   offering_missing: "That cruise isn't bookable anymore. Head back and pick another.",
@@ -68,6 +75,9 @@ const REASON_MESSAGES: Record<string, string> = {
   // while they typed. Refused rather than dropped, so the total charged is the one they saw.
   insurance_closed:
     "Cancellation insurance isn't available this close to departure. Reload the page to check out without it — you have not been charged.",
+  // Issue #1217. A price, fee or tax rate moved while the page was open: refused, so the total
+  // charged is the one they saw.
+  price_changed: PRICE_CHANGED_MESSAGE,
 };
 
 /**
@@ -178,6 +188,13 @@ export async function startElementsCheckout(
     };
   }
 
+  // The total the page showed must be a whole number of cents (issue #1217). A post without one —
+  // missing, a string, NaN, a fraction — is refused with the same words as a changed price, before
+  // any dependency is touched. The comparison with the real total is the core's.
+  if (!Number.isInteger(input.shownDueNowCents)) {
+    return { ok: false, message: PRICE_CHANGED_MESSAGE };
+  }
+
   // The checkout session's holder token (#575). Read from an httpOnly cookie, minted on first
   // submit — it is what lets a retry after a declined card reuse ITS OWN hold instead of taking
   // a second boat and eventually reporting a false sold_out.
@@ -230,6 +247,7 @@ async function startCheckout(
       gratuityBps: input.gratuityBps,
       // `=== true`: a raw post carrying anything else buys no insurance, rather than a truthy string.
       hasFlex: input.hasFlex === true,
+      shownDueNowCents: input.shownDueNowCents,
       customerName,
       ...(email ? { email } : {}),
       // Store the CANONICAL form so the reservation's phone and the customer's identity key

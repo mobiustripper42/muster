@@ -5,10 +5,13 @@
  * through the core's `chargeTotals` rather than adding them on top.
  */
 import { describe, expect, it } from "vitest";
+import { FakePaymentPort } from "@core/adapters/fake-payment.js";
+import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import type { Offering, Vessel } from "@core/domain/entities.js";
 import { asId } from "@core/domain/ids.js";
 import { priceBooking } from "@core/reservations/booking-invoice.js";
 import { checkoutQuote } from "@core/reservations/checkout-quote.js";
+import { createDeparturePaymentIntent } from "@core/reservations/create-departure-payment-intent.js";
 import { applyDiscount } from "@core/reservations/discount.js";
 import { payLinkMoney } from "@core/reservations/pay-by-link.js";
 import { PAYMENT_CONFIG_DEFAULTS, type PaymentConfig } from "@core/reservations/payment-config.js";
@@ -43,6 +46,52 @@ describe("totalsFor on the public checkout", () => {
             totalCents: inv.totalCents,
             dueNowCents: inv.amountDueNowCents,
           });
+        }
+      });
+    }
+  }
+});
+
+/**
+ * The pin above says the screen and the invoice agree. This one posts the screen's figure through
+ * the real write (issue #1217): a refusal that compared the wrong field, or rounded apart from the
+ * page, would turn away every honest checkout, and deposit mode is where due-now and the total part.
+ */
+describe("the total the page shows goes through the real write", () => {
+  // `offering` runs Sundays (Mon-0 weekdays), and this is well outside insurance's 72 hours.
+  const SUNDAY = "2026-07-05";
+  const weeksBefore = () => "2026-06-01T12:00:00.000Z";
+
+  for (const [label, config] of [["full", FULL], ["deposit", DEPOSIT]] as const) {
+    for (const hasFlex of [false, true]) {
+      it(`AC1: ${label}, insurance ${hasFlex ? "ticked" : "not ticked"}: every tier's shown total is charged, not refused`, async () => {
+        const q = checkoutQuote({ ...input(config), date: SUNDAY });
+        for (const tier of q.tiers) {
+          const repo = new InMemoryRepository();
+          await repo.saveOffering(offering);
+          await repo.saveVessel(vessel);
+          await repo.setPaymentConfig(config, weeksBefore());
+          const pay = new FakePaymentPort();
+          const shown = totalsFor(q, tier.tipCents, hasFlex ? q.flexCents : 0).dueNowCents;
+
+          const r = await createDeparturePaymentIntent(
+            repo,
+            pay,
+            {
+              offeringId: offering.id,
+              date: SUNDAY,
+              time: "15:30",
+              guestCount: 11,
+              gratuityBps: tier.bps,
+              hasFlex,
+              customerName: "Mary",
+              shownDueNowCents: shown,
+            },
+            weeksBefore,
+          );
+
+          expect(r.ok).toBe(true);
+          expect(pay.intents[0]!.amountCents).toBe(shown);
         }
       });
     }

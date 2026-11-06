@@ -156,6 +156,6 @@ export async function bookForCustomer(
   );
 
   if ("unbookable" in claim) return { ok: false, reason: claim.unbookable };
-  if ("soldOut" in claim) return { ok: false, reason: "busy" };
+  if (!("claimed" in claim)) return { ok: false, reason: "busy" };
   return { ok: true, reservation: claim.claimed };
 }

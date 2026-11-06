@@ -254,6 +254,9 @@ function InnerForm(p: InnerProps) {
             email: email.trim(),
             phone: phone.trim(),
             agreedToTerms: agreed,
+            // The figure on the pay bar (issue #1217): the server refuses if it is not the total
+            // it is about to freeze.
+            shownDueNowCents: p.dueNowCents,
           });
       if (!res.ok) {
         setError(res.message);

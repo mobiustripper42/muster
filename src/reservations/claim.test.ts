@@ -1216,3 +1216,73 @@ describe("claimDepartureSlot — the operator's rules (§2.10.6, 16.1)", () => {
     expect((await repo.listTrailEvents()).filter((e) => e.type === "sold_out")).toHaveLength(0);
   });
 });
+
+/**
+ * The builder may refuse a row (issue #1217): the price depends on the hull, so only the caller's
+ * builder can say a total no longer matches, and it says so before anything is written. The claim
+ * stops there rather than trying the next boat, and hands back the guest's own live row so the
+ * caller can tell a stale total from a paid one.
+ */
+describe("claimDepartureSlot — the builder refuses the row (issue #1217)", () => {
+  const TOKEN = "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWo";
+  const ask = { offeringId: OFF, date: DATE, time: TIME, guestCount: 4, holderToken: TOKEN };
+
+  /** A builder that returns null on the named hulls, and says which hulls it was asked about. */
+  function refusingOn(...refused: VesselId[]) {
+    const asked: { vessel: string; prior: Reservation | null }[] = [];
+    const build = (vesselId: VesselId, prior: Reservation | null, at: string): Reservation | null => {
+      asked.push({ vessel: String(vesselId), prior });
+      if (refused.some((v) => String(v) === String(vesselId))) return null;
+      return builder(ask)(vesselId, prior, at);
+    };
+    return { build, asked };
+  }
+
+  it("AC3: a refusal on a first attempt writes no row and does not try the next boat", async () => {
+    const repo = await seededRepo();
+    const { build, asked } = refusingOn(SMALL);
+
+    await expect(claimDepartureSlot(repo, ask, build, now)).resolves.toEqual({ refused: true, prior: null });
+
+    expect(asked.map((a) => a.vessel)).toEqual(["v-small"]);
+    expect(await repo.listAllReservations()).toHaveLength(0);
+  });
+
+  it("AC4: the first boat lost at the write and the next boat refused writes no row on either", async () => {
+    const repo = await seededRepo();
+    const real = repo.savePendingIfHullFree.bind(repo);
+    repo.savePendingIfHullFree = async (row: Reservation, liveSince: string) =>
+      String(row.vesselId) === "v-small" ? { result: "lost" as const } : real(row, liveSince);
+    const { build, asked } = refusingOn(BIG);
+
+    await expect(claimDepartureSlot(repo, ask, build, now)).resolves.toEqual({ refused: true, prior: null });
+
+    expect(asked.map((a) => a.vessel)).toEqual(["v-small", "v-big"]);
+    expect(await repo.listAllReservations()).toHaveLength(0);
+  });
+
+  it("AC5: a retry refused on its own row hands that row back as stored and stops there", async () => {
+    const repo = await seededRepo();
+    await claim(repo, { holderToken: TOKEN });
+    const [mine] = await repo.listAllReservations();
+    const { build, asked } = refusingOn(SMALL);
+
+    await expect(claimDepartureSlot(repo, ask, build, now)).resolves.toEqual({ refused: true, prior: mine });
+
+    expect(asked).toEqual([{ vessel: "v-small", prior: mine }]);
+    expect(await repo.listAllReservations()).toEqual([mine]);
+  });
+
+  it("AC7: a refusal in the fallback loop still hands back the guest's live row, which no longer qualifies for reuse", async () => {
+    const repo = await seededRepo();
+    await claim(repo, { holderToken: TOKEN });
+    const [mine] = await repo.listAllReservations();
+    await repo.saveBlock({ id: asId<"BlockId">("b-mech"), kind: "vesselHold", vesselId: SMALL, date: DATE, time: TIME });
+    const { build, asked } = refusingOn(BIG);
+
+    await expect(claimDepartureSlot(repo, ask, build, now)).resolves.toEqual({ refused: true, prior: mine });
+
+    expect(asked).toEqual([{ vessel: "v-big", prior: null }]);
+    expect(await repo.listAllReservations()).toEqual([mine]);
+  });
+});

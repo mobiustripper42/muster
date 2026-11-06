@@ -7,7 +7,10 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { Event, Payment, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { balanceOwedCents, type PaymentConfig } from "./payment-config.js";
+import { buildReservationDetail } from "./calendar-detail.js";
 import { createBalanceCheckout } from "./create-balance-checkout.js";
+import { buildManageView } from "./manage-view.js";
+import { buildPurchaseRows } from "./purchases-view.js";
 
 const EVENT = asId<"EventId">("m-evt-1");
 const RES = asId<"ReservationId">("resv-1");
@@ -63,16 +66,15 @@ describe("balanceOwedCents", () => {
     expect(balanceOwedCents(50000, 725, [depositPayment()])).toBe(37500);
   });
 
-  it("counts only succeeded — a refunded payment re-opens the balance", () => {
-    expect(balanceOwedCents(50000, 725, [depositPayment({ status: "refunded" })])).toBe(53625);
+  it("AC3: a fully refunded deposit leaves the balance where it was", () => {
+    expect(balanceOwedCents(50000, 725, [depositPayment({ status: "refunded" })])).toBe(37500);
   });
 
-  it("a fully refunded row re-opens the balance even with refundedCents absent", () => {
-    // Status wins for the terminal state — a hand-reconciled row may carry no amount, and
-    // trusting the amount alone would count refunded money as still paid.
+  it("AC3: a fully refunded row leaves the balance alone even with refundedCents absent", () => {
+    // Status decides, not the amount: a hand-reconciled row may carry none.
     expect(
       balanceOwedCents(50000, 725, [depositPayment({ status: "refunded", refundedCents: 0 })]),
-    ).toBe(53625);
+    ).toBe(37500);
   });
 
   describe("partial refunds (#522)", () => {
@@ -103,33 +105,29 @@ describe("balanceOwedCents", () => {
       ).toBe(37500); // tip AND fee back — still nothing off fare+tax
     });
 
-    it("reduces fare+tax only by the excess over tip and fee", () => {
+    it("AC3: a refund past the tip and fee leaves the balance alone", () => {
       expect(
         balanceOwedCents(50000, 725, [
-          charged({ status: "partially_refunded", refundedCents: 12500 }),
+          charged({ status: "partially_refunded", refundedCents: 15000 }),
         ]),
-      ).toBe(38500); // 1000 past the 11500 of tip+fee → 1000 more owed
+      ).toBe(37500); // 3500 past the 11500 of tip+fee; the old rule said 41000
     });
 
-    it("a refund of the whole charge leaves the full balance, never more", () => {
-      // The floor: netting tip+fee a second time would push the contribution negative and
-      // inflate the balance past the total.
+    it("AC3: a refund of the whole charge leaves the balance alone, in either status", () => {
       expect(
         balanceOwedCents(50000, 725, [
           charged({ status: "partially_refunded", refundedCents: 27625 }),
         ]),
-      ).toBe(53625);
+      ).toBe(37500);
       expect(
-        balanceOwedCents(50000, 725, [
-          charged({ status: "partially_refunded", refundedCents: 999999 }),
-        ]),
-      ).toBe(53625);
+        balanceOwedCents(50000, 725, [charged({ status: "refunded", refundedCents: 27625 })]),
+      ).toBe(37500);
     });
 
-    it("nets a refund on a still-succeeded row (status and amount can disagree)", () => {
+    it("AC3: a refund on a still-succeeded row leaves the balance alone (status and amount can disagree)", () => {
       expect(
         balanceOwedCents(50000, 725, [charged({ refundedCents: 12500 })]),
-      ).toBe(38500);
+      ).toBe(37500);
     });
   });
 
@@ -171,7 +169,7 @@ describe("createBalanceCheckout", () => {
   });
 
   it("REFUSES to mint a balance charge against a disputed payment (issue #723)", async () => {
-    // The trap this guard exists for: `countsAsPaid` excludes a disputed row, so `owed` above
+    // The trap this guard exists for: `tookMoney` excludes a disputed row, so `owed` above
     // jumps back to the FULL amount and from this function's side a balance is genuinely due.
     // Minting it bills the customer again for money their bank is already clawing back, which
     // turns one dispute into two. Same shape as the refund guard #616 added, arrived at from
@@ -227,6 +225,124 @@ describe("createBalanceCheckout", () => {
     await repo.saveReservation(reservation());
     await repo.setPaymentConfig({ depositMode: "deposit", depositPercent: 25, taxRateBps: 725 }, "now");
     expect(await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS)).toMatchObject({ reason: "unpriced" });
+  });
+});
+
+// Issue #841 — a refund on a booking still going ahead lowers the price and the amount paid
+// together, so it never raises the balance. The fixture is the `db:seed:self-cancel` booking, a
+// booking paid in full: fare 49900 + tax 3618 + tip 9980 + fee 1796 = 65294. The refund must be
+// larger than tip + fee (11776), or the old rule passes too: the part past them is what it counted
+// as fare no longer paid.
+describe("a refund never raises the balance (issue #841)", () => {
+  const FARE = 49900;
+  const TAX_BPS = 725;
+  const FARE_AND_TAX = 53518;
+
+  const paidInFull = (over: Partial<Payment> = {}): Payment => ({
+    id: asId<"PaymentId">("pay_full"),
+    reservationId: RES,
+    method: "stripe",
+    kind: "full",
+    amountCents: 65294,
+    taxCents: 3618,
+    gratuityCents: 9980,
+    serviceFeeCents: 1796,
+    currency: "usd",
+    status: "succeeded",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    ...over,
+  });
+
+  const refunded200 = () => paidInFull({ status: "partially_refunded", refundedCents: 20000 });
+
+  async function fullyPaidBooking(payment: Payment) {
+    const repo = new InMemoryRepository();
+    await repo.saveEvent(musterEvent({ price: FARE }));
+    await repo.saveReservation(reservation());
+    await repo.setPaymentConfig({ depositMode: "full", taxRateBps: TAX_BPS }, "now");
+    await repo.savePayment(payment);
+    return repo;
+  }
+
+  const detailInput = () => ({
+    reservation: reservation(),
+    event: musterEvent({ price: FARE }),
+    payments: [refunded200()],
+    gratuities: [],
+    taxRateBps: TAX_BPS,
+  });
+
+  it("AC1: a $200 refund on a booking paid in full still owes 0", () => {
+    expect(balanceOwedCents(FARE, TAX_BPS, [paidInFull()])).toBe(0);
+    expect(balanceOwedCents(FARE, TAX_BPS, [refunded200()])).toBe(0);
+  });
+
+  it("AC2: a booking refunded in full still owes 0 — the row counts at its gross amount", () => {
+    expect(
+      balanceOwedCents(FARE, TAX_BPS, [paidInFull({ status: "refunded", refundedCents: 65294 })]),
+    ).toBe(0);
+  });
+
+  it.each(["disputed", "dispute_lost"] as const)(
+    "AC4: a %s row contributes nothing, so the whole fare + tax is owed",
+    (status) => {
+      expect(balanceOwedCents(FARE, TAX_BPS, [paidInFull({ status })])).toBe(FARE_AND_TAX);
+    },
+  );
+
+  it.each(["disputed", "dispute_lost"] as const)(
+    "AC4: createBalanceCheckout refuses a booking paid in full and now %s",
+    async (status) => {
+      // A full payment, not the deposit the #723 tests use: if a dispute counted as money this
+      // booking would owe nothing and answer `no_balance`, where a deposit would still say
+      // `disputed`.
+      const repo = await fullyPaidBooking(paidInFull({ status }));
+      const pay = new FakePaymentPort();
+      expect(await createBalanceCheckout(repo, pay, RES, URLS)).toEqual({
+        ok: false,
+        reason: "disputed",
+      });
+      expect(pay.created).toHaveLength(0);
+    },
+  );
+
+  it("AC5: createBalanceCheckout has nothing to charge after the refund, and opens no session", async () => {
+    const repo = await fullyPaidBooking(refunded200());
+    const pay = new FakePaymentPort();
+    expect(await createBalanceCheckout(repo, pay, RES, URLS)).toEqual({
+      ok: false,
+      reason: "no_balance",
+    });
+    expect(pay.created).toHaveLength(0);
+  });
+
+  it("AC6: buildReservationDetail shows no balance after the refund", () => {
+    expect(buildReservationDetail(detailInput()).money.balanceCents).toBe(0);
+  });
+
+  it("AC6: buildManageView still reads paid in full after the refund", () => {
+    const v = buildManageView({ ...detailInput(), now: { date: "2026-06-01", time: "09:00" } });
+    expect(v.paidInFull).toBe(true);
+  });
+
+  it("AC6: buildPurchaseRows shows no balance after the refund, and the state stays refunded", () => {
+    const [row] = buildPurchaseRows({
+      reservations: [reservation()],
+      eventsById: new Map([[String(EVENT), musterEvent({ price: FARE })]]),
+      paymentsByReservation: new Map([[String(RES), [refunded200()]]]),
+      taxRateBps: TAX_BPS,
+    });
+    expect(row!.balanceCents).toBe(0);
+    expect(row!.state).toBe("refunded");
+  });
+
+  it("AC7: two balance payments past what is owed leave the balance negative", () => {
+    // What the webhook's overpay alert reads: the arithmetic must not floor at 0.
+    const balance = (id: string) =>
+      depositPayment({ id: asId<"PaymentId">(id), kind: "balance", amountCents: 37500, taxCents: 0 });
+    expect(
+      balanceOwedCents(50000, 725, [depositPayment(), balance("bal_1"), balance("bal_2")]),
+    ).toBe(-37500);
   });
 });
 

@@ -96,35 +96,17 @@ export function chargeNowCents(
 }
 
 /**
- * The balance still OWED on a reservation, derived (11.2b, DEC-107) — never a
- * recompute of the deposit share. `total = fare + tax`, minus what every live payment
- * contributed toward fare+tax (the deposit carried all the tax, so the residual is pure
- * principal). The `Payment` entity mandates balance be derived, not stored, so this is
- * the ONE authority: immune to a `depositPercent`/price change between deposit and
- * balance, and the seam a refund reopens. `<= 0` means nothing owed.
- *
- * **Refund handling (amended #522).** This used to sum only `status === "succeeded"`,
- * which was equivalent to "not refunded" while nothing could write a partial. Since
- * `markPaymentRefunded` landed it isn't: a partially refunded deposit would have counted
- * as zero paid and re-billed the customer the whole fare + tax. Now a refund is netted
- * against **gratuity and fee first**, and only the remainder reduces fare+tax — see the
- * body for why that order is the customer-safe one.
- *
- * **`fareCents` is the composed party fare** — `Event.price` base **+** the frozen
- * `Reservation.extrasCents` (#474, DEC-107 amend), NOT the bare base. The base alone
- * undercollects a deposit-mode balance by `extras + tax(extras)`; callers must pass
- * `event.price + (reservation.extrasCents ?? 0)`. Extras are frozen at booking, never
- * recomputed from a live Offering — that would break the "never a config recompute" rule.
- */
-/**
  * Is this payment still live money, or has it been handed back in full?
  *
- * The ONE definition of "counts as paid", shared by `balanceOwedCents` and by the
- * operator-facing `paidCents` totals (purchases list, calendar detail). They used to spell
- * it independently as `status === "succeeded"`, which was equivalent while nothing could
- * write a partial — the moment `markPaymentRefunded` landed, one of them started netting
- * partial refunds and the other kept dropping the whole row, so a partially refunded
- * booking rendered "Paid $0.00" beside a balance that said otherwise (#522 review).
+ * The ONE definition of "counts as paid" for the operator-facing `paidCents` totals (purchases
+ * list, calendar detail), the refund ceiling and the cancel quote. They used to spell it
+ * independently as `status === "succeeded"`, which was equivalent while nothing could write a
+ * partial — the moment `markPaymentRefunded` landed, one of them started netting partial
+ * refunds and the other kept dropping the whole row, so a partially refunded booking rendered
+ * "Paid $0.00" beside a balance that said otherwise (#522 review).
+ *
+ * `balanceOwedCents` does NOT use it: a refunded row still took money, so the balance reads
+ * `tookMoney` below (issue #841).
  */
 export const countsAsPaid = (p: { status: PaymentStatus }): boolean =>
   PAID_STATUSES.has(p.status);
@@ -137,7 +119,8 @@ export const countsAsPaid = (p: { status: PaymentStatus }): boolean =>
  * It would not have. `!== "refunded"` type-checks cleanly against any wider union, so adding
  * `disputed` to `PaymentStatus` would have compiled green and counted a chargeback as money in
  * all five call sites at once: `balanceOwedCents`, `/admin/purchases` (`purchases-view.ts`), the
- * calendar detail, the cancel refund math, and `refund-payment`'s own guard.
+ * calendar detail, the cancel refund math, and `refund-payment`'s own guard. (`balanceOwedCents`
+ * has since moved to `tookMoney`, issue #841, which is built from this set.)
  *
  * The `payments.status` column carries no CHECK constraint (deliberately — DEC-131), so nothing
  * at the database layer rejects an unexpected value either. This set is the only guard there is.
@@ -150,10 +133,48 @@ export const countsAsPaid = (p: { status: PaymentStatus }): boolean =>
  */
 const PAID_STATUSES: ReadonlySet<PaymentStatus> = new Set([
   "succeeded",
-  // Still money: only the refunded PART is netted out, and `balanceOwedCents` does that below.
+  // Still money: the refunded PART is netted out of the paid totals by their callers, not here.
   "partially_refunded",
 ]);
 
+const TOOK_MONEY_STATUSES: ReadonlySet<PaymentStatus> = new Set([...PAID_STATUSES, "refunded"]);
+
+/**
+ * Did this payment take money from the customer at some point? `succeeded`,
+ * `partially_refunded` and `refunded` — what counts as paid, plus `refunded`, the one status that
+ * took money and no longer counts as paid.
+ *
+ * Used by `balanceOwedCents` only. A refund on a booking that is still going ahead lowers the
+ * price and the amount paid together (issue #841), so the balance counts a refunded row at its
+ * gross amount. Built from `PAID_STATUSES` so the two cannot drift, and an allow-list for the same
+ * reason (issue #723): a status it was never taught — `disputed`, `dispute_lost`, a value from an
+ * older deploy — answers `false`.
+ */
+export const tookMoney = (p: { status: PaymentStatus }): boolean =>
+  TOOK_MONEY_STATUSES.has(p.status);
+
+/**
+ * The balance still OWED on a reservation, derived (11.2b, DEC-107) — never a
+ * recompute of the deposit share. `total = fare + tax`, minus what every payment that took
+ * money contributed toward fare+tax (the deposit carried all the tax, so the residual is pure
+ * principal). The `Payment` entity mandates balance be derived, not stored, so this is
+ * the ONE authority: immune to a `depositPercent`/price change between deposit and
+ * balance. `<= 0` means nothing owed.
+ *
+ * **A refund never changes the balance (issue #841).** Money that went back to the card lowers
+ * the trip's price by the same amount, so a booking paid in full that is refunded part or all of
+ * the way still owes nothing. Each row counts at its gross amount, whatever its refund status
+ * (`tookMoney`), and `refundedCents` is not read. This replaces the tip-first netting the
+ * balance used since #522, under which a refund past the tip and fee re-opened a balance that
+ * `createBalanceCheckout` would then charge. A refund that comes off the balance instead is
+ * issue #1222.
+ *
+ * **`fareCents` is the composed party fare** — `Event.price` base **+** the frozen
+ * `Reservation.extrasCents` (#474, DEC-107 amend), NOT the bare base. The base alone
+ * undercollects a deposit-mode balance by `extras + tax(extras)`; callers must pass
+ * `event.price + (reservation.extrasCents ?? 0)`. Extras are frozen at booking, never
+ * recomputed from a live Offering — that would break the "never a config recompute" rule.
+ */
 export function balanceOwedCents(
   fareCents: number,
   taxRateBps: number,
@@ -168,43 +189,21 @@ export function balanceOwedCents(
     gratuityCents?: number;
     serviceFeeCents?: number;
     flexCents?: number;
-    refundedCents?: number;
   }[],
 ): number {
   const total = fareCents + taxCentsFor(fareCents, taxRateBps);
-  // Net the GRATUITY, the SERVICE FEE and the INSURANCE out of each paid amount (DEC-124 /
+  // Net the GRATUITY, the SERVICE FEE and the INSURANCE out of each amount taken (DEC-124 /
   // DEC-134 / 16.8): the tip is crew money, the fee a one-shot surcharge, insurance a flat
   // untaxed $30 — none is part of fare+tax, so counting any as "paid toward balance" would
   // under-charge a deposit booking's balance.
   //
-  // A REFUNDED amount is no longer paid. Before `markPaymentRefunded` existed nothing could
-  // write `partially_refunded`, so filtering to `succeeded` was equivalent to "not refunded"
-  // — it isn't any more (#522 review). Left as a filter, a partially refunded deposit would
-  // count as £0 paid and the balance charge would bill the customer the FULL fare + tax on
-  // top of what they already paid. Netting `refundedCents` instead is correct for all three
-  // states: `succeeded` has none, `partially_refunded` nets the part, `refunded` nets to 0.
+  // A refunded row still counts, at its gross amount: a refund lowers the price and the amount
+  // paid together, so it never re-opens the balance (issue #841). Only a row that took no money
+  // (`tookMoney`) is skipped — `disputed` and `dispute_lost` contribute nothing, unchanged.
   const paid = payments.reduce((sum, p) => {
-    // A fully refunded row contributes nothing regardless of what `refundedCents` says —
-    // it may be absent on a hand-reconciled or legacy row, and trusting the amount alone
-    // would count refunded money as paid. Status wins for the terminal state.
-    if (!countsAsPaid(p)) return sum;
-
+    if (!tookMoney(p)) return sum;
     const notFareOrTax = (p.gratuityCents ?? 0) + (p.serviceFeeCents ?? 0) + (p.flexCents ?? 0);
-    const towardFareAndTax = p.amountCents - notFareOrTax;
-
-    // A refund is attributed to GRATUITY AND FEE FIRST; only what exceeds them reduces
-    // fare+tax. Nothing records a refund's composition, so this is an assumption — but it
-    // is the only safe one, because the likeliest partial refund an operator makes is a
-    // tip-only refund, and the alternative silently re-bills fare the customer already paid.
-    //
-    // Worked, from a real deposit charge (fare 50000, tax 3625, fee 1500, tip 10000, 25%
-    // deposit → amount 27625): toward fare+tax is 16125 and the balance is 37500. Refund
-    // the $100 tip. Attributing to fare+tax first gives max(0, 16125 − 10000) = 6125 and a
-    // balance of 47500 — the customer is billed $100 MORE for a refund that never touched
-    // their fare, and `createBalanceCheckout` mints that charge with no human in the loop.
-    // Tip-first gives 16125 and leaves the balance at 37500, which is correct.
-    const fareAndTaxRefund = Math.max(0, (p.refundedCents ?? 0) - notFareOrTax);
-    return sum + Math.max(0, towardFareAndTax - fareAndTaxRefund);
+    return sum + p.amountCents - notFareOrTax;
   }, 0);
   return total - paid;
 }
@@ -213,11 +212,9 @@ export function balanceOwedCents(
  * The balance a SURFACE should show: `balanceOwedCents`, except that a **cancelled booking owes
  * nothing** (issue #803).
  *
- * `balanceOwedCents` above is arithmetic — fare + tax minus what was paid — and it is a live
- * number for a live trip. Once the trip is cancelled it is meaningless, and after a refund it is
- * actively misleading: the refund reduces `paid`, so the balance climbs back toward the full
- * fare. The guest's own page said "Balance · due before your trip $575.32" on a cruise that had
- * been cancelled AND refunded.
+ * `balanceOwedCents` above is arithmetic — fare + tax minus what was taken — and it is a live
+ * number for a live trip. Once the trip is cancelled it is meaningless: the guest's own page said
+ * "Balance · due before your trip $575.32" on a cruise that had been cancelled AND refunded.
  *
  * **Deliberately a separate function rather than a `status` parameter on `balanceOwedCents`.**
  * The two non-presentation callers already refuse a cancelled reservation before they reach the

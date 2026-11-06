@@ -167,8 +167,8 @@ export function buildPurchaseRows(input: PurchasesInput): PurchaseRow[] {
     const event = input.eventsById.get(String(r.eventId));
     const { fareCents, totalCents, priceKnown } = orderTotal(r, event, input.taxRateBps);
     const payments = input.paymentsByReservation.get(String(r.id)) ?? [];
-    // `countsAsPaid`, shared with `balanceOwedCents` — a partially refunded row is still
-    // money the customer paid, shown gross here with `refundedCents` on its own line (#522).
+    // `countsAsPaid` — a partially refunded row is still money the customer paid, shown gross
+    // here with `refundedCents` on its own line (#522). The balance reads `tookMoney` instead.
     const succeeded = payments.filter(countsAsPaid);
     const paidCents = succeeded.reduce((sum, p) => sum + p.amountCents, 0);
     const refundedCents = payments.reduce((sum, p) => sum + (p.refundedCents ?? 0), 0);

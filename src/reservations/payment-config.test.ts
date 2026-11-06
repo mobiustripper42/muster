@@ -12,6 +12,7 @@ import {
   countsAsPaid,
   feeCentsFor,
   taxCentsFor,
+  tookMoney,
   PAYMENT_CONFIG_DEFAULTS,
   type PaymentConfig,
 } from "./payment-config.js";
@@ -110,7 +111,8 @@ describe("countsAsPaid — an allow-list, so a new status is never silently mone
   });
 
   it("counts a partially refunded payment — the remainder is still real money", () => {
-    // The netting of the refunded PART happens in `balanceOwedCents`; the row still counts.
+    // Only the refunded PART went back, so the row still counts. `balanceOwedCents` does not
+    // read this: it counts `tookMoney` rows (issue #841).
     expect(countsAsPaid(withStatus("partially_refunded"))).toBe(true);
   });
 
@@ -132,6 +134,41 @@ describe("countsAsPaid — an allow-list, so a new status is never silently mone
     // simulates a value reaching the function that the union does not yet carry, which is
     // exactly what a stale ledger row or a future migration produces.
     expect(countsAsPaid({ status: "chargeback_pending" as PaymentStatus })).toBe(false);
+  });
+});
+
+/**
+ * What took money, whether or not it is still paid (issue #841). `balanceOwedCents` counts these:
+ * a refund lowers the price and the amount paid together, so a `refunded` row stays in the sum. An
+ * allow-list for the same reason as `countsAsPaid`: a state nobody taught it is not money.
+ */
+describe("tookMoney — an allow-list of the statuses that took money", () => {
+  const withStatus = (status: PaymentStatus) => ({ status });
+
+  it("AC2: a succeeded payment took money", () => {
+    expect(tookMoney(withStatus("succeeded"))).toBe(true);
+  });
+
+  it("AC2: a partially refunded payment took money", () => {
+    expect(tookMoney(withStatus("partially_refunded"))).toBe(true);
+  });
+
+  it("AC2: a fully refunded payment took money, though it no longer counts as paid", () => {
+    expect(tookMoney(withStatus("refunded"))).toBe(true);
+  });
+
+  it("AC4: a payment under dispute did not", () => {
+    expect(tookMoney(withStatus("disputed"))).toBe(false);
+  });
+
+  it("AC4: a dispute we lost did not", () => {
+    expect(tookMoney(withStatus("dispute_lost"))).toBe(false);
+  });
+
+  it("AC4: a status it has never been taught did not", () => {
+    // The cast is deliberate, as in the `countsAsPaid` test above: a stale ledger row or a future
+    // migration can carry a value the union does not.
+    expect(tookMoney({ status: "chargeback_pending" as PaymentStatus })).toBe(false);
   });
 });
 
@@ -207,8 +244,10 @@ describe("deposit→balance arithmetic (the DEC-134 no-second-fee pin)", () => {
     const depositCharge = chargeNowCents(fare, tax, fee, config) + gratuity + flex;
     const deposit = { status: "succeeded" as const, amountCents: depositCharge, gratuityCents: gratuity, serviceFeeCents: fee, flexCents: flex };
     expect(balanceOwedCents(fare, taxRateBps, [deposit])).toBe(fare - 12475);
-    // A refund of just the insurance is attributed off-fare first, like a tip refund.
-    expect(balanceOwedCents(fare, taxRateBps, [{ ...deposit, status: "partially_refunded", refundedCents: flex }])).toBe(fare - 12475);
+    // A refund lowers the price and the amount paid together, so the balance does not move
+    // (issue #841). Held in a const because `balanceOwedCents` does not take `refundedCents`.
+    const refunded = { ...deposit, status: "partially_refunded" as const, refundedCents: flex };
+    expect(balanceOwedCents(fare, taxRateBps, [refunded])).toBe(fare - 12475);
   });
 
   it("a fee-less legacy payment nets exactly as before (serviceFeeCents absent ⇒ 0)", () => {

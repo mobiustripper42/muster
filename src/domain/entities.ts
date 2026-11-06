@@ -891,7 +891,7 @@ export type PaymentStatus =
  * record like every other Muster side-effect log (reliability, audit), NOT as
  * columns on `Reservation` (which is shared with Xola, whose money lives in Xola —
  * DEC-105/106; payment columns would sit null on every imported row). No FK
- * (DEC-DATA-1). Balance-due is DERIVED (`price + tax − Σ succeeded`), never stored.
+ * (DEC-DATA-1). Balance-due is DERIVED (`price + tax` less what the payments that took money carried), never stored.
  */
 export interface Payment {
   /** Deterministic from the Stripe checkout-session id (hosted) or PaymentIntent id

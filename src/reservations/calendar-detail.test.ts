@@ -436,3 +436,38 @@ describe("money.serviceFeeCents — the one service-fee figure (issue #1212)", (
     expect(v.money.serviceFeeBps).toBeUndefined();
   });
 });
+
+/**
+ * A slot cancelled and rebooked keeps its event, so `listGratuitiesForEvent` hands back the earlier
+ * booking's tip beside this one's. Both surfaces pass that list to `buildReservationDetail`, and
+ * `/b/<code>` does it through `buildManageView` (issue #1212).
+ */
+describe("a rebooked slot's gratuities — only this booking's own (issue #1212)", () => {
+  const earlierBookingTip = gratuity({
+    id: asId<"GratuityId">("grat-earlier"),
+    reservationId: asId<"ReservationId">("resv-earlier"),
+    amountCents: 9900,
+    bps: 2000,
+    createdAt: "2026-06-01T12:00:00Z",
+  });
+
+  it("AC21: money.gratuityCents leaves out the earlier booking's tip", () => {
+    const v = build({ gratuities: [earlierBookingTip, gratuity()] });
+    expect(v.money.gratuityCents).toBe(7485);
+  });
+
+  it("AC21: gratuityRows leaves out the earlier booking's tip", () => {
+    const v = build({ gratuities: [earlierBookingTip, gratuity()] });
+    expect(v.gratuityRows).toEqual([{ kind: "pre", amountCents: 7485, bps: 1500 }]);
+  });
+
+  it("AC21: money.gratuityCents is 0 for a booking that left no tip of its own", () => {
+    const v = build({ gratuities: [earlierBookingTip] });
+    expect(v.money.gratuityCents).toBe(0);
+  });
+
+  it("AC21: gratuityRows is empty for a booking that left no tip of its own", () => {
+    const v = build({ gratuities: [earlierBookingTip] });
+    expect(v.gratuityRows).toEqual([]);
+  });
+});

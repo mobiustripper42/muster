@@ -281,9 +281,7 @@ export default async function ReservationDetailPage({
     offering: slot ? data.offeringById.get(String(slot.offeringId)) : undefined,
     vessel: data.vesselById.get(String(event.vesselId)),
     payments,
-    // An event holds the whole boat for ONE reservation, but filter anyway — a cancelled-and-
-    // rebooked event can carry a prior reservation's tips, and those aren't this customer's.
-    gratuities: gratuities.filter((g) => String(g.reservationId) === String(reservation.id)),
+    gratuities,
     taxRateBps,
     ...(shift ? { shift: { shift, seats } } : {}),
   });

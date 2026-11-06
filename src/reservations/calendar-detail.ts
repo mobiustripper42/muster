@@ -56,7 +56,8 @@ export interface ReservationDetailInput {
   offering?: Offering | undefined;
   vessel?: Vessel | undefined;
   payments: readonly Payment[];
-  /** Gratuities for this reservation (both kinds) — filtered by the caller. */
+  /** Gratuities listed for the claimed event (both kinds) — `buildReservationDetail` keeps only
+   *  this reservation's own, so a caller may pass the event's whole list. */
   gratuities: readonly Gratuity[];
   taxRateBps: number;
   /** The crew shift covering this event, with its seats — for the cross-link. */
@@ -206,7 +207,11 @@ const HELD_BY_PERSON = new Set(["Claimed", "Confirmed"]);
 
 /** Build the pane's view model. Pure — every input is already-loaded data. */
 export function buildReservationDetail(input: ReservationDetailInput): ReservationDetailView {
-  const { reservation: r, event, offering, vessel, payments, gratuities, taxRateBps } = input;
+  const { reservation: r, event, offering, vessel, payments, taxRateBps } = input;
+
+  // An event holds the whole boat for ONE reservation, but filter anyway — a cancelled-and-
+  // rebooked event can carry a prior reservation's tips, and those aren't this customer's.
+  const gratuities = input.gratuities.filter((g) => String(g.reservationId) === String(r.id));
 
   const priceKnown = typeof event.price === "number";
   // Less the discount (DEC-194): `Event.price` is the undiscounted fare.

@@ -10,6 +10,7 @@
  */
 
 import { asId } from "../domain/ids.js";
+import { REFUND_TIMING_LINE } from "./refund-terms.js";
 import { recordTrail, type TrailDeps } from "./trail.js";
 import { describeSendFailure } from "../ports/channel.js";
 import type { ChannelPort } from "../ports/channel.js";
@@ -63,8 +64,8 @@ export function soldOutNoticeBody(customerName: string): string {
   const who = customerName?.trim() || "there";
   return (
     `Hi ${who}, your departure sold out while your payment was going through, so the booking ` +
-    `could not be completed. Your card was charged and refunded in full right away. Refunds ` +
-    `take a few days to show on a statement. Sorry for any confusion.\n\n` +
+    `could not be completed. Your card was charged and refunded in full right away. ` +
+    `${REFUND_TIMING_LINE} Sorry for any confusion.\n\n` +
     `- Muster`
   );
 }

@@ -6,21 +6,16 @@ import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { asId } from "@core/domain/ids.js";
 import { createBalanceCheckout } from "@core/reservations/create-balance-checkout.js";
 import { payLinkState } from "@core/reservations/pay-by-link.js";
-import { insuranceOf } from "@core/reservations/booking-invoice.js";
 import { recordTrail } from "@core/reservations/trail.js";
-import {
-  cancelReservation,
-  cancelUnpaidPhoneBooking,
-  quoteCancelRefund,
-  type CancelledBy,
-} from "@core/reservations/cancel-reservation.js";
-import { zonedWallClockToInstant } from "@core/config/tenant.js";
+import { cancelUnpaidPhoneBooking, type CancelledBy } from "@core/reservations/cancel-reservation.js";
+import { cancelByOperator } from "@core/reservations/operator-cancel.js";
 import {
   parseDollarsToCents,
   refundableTotalFor,
   refundReservation,
 } from "@core/reservations/refund-payment.js";
 import { isBooked, type Reservation } from "@core/domain/entities.js";
+import { tellCustomerOfCancel } from "../../../../lib/cancel-notice";
 import { forwardFormNotices } from "../../../../lib/channel";
 import { reissueBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { resendReservationLink } from "../../../../lib/booking-confirmation";
@@ -261,7 +256,8 @@ export async function sendPaymentLinkAgain(formData: FormData): Promise<void> {
  *
  * **And refunds, in the same press** (operator, 2026-08-10) — the figure the confirm's box holds,
  * or the published-terms figure for the reason posted when it is blank. It once moved no money and
- * the operator refunded separately; see the refund leg below for the ordering that replaced it.
+ * the operator refunded separately; see `cancelByOperator` for the ordering that replaced it, and for
+ * the customer notice that follows both.
  */
 export async function cancelBooking(formData: FormData): Promise<void> {
   const subject = await readSubject();
@@ -270,269 +266,29 @@ export async function cancelBooking(formData: FormData): Promise<void> {
   const { reservationId, back } = readContext(formData);
   const by: CancelledBy = formData.get("by") === "operator" ? "operator" : "customer";
 
-  let result: Awaited<ReturnType<typeof cancelReservation>>;
-  try {
-    // `by` is what the confirm asked and what the refund branched on; since #724 it is also
-    // recorded on the reservation rather than surviving only as a refund figure.
-    result = await cancelReservation(
-      {
-        repo: getRepo(),
-        now: () => new Date().toISOString(),
-        // A cancel collapses the shift, and the crew on it have to be TOLD (DEC-084/#244).
-        // This is the notice that matters most in the whole product: without it a confirmed
-        // crew member drives to a boat that is not sailing.
-        relayFormNotices: forwardFormNotices,
-        // Only used if this is an unpaid phone booking, which `cancelReservation` hands on.
-        payments: stripeIfConfigured(),
-      },
-      asId<"ReservationId">(reservationId),
+  // Everything after the auth check is `cancelByOperator` (issue #1212), in the core so that every
+  // exit reaches one customer notice and can be tested. This shell applies what it returns: the
+  // form draft, then the redirect, which throws by design and so stays out of the core.
+  const result = await cancelByOperator(
+    {
+      repo: getRepo(),
+      now: () => new Date().toISOString(),
+      payments: stripeIfConfigured(),
+      // A cancel collapses the shift, and the crew on it have to be TOLD (DEC-084/#244).
+      relayFormNotices: forwardFormNotices,
+      tellCustomer: tellCustomerOfCancel,
+    },
+    {
+      reservationId: asId<"ReservationId">(reservationId),
       by,
-    );
-  } catch (e) {
-    // The comment three lines up calls the crew notice "the notice that matters
-    // most in the whole product: without it a confirmed crew member drives to a
-    // boat that is not sailing." A throw here may land anywhere in that sequence.
-    logSwallowed("admin/reservation:cancelBooking", e, "the cancel did not complete — crew may or may not have been told");
-    await stashFormDraft("/admin/calendar", formData);
-    redirect(back({ cancelErr: "unreachable" }));
-  }
-
-  if (!result.ok) {
-    // Nothing was cancelled, so the confirm screen comes back — with `by` reset to its first
-    // option, which is a different refund quote than the one the operator picked.
-    await stashFormDraft("/admin/calendar", formData);
-    redirect(back({ cancelErr: result.reason }));
-  }
-
-  // **This press cancelled nothing** (PR #1214 review): the booking already was. Either it is the
-  // "Release the boat" repair, or it lost a race to another press, which owns the cancel and its
-  // refund. Both stop here. The repair used to carry on, writing a second `cancelled` row
-  // ("cancelled by operator", after a customer's own cancel) and refunding at the operator's rate —
-  // which after a customer cancel is the $50 the terms kept. `released=1` only when THIS press freed
-  // the boat; a race's loser cannot know whether the winner's release finished.
-  if (result.alreadyCancelled) {
-    await clearFormDraft("/admin/calendar");
-    if (result.releaseFailed) redirect(back({ cancelErr: "not_released" }));
-    redirect(back({ released: result.freedEventId ? "1" : "0" }));
-  }
-
-  // ── The trail: the boat is back on the market (issue #1048) ─────────────────
-  //
-  // `cancelled` was projected from `reservations.status` until now, dated from `updated_at` —
-  // the same last-write-wins column the booking used, so the two events landed on one instant
-  // and the booking's own time was gone.
-  //
-  // **HERE, not after the refund**, and that is the rule this set learned the hard way on issue
-  // #1052: emit ahead of every early return once the destructive thing has happened. The cancel
-  // has committed by this line — the boat is free, the event is cancelled, the crew have been
-  // told — and eight redirects lie between here and the end of the function, every one of them
-  // about the refund. An emit at the bottom would record nothing for a cancel whose refund was
-  // refused, which is the case most worth having a record of.
-  //
-  // A random id: an operator press has no redelivery, and a press that cancelled nothing (the
-  // repair, or a race's loser) has already returned above.
-  await recordTrail(
-    { repo: getRepo(), now: () => new Date().toISOString() },
-    {
-      id: asId<"TrailEventId">(`cancelled:${randomUUID()}`),
-      reservationId: asId<"ReservationId">(reservationId),
-      actorKind: "admin",
-      actorId: subject.id,
-      type: "cancelled",
-      // `by` is the POLICY answer — whose fault the refund terms treat this as — and is what
-      // `quoteCancelRefund` branches on. It is not the actor: an operator pressed this either
-      // way, which `actorKind` and `actorId` already say.
-      metadata: { reason: `cancelled by ${by}` },
+      typedAmount: String(formData.get("amount") ?? ""),
+      expectedRefunded: String(formData.get("expectedRefunded") ?? ""),
+      adminId: subject.id,
     },
   );
-
-  // **The cancel committed but its boat was not released** (PR #1214 review): releasing threw, so the
-  // event still holds the hull and the crew were not told. The cancel is recorded just above — this
-  // is the press that made it, and the repair press records nothing. The refund waits for the
-  // operator: `cancelled` keeps the reason the box prefills from, and the stashed draft keeps the
-  // figure they typed. Before this, the cancel's own row and refund were left to the repair press.
-  if (result.releaseFailed) {
-    await stashFormDraft("/admin/calendar", formData);
-    redirect(back({ cancelled: by, cancelErr: "not_released" }));
-  }
-
-  // ── and refund, in the same press (operator, 2026-08-10) ────────────────────
-  //
-  // Cancelling and refunding were two separate presses, and the figures on the confirm screen
-  // therefore belonged to a decision made somewhere else — "they don't really mean anything
-  // here". They mean something now: this is the press that spends them.
-  //
-  // **The amount is computed HERE when the box is blank**, from the reason actually posted. That
-  // is not a convenience, it is the correctness argument for the whole design: with no client JS
-  // a prefilled box cannot follow the radio, so a prefill would let "We cancelled" refund at the
-  // customer rate whenever the operator didn't retype. A blank box has no wrong value to carry.
-  //
-  // Ordering is deliberate: the cancellation is already committed above and is NOT rolled back if
-  // the refund fails. Freeing the boat and telling the crew is the urgent half and it is correct
-  // on its own; money that did not move can be moved on the next press, from a page that now
-  // shows what is still owed. The reverse — refunding and then failing to cancel — would leave a
-  // refunded customer holding a boat.
-  const typed = String(formData.get("amount") ?? "").trim();
-
-  // The published-terms figure, now computed on BOTH paths. It is the refund amount when the
-  // operator typed nothing, and the COMPARISON when they did — `refund_issued_by_operator`
-  // carries it so the delta is readable later without recomputing terms that may since have
-  // changed (issue #1050). Two extra reads on the typed path, paid once per operator cancel.
-  //
-  // No event ⇒ no departure instant ⇒ no notice window, so the figure cannot be derived at
-  // all. Cancel stands; the operator refunds by hand from the box, and the trail row simply
-  // has no `quotedCents` — which means "there was no policy figure", not "it matched".
-  //
-  // Wrapped, because the refactor moved these reads onto the TYPED path where they never ran
-  // before — an operator who types a figure would now get an unhandled exception on a page
-  // whose cancel has already committed. `null` on failure is the same answer as "no event":
-  // there is no policy figure, so the blank-box path falls through to a hand refund and the
-  // trail row simply carries no `quotedCents`.
-  let quotedCents: number | null = null;
-  try {
-    const payments = await getRepo().listPaymentsForReservation(asId<"ReservationId">(reservationId));
-    const event = result.freedEventId ? await getRepo().getEvent(result.freedEventId) : null;
-    const row = await getRepo().getReservation(asId<"ReservationId">(reservationId));
-    if (event) {
-      quotedCents = quoteCancelRefund({
-        by,
-        payments,
-        departureAt: zonedWallClockToInstant(event.date, event.time),
-        now: new Date(),
-        // What the customer bought (16.8): insurance makes it 72 hours and no $50, keeping itself.
-        insurance: insuranceOf(row?.invoice),
-      }).refundCents;
-    }
-  } catch (e) {
-    logSwallowed("admin/reservation:cancelBooking", e, "no published-terms figure; the operator refunds by hand");
-  }
-
-  let refundCents: number | null = null;
-  if (typed === "") {
-    refundCents = quotedCents;
-  } else {
-    const parsed = parseDollarsToCents(typed);
-    // The cancel HAPPENED. A bad amount cannot undo it, so this reports the cancel as done and
-    // the refund as not attempted — never a bare `invalid_amount` that reads like nothing ran.
-    if (parsed === null) {
-      // The cancel already COMMITTED, so the confirm screen this was typed on is gone — the
-      // figure has to survive into the standalone refund box or it is lost. That box prefills,
-      // so losing it shows a plausible WRONG number rather than an empty field (#780).
-      await stashFormDraft("/admin/calendar", formData);
-      redirect(back({ cancelled: by, refundErr: "invalid_amount" }));
-    }
-    refundCents = parsed;
-  }
-
-  // Zero is a legitimate outcome, not a failure: inside the 14-day window the published terms owe
-  // nothing, and the operator can type 0 to cancel without refunding.
-  if (refundCents === null || refundCents <= 0) {
-    await clearFormDraft("/admin/calendar");
-    redirect(back({ cancelled: by }));
-  }
-
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secretKey || !webhookSecret) {
-    await stashFormDraft("/admin/calendar", formData);
-    redirect(back({ cancelled: by, refundErr: "stripe_not_configured" }));
-  }
-  const expectedRaw = String(formData.get("expectedRefunded") ?? "");
-  if (!/^\d+$/.test(expectedRaw)) {
-    await stashFormDraft("/admin/calendar", formData);
-    redirect(back({ cancelled: by, refundErr: "stale" }));
-  }
-
-  let refund: Awaited<ReturnType<typeof refundReservation>>;
-  try {
-    refund = await refundReservation(
-      {
-        repo: getRepo(),
-        payments: new StripePaymentPort(secretKey, webhookSecret),
-        now: () => new Date().toISOString(),
-      },
-      asId<"ReservationId">(reservationId),
-      refundCents,
-      Number(expectedRaw),
-    );
-  } catch (e) {
-    // Money path, and the ambiguous half: the booking may already be cancelled
-    // while the refund is not, which is exactly what `cancelled: by` in the
-    // redirect is admitting.
-    logSwallowed("admin/reservation:cancelBooking", e, "the refund leg of cancel-and-refund did not complete");
-    redirect(back({ cancelled: by, refundErr: "unreachable" }));
-  }
-
-  if (!refund.ok) {
-    if (refund.reason === "provider_error") {
-      console.error(
-        `[reservations] cancel+refund of ${refundCents}c on ${reservationId} failed partway ` +
-          `(${refund.refundedCents}c did move): ${refund.message}`,
-      );
-      // The partial failure, recorded where the lease is already released (issue #1050).
-      // `payments.refunded_cents` will show what moved and nothing else would ever say the
-      // operator asked for more and did not get it.
-      await recordTrail(
-        { repo: getRepo(), now: () => new Date().toISOString() },
-        {
-          // **A fresh id per attempt, not a derived one** (`/security-review`). The CAS token
-          // is the refunded TOTAL, and a `provider_error` that moved zero cents leaves it
-          // unchanged — so two consecutive zero-movement failures derived the same id and the
-          // second was dropped by `on conflict do nothing`. "It failed twice" is exactly the
-          // fact an operator needs and it was the one being discarded.
-          //
-          // Determinism is a WEBHOOK property: it exists so a Stripe redelivery collides
-          // instead of duplicating. An operator action has no redelivery, and a double-submit
-          // writing two audit rows is the right failure direction for a log.
-          id: asId<"TrailEventId">(`refund_failed:${reservationId}:${randomUUID()}`),
-          reservationId: asId<"ReservationId">(reservationId),
-          actorKind: "admin",
-          actorId: subject.id,
-          type: "refund_failed",
-          metadata: { actualCents: refund.refundedCents, reason: refund.message },
-        },
-      );
-      // CLEAR, not stash — the opposite of every other refusal here, and deliberately (#780).
-      // Money PARTIALLY moved. Re-offering the figure the operator typed is the one thing this
-      // screen's own copy tells them not to do ("retrying the full amount would refund that
-      // {moved} twice"). Dropping the draft falls the box back to the recomputed refundable,
-      // which already accounts for what went through.
-      await clearFormDraft("/admin/calendar");
-      redirect(
-        back({ cancelled: by, refundErr: "provider_error", refunded: String(refund.refundedCents) }),
-      );
-    }
-    // Nothing moved on these (`no_payment_intent`, `not_muster`, …), so the operator's figure
-    // still stands and is worth keeping.
-    await stashFormDraft("/admin/calendar", formData);
-    redirect(back({ cancelled: by, refundErr: refund.reason }));
-  }
-  // The trail, AFTER the money moved and after the cancel committed — never before either
-  // (issue #1050). `quotedCents` is present here and absent on the standalone refund box,
-  // which is the whole reason this event is named for what the operator did rather than for
-  // a comparison: on this path there IS a published-terms figure to compare against.
-  await recordTrail(
-    { repo: getRepo(), now: () => new Date().toISOString() },
-    {
-      // `expectedRaw` is the compare-and-swap token — the refunded total this screen was
-      // rendered against — so it is stable across a retry of THIS operation and different for
-      // every subsequent one. Keying on the amount alone collided: two $50 goodwill refunds on
-      // one booking produced the same id and `on conflict do nothing` silently dropped the
-      // second row, which is the one thing this table exists to prevent (`@code-review`).
-      id: asId<"TrailEventId">(`refund_issued_by_operator:${reservationId}:${expectedRaw}`),
-      reservationId: asId<"ReservationId">(reservationId),
-      actorKind: "admin",
-      actorId: subject.id,
-      type: "refund_issued_by_operator",
-      metadata: {
-        actualCents: refund.refundedCents,
-        ...(quotedCents !== null ? { quotedCents } : {}),
-        reason: "cancel-and-refund",
-      },
-    },
-  );
-  await clearFormDraft("/admin/calendar");
-  redirect(back({ cancelled: by, refunded: String(refund.refundedCents) }));
+  if (result.draft === "stash") await stashFormDraft("/admin/calendar", formData);
+  if (result.draft === "clear") await clearFormDraft("/admin/calendar");
+  redirect(back(result.params));
 }
 
 /**

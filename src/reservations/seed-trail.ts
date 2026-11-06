@@ -145,6 +145,11 @@ export function buildSeededTrail(input: {
     { type: "refunded", minutesAgo: 3 * DAY - 20, actorKind: "stripe", metadata: { actualCents: 50000 } },
     { type: "cancelled", minutesAgo: 3 * DAY - 15, actorKind: "admin", actorId: "crew-demo-admin",
       metadata: { reason: "cancelled by operator" } },
+    // The cancel's own notice, both ways (issue #1212): one that reached them, one that did not.
+    { type: "cancel_notice_sent", minutesAgo: 3 * DAY - 16, actorKind: "admin", actorId: "crew-demo-admin",
+      metadata: { reason: "email=sent sms=sent" } },
+    { type: "cancel_notice_failed", minutesAgo: 3 * DAY - 17, actorKind: "customer",
+      metadata: { reason: "email=failed sms=logged" } },
 
     // ── Two days back: the residual race, start to finish ─────────────────
     { type: "auto_refunded", minutesAgo: 2 * DAY, actorKind: "engine",

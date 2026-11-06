@@ -83,6 +83,13 @@ export interface PaneActionState {
   done?: string | undefined;
   error?: string | undefined;
   /**
+   * Whether the customer was told about the cancel (issue #1212): the line `cancelNoticeMessage`
+   * made from the `told` code, shown under the outcome above. Its own field rather than part of
+   * `done` / `error`: the outcome says what happened to the booking and the money, this says whether
+   * to phone the customer, and `actionMessage`'s complexity is baselined.
+   */
+  told?: { tone: "ok" | "bad"; text: string } | undefined;
+  /**
    * A refusal restored this pane's amount boxes from the draft (#781).
    *
    * The unsaved-work guard needs it: a refused submission is unsaved work whatever the boxes
@@ -663,11 +670,7 @@ function ChargeRows({ v }: { v: ReservationDetailView }) {
         <Row label={`Tax · ${pct(inv.taxRateBps)}`}>
           <Cents cents={inv.taxCents} />
         </Row>
-        {inv.serviceFeeCents > 0 && (
-          <Row label={`Service fee · ${pct(inv.serviceFeeBps)}`}>
-            <Cents cents={inv.serviceFeeCents} />
-          </Row>
-        )}
+        <ServiceFeeRow cents={inv.serviceFeeCents} bps={inv.serviceFeeBps} />
         {/* At its price, as the checkout summary shows it: any discount that reached it is
             already in the Discount line above (16.8). */}
         {(inv.flexCents ?? 0) > 0 && (
@@ -695,6 +698,7 @@ function ChargeRows({ v }: { v: ReservationDetailView }) {
           <Cents cents={g.amountCents} />
         </Row>
       ))}
+      <ServiceFeeRow cents={v.money.serviceFeeCents} bps={v.money.serviceFeeBps} />
       {/* What was charged for it (16.8) — $0.00 on a comp, which still has the 72-hour window. */}
       {v.money.insured && (
         <Row label="Cancellation insurance" testId="money-insurance">
@@ -711,6 +715,17 @@ function DiscountRow({ cents }: { cents: number }) {
   return (
     <Row label="Discount" testId="money-discount">
       <span className="font-mono">−{formatCents(cents)}</span>
+    </Row>
+  );
+}
+
+/** The service fee (issue #1212), labelled with its rate when the booking has an invoice to read it
+ *  from. Nothing when none was charged. The one home of the row: both branches of `ChargeRows`. */
+function ServiceFeeRow({ cents, bps }: { cents: number; bps?: number | undefined }) {
+  if (cents <= 0) return null;
+  return (
+    <Row label={bps === undefined ? "Service fee" : `Service fee · ${pct(bps)}`}>
+      <Cents cents={cents} />
     </Row>
   );
 }
@@ -841,6 +856,11 @@ function PaneActions({
         <p className="mb-2 text-xs text-bad" data-testid="action-error">
           {actions.error}
         </p>
+      )}
+      {actions.told && (
+        <Notice tone={actions.told.tone} className="mb-2" data-testid="customer-told">
+          {actions.told.text}
+        </Notice>
       )}
 
       {/* REFUND. Available whether or not the booking is cancelled — a goodwill partial on a

@@ -24,19 +24,27 @@ export interface PaymentLinkSendDeps {
   onFailure?: ((detail: string) => void) | undefined;
 }
 
+/** ` on Sat, Nov 28 at 3:30 PM`, with its leading space, or nothing without a date and a time.
+ *  Shared with the cancel notice (issue #1212). */
+export function tripWhen(reservation: Reservation): string {
+  return reservation.date && reservation.time
+    ? ` on ${formatShortDay(reservation.date)} at ${formatClock(reservation.time)}`
+    : "";
+}
+
+/** The first word of the customer's name, or `there`. Shared with the cancel notice. */
+export function firstNameOf(reservation: Reservation): string {
+  return reservation.customerName?.split(" ")[0] || "there";
+}
+
 /**
  * The message. **GSM-7 only** — it ships verbatim as SMS, and one character outside that alphabet
  * re-encodes the whole text as UCS-2 (see `resendBookingLinkBody`). Hence "at", not "·", and a
  * plain hyphen before the sign-off.
  */
 export function paymentLinkBody(reservation: Reservation, url: string, tenantName: string): string {
-  const who = reservation.customerName?.split(" ")[0] || "there";
-  const when =
-    reservation.date && reservation.time
-      ? ` on ${formatShortDay(reservation.date)} at ${formatClock(reservation.time)}`
-      : "";
   return (
-    `Hi ${who}, here is the link to pay for your ${tenantName} trip${when}.\n\n` +
+    `Hi ${firstNameOf(reservation)}, here is the link to pay for your ${tenantName} trip${tripWhen(reservation)}.\n\n` +
     `${url}\n\n` +
     `The link works for ${PAYMENT_LINK_HOURS} hours.\n\n` +
     `- ${tenantName}`

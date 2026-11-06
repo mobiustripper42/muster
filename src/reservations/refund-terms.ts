@@ -36,6 +36,10 @@ export const CANCELLATION_FEE_CENTS = 5000;
  *  the fare (DEC-196); not in the tip base. Kept on an insured cancellation. */
 export const FLEX_INSURANCE_CENTS = 3000;
 
+/** The sentence that tells a customer a refund is not instant. One home for the sold-out notice and
+ *  the cancel notice. */
+export const REFUND_TIMING_LINE = "Refunds take a few days to show on a statement.";
+
 /** Standard free-cancel line: "canceled 14 days prior … will be refunded minus [the fee]". */
 export const STANDARD_CANCEL_DAYS_BEFORE = 14;
 

@@ -7,6 +7,7 @@
  * "everything back but the $50" from "the fare back but the $50".
  */
 import { describe, expect, it } from "vitest";
+import { deliverCancelNotice, type CancelNoticeRefund, type TellCustomer } from "./cancel-notice.js";
 import { FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { zonedWallClockToInstant } from "../config/tenant.js";
@@ -14,6 +15,7 @@ import type { BookingInvoice, Event, Payment, Reservation } from "../domain/enti
 import { asId } from "../domain/ids.js";
 import { seedFleet } from "../import/resource-map.js";
 import type { TrailEvent } from "../domain/reservation-trail.js";
+import type { ChannelPort, OutboundMessage } from "../ports/channel.js";
 import {
   cancelByCustomer,
   cancelledNoticeFrom,
@@ -640,6 +642,254 @@ describe("cancelByCustomer", () => {
 
     expect((await repo.getEvent(eventIdOf(FAR)))?.status).toBe("cancelled");
     expect(relayed).toHaveLength(1);
+  });
+});
+
+// ── cancelByCustomer telling the customer (issue #1212) ────────────────────────
+
+describe("cancelByCustomer — telling the customer", () => {
+  /** $644 paid, 24 days out: $594 back. The row carries what the notice reads. */
+  const PAID = 64400;
+  const REFUND = 59400;
+  const CONTACT = { email: "rhea@example.com", phone: "+12165550199", date: FAR.date, time: FAR.time };
+  const paid = (over: Partial<Payment> = {}) => payment({ amountCents: PAID, serviceFeeCents: 400, ...over });
+  /** A $444 deposit and a $200 balance: a refund takes the balance whole, then fails on the deposit. */
+  const twoCharges = [
+    paid({ id: asId<"PaymentId">("pay-deposit"), kind: "deposit", amountCents: 44400, stripePaymentIntentId: "pi_deposit" }),
+    paid({
+      id: asId<"PaymentId">("pay-balance"),
+      kind: "balance",
+      amountCents: 20000,
+      taxCents: 0,
+      gratuityCents: 0,
+      serviceFeeCents: 0,
+      stripePaymentIntentId: "pi_balance",
+      createdAt: "2026-07-20T10:00:00.000Z",
+    }),
+  ];
+  const world = (over: World = {}): Promise<InMemoryRepository> =>
+    seeded({ payments: [paid()], ...over, reservation: { ...CONTACT, ...over.reservation } });
+  const posted = (quotedCents = REFUND, expectedRefundedCents = 0) => ({ quotedCents, expectedRefundedCents });
+
+  function channel(opts: { throws?: boolean } = {}): ChannelPort & { sent: OutboundMessage[] } {
+    const sent: OutboundMessage[] = [];
+    return {
+      sent,
+      async send(msg: OutboundMessage) {
+        if (opts.throws) throw new Error("medium rejected it");
+        sent.push(msg);
+        return { deliveredAt: NOW };
+      },
+    } as unknown as ChannelPort & { sent: OutboundMessage[] };
+  }
+
+  function spyTell() {
+    const calls: { reservationId: unknown; by: unknown; refund: CancelNoticeRefund; actor: unknown }[] = [];
+    const tell: TellCustomer = async (reservationId, by, refund, actor) => {
+      calls.push({ reservationId, by, refund, actor });
+      return "sent-sent";
+    };
+    return { tell, calls };
+  }
+
+  /** The real send, on fake channels. */
+  function realSend(repo: InMemoryRepository, email = channel(), sms = channel()) {
+    const tell: TellCustomer = (id, by, refund, actor) =>
+      deliverCancelNotice(
+        { repo, now: () => NOW, tenantName: "BrewBoat", linkBase: "https://muster.example", email, sms, live: true },
+        id,
+        by,
+        refund,
+        actor,
+      );
+    return { tell, email, sms };
+  }
+
+  const YOUR_TRIP = "Hi Rhea, your trip on Tue, Aug 25 at 3:30 PM is cancelled.";
+
+  it("AC1: the refund goes through — one email and one text, the whole message, and the outcome is unchanged", async () => {
+    const repo = await world();
+    await repo.saveBookingCode({ code: "K3F9QZ2MX7RN4P", reservationId: RESV, createdAt: "2026-07-01T10:00:00.000Z" });
+    const { tell, email, sms } = realSend(repo);
+
+    const outcome = await cancelByCustomer({ ...deps(repo), tellCustomer: tell }, RESV, posted());
+
+    expect(outcome).toEqual({ ok: true, refund: { kind: "issued", cents: REFUND } });
+    expect(email.sent).toHaveLength(1);
+    expect(sms.sent).toHaveLength(1);
+    expect(sms.sent[0]!.body).toBe(
+      [
+        YOUR_TRIP,
+        "$594.00 is on its way back to your card. Refunds take a few days to show on a statement.",
+        "Your booking: https://muster.example/b/K3F9QZ2MX7RN4P",
+        "- BrewBoat",
+      ].join("\n\n"),
+    );
+    expect(email.sent[0]!.body).toBe(sms.sent[0]!.body);
+  });
+
+  it("AC1: the sender is asked after the cancel and the refund, as the customer", async () => {
+    const repo = await world();
+    const fake = new FakePaymentPort();
+    const { calls } = spyTell();
+    let seen: { status: unknown; refunds: number } | undefined;
+    const tell: TellCustomer = async (reservationId, by, refund, actor) => {
+      calls.push({ reservationId, by, refund, actor });
+      seen = { status: (await repo.getReservation(RESV))?.status, refunds: fake.refunds.length };
+      return "sent-sent";
+    };
+
+    await cancelByCustomer({ ...deps(repo, fake), tellCustomer: tell }, RESV, posted());
+
+    expect(calls).toEqual([
+      { reservationId: RESV, by: "customer", refund: { kind: "issued", cents: REFUND }, actor: { kind: "customer" } },
+    ]);
+    expect(seen).toEqual({ status: "cancelled", refunds: 1 });
+  });
+
+  it("AC4: a refund that failed partway — the figure is the quote, the only one this path has", async () => {
+    const repo = await world({ payments: twoCharges });
+    const fake = new FakePaymentPort();
+    const real = fake.refund.bind(fake);
+    let legs = 0;
+    fake.refund = async (input) => {
+      if (legs++ > 0) throw new Error("card_declined");
+      return real(input);
+    };
+    const { tell, sms } = realSend(repo);
+
+    const outcome = await cancelByCustomer({ ...deps(repo, fake), tellCustomer: tell }, RESV, posted());
+
+    expect(outcome).toEqual({ ok: true, refund: { kind: "failed", cents: REFUND, movedCents: 20000 } });
+    expect(sms.sent).toHaveLength(1);
+    expect(sms.sent[0]!.body.split("\n\n")[1]).toBe(
+      "$200.00 of your $594.00 refund is on its way back to your card. We'll be in touch about the rest.",
+    );
+  });
+
+  it("AC5: a failed refund with nothing moved", async () => {
+    const repo = await world();
+    const fake = new FakePaymentPort();
+    fake.refundError = new Error("card_declined");
+    const { tell, sms } = realSend(repo);
+
+    await cancelByCustomer({ ...deps(repo, fake), tellCustomer: tell }, RESV, posted());
+
+    expect(sms.sent).toHaveLength(1);
+    expect(sms.sent[0]!.body.split("\n\n").slice(0, 2)).toEqual([YOUR_TRIP, "We'll be in touch about your refund."]);
+  });
+
+  it("AC8: a cancel whose boat was not released is still this press's cancel — one notice", async () => {
+    const repo = await world();
+    repo.cancelEventIfUnclaimed = async () => {
+      throw new Error("hull-day lock timed out");
+    };
+    const { tell, calls } = spyTell();
+
+    const outcome = await cancelByCustomer({ ...deps(repo), tellCustomer: tell }, RESV, posted());
+
+    expect(outcome).toEqual({ ok: true, refund: { kind: "issued", cents: REFUND }, releaseFailed: true });
+    expect(calls.map((c) => c.refund)).toEqual([{ kind: "issued", cents: REFUND }]);
+  });
+
+  it("AC8: two presses at once send one notice", async () => {
+    const repo = await world();
+    const fake = new FakePaymentPort();
+    const { tell, calls } = spyTell();
+
+    await Promise.all([
+      cancelByCustomer({ ...deps(repo, fake), tellCustomer: tell }, RESV, posted()),
+      cancelByCustomer({ ...deps(repo, fake), tellCustomer: tell }, RESV, posted()),
+    ]);
+
+    expect(calls).toHaveLength(1);
+    expect(fake.refunds).toHaveLength(1);
+  });
+
+  it("AC8: none on a press answering already_cancelled", async () => {
+    const repo = await world({ reservation: { status: "cancelled", cancelledBy: "customer" } });
+    const { tell, calls } = spyTell();
+
+    expect(await cancelByCustomer({ ...deps(repo), tellCustomer: tell }, RESV, posted())).toEqual({
+      ok: false,
+      reason: "already_cancelled",
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("AC8: none on a press answering quote_changed", async () => {
+    const repo = await world();
+    const { tell, calls } = spyTell();
+
+    expect(await cancelByCustomer({ ...deps(repo), tellCustomer: tell }, RESV, posted(REFUND + 100))).toEqual({
+      ok: false,
+      reason: "quote_changed",
+      newRefundCents: REFUND,
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("AC8: none when another press refunded the same figure in the same moment", async () => {
+    const repo = await world();
+    await repo.acquireRefundLease(RESV, "the-other-press", NOW, "2026-08-01T16:01:00.000Z");
+    const realAcquire = repo.acquireRefundLease.bind(repo);
+    let landed = false;
+    repo.acquireRefundLease = async (...args) => {
+      if (!landed) {
+        landed = true;
+        await repo.markPaymentRefunded(asId<"PaymentId">("pay-full"), REFUND);
+      }
+      return realAcquire(...args);
+    };
+    const { tell, calls } = spyTell();
+
+    expect(await cancelByCustomer({ ...deps(repo), tellCustomer: tell }, RESV, posted())).toEqual({
+      ok: false,
+      reason: "already_cancelled",
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("AC10: the sender rejecting leaves the cancel, the refund and the outcome as they were", async () => {
+    const repo = await world();
+    const fake = new FakePaymentPort();
+    let asked = 0;
+    const tell: TellCustomer = async () => {
+      asked++;
+      throw new Error("sender blew up");
+    };
+
+    const outcome = await cancelByCustomer({ ...deps(repo, fake), tellCustomer: tell }, RESV, posted());
+
+    expect(asked).toBe(1);
+    expect(outcome).toEqual({ ok: true, refund: { kind: "issued", cents: REFUND } });
+    expect((await repo.getReservation(RESV))?.status).toBe("cancelled");
+    expect(refundedSum(fake)).toBe(REFUND);
+  });
+
+  it("AC10: a channel throwing leaves the other channel, the refund and the outcome standing", async () => {
+    const repo = await world();
+    const fake = new FakePaymentPort();
+    const { tell, sms } = realSend(repo, channel({ throws: true }), channel());
+
+    const outcome = await cancelByCustomer({ ...deps(repo, fake), tellCustomer: tell }, RESV, posted());
+
+    expect(outcome).toEqual({ ok: true, refund: { kind: "issued", cents: REFUND } });
+    expect(sms.sent).toHaveLength(1);
+    expect(refundedSum(fake)).toBe(REFUND);
+  });
+
+  it("AC12: the press writes one notice row, the customer's, with no actor id", async () => {
+    const repo = await world();
+    const { tell } = realSend(repo);
+
+    await cancelByCustomer({ ...deps(repo), tellCustomer: tell }, RESV, posted());
+
+    const rows = (await trail(repo)).filter((e) => e.type.startsWith("cancel_notice"));
+    expect(rows).toMatchObject([
+      { type: "cancel_notice_sent", actorKind: "customer", metadata: { reason: "email=sent sms=sent" } },
+    ]);
+    expect(rows[0]!.actorId).toBeUndefined();
   });
 });
 

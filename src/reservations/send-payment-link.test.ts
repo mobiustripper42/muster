@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import type { Reservation } from "../domain/entities.js";
 import type { ChannelPort, OutboundMessage } from "../ports/channel.js";
-import { paymentLinkBody, sendPaymentLink } from "./send-payment-link.js";
+import { firstNameOf, paymentLinkBody, sendPaymentLink, tripWhen } from "./send-payment-link.js";
 import { nonGsm7Chars } from "./sms-alphabet.js";
 
 const URL = "https://muster.example/p/ASNFZ4mrze8BI0VniavN7w.tzq8xy.Qf5LdfzEPc-7QD1VqiMPmo";
@@ -45,6 +45,23 @@ describe("paymentLinkBody", () => {
     expect(body).toContain(URL);
     expect(body).toContain("The link works for 72 hours.");
     expect(nonGsm7Chars(body, [URL])).toEqual([]);
+  });
+});
+
+describe("tripWhen and firstNameOf — lifted out of paymentLinkBody for the cancel notice (issue #1212)", () => {
+  it("AC1: <when> is the day and the clock, with its leading space", () => {
+    expect(tripWhen(reservation({ date: "2026-11-28", time: "15:30" }))).toBe(" on Sat, Nov 28 at 3:30 PM");
+  });
+
+  it("AC1: <when> is empty without both a date and a time", () => {
+    expect(tripWhen(reservation({ date: undefined }))).toBe("");
+    expect(tripWhen(reservation({ time: undefined }))).toBe("");
+  });
+
+  it("AC1: the first word of the customer's name, or there", () => {
+    expect(firstNameOf(reservation({ customerName: "Rhea Tallis" }))).toBe("Rhea");
+    expect(firstNameOf(reservation({ customerName: "" }))).toBe("there");
+    expect(firstNameOf(reservation({ customerName: undefined }))).toBe("there");
   });
 });
 

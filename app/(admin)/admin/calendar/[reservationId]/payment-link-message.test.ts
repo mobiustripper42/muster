@@ -3,7 +3,7 @@
  * on each Send payment link. Every channel is named: sent, failed, or not tried.
  */
 import { describe, expect, it } from "vitest";
-import { paymentLinkSentMessage } from "./payment-link-message";
+import { cancelNoticeMessage, paymentLinkSentMessage } from "./payment-link-message";
 
 const contact = { phone: "+12165550199", email: "caller@example.com" };
 
@@ -53,6 +53,110 @@ describe("paymentLinkSentMessage", () => {
     expect(paymentLinkSentMessage("error", contact)).toEqual({
       tone: "bad",
       text: "Couldn’t send the payment link just now. Send it again, or copy it and send it yourself.",
+    });
+  });
+});
+
+/**
+ * What the operator reads under a cancel (issue #1212), from the `told` code. `logged`, and `absent`
+ * with that contact on file, read as not told: the message reached a server log, or nowhere, and
+ * the operator has to pick up the phone (DEC-170).
+ */
+describe("cancelNoticeMessage", () => {
+  const both = { phone: "+12165550199", email: "rhea@example.com" };
+
+  it("AC11: everything sent", () => {
+    expect(cancelNoticeMessage("sent-sent", both)).toEqual({
+      tone: "ok",
+      text: "Customer told: texted to (216) 555-0199 and emailed to rhea@example.com.",
+    });
+  });
+
+  it("AC11: the only contact on file was sent", () => {
+    expect(cancelNoticeMessage("absent-sent", { phone: both.phone })).toEqual({
+      tone: "ok",
+      text: "Customer told: texted to (216) 555-0199.",
+    });
+    expect(cancelNoticeMessage("sent-absent", { email: both.email })).toEqual({
+      tone: "ok",
+      text: "Customer told: emailed to rhea@example.com.",
+    });
+  });
+
+  it("AC11: one of two sent names the one that failed", () => {
+    expect(cancelNoticeMessage("failed-sent", both)).toEqual({
+      tone: "ok",
+      text: "Customer told: texted to (216) 555-0199. The email to rhea@example.com failed.",
+    });
+  });
+
+  it("AC11: one sent and the other only logged is ok, and says the other is not set up", () => {
+    expect(cancelNoticeMessage("logged-sent", both)).toEqual({
+      tone: "ok",
+      text: "Customer told: texted to (216) 555-0199. No email channel is set up here for rhea@example.com.",
+    });
+  });
+
+  it("AC11: a channel this deployment lacks reads as logged when the contact is on file", () => {
+    expect(cancelNoticeMessage("absent-sent", both)).toEqual({
+      tone: "ok",
+      text: "Customer told: texted to (216) 555-0199. No email channel is set up here for rhea@example.com.",
+    });
+  });
+
+  it("AC11: none sent, one failed", () => {
+    expect(cancelNoticeMessage("absent-failed", { phone: both.phone })).toEqual({
+      tone: "bad",
+      text: "The customer was NOT told: the text to (216) 555-0199 failed. Call them.",
+    });
+  });
+
+  it("AC11: none sent, both failed, joined with a semicolon", () => {
+    expect(cancelNoticeMessage("failed-failed", both)).toEqual({
+      tone: "bad",
+      text: "The customer was NOT told: the text to (216) 555-0199 failed; the email to rhea@example.com failed. Call them.",
+    });
+  });
+
+  it("AC11: none sent, a channel not set up", () => {
+    expect(cancelNoticeMessage("logged-absent", { email: both.email })).toEqual({
+      tone: "bad",
+      text: "The customer was NOT told: no email channel is set up here for rhea@example.com. Call them.",
+    });
+  });
+
+  it("AC11: none sent, absent with the contact on file reads the same as logged", () => {
+    expect(cancelNoticeMessage("absent-absent", { email: both.email })).toEqual({
+      tone: "bad",
+      text: "The customer was NOT told: no email channel is set up here for rhea@example.com. Call them.",
+    });
+  });
+
+  it("AC11: skipped", () => {
+    expect(cancelNoticeMessage("skipped", both)).toEqual({
+      tone: "bad",
+      text: "The customer was NOT told — no text or email is set up on this deployment. Call them.",
+    });
+  });
+
+  it("AC11: skipped wins over no contact on file", () => {
+    expect(cancelNoticeMessage("skipped", {})).toEqual({
+      tone: "bad",
+      text: "The customer was NOT told — no text or email is set up on this deployment. Call them.",
+    });
+  });
+
+  it("AC11: error", () => {
+    expect(cancelNoticeMessage("error", both)).toEqual({
+      tone: "bad",
+      text: "The customer was NOT told — the message never went out. Call them.",
+    });
+  });
+
+  it("AC11: no contact on file", () => {
+    expect(cancelNoticeMessage("absent-absent", {})).toEqual({
+      tone: "bad",
+      text: "The customer was NOT told — there is no phone or email on this booking.",
     });
   });
 });

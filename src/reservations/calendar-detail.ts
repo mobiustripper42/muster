@@ -56,7 +56,8 @@ export interface ReservationDetailInput {
   offering?: Offering | undefined;
   vessel?: Vessel | undefined;
   payments: readonly Payment[];
-  /** Gratuities for this reservation (both kinds) — filtered by the caller. */
+  /** Gratuities listed for the claimed event (both kinds) — `buildReservationDetail` keeps only
+   *  this reservation's own, so a caller may pass the event's whole list. */
   gratuities: readonly Gratuity[];
   taxRateBps: number;
   /** The crew shift covering this event, with its seats — for the cross-link. */
@@ -77,6 +78,13 @@ export interface DetailMoney {
   /** What was charged for insurance, after any discount that reached it. 0 when none. */
   flexCents: number;
   taxCents: number;
+  /** The service fee charged, in cents: Σ `serviceFeeCents` over the payments `countsAsPaid` accepts
+   *  (an unpaid phone booking reads its invoice). The one figure the pane's Money card and `/b/<code>`
+   *  both show, so they cannot add it up two ways (issue #1212). 0 when none was charged. */
+  serviceFeeCents: number;
+  /** The fee's rate off the booking's invoice, for the label. Absent when there is no invoice to
+   *  read it from. */
+  serviceFeeBps?: number | undefined;
   /** Σ gratuity rows — crew money, NOT part of fare+tax and NOT part of the balance. */
   gratuityCents: number;
   /** Σ succeeded payments, gross (tip included) — what the card actually took. */
@@ -181,6 +189,8 @@ export function buildUnpaidBookingDetail(input: {
       insured: hasFlex(inv),
       flexCents: inv ? flexChargedCents(inv) : 0,
       taxCents: inv?.taxCents ?? 0,
+      serviceFeeCents: inv?.serviceFeeCents ?? 0,
+      serviceFeeBps: inv?.serviceFeeBps,
       gratuityCents: inv?.gratuityCents ?? 0,
       paidCents: 0,
       balanceCents: inv && r.status !== "cancelled" ? inv.amountDueNowCents : 0,
@@ -197,7 +207,11 @@ const HELD_BY_PERSON = new Set(["Claimed", "Confirmed"]);
 
 /** Build the pane's view model. Pure — every input is already-loaded data. */
 export function buildReservationDetail(input: ReservationDetailInput): ReservationDetailView {
-  const { reservation: r, event, offering, vessel, payments, gratuities, taxRateBps } = input;
+  const { reservation: r, event, offering, vessel, payments, taxRateBps } = input;
+
+  // An event holds the whole boat for ONE reservation, but filter anyway — a cancelled-and-
+  // rebooked event can carry a prior reservation's tips, and those aren't this customer's.
+  const gratuities = input.gratuities.filter((g) => String(g.reservationId) === String(r.id));
 
   const priceKnown = typeof event.price === "number";
   // Less the discount (DEC-194): `Event.price` is the undiscounted fare.
@@ -211,6 +225,7 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
   // here with `refundedCents` on its own line (#522). The balance reads `tookMoney` instead.
   const succeeded = payments.filter(countsAsPaid);
   const paidCents = succeeded.reduce((sum, p) => sum + p.amountCents, 0);
+  const serviceFeeCents = succeeded.reduce((sum, p) => sum + (p.serviceFeeCents ?? 0), 0);
   const refundedCents = payments.reduce((sum, p) => sum + (p.refundedCents ?? 0), 0);
 
   return {
@@ -240,6 +255,8 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
       insured: hasFlex(r.invoice),
       flexCents: r.invoice ? flexChargedCents(r.invoice) : 0,
       taxCents,
+      serviceFeeCents,
+      serviceFeeBps: r.invoice?.serviceFeeBps,
       gratuityCents,
       paidCents,
       // `balanceDueCents`, not `balanceOwedCents` — a cancelled booking owes nothing (issue

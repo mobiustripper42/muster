@@ -139,6 +139,14 @@ export const EMITTED_TRAIL_TYPES = [
   "sold_out_notice_sent",
   "sold_out_notice_failed",
   /**
+   * The customer was (or was not) told their booking was cancelled (issue #1212). One row per press
+   * that cancelled: `cancel_notice_sent` when at least one channel reads `sent`, otherwise
+   * `cancel_notice_failed`. `metadata.reason` is `email=<outcome> sms=<outcome>`, or `skipped` or
+   * `error` — never the link or a provider's message.
+   */
+  "cancel_notice_sent",
+  "cancel_notice_failed",
+  /**
    * A waiver reminder (18.7, issue #1121) that did not reach the booker on every channel. Emitted,
    * because a reminder that told nobody gives its window back and leaves no row in
    * `waiver_reminders` to read — without this, a booker never reminded and a booker nobody tried

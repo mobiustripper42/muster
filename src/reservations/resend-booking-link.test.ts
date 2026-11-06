@@ -10,7 +10,7 @@
 import { describe, it, expect } from "vitest";
 import type { ChannelPort, OutboundMessage } from "../ports/channel.js";
 import type { Reservation } from "../domain/entities.js";
-import { resendBookingLink, resendBookingLinkBody } from "./resend-booking-link.js";
+import { outcomes, resendBookingLink, resendBookingLinkBody } from "./resend-booking-link.js";
 import { nonGsm7Chars } from "./sms-alphabet.js";
 
 const DEPS = { linkBase: "https://muster.example" };
@@ -70,6 +70,13 @@ describe("resendBookingLink — a logged message is not a sent one (#955)", () =
     expect(r).toEqual({ email: "sent", sms: "logged" });
     // It still went to the channel — the message IS recorded, which is the whole point of #955.
     expect(sms.sent).toHaveLength(1);
+  });
+});
+
+describe("outcomes — moved here from the waiver reminders (issue #1212)", () => {
+  it("AC12: the per-channel reason, in the shape link_resent writes", () => {
+    expect(outcomes("sent", "failed")).toBe("email=sent sms=failed");
+    expect(outcomes("absent", "logged")).toBe("email=absent sms=logged");
   });
 });
 

@@ -43,6 +43,7 @@ import {
 import { CalendarList } from "../calendar-list";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
 import { loadWaiverCard } from "@core/checkin/departure.js";
+import { cancelNoticeMessage } from "./payment-link-message";
 import {
   ReservationDetailPane,
   actionMessage,
@@ -111,6 +112,16 @@ async function customerOwedFor(reservation: Reservation): Promise<number | null>
   }
 }
 
+/**
+ * The line under a cancel's outcome saying whether the customer was told (issue #1212), from the
+ * `told` code the redirect carries. Its own function so this page's baselined complexity does not
+ * grow. The contact comes off the reservation, not the URL: it is prose (DEC-147).
+ */
+function toldNotice(told: string | undefined, reservation: Reservation): PaneActionState["told"] {
+  if (told === undefined) return undefined;
+  return cancelNoticeMessage(told, { phone: reservation.phone, email: reservation.email });
+}
+
 /** Decode a path segment, tolerating a malformed `%` rather than throwing a 500 at the user. */
 function safeDecode(segment: string): string {
   try {
@@ -171,6 +182,9 @@ export default async function ReservationDetailPage({
       linkSent?: string;
       /** The render right after a comp was booked (16.5, DEC-194): `1` or `error`. */
       comped?: string;
+      /** Whether the customer was told of the cancel just made (issue #1212): `<email>-<sms>`,
+       *  `skipped` or `error`. A code, never prose; `cancelNoticeMessage` turns it into the line. */
+      told?: string;
     }
   >;
 }) {
@@ -458,6 +472,7 @@ export default async function ReservationDetailPage({
         event.status === "scheduled",
       ...(message && !isError ? { done: message } : {}),
       ...(message && isError ? { error: message } : {}),
+      told: toldNotice(sp.told, reservation),
     };
   }
 

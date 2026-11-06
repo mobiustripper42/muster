@@ -16,6 +16,7 @@ import { ensureTripLink, tripDayOver } from "@core/checkin/trip-link.js";
 import { vesselClockOf, vesselDateOf } from "@core/config/tenant.js";
 import type { EventId } from "@core/domain/ids.js";
 import { formatCents } from "@core/reservations/calendar-detail.js";
+import { refundOnItsWay } from "@core/reservations/cancel-notice.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
 import { buildManageView } from "@core/reservations/manage-view.js";
 import { customerCancelQuote, manageHref, type CustomerCancelQuote } from "@core/reservations/customer-cancel.js";
@@ -137,14 +138,13 @@ export default async function ManagePage({
   });
   const { detail, timing, phase } = view;
   const m = detail.money;
-  const serviceFeeCents = booking.payments.reduce((s, p) => s + (p.serviceFeeCents ?? 0), 0);
   // One link per payment that HAS a hosted receipt (#679) — a deposit booking later collects a
   // balance, so this is a list rather than a single link. Payments with no `receiptUrl` drop out
   // entirely: pre-#679 rows, and any whose lookup failed at webhook time.
   const receiptLinks = booking.payments
     .filter((p) => p.receiptUrl !== undefined)
     .map((p) => ({ id: String(p.id), url: p.receiptUrl!, amountCents: p.amountCents }));
-  const taxAndFees = m.taxCents + serviceFeeCents;
+  const taxAndFees = m.taxCents + m.serviceFeeCents;
   const insured = hasFlex(booking.reservation.invoice);
   const cancelled = detail.status === "cancelled";
   // Cancel is offered only when the terms refund something (16.9); otherwise the request form stays.
@@ -433,7 +433,7 @@ function CancelledNotice({ notice }: { notice: NonNullable<Awaited<ReturnType<ty
   if (notice.kind === "issued") {
     return (
       <Notice tone="ok">
-        <b>Your booking is cancelled.</b> {formatCents(notice.cents)} is on its way back to your card.
+        <b>Your booking is cancelled.</b> {refundOnItsWay(notice.cents)}
       </Notice>
     );
   }
@@ -445,8 +445,7 @@ function CancelledNotice({ notice }: { notice: NonNullable<Awaited<ReturnType<ty
           Your booking is cancelled, but {formatCents(notice.cents - notice.movedCents)} of your{" "}
           {formatCents(notice.cents)} refund didn’t go through yet.
         </b>{" "}
-        {formatCents(notice.movedCents)} is on its way back to your card. Our team has been told and will send the
-        rest.
+        {refundOnItsWay(notice.movedCents)} Our team has been told and will send the rest.
       </Notice>
     );
   }

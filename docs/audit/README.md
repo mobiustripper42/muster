@@ -85,7 +85,7 @@ Statuses are `open` unless a row says otherwise. IDs are each report's own; refe
 | F7 | S3 | `/book/success` tells a race loser they were refunded and texted before either happens | open |
 | F8 | S3 | Two concurrent self-cancel presses report a failed refund to both parties | check — likely fixed by pull request #1214 (`cancelIfBooked`) |
 | F9 | S3 | "Release the boat" after a self-cancel writes a second, misattributed `cancelled` row | check — likely fixed by pull request #1214 (`released=1|0`) |
-| F10 | S3 | The operator's cancel tells the customer nothing; §3.3's cascade is not built | issue #1212 |
+| F10 | S3 | The operator's cancel tells the customer nothing; §3.3's cascade is not built | open — issue #1212 now tells the customer on every cancel, the operator's and their own (`docs/SPEC.md §2.8.4c`); §3.3's cascade is still not built |
 | F11 | S3 | The offering form says the tip is exempt from the service fee; it is in the fee base | open |
 | F12 | S3 | `/admin/integrity` goes red for good after cancelling an unpaid phone booking | open |
 | F13 | S3 | `/admin/purchases` shows a lapsed pending row as "Pending" forever | open |

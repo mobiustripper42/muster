@@ -29,7 +29,7 @@ import type { Repository } from "../ports/repository.js";
 import { formatClock, formatShortDay } from "../reservations/availability-screen.js";
 import { bookingUrl } from "../reservations/booking-code.js";
 import { ensureBookingCode } from "../reservations/ensure-booking-code.js";
-import { tryChannel, type ChannelOutcome } from "../reservations/resend-booking-link.js";
+import { outcomes, tryChannel, type ChannelOutcome } from "../reservations/resend-booking-link.js";
 import { recordTrail } from "../reservations/trail.js";
 import { peopleSigned } from "./duplicates.js";
 import { groupCoverage } from "./signing.js";
@@ -164,12 +164,6 @@ async function remindOne(
   // Reminded — but a channel that was tried and missed is still worth a line on the trail.
   if (email === "failed" || email === "logged" || sms === "failed" || sms === "logged") await noteFailed(reason);
   return "sent";
-}
-
-/** The per-channel outcome, in the shape `link_resent` already writes. Never the provider's
- *  message: a Twilio or Resend error can echo the recipient, and this lands in a durable row. */
-function outcomes(email: ChannelOutcome, sms: ChannelOutcome): string {
-  return `email=${email} sms=${sms}`;
 }
 
 /**

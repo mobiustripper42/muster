@@ -16,7 +16,9 @@
  * showed (`quotedCents`) and the refunded-so-far token (`expectedRefundedCents`); if either no longer
  * matches, nothing is cancelled and the caller says so.
  *
- * Writes its own trail rows and sends no email: the server action owns the inbox.
+ * Writes its own trail rows and sends no email to the operator: the server action owns that inbox.
+ * The customer is told through `deps.tellCustomer` (issue #1212), once, from the press that
+ * cancelled and after its refund leg, so the message can state the figure.
  */
 import { randomUUID } from "node:crypto";
 import { zonedWallClockToInstant } from "../config/tenant.js";
@@ -29,6 +31,7 @@ import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { hasDeparted } from "./availability.js";
 import { insuranceOf } from "./booking-invoice.js";
+import { noticeRefundOf, tellSafely, type TellCustomer } from "./cancel-notice.js";
 import { cancelReservation, quoteCancelRefund, type CancelOutcome } from "./cancel-reservation.js";
 import { refundedTotalFor, refundReservation, type RefundOutcome } from "./refund-payment.js";
 import { CANCELLATION_FEE_CENTS } from "./refund-terms.js";
@@ -105,6 +108,9 @@ export interface CustomerCancelDeps {
   payments: PaymentPort;
   /** Relay the re-form's crew notices, as the admin path does (AC12). */
   relayFormNotices?: (f: FormResult) => Promise<void>;
+  /** Tell the customer it is cancelled and what is coming back (issue #1212). Optional, like
+   *  `relayFormNotices`; absent tells nobody. */
+  tellCustomer?: TellCustomer;
 }
 
 const CANCEL_REASON = "cancelled by the customer from the booking page";
@@ -193,7 +199,10 @@ export async function cancelByCustomer(
   // The release failed only on THIS press's cancel, so it rides on whatever the refund leg says.
   const released = cancelled.releaseFailed ? { releaseFailed: true as const } : {};
   const refunded = await refundAfterCancel(deps, reservationId, quote, posted.expectedRefundedCents);
-  if (refunded.kind === "issued") return { ok: true, refund: refunded, ...released };
+  if (refunded.kind === "issued") {
+    await tell(deps, reservationId, refunded);
+    return { ok: true, refund: refunded, ...released };
+  }
   if (refunded.kind === "other_press") return { ok: false, reason: "already_cancelled" };
 
   await recordTrail(deps, {
@@ -205,11 +214,14 @@ export async function cancelByCustomer(
     type: "refund_failed",
     metadata: { actualCents: refunded.movedCents, reason: refunded.reason },
   });
-  return {
-    ok: true,
-    refund: { kind: "failed", cents: quote.refundCents, movedCents: refunded.movedCents },
-    ...released,
-  };
+  const failed: CancelRefund = { kind: "failed", cents: quote.refundCents, movedCents: refunded.movedCents };
+  await tell(deps, reservationId, failed);
+  return { ok: true, refund: failed, ...released };
+}
+
+/** The notice, as the customer. Never throws (`tellSafely`): the cancel and refund stand. */
+async function tell(deps: CustomerCancelDeps, reservationId: ReservationId, refund: CancelRefund): Promise<void> {
+  await tellSafely(deps.tellCustomer, reservationId, "customer", noticeRefundOf(refund), { kind: "customer" });
 }
 
 type RefundAttempt =

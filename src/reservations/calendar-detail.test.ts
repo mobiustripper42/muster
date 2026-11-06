@@ -367,3 +367,72 @@ describe("formatCents", () => {
     expect(formatCents(-500)).toBe("-$5.00");
   });
 });
+
+describe("money.serviceFeeCents — the one service-fee figure (issue #1212)", () => {
+  const invoice = {
+    fareCents: 50000,
+    extrasCents: 0,
+    taxCents: 4000,
+    taxRateBps: 800,
+    serviceFeeCents: 1800,
+    serviceFeeBps: 300,
+    gratuityCents: 10000,
+    gratuityBps: 2000,
+    totalCents: 65800,
+    amountDueNowCents: 65800,
+  };
+
+  it("AC19: sums the fee over the payments countsAsPaid accepts", () => {
+    const v = build({
+      payments: [
+        payment({ id: asId<"PaymentId">("pay-a"), status: "succeeded", serviceFeeCents: 1800 }),
+        payment({ id: asId<"PaymentId">("pay-b"), status: "partially_refunded", serviceFeeCents: 300 }),
+      ],
+    });
+    expect(v.money.serviceFeeCents).toBe(2100);
+  });
+
+  it.each(["refunded", "disputed", "dispute_lost"] as const)(
+    "AC19: a %s payment's fee is not counted",
+    (status) => {
+      const v = build({
+        payments: [
+          payment({ id: asId<"PaymentId">("pay-a"), status: "succeeded", serviceFeeCents: 1800 }),
+          payment({ id: asId<"PaymentId">("pay-b"), status, serviceFeeCents: 900 }),
+        ],
+      });
+      expect(v.money.serviceFeeCents).toBe(1800);
+    },
+  );
+
+  it("AC19: a payment with no fee on it counts as nothing, and no payments is 0, not undefined", () => {
+    expect(build({ payments: [payment()] }).money.serviceFeeCents).toBe(0);
+    expect(build({ payments: [] }).money.serviceFeeCents).toBe(0);
+  });
+
+  it("AC18: the rate comes off the booking's invoice", () => {
+    expect(build({ reservation: reservation({ invoice }) }).money.serviceFeeBps).toBe(300);
+  });
+
+  it("AC18: no invoice, no rate", () => {
+    const v = build({ payments: [payment({ serviceFeeCents: 1800 })] });
+    expect(v.money.serviceFeeCents).toBe(1800);
+    expect(v.money.serviceFeeBps).toBeUndefined();
+  });
+
+  it("AC18: an unpaid phone booking reads both off its invoice", () => {
+    const v = buildUnpaidBookingDetail({
+      reservation: reservation({ source: "admin", status: "pending", eventId: null, invoice }),
+    });
+    expect(v.money.serviceFeeCents).toBe(1800);
+    expect(v.money.serviceFeeBps).toBe(300);
+  });
+
+  it("AC18: an unpaid phone booking with no invoice reads 0", () => {
+    const v = buildUnpaidBookingDetail({
+      reservation: reservation({ source: "admin", status: "pending", eventId: null }),
+    });
+    expect(v.money.serviceFeeCents).toBe(0);
+    expect(v.money.serviceFeeBps).toBeUndefined();
+  });
+});

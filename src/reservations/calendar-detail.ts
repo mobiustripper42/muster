@@ -77,6 +77,13 @@ export interface DetailMoney {
   /** What was charged for insurance, after any discount that reached it. 0 when none. */
   flexCents: number;
   taxCents: number;
+  /** The service fee charged, in cents: Σ `serviceFeeCents` over the payments `countsAsPaid` accepts
+   *  (an unpaid phone booking reads its invoice). The one figure the pane's Money card and `/b/<code>`
+   *  both show, so they cannot add it up two ways (issue #1212). 0 when none was charged. */
+  serviceFeeCents: number;
+  /** The fee's rate off the booking's invoice, for the label. Absent when there is no invoice to
+   *  read it from. */
+  serviceFeeBps?: number | undefined;
   /** Σ gratuity rows — crew money, NOT part of fare+tax and NOT part of the balance. */
   gratuityCents: number;
   /** Σ succeeded payments, gross (tip included) — what the card actually took. */
@@ -181,6 +188,8 @@ export function buildUnpaidBookingDetail(input: {
       insured: hasFlex(inv),
       flexCents: inv ? flexChargedCents(inv) : 0,
       taxCents: inv?.taxCents ?? 0,
+      serviceFeeCents: inv?.serviceFeeCents ?? 0,
+      serviceFeeBps: inv?.serviceFeeBps,
       gratuityCents: inv?.gratuityCents ?? 0,
       paidCents: 0,
       balanceCents: inv && r.status !== "cancelled" ? inv.amountDueNowCents : 0,
@@ -211,6 +220,7 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
   // here with `refundedCents` on its own line (#522). The balance reads `tookMoney` instead.
   const succeeded = payments.filter(countsAsPaid);
   const paidCents = succeeded.reduce((sum, p) => sum + p.amountCents, 0);
+  const serviceFeeCents = succeeded.reduce((sum, p) => sum + (p.serviceFeeCents ?? 0), 0);
   const refundedCents = payments.reduce((sum, p) => sum + (p.refundedCents ?? 0), 0);
 
   return {
@@ -240,6 +250,8 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
       insured: hasFlex(r.invoice),
       flexCents: r.invoice ? flexChargedCents(r.invoice) : 0,
       taxCents,
+      serviceFeeCents,
+      serviceFeeBps: r.invoice?.serviceFeeBps,
       gratuityCents,
       paidCents,
       // `balanceDueCents`, not `balanceOwedCents` — a cancelled booking owes nothing (issue

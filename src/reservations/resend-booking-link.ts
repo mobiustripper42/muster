@@ -45,6 +45,12 @@ export interface ResendResult {
   sms: ChannelOutcome;
 }
 
+/** The per-channel outcome, in the shape `link_resent` already writes. Never the provider's
+ *  message: a Twilio or Resend error can echo the recipient, and this lands in a durable row. */
+export function outcomes(email: ChannelOutcome, sms: ChannelOutcome): string {
+  return `email=${email} sms=${sms}`;
+}
+
 export interface ResendDeps {
   email?: ChannelPort;
   sms?: ChannelPort;

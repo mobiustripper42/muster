@@ -31,6 +31,7 @@ import {
 } from "@core/reservations/customer-cancel.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
 import { readEmailEnv } from "../../lib/auth-delivery";
+import { tellCustomerOfCancel } from "../../lib/cancel-notice";
 import { forwardFormNotices } from "../../lib/channel";
 import { logSwallowed } from "../../lib/swallowed";
 import { loadBookingByCode, type LoadedBooking } from "./load";
@@ -137,6 +138,8 @@ export async function cancelFromManagePage(formData: FormData): Promise<void> {
         payments: new StripePaymentPort(secretKey, webhookSecret),
         // A cancel collapses the shift, and the crew on it have to be told (DEC-084/#244).
         relayFormNotices: forwardFormNotices,
+        // Tell the customer it is cancelled and what is coming back (issue #1212).
+        tellCustomer: tellCustomerOfCancel,
       },
       booking.reservation.id,
       { quotedCents: postedCents(formData, "quotedCents"), expectedRefundedCents: postedCents(formData, "expectedRefunded") },

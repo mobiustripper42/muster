@@ -163,6 +163,13 @@ describe("the vocabulary the surface renders", () => {
     }
   });
 
+  it("AC12: the customer's cancel notice has its two rows, labelled for the trail list", () => {
+    expect(EMITTED_TRAIL_TYPES).toContain("cancel_notice_sent");
+    expect(EMITTED_TRAIL_TYPES).toContain("cancel_notice_failed");
+    expect(TRAIL_TYPE_LABEL.cancel_notice_sent).toBe("Cancellation notice sent");
+    expect(TRAIL_TYPE_LABEL.cancel_notice_failed).toBe("Cancellation notice failed");
+  });
+
   it("every actor kind has a label", () => {
     for (const a of TRAIL_ACTOR_KINDS) expect(TRAIL_ACTOR_LABEL[a], `no label for ${a}`).toBeTruthy();
   });

@@ -1892,6 +1892,51 @@ never silently re-quoted. **Cancel first, then refund:** a refund that does not 
 booking cancelled, and the operator is emailed to send it from the booking while the customer is told
 the team will. Money is refunded only by the press that did the cancelling.
 
+**The customer is told whenever a booked Muster reservation is cancelled** (issue #1212), by anyone:
+their own cancel from the manage page, and the operator's from the calendar pane, where a weather cancel
+happens. One message goes out unchanged by text and by email, to whichever contacts the booking has and
+whichever channels are set up, after the cancel and the refund so it can state the figure. It says that
+the booking is cancelled, what money is coming back, and where the booking is: the opening, a blank
+line, the refund line when there is one, a blank line, `Your booking: ` and the booking's own link (the
+live code it already has, never a new one), a blank line, and `- ` and the business's name.
+
+The opening is `Hi <first name>, your trip<when> is cancelled.` when the customer asked, whoever pressed
+the button, and `Hi <first name>, we had to cancel your trip<when>. We're sorry.` when the operator
+cancelled ("We cancelled — weather, crew, mechanical"). `<when>` is ` on Sat, Nov 28 at 3:30 PM`, and
+is left out when the booking has no departure on it. The refund line is one of:
+
+| What happened | The refund line |
+|---|---|
+| The refund went through | `$594.00 is on its way back to your card. Refunds take a few days to show on a statement.` |
+| It failed partway | `$200.00 of your $594.00 refund is on its way back to your card. We'll be in touch about the rest.` |
+| Money was expected and none moved | `We'll be in touch about your refund.` |
+| The terms owe $0 and the customer has paid | `No refund is due under your booking's cancellation terms.` |
+| Nothing is refundable (a $0 comp, or already refunded in full) | no refund line |
+
+In the partly-failed line, `$594.00` is the figure that press tried: what the operator typed, or the
+terms' figure when the box was blank; the customer's own cancel has only the terms'. "Money was expected
+and none moved" is every exit where the cancel stood and the refund did not start or did not move: the
+boat was not released (the refund waits for the operator), a typed amount that does not parse, no Stripe
+keys, a stale or missing refund token, the refund refused or failing with nothing moved, no terms figure
+to compute, and the operator typing $0 while the terms owe more. A person keeps the promise to be in
+touch; a refund sent later from the standalone refund box sends no second message.
+
+One notice per cancel, from the press that cancelled it. None from a refused press, the "Release the
+boat" repair, the loser of two presses, or a customer press that answers `already_cancelled` or
+`quote_changed`. An unpaid phone booking gets none: nothing was charged, and it has no booking link.
+A failed notice never undoes the cancel or the refund. Each notice writes one trail row, "Cancellation
+notice sent" when a channel reached the customer and "Cancellation notice failed" otherwise, recording
+the outcome per channel and never the link or a provider's message. A message that only reached a server
+log was not sent (DEC-170).
+
+The operator's pane says whether to phone the customer, under the cancel's outcome: `Customer told:
+texted to (216) 555-0199 and emailed to rhea@example.com.`, with the one that failed or is not set up
+named beside the one that went; or, when nothing went, `The customer was NOT told: the text to (216)
+555-0199 failed. Call them.`, or `The customer was NOT told — no text or email is set up on this
+deployment. Call them.`, or `The customer was NOT told — the message never went out. Call them.`, or
+`The customer was NOT told — there is no phone or email on this booking.` The manage page the message
+links to already tells the customer the same thing and does not change.
+
 **2.8.5 Payment identity lives on our side.**
 
 The link between a payment and a reservation is the payment's id, **recorded against our own row** at

@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  REFUND_TIMING_LINE,
   CANCELLATION_FEE_CENTS,
   cancellationTerms,
   cancellationTermsShort,
@@ -18,6 +19,7 @@ import {
   operatorCancelRefundCents,
   refundOwedCents,
 } from "./refund-terms.js";
+import { soldOutNoticeBody } from "./sold-out-notice.js";
 
 const HOURS_PER_DAY = 24;
 const standardWindow = STANDARD_CANCEL_DAYS_BEFORE * HOURS_PER_DAY; // 336h
@@ -28,6 +30,13 @@ describe("the published policy, as constants", () => {
     expect(FLEX_INSURANCE_CENTS).toBe(3000); // $30
     expect(STANDARD_CANCEL_DAYS_BEFORE).toBe(14);
     expect(FLEX_CANCEL_HOURS_BEFORE).toBe(72);
+  });
+});
+
+describe("REFUND_TIMING_LINE — one sentence, two messages (issue #1212)", () => {
+  it("AC1: the sentence, and the sold-out notice still carries it word for word", () => {
+    expect(REFUND_TIMING_LINE).toBe("Refunds take a few days to show on a statement.");
+    expect(soldOutNoticeBody("Rhea")).toContain(REFUND_TIMING_LINE);
   });
 });
 

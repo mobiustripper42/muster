@@ -1,7 +1,8 @@
 /**
  * `db:seed:self-cancel` — the self-service cancellation states (16.9, issue #1074), so the manage
  * page's Cancel has a booking to open without clicking through a booking first. Three PAID,
- * UNINSURED phone bookings on the demo offering:
+ * UNINSURED phone bookings on the demo offering, and a fourth (issue #841) that is refunded and
+ * still going ahead:
  *
  *   - **Rhea Tallis, 20 days out at 15:30** — Cancel is offered, on the `fee` basis: the confirm
  *     reads paid minus the $50.
@@ -10,6 +11,11 @@
  *   - **Pell Ostrander, 20 days out at 13:30** — then cancelled through `cancelByCustomer`, on
  *     `FakePaymentPort`, so it carries the customer's `cancelled` trail row and a real `issued`
  *     refund. Open it at `?cancelled=1&refund=issued` to see the notice with its trail figure.
+ *   - **Wren Calloway, 21 days out at 13:30** — refunded $200.00 through `refundReservation`, and
+ *     not cancelled. A refund never makes the customer owe money: its `/b/` page reads "Paid in
+ *     full" then "Refunded", with no balance row; the admin pane's Owes reads "Settled"; and
+ *     `/admin/purchases` reads Refunded with no amount due. A re-run books nothing on the held slot,
+ *     so it never refunds twice.
  *
  * Every booking goes through the real paths, not hand-written rows: `bookForCustomer` with
  * `hasFlex: false`, then `confirmBookingFromIntent` on a payment for exactly what the row froze —
@@ -38,6 +44,7 @@ import { formatCents } from "../src/reservations/calendar-detail.js";
 import { confirmBookingFromIntent } from "../src/reservations/confirm-booking.js";
 import { cancelByCustomer, customerCancelQuote } from "../src/reservations/customer-cancel.js";
 import { bookForCustomer } from "../src/reservations/operator-booking.js";
+import { refundReservation } from "../src/reservations/refund-payment.js";
 import { demoBookingCode, reservationDemo } from "../src/reservations/seed-reservation.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
@@ -170,6 +177,19 @@ try {
         );
       }
     }
+  }
+
+  // ── 21 days out, paid, then a goodwill refund (issue #841) ─────────────────
+  // The booking keeps going ahead: it must read paid in full with no balance. `bookPaid` returns
+  // null on a held slot, so a re-run books nothing and refunds nothing — never twice.
+  const wren = await bookPaid(addDays(today, 21), "13:30", "Wren Calloway", "216-555-0841");
+  if (wren) {
+    const outcome = await refundReservation({ repo, payments, now }, wren.row.id, 20000, 0);
+    console.log(`  refunded  ${addDays(today, 21)} 13:30  Wren Calloway — ${JSON.stringify(outcome)}`);
+    console.log(
+      `            /b/${wren.code}   Payment reads "Paid in full", then "Refunded −$200.00", no "Balance · due before your trip"; ` +
+        `the admin pane's Owes reads "Settled" with no "Create balance link"; /admin/purchases reads Refunded with no "… due"`,
+    );
   }
 } finally {
   await repo.close();

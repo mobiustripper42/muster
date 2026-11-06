@@ -1540,6 +1540,7 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > **Amended by DEC-196 — 2.8.4a: the fee base gains insurance and the tip; tax gains insurance; the fee is the provider's and untaxed**
 > **Amended by DEC-197 — 2.8.4c: insurance is not offered inside 72 hours of departure, and is refused there**
 > **Amended by DEC-198 — 2.8.12: cancelling is the customer's own action when the terms refund something; changing stays a request**
+> **Amended by DEC-199 — 2.8.10: a refund on a booking still going ahead lowers the price and the amount paid together, and never re-opens the balance**
 <!-- /amended-by-dec -->
 
 > **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
@@ -2100,6 +2101,9 @@ recorded against it is not a defect, and it is what keeps 2.8.9's work list safe
 
 **The balance payment — future, not current.** Muster charges in full at booking (2.8.4a), so no
 balance charge is created. The code path exists and is dormant.
+
+A refund on a booking that is still going ahead lowers the trip's price and the amount paid together,
+so it never creates or raises a balance: a booking paid in full and then refunded still owes nothing.
 
 If deposits return, a balance charge is a payment against a booking that already exists, and it must
 never create or confirm a reservation; 2.8.6's "resolves to no reservation" is what keeps it out. It

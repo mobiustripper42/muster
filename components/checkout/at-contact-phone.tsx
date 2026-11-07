@@ -11,7 +11,7 @@ export function AtContactPhone({ phone }: { phone: CanonicalPhone | null }) {
   return (
     <>
       {" at "}
-      <a href={tel(phone)} className="text-accent">
+      <a href={tel(phone)} className="whitespace-nowrap text-accent underline">
         {formatPhoneForDisplay(phone)}
       </a>
     </>

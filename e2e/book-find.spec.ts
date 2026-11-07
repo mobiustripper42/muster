@@ -7,7 +7,8 @@
  * (`recover-booking-link.test.ts`) because it depends on channel config that differs between a
  * dev box and CI — asserting it here would pass in one place and fail in the other.
  */
-import { test, expect, resetAndSeed } from "./fixtures.js";
+import type { Page } from "@playwright/test";
+import { test, expect, plantContactPhone, resetAndSeed } from "./fixtures.js";
 import { BOOKED, demoBookingCode, demoRevokedBookingCode, demoReservationId } from "./reservation-demo.js";
 
 const RID = demoReservationId(BOOKED.date, BOOKED.time);
@@ -53,6 +54,64 @@ test.describe("public /b/find", () => {
     expect(hit).toContain("if we find a booking that matches");
     // Never states that a booking exists, or that one doesn't.
     expect(hit).not.toMatch(/we found|no booking|not found|doesn’t exist/i);
+  });
+
+  // Issue #1159. This confirmation is the page's only read of the number, on a surface that must
+  // not vary by whether anything matched.
+  async function confirmationFor(page: Page, contact: string, lastName: string): Promise<string> {
+    await page.goto("/b/find");
+    await page.getByLabel("Email or phone").fill(contact);
+    await page.getByLabel("Last name").fill(lastName);
+    await page.getByRole("button", { name: "Send me my link" }).click();
+    await page.waitForURL(/sent=1/);
+    return page.getByRole("main").innerText();
+  }
+
+  test("AC8: with a stored number, the confirmation gives it as a tel: link", async ({ page }) => {
+    await plantContactPhone("216-555-0100");
+    await page.goto("/b/find?sent=1");
+
+    await expect(
+      page.getByText(
+        "Didn’t get your link? Check the details you entered match the ones you booked with, or give us a call at (216) 555-0100 and we’ll sort it out.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "(216) 555-0100", exact: true })).toHaveAttribute(
+      "href",
+      "tel:+12165550100",
+    );
+  });
+
+  test("AC8: with a stored number, a matching request and a non-matching one still read the same", async ({ page }) => {
+    await plantContactPhone("216-555-0100");
+    const hit = await confirmationFor(page, "216-555-0148", "Webb");
+    const miss = await confirmationFor(page, "nobody@example.com", "Nobody");
+
+    expect(hit).toContain("(216) 555-0100");
+    expect(miss).toBe(hit);
+  });
+
+  test("AC9: with no number, the confirmation says to call with no number and no tel: link", async ({ page }) => {
+    await page.goto("/b/find?sent=1");
+
+    await expect(page.getByText(/ or give us a call and we’ll sort it out\.$/)).toBeVisible();
+    await expect(page.locator('a[href^="tel:"]')).toHaveCount(0);
+  });
+
+  test("AC10: with no number, the line opens with “Didn’t get your link?”", async ({ page }) => {
+    await page.goto("/b/find?sent=1");
+
+    await expect(page.getByText(/^Didn’t get your link\? /)).toBeVisible();
+    await expect(page.getByText("Nothing arrived?")).toHaveCount(0);
+  });
+
+  test("AC10: with a stored number, the line opens with “Didn’t get your link?”", async ({ page }) => {
+    await plantContactPhone("216-555-0100");
+    await page.goto("/b/find?sent=1");
+
+    await expect(page.getByText(/^Didn’t get your link\? /)).toBeVisible();
+    await expect(page.getByText("Nothing arrived?")).toHaveCount(0);
   });
 
   test("the page never renders a booking link", async ({ page }) => {

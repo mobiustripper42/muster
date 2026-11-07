@@ -34,6 +34,8 @@ import {
 } from "@core/reservations/availability-screen.js";
 import { checkoutQuote } from "@core/reservations/checkout-quote.js";
 import { candidateVessels } from "@core/reservations/claim.js";
+import { readContactPhone } from "@core/reservations/contact-phone.js";
+import { CallUsToBook } from "../../../../components/checkout/at-contact-phone";
 import { AppLink } from "../../../../components/ui/app-link";
 import { Notice } from "../../../../components/ui/notice";
 import { getRepo } from "../../../lib/repo";
@@ -198,13 +200,17 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   // the claim refuses it as `departed`, which is the true answer.
   const nowIso = new Date().toISOString();
   if (!hasDeparted(date, time, nowIso) && insideBookingCutoff(date, time, nowIso, bookingCutoffHours)) {
+    // Read only on this branch, so a checkout that shows no number makes no extra read (issue
+    // #1159). Never throws.
+    const contactPhone = await readContactPhone(getRepo());
     return (
       <main className="mx-auto max-w-2xl px-4 py-16">
         <h1 className="text-xl font-semibold">Too late to book online</h1>
-        {/* No number yet — issue #1159 adds the operator's contact phone. A template literal, so
-            the spacing around the date and time can't be lost in JSX text compilation. */}
+        {/* The first half is a template literal, so the spacing around the date and time can't be
+            lost in JSX text compilation. */}
         <p className="mt-2 text-muted">
-          {`${formatShortDay(date)} · ${formatClock(time)} is too close to departure to book online. Call us and we’ll book it for you. Nothing was charged.`}
+          {`${formatShortDay(date)} · ${formatClock(time)} is too close to departure to book online. `}
+          <CallUsToBook phone={contactPhone} />. Nothing was charged.
         </p>
         <p className="mt-4">
           <AppLink

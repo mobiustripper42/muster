@@ -3,6 +3,20 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 16 — 2026-11-07 — Reservations: the operator's side
+
+**Numbers:** 79 / 40 pts · 46 days · 1 re-estimated, drift +3 · 93 PRs
+
+**What happened:** The operator now books trips and sends payment links. Booking cutoff, discounts, flex insurance and self-service cancellation all shipped. Sixteen issues were added mid-phase: cancel notices, refusing a checkout whose price changed, a refund that never creates a balance, the contact phone. Issues #945, #864 and #1080 were deferred. Self-service cancellation ran longest, re-estimated 5→8 with review and money-audit fixes.
+
+**Operator:** I had a bit of a personal upheaval in the middle of the phase, and I picked up another project (haul). I was trying to do the planning on Captain Logs that is still in flight and closer to completion. Please I wanted to use up some credits from anthropic which produced all the audits ... Not a super focused phase, but we are closer to done than ever before ... Feb 1st is the Go Live for Muster Reservations I've promised Drew ... next steps are Future Idea harvest, Audit the Audits, Finalized Reservations, UI Consistency and Wording Pass, Walk Thru Demo for Drew, ... (release to the wild) ... then Captain Log and Drills plus anything from the Future Ideas harvest that didn't make it into
+
+**PM read:** The take is candid, and the record backs one part: Phase 15's retro warned Phase 16 began without an audit. 42 of 79 points arrived mid-phase, Phase 12's shape, and two planned items were replaced rather than built. The audits turned up real defects, so auditing them is sound. With haul and Captain Log competing for the same hours, this phase's focus problem will recur. Next: harvest Future Ideas, file the audits' real defects, then phase the whole issue list against the Feb 1 release date, moving everything possible past it, with Muster Crew additions held until May or June.
+
+**Unpointed:** #1112, #1104, #1103, #1091, #1090, #1079
+
+**Notes:** Days run from the phase's materialization (2026-09-22), not the oldest issue's creation (issue #683, 2026-08-06, which would read 93). 93 PRs is every merge in the window; about 31 cite a Phase 16 issue. 16.8's row says 5→8 at spec but issue #683 kept `points:5`; the label is counted. UI review skipped at the operator's call; a full pass is planned before the production release.
+
 ## Phase 18 — 2026-10-05 — Check-in & waivers
 
 **Numbers:** 64 / 52 pts · 7 days · 7 re-estimated, drift +17 · 32 PRs

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.0] - 2026-11-07 — Phase 16: Reservations — the operator's side
+- 79 pts shipped across 93 PRs in the window (~31 cite a Phase 16 issue)
+- See `docs/RETROSPECTIVES.md` for the retro
+
 ## [1.4.0] - 2026-10-05 — Phase 18: Check-in & waivers
 - 64 pts shipped across 32 PRs (both lanes in the window; 16 Phase 18's)
 - See `docs/RETROSPECTIVES.md` for the retro

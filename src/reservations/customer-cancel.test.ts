@@ -528,36 +528,14 @@ describe("cancelByCustomer", () => {
     ]);
   });
 
-  it("AC8: a boat that could not be released after the status write — the cancel stands, the refund is issued, and the outcome says so (PR #1214 review)", async () => {
-    // `cancelReservation` writes the status, then releases the hull through `cancelEventIfUnclaimed`.
-    // A throw there leaves the booking cancelled with its boat still held and the crew untold. The
-    // customer's retry stops at `already_cancelled`, so the outcome has to carry it to the operator.
+  it("issue #1228 AC10: the write committing and then throwing carries on — trail row, refund, and no releaseFailed", async () => {
+    // The connection dropped after the commit. The re-read finds the booking cancelled, so the one
+    // write landed whole: the boat is free too, and there is nothing left to report about it.
     const repo = await seeded();
-    repo.cancelEventIfUnclaimed = async () => {
-      throw new Error("hull-day lock timed out");
-    };
-    const fake = new FakePaymentPort();
-
-    await expect(cancelByCustomer(deps(repo, fake), RESV, posted())).resolves.toEqual({
-      ok: true,
-      refund: { kind: "issued", cents: FEE_REFUND },
-      releaseFailed: true,
-    });
-    expect(await repo.getReservation(RESV)).toMatchObject({ status: "cancelled", cancelledBy: "customer" });
-    expect((await repo.getEvent(eventIdOf(FAR)))?.status).toBe("scheduled");
-    expect((await trail(repo)).filter((e) => e.type === "cancelled")).toMatchObject([
-      { actorKind: "customer", metadata: { reason: "cancelled by the customer from the booking page", quotedCents: FEE_REFUND } },
-    ]);
-    expect(fake.refunds).toHaveLength(1);
-    expect(refundedSum(fake)).toBe(FEE_REFUND);
-  });
-
-  it("AC8: the status write committing and then throwing carries on — refunded, and the boat reported unreleased", async () => {
-    // A write that lands and then loses its connection. The re-read finds the booking cancelled, so
-    // the cancel committed; the hull release never ran.
-    const repo = await seeded();
-    const realWrite = repo.cancelIfBooked.bind(repo);
-    repo.cancelIfBooked = async (...args) => {
+    let writes = 0;
+    const realWrite = repo.cancelBookingAndRelease.bind(repo);
+    repo.cancelBookingAndRelease = async (...args) => {
+      writes += 1;
       await realWrite(...args);
       throw new Error("connection reset");
     };
@@ -566,17 +544,24 @@ describe("cancelByCustomer", () => {
     await expect(cancelByCustomer(deps(repo, fake), RESV, posted())).resolves.toEqual({
       ok: true,
       refund: { kind: "issued", cents: FEE_REFUND },
-      releaseFailed: true,
     });
-    expect((await repo.getEvent(eventIdOf(FAR)))?.status).toBe("scheduled");
+
+    expect(writes).toBe(1);
+    expect(await repo.getReservation(RESV)).toMatchObject({ status: "cancelled", cancelledBy: "customer" });
+    expect((await repo.getEvent(eventIdOf(FAR)))?.status).toBe("cancelled");
+    expect((await trail(repo)).filter((e) => e.type === "cancelled")).toMatchObject([
+      { actorKind: "customer", metadata: { reason: "cancelled by the customer from the booking page", quotedCents: FEE_REFUND } },
+    ]);
+    expect(fake.refunds).toHaveLength(1);
     expect(refundedSum(fake)).toBe(FEE_REFUND);
   });
 
-  it("AC8: cancelReservation throwing before its status write propagates the throw — nothing cancelled, refunded or written", async () => {
+  it("issue #1228 AC9: the write throwing with the booking still booked reaches the caller — nothing cancelled, refunded or written", async () => {
     // The re-read finds the booking still booked: nothing changed, so the action's `cancel_failed`
-    // ("Nothing changed") is true and the throw must reach it.
+    // ("Nothing changed") is true and the throw must reach it. The operator's email sits behind
+    // `outcome.ok` in the action, so the rejection is what keeps it from sending.
     const repo = await seeded();
-    repo.cancelIfBooked = async () => {
+    repo.cancelBookingAndRelease = async () => {
       throw new Error("database unreachable");
     };
     const fake = new FakePaymentPort();
@@ -779,17 +764,35 @@ describe("cancelByCustomer — telling the customer", () => {
     expect(sms.sent[0]!.body.split("\n\n").slice(0, 2)).toEqual([YOUR_TRIP, "We'll be in touch about your refund."]);
   });
 
-  it("AC8: a cancel whose boat was not released is still this press's cancel — one notice", async () => {
+  it("issue #1228 AC10: a commit that lost its answer is still this press's cancel — one notice", async () => {
     const repo = await world();
-    repo.cancelEventIfUnclaimed = async () => {
-      throw new Error("hull-day lock timed out");
+    let writes = 0;
+    const realWrite = repo.cancelBookingAndRelease.bind(repo);
+    repo.cancelBookingAndRelease = async (...args) => {
+      writes += 1;
+      await realWrite(...args);
+      throw new Error("connection reset");
     };
     const { tell, calls } = spyTell();
 
     const outcome = await cancelByCustomer({ ...deps(repo), tellCustomer: tell }, RESV, posted());
 
-    expect(outcome).toEqual({ ok: true, refund: { kind: "issued", cents: REFUND }, releaseFailed: true });
+    expect(writes).toBe(1);
+    expect(outcome).toEqual({ ok: true, refund: { kind: "issued", cents: REFUND } });
     expect(calls.map((c) => c.refund)).toEqual([{ kind: "issued", cents: REFUND }]);
+  });
+
+  it("issue #1228 AC9: none when the write threw and the booking is still booked", async () => {
+    const repo = await world();
+    repo.cancelBookingAndRelease = async () => {
+      throw new Error("database unreachable");
+    };
+    const { tell, calls } = spyTell();
+
+    await expect(cancelByCustomer({ ...deps(repo), tellCustomer: tell }, RESV, posted())).rejects.toThrow(
+      "database unreachable",
+    );
+    expect(calls).toEqual([]);
   });
 
   it("AC8: two presses at once send one notice", async () => {

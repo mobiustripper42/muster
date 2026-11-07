@@ -26,7 +26,7 @@
  */
 
 import type { Reservation } from "../domain/entities.js";
-import type { ChannelPort } from "../ports/channel.js";
+import { describeSendFailure, type ChannelPort } from "../ports/channel.js";
 import { bookingUrl } from "./booking-code.js";
 
 /**
@@ -117,11 +117,9 @@ export async function tryChannel(
     // while an unconfigured channel was absent rather than logging.
     return result?.loggedOnly ? "logged" : "sent";
   } catch (e) {
-    ctx.onFailure?.(
-      `${label} ${ctx.what} to reservation ${ctx.reservation.id} failed: ${
-        e instanceof Error ? e.message : String(e)
-      }`,
-    );
+    // Never the error's message: a provider's body can quote the message it refused, and this one
+    // carries a booking link, which is a capability URL (`describeSendFailure`).
+    ctx.onFailure?.(`${label} ${ctx.what} to reservation ${ctx.reservation.id} failed: ${describeSendFailure(e)}`);
     return "failed";
   }
 }

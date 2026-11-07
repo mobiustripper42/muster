@@ -122,7 +122,6 @@ const actions = (over: Partial<PaneActionState> = {}): PaneActionState => ({
   cancelBy: "customer",
   refundBackHref: "/admin/calendar/resv-1#booking-actions",
   canResend: true,
-  needsRelease: false,
   restoredFromRefusal: false,
   ...over,
 });
@@ -218,6 +217,20 @@ describe("ReservationDetailPane — the customer's notice under a cancel", () =>
 
     expect(byTestId(html, "action-done")?.text).toBe(DONE);
     expect(byTestId(html, "customer-told")).toBeNull();
+  });
+});
+
+describe("ReservationDetailPane — no repair (issue #1228)", () => {
+  it("AC13: no Release the boat button on any booking, whatever a stale caller passes", () => {
+    // The cast is how a stale caller gets past the type the field has left.
+    const stale = { ...actions(), needsRelease: true } as PaneActionState;
+
+    for (const v of [paidView({ reservation: { status: "cancelled", cancelledBy: "operator" } }), paidView()]) {
+      const html = render(v, stale);
+
+      expect(byTestId(html, "release-repair")).toBeNull();
+      expect(text(html)).not.toContain("Release the boat");
+    }
   });
 });
 

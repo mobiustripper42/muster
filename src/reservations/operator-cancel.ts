@@ -58,7 +58,7 @@ export interface OperatorCancelResult {
  * Cancel the booking (#616) and refund, in the same press (operator, 2026-08-10) — the figure the
  * confirm's box holds, or the published-terms figure for the reason posted when it is blank.
  *
- * Writes the reservation AND its event to `cancelled`, which is what actually frees the boat. See
+ * Writes the reservation AND its event to `cancelled`, in one save, which is what actually frees the boat. See
  * `cancelReservation` for why both. Never rejects.
  */
 export async function cancelByOperator(
@@ -99,8 +99,10 @@ export async function cancelByOperator(
       by,
     );
   } catch (e) {
-    // A throw here may land anywhere in that sequence: the crew may or may not have been told.
-    logSwallowed("reservations:cancelByOperator", e, "the cancel did not complete — crew may or may not have been told");
+    // The write that cancels the booking and frees its boat is one transaction, and everything after
+    // it is best-effort and swallowed, so a throw here almost always means nothing changed. A connection
+    // lost after the commit is the exception: the booking reads cancelled, and the refund box still works.
+    logSwallowed("reservations:cancelByOperator", e, "the cancel threw — almost certainly nothing was cancelled");
     return { params: { cancelErr: "unreachable" }, draft: "stash" };
   }
 
@@ -110,13 +112,10 @@ export async function cancelByOperator(
     return { params: { cancelErr: result.reason }, draft: "stash" };
   }
 
-  // **This press cancelled nothing** (PR #1214 review): the booking already was. Either it is the
-  // "Release the boat" repair, or it lost a race to another press, which owns the cancel and its
-  // refund. Both stop here, and neither tells the customer. `released=1` only when THIS press freed
-  // the boat; a race's loser cannot know whether the winner's release finished.
+  // **This press cancelled nothing** (PR #1214 review): the booking already was. It lost a race to
+  // another press, which owns the cancel and its refund, so it stops here and tells nobody.
   if (result.alreadyCancelled) {
-    if (result.releaseFailed) return { params: { cancelErr: "not_released" }, draft: "clear" };
-    return { params: { released: result.freedEventId ? "1" : "0" }, draft: "clear" };
+    return { params: { alreadyCancelled: "1" }, draft: "clear" };
   }
 
   // ── The trail: the boat is back on the market (issue #1048) ─────────────────
@@ -140,16 +139,6 @@ export async function cancelByOperator(
     // way, which `actorKind` and `actorId` already say.
     metadata: { reason: `cancelled by ${by}` },
   });
-
-  // **The cancel committed but its boat was not released** (PR #1214 review): releasing threw, so the
-  // event still holds the hull and the crew were not told. The cancel is recorded just above — this
-  // is the press that made it, and the repair press records nothing. The refund waits for the
-  // operator: `cancelled` keeps the reason the box prefills from, and the stashed draft keeps the
-  // figure they typed. No figure has been read at this exit, so the customer hears that a refund is
-  // still to come, even on a booking with nothing refundable.
-  if (result.releaseFailed) {
-    return cancelled({ cancelled: by, cancelErr: "not_released" }, "stash", { kind: "pending" });
-  }
 
   // ── and refund, in the same press (operator, 2026-08-10) ────────────────────
   //

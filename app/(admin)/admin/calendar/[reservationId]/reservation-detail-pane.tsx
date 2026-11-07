@@ -164,7 +164,7 @@ export function actionMessage(
     // The loser of two presses at once (issue #1228): it cancelled nothing and moved no money, so it
     // must not read as a cancel or a refund.
     case "alreadyCancelled":
-      return "This booking was already cancelled, so this press changed nothing. Nothing was refunded.";
+      return "This booking was already cancelled, so this press changed nothing. Nothing more was refunded.";
     case "refunded":
       return `Refunded ${formatCents(Number(value) || 0)} to the card it came from.`;
     case "resent": {

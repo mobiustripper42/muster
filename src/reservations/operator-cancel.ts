@@ -100,8 +100,9 @@ export async function cancelByOperator(
     );
   } catch (e) {
     // The write that cancels the booking and frees its boat is one transaction, and everything after
-    // it is best-effort and swallowed, so a throw here means nothing changed.
-    logSwallowed("reservations:cancelByOperator", e, "the cancel did not complete — nothing was cancelled");
+    // it is best-effort and swallowed, so a throw here almost always means nothing changed. A connection
+    // lost after the commit is the exception: the booking reads cancelled, and the refund box still works.
+    logSwallowed("reservations:cancelByOperator", e, "the cancel threw — almost certainly nothing was cancelled");
     return { params: { cancelErr: "unreachable" }, draft: "stash" };
   }
 

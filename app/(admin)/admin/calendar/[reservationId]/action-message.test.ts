@@ -19,7 +19,7 @@ describe("actionMessage — a press that changed nothing (issue #1228)", () => {
     // The press cancelled nothing — the booking already was — so it must not read as a cancel, and
     // must not imply money moved.
     expect(actionMessage("alreadyCancelled", "1")).toBe(
-      "This booking was already cancelled, so this press changed nothing. Nothing was refunded.",
+      "This booking was already cancelled, so this press changed nothing. Nothing more was refunded.",
     );
   });
 

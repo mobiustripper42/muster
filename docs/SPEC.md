@@ -1668,6 +1668,14 @@ any other does. It is not the *booking horizon* or the *staffing horizon* (both 
 the operator picks the number with crew notice in mind, but the rule is not tied to the staffing
 horizon.
 
+**The contact phone.** The sentences that tell a customer to call give the operator's number: the
+`/book` notice for a phone-only day, the checkout page and the checkout form's refusal when a
+departure is inside the cutoff, and the confirmation on `/b/find`. It is an operator setting, a
+phone number in any spelling, shown in one and tappable. With none set, or one that is not a phone
+number, those sentences say plain "call us", so nothing changes until the operator sets it. The read
+never fails a page: a number that cannot be read is logged and left out, so every visitor to
+`/b/find` sees the same line whether or not anything matched.
+
 **"Freeze" means write the computed values onto the reservation and never recalculate them.** Every
 later reader — the confirmation, the receipt, the balance, a refund — reads those stored values.
 Nothing recomputes from live settings, because a tax rate, a service fee, a price or a trip time can

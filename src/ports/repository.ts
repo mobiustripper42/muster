@@ -70,6 +70,7 @@ import type { SeatState } from "../domain/states.js";
 import type { ImportItemAtRun, ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
+import type { CanonicalPhone } from "../customers/identity.js";
 import type { PaymentConfig } from "../reservations/payment-config.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { ThreadId } from "../domain/ids.js";
@@ -590,6 +591,8 @@ export interface Repository {
    *  (`parseBookingCutoffHours`). No screen sets it until issue #1166 — SQL and tests do. */
   getBookingCutoffHours(): Promise<number>;
   setBookingCutoffHours(hours: number, at: string): Promise<void>;
+  getContactPhone(): Promise<CanonicalPhone | null>;
+  setContactPhone(raw: string, at: string): Promise<void>;
   /** Idempotent upsert on the deterministic id — a re-delivered webhook can't double-write. */
   savePayment(payment: Payment): Promise<void>;
   getPayment(id: PaymentId): Promise<Payment | null>;

@@ -220,6 +220,16 @@ export async function exhaustRateLimit(policy: RateLimitPolicy, key: string): Pr
   }
 }
 
+/** Store the operator's contact phone as typed (issue #1159). `resetAndSeed` wipes `app_settings`. */
+export async function plantContactPhone(raw: string): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    await repo.setContactPhone(raw, new Date().toISOString());
+  } finally {
+    await repo.close();
+  }
+}
+
 /**
  * Plant a departure with a trip link (Phase 18.3b) — one call per `/w/<code>` state. The event is a
  * Muster departure on the crew seed's `vessel-hops`; the link is inserted directly, as

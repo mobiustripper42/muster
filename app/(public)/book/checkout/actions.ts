@@ -2,6 +2,7 @@
 
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { asId } from "@core/domain/ids.js";
+import { cutoffRefusalMessage, readContactPhone } from "@core/reservations/contact-phone.js";
 import { createDeparturePaymentIntent } from "@core/reservations/create-departure-payment-intent.js";
 import { canonicalizePhone } from "@core/customers/identity.js";
 import { isHolderToken, mintHolderToken } from "@core/reservations/holder-token.js";
@@ -60,9 +61,9 @@ const REASON_MESSAGES: Record<string, string> = {
   // a departure that leaves in three minutes, and finish typing after it has gone (issue #824).
   // So it reads as a thing that happened to them rather than as a validation complaint.
   departed: "That departure has already left. Head back and pick a later time.",
-  // DEC-193. Reachable by a real person the same way `departed` is: the page rendered before the
-  // cutoff, and they finished typing after it. No number yet — issue #1159.
-  cutoff: "That departure is now too close to book online. Call us and we’ll book it for you — you have not been charged.",
+  // DEC-193 `cutoff` is not here: it is reachable by a real person the same way `departed` is (the
+  // page rendered before the cutoff, and they finished typing after it), and it carries the
+  // operator's number, so `startCheckout` builds it with `cutoffRefusalMessage` (issue #1159).
   sold_out:
     "That departure was just taken while you were checking out. You have not been charged — pick another time.",
   // 15.8. Not an error from the customer's side: their other tab already paid, seconds ago. The
@@ -259,6 +260,10 @@ async function startCheckout(
   );
 
   if (!result.ok) {
+    if (result.reason === "cutoff") {
+      // Read only here, so every other refusal makes no extra read. Never throws.
+      return { ok: false, message: cutoffRefusalMessage(await readContactPhone(getRepo())) };
+    }
     return {
       ok: false,
       message: REASON_MESSAGES[result.reason] ?? "Something went wrong — you have not been charged.",

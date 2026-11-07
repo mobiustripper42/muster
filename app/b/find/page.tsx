@@ -15,6 +15,9 @@
  *
  * No client JS: a plain server-action form, per DEC-026.
  */
+import { readContactPhone } from "@core/reservations/contact-phone.js";
+import { AtContactPhone } from "../../../components/checkout/at-contact-phone";
+import { getRepo } from "../../lib/repo";
 import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { SubmitButton } from "../../../components/ui/submit-button";
@@ -31,6 +34,10 @@ export default async function FindBookingPage({
   searchParams: Promise<{ sent?: string }>;
 }) {
   const { sent } = await searchParams;
+  // The confirmation's first database read, on a page that must not fail and must not vary by
+  // whether anything matched: `readContactPhone` never throws, and the number is the same for
+  // every visitor. Read only on the branch that shows it.
+  const contactPhone = sent === "1" ? await readContactPhone(getRepo()) : null;
 
   return (
     <main className="mx-auto max-w-lg px-3 py-8 sm:px-4 sm:py-12">
@@ -52,8 +59,10 @@ export default async function FindBookingPage({
                 the contact details we have on file. It should arrive in a minute or two.
               </Notice>
               <p className="mt-4 text-[12.5px] text-muted">
-                Nothing arrived? Check the details you entered match the ones you booked with, or
-                give us a call and we&rsquo;ll sort it out.
+                Didn&rsquo;t get your link? Check the details you entered match the ones you booked
+                with, or give us a call
+                <AtContactPhone phone={contactPhone} />
+                {" and we’ll sort it out."}
               </p>
             </>
           ) : (

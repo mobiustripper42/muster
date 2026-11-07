@@ -14,7 +14,7 @@
  * `resetAndSeed` wipes `app_settings`, so each test starts with no cutoff.
  */
 import type { Page } from "@playwright/test";
-import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import { test, expect, plantContactPhone, resetAndSeed, signInAsAdmin } from "./fixtures.js";
 import { DEMO, TODAY, formatShortDay } from "./reservation-demo.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { TEST_DATABASE_URL } from "../db/reset-test.js";
@@ -132,6 +132,63 @@ test.describe("the booking cutoff (DEC-193)", () => {
     ).toBeVisible();
     await expect(page.getByRole("link", { name: "Pick another time" })).toBeVisible();
     await expect(page.getByRole("button", { name: /Book & pay/ })).toHaveCount(0);
+  });
+
+  // Issue #1159. Stored in a spelling the page never shows, so these prove the read and the
+  // formatting as well as the wiring. The sentences are whole-string, for the reason above.
+  const numberLink = (page: Page) => page.getByRole("link", { name: "(216) 555-0100", exact: true });
+
+  test("AC5: /book gives the number in a phone-only day's notice, as a tel: link", async ({ page }) => {
+    await plantContactPhone("216-555-0100");
+    await setCutoff(hoursToCover(LATE));
+    await page.goto(`/book?date=${TOMORROW}`);
+
+    await expect(
+      page.getByText(
+        `Too late to book ${formatShortDay(TOMORROW)} online. Call us at (216) 555-0100 and we’ll book it for you.`,
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(numberLink(page)).toHaveAttribute("href", "tel:+12165550100");
+  });
+
+  test("AC6: /book/checkout gives the number inside the cutoff, as a tel: link", async ({ page }) => {
+    await plantContactPhone("216-555-0100");
+    await setCutoff(hoursToCover(LATE));
+    await page.goto(`/book/checkout?offering=${DEMO_OFFERING}&date=${TOMORROW}&time=${EARLY}&guests=12`);
+
+    await expect(
+      page.getByText(
+        `${formatShortDay(TOMORROW)} · 1:30 PM is too close to departure to book online. Call us at (216) 555-0100 and we’ll book it for you. Nothing was charged.`,
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(numberLink(page)).toHaveAttribute("href", "tel:+12165550100");
+  });
+
+  test("AC9: with no number, /book reads as it does today and has no tel: link", async ({ page }) => {
+    await setCutoff(hoursToCover(LATE));
+    await page.goto(`/book?date=${TOMORROW}`);
+
+    await expect(
+      page.getByText(`Too late to book ${formatShortDay(TOMORROW)} online. Call us and we’ll book it for you.`, {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.locator('a[href^="tel:"]')).toHaveCount(0);
+  });
+
+  test("AC9: with no number, /book/checkout reads as it does today and has no tel: link", async ({ page }) => {
+    await setCutoff(hoursToCover(LATE));
+    await page.goto(`/book/checkout?offering=${DEMO_OFFERING}&date=${TOMORROW}&time=${EARLY}&guests=12`);
+
+    await expect(
+      page.getByText(
+        `${formatShortDay(TOMORROW)} · 1:30 PM is too close to departure to book online. Call us and we’ll book it for you. Nothing was charged.`,
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(page.locator('a[href^="tel:"]')).toHaveCount(0);
   });
 
   test("with no cutoff set, tomorrow sells as it always has", async ({ page }) => {

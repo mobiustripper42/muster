@@ -716,8 +716,8 @@ export interface Reservation {
    * for weather last season" — had no answer in the database and never would for any booking
    * already cancelled.
    *
-   * Set once, by `cancelReservation`. The repair path re-runs against an already-cancelled
-   * reservation and deliberately does NOT overwrite it: the first answer is the real one.
+   * Set once, by `cancelReservation`. A second press on an already-cancelled reservation writes
+   * nothing and deliberately does NOT overwrite it: the first answer is the real one.
    */
   cancelledBy?: CancelledBy;
   // No waiver field — DEC-012.

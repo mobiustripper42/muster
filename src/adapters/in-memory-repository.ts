@@ -508,18 +508,6 @@ export class InMemoryRepository implements Repository {
     }
     return [...out.values()];
   }
-  async cancelEventIfUnclaimed(id: EventId): Promise<boolean> {
-    // Single-threaded JS ⇒ trivially atomic; the Postgres adapter enforces the same under real
-    // concurrency (row lock + the hull-day advisory lock `saveBookingIfSlotFree` also takes).
-    const event = this.#events.get(id);
-    if (!event || event.source !== "muster" || event.status !== "scheduled") return false;
-    const claimed = [...this.#reservations.values()].some(
-      (r) => r.eventId === id && r.source === "muster" && r.status === "booked",
-    );
-    if (claimed) return false;
-    this.#events.set(id, { ...clone(event), status: "cancelled" });
-    return true;
-  }
 
   // ── Reservation catalog (DEC-123/125) ───────────────────────────────────────
   async listOfferings(): Promise<Offering[]> {
@@ -829,16 +817,27 @@ export class InMemoryRepository implements Repository {
     return true;
   }
 
-  async cancelIfBooked(
+  async cancelBookingAndRelease(
     reservationId: ReservationId,
+    eventId: EventId,
     by: CancelledBy,
     at: string,
-  ): Promise<boolean> {
-    // Single-threaded ⇒ atomic, as above; Postgres gets it from `where status='booked'`.
+  ): Promise<{ cancelled: boolean; released: boolean }> {
+    // Single-threaded ⇒ atomic as one block; Postgres gets the same from one transaction under the
+    // hull-day advisory lock.
     const row = this.#reservations.get(reservationId);
-    if (!row || row.status !== "booked") return false;
+    if (!row || row.status !== "booked") return { cancelled: false, released: false };
     this.#reservations.set(reservationId, { ...row, status: "cancelled", cancelledBy: by, updatedAt: at });
-    return true;
+    const event = this.#events.get(eventId);
+    if (!event || event.source !== "muster" || event.status !== "scheduled") {
+      return { cancelled: true, released: false };
+    }
+    const claimed = [...this.#reservations.values()].some(
+      (r) => r.eventId === eventId && r.source === "muster" && r.status === "booked",
+    );
+    if (claimed) return { cancelled: true, released: false };
+    this.#events.set(eventId, { ...clone(event), status: "cancelled" });
+    return { cancelled: true, released: true };
   }
 
   async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {

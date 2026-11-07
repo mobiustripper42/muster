@@ -114,21 +114,14 @@ function refundLine(refund: CancelRefund, figure: string): string {
  * for: the booking is cancelled and the crew told. What is left for a person is only the money —
  * and only when the refund did not go through, which is the case the email must not bury.
  * `refund.cents` is the figure tried, in both outcomes. Pure.
- *
- * `releaseFailed`: the cancel committed but its boat was not released, so the crew were not told
- * either. That outranks the refund in the subject: the money can wait for a person, and the boat
- * cannot be sold again until one acts (PR #1214 review).
  */
 export function customerCancelledEmail(
-  input: CustomerCancelledInput & { refund: CancelRefund; releaseFailed?: boolean },
+  input: CustomerCancelledInput & { refund: CancelRefund },
 ): OperatorEmail {
   const figure = formatCents(input.refund.cents);
   const issued = input.refund.kind === "issued";
   const lines = [
     `${input.customerName} cancelled their booking from the booking page.`,
-    ...(input.releaseFailed
-      ? ["The boat was NOT released, and the crew have not been told — the booking needs releasing."]
-      : []),
     refundLine(input.refund, figure),
     "",
     `Trip: ${input.tripLabel}`,
@@ -139,9 +132,8 @@ export function customerCancelledEmail(
     "",
     "— Muster",
   ];
-  let subject = issued
+  const subject = issued
     ? `Cancelled by the customer — ${input.customerName} (${input.tripLabel})`
     : `Refund needed — ${input.customerName} cancelled (${input.tripLabel})`;
-  if (input.releaseFailed) subject = `Boat not released — ${input.customerName} cancelled (${input.tripLabel})`;
   return { subject, text: lines.join("\n") };
 }

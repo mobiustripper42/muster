@@ -377,37 +377,6 @@ describe("cancelByOperator — a refund that failed partway", () => {
 });
 
 describe("cancelByOperator — cancelled, and no money moved when some was expected", () => {
-  it("AC5: the boat was not released — the refund waits for the operator", async () => {
-    const repo = await seeded();
-    repo.cancelEventIfUnclaimed = async () => {
-      throw new Error("hull-day lock timed out");
-    };
-    const fake = new FakePaymentPort();
-    const { tell, calls } = spyTell();
-
-    const result = await cancelByOperator(deps(repo, fake, tell), input());
-
-    expect(result).toEqual({
-      params: { cancelled: "operator", cancelErr: "not_released", told: "sent-sent" },
-      draft: "stash",
-    });
-    expect(calls.map((c) => c.refund)).toEqual([{ kind: "pending" }]);
-    expect(fake.refunds).toEqual([]);
-    expect((await trail(repo)).filter((r) => r.type === "cancelled")).toHaveLength(1);
-  });
-
-  it("AC5: the boat was not released, even with nothing refundable — no figure has been read at that exit", async () => {
-    const repo = await seeded({ payments: [] });
-    repo.cancelEventIfUnclaimed = async () => {
-      throw new Error("hull-day lock timed out");
-    };
-    const { tell, calls } = spyTell();
-
-    await cancelByOperator(deps(repo, new FakePaymentPort(), tell), input());
-
-    expect(calls.map((c) => c.refund)).toEqual([{ kind: "pending" }]);
-  });
-
   it("AC5: a typed amount that does not parse", async () => {
     const repo = await seeded();
     const fake = new FakePaymentPort();
@@ -514,7 +483,7 @@ describe("cancelByOperator — cancelled, and no money moved when some was expec
 
   it("AC5: no published-terms figure because another booking still holds the event", async () => {
     const repo = await seeded();
-    repo.cancelEventIfUnclaimed = async () => false;
+    await repo.saveReservation(reservation(FAR, { id: asId<"ReservationId">("resv-other"), customerName: "Ben" }));
     const fake = new FakePaymentPort();
     const { tell, calls } = spyTell();
 
@@ -665,53 +634,43 @@ describe("cancelByOperator — one notice per cancel, from the press that cancel
     expect(calls).toEqual([]);
   });
 
-  it("AC8: none when the cancel threw", async () => {
+  it("issue #1228 AC8: the write throwing is a failed press — unreachable with the draft stashed, no refund, no trail row, no notice", async () => {
     const repo = await seeded();
-    repo.cancelIfBooked = async () => {
+    repo.cancelBookingAndRelease = async () => {
       throw new Error("database unreachable");
     };
+    const fake = new FakePaymentPort();
     const { tell, calls } = spyTell();
 
-    const result = await cancelByOperator(deps(repo, new FakePaymentPort(), tell), input());
+    const result = await cancelByOperator(deps(repo, fake, tell), input());
 
     expect(result).toEqual({ params: { cancelErr: "unreachable" }, draft: "stash" });
+    expect(fake.refunds).toEqual([]);
+    expect((await trail(repo)).filter((r) => r.type === "cancelled")).toEqual([]);
     expect(calls).toEqual([]);
   });
 
-  it("AC8: none from the \"Release the boat\" repair", async () => {
+  it("issue #1228 AC11: a booking already cancelled redirects with alreadyCancelled — no notice, no refund, no trail row", async () => {
     const repo = await seeded({ reservation: { status: "cancelled", cancelledBy: "customer" } });
     const fake = new FakePaymentPort();
     const { tell, calls } = spyTell();
 
     const result = await cancelByOperator(deps(repo, fake, tell), input());
 
-    expect(result).toEqual({ params: { released: "1" }, draft: "clear" });
+    expect(result).toEqual({ params: { alreadyCancelled: "1" }, draft: "clear" });
     expect(calls).toEqual([]);
     expect(fake.refunds).toEqual([]);
     expect(await trail(repo)).toEqual([]);
   });
 
-  it("AC8: none from a repair that failed again", async () => {
-    const repo = await seeded({ reservation: { status: "cancelled", cancelledBy: "customer" } });
-    repo.cancelEventIfUnclaimed = async () => {
-      throw new Error("hull-day lock timed out");
-    };
-    const { tell, calls } = spyTell();
-
-    const result = await cancelByOperator(deps(repo, new FakePaymentPort(), tell), input());
-
-    expect(result).toEqual({ params: { cancelErr: "not_released" }, draft: "clear" });
-    expect(calls).toEqual([]);
-  });
-
-  it("AC8: none from the loser of two presses", async () => {
+  it("issue #1228 AC11: the loser of two presses redirects the same way", async () => {
     const repo = await seeded();
-    repo.cancelIfBooked = async () => false;
+    repo.cancelBookingAndRelease = async () => ({ cancelled: false, released: false });
     const { tell, calls } = spyTell();
 
     const result = await cancelByOperator(deps(repo, new FakePaymentPort(), tell), input());
 
-    expect(result).toEqual({ params: { released: "0" }, draft: "clear" });
+    expect(result).toEqual({ params: { alreadyCancelled: "1" }, draft: "clear" });
     expect(calls).toEqual([]);
   });
 
@@ -728,7 +687,7 @@ describe("cancelByOperator — one notice per cancel, from the press that cancel
     expect(calls).toHaveLength(1);
     expect(fake.refunds).toHaveLength(1);
     expect(results.filter((r) => r.params.told === "sent-sent")).toHaveLength(1);
-    expect(results.filter((r) => "released" in r.params)).toHaveLength(1);
+    expect(results.filter((r) => "alreadyCancelled" in r.params)).toHaveLength(1);
   });
 });
 

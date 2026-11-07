@@ -165,8 +165,8 @@ export default async function ReservationDetailPage({
       cancel?: string;
       cancelled?: string;
       cancelErr?: string;
-      /** The "Release the boat" repair ran on a booking already cancelled (PR #1214 review). */
-      released?: string;
+      /** This press lost a race to another cancel: the booking already was (issue #1228). */
+      alreadyCancelled?: string;
       refunded?: string;
       refundErr?: string;
       refundConfirm?: string;
@@ -373,7 +373,7 @@ export default async function ReservationDetailPage({
     // (see `actionMessage`). Errors still win outright — a partial refund carries `refundErr`
     // AND an amount, and reporting that as a success is the defect security review caught.
     const outcome = (
-      ["cancelErr", "refundErr", "resendErr", "cancelled", "released", "refunded", "resent"] as const
+      ["cancelErr", "refundErr", "resendErr", "cancelled", "alreadyCancelled", "refunded", "resent"] as const
     )
       .map((k) => [k, sp[k]] as const)
       .find(([, val]) => val !== undefined);
@@ -464,10 +464,6 @@ export default async function ReservationDetailPage({
       // capability URL at all (DEC-122). Built from the trusted APP_BASE_URL, never a Host
       // header; unset env simply means no link rather than a wrong one.
       ...(manageUrl ? { manageUrl, justReissued } : {}),
-      needsRelease:
-        reservation.status === "cancelled" &&
-        event.source === "muster" &&
-        event.status === "scheduled",
       ...(message && !isError ? { done: message } : {}),
       ...(message && isError ? { error: message } : {}),
       told: toldNotice(sp.told, reservation),

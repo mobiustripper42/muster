@@ -8,9 +8,9 @@
  * being reported truthfully.
  */
 import { describe, it, expect } from "vitest";
-import type { ChannelPort, OutboundMessage } from "../ports/channel.js";
+import { ChannelSendError, type ChannelPort, type OutboundMessage } from "../ports/channel.js";
 import type { Reservation } from "../domain/entities.js";
-import { outcomes, resendBookingLink, resendBookingLinkBody } from "./resend-booking-link.js";
+import { outcomes, resendBookingLink, resendBookingLinkBody, tryChannel } from "./resend-booking-link.js";
 import { nonGsm7Chars } from "./sms-alphabet.js";
 
 const DEPS = { linkBase: "https://muster.example" };
@@ -148,6 +148,47 @@ describe("resendBookingLink", () => {
     );
     expect(seen).toHaveLength(1);
     expect(seen[0]).toContain("resv-1");
+  });
+});
+
+describe("tryChannel — what a failed send reports (issue #1228)", () => {
+  // A booking link is a capability URL, and a provider's error body can quote the message it refused.
+  const LINK = `https://muster.example/b/${CODE}`;
+
+  const failure = async (thrown: unknown): Promise<string[]> => {
+    const seen: string[] = [];
+    const refusing = {
+      async send() {
+        throw thrown;
+      },
+    } as unknown as ChannelPort;
+    const outcome = await tryChannel(refusing, "marcus@example.com", "email", {
+      body: "the message",
+      what: "booking-link resend",
+      onFailure: (d) => seen.push(d),
+      reservation: reservation(),
+    });
+    expect(outcome).toBe("failed");
+    return seen;
+  };
+
+  it("AC14: a ChannelSendError reports its status and not the provider's body", async () => {
+    const seen = await failure(new ChannelSendError("email", 422, `invalid body: ${LINK}`));
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toContain("422");
+    expect(seen[0]).toContain("resv-1");
+    expect(seen[0]).not.toContain(LINK);
+    expect(seen[0]).not.toContain("invalid body");
+  });
+
+  it("AC14: anything else gives its type name only", async () => {
+    const seen = await failure(new TypeError(`could not post ${LINK}`));
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toContain("TypeError");
+    expect(seen[0]).not.toContain(LINK);
+    expect(seen[0]).not.toContain("could not post");
   });
 });
 

@@ -73,12 +73,6 @@ export interface PaneActionState {
   /** True when `manageUrl` is being shown because a reissue just happened — changes the copy
    *  from "here is their link" to "here is their NEW link, their old one is dead". */
   justReissued?: boolean | undefined;
-  /**
-   * The reservation is cancelled but its event is still `scheduled` — a half-applied cancel.
-   * The boat is silently still held: neighbouring departures stay unsellable and the crew shift
-   * never collapsed. `cancelReservation` repairs this on a re-run, so the pane has to offer one.
-   */
-  needsRelease: boolean;
   /** Outcome copy from the last action, if any. */
   done?: string | undefined;
   error?: string | undefined;
@@ -121,19 +115,6 @@ function balanceErrorMessage(reason: string): string {
     default:
       return "Couldn’t create a balance link.";
   }
-}
-
-/**
- * A press on a booking that was already cancelled (PR #1214 review): the "Release the boat" repair, or
- * the loser of two presses at once. It cancelled nothing and moved no money, so it must not read as a
- * cancel or a refund. `1` = this press released the boat; `0` = it did not, and cannot know whether the
- * press that won has finished — the repair block says so if it has not. Its own function so
- * `actionMessage`'s baselined complexity does not grow.
- */
-function releasedMessage(value: string): string {
-  return value === "1"
-    ? "This booking was already cancelled. Its boat is released and the crew have been told. Nothing was refunded."
-    : "This booking was already cancelled, so this press changed nothing. Nothing was refunded.";
 }
 
 /**
@@ -180,8 +161,10 @@ export function actionMessage(
       }
       return `${freed} No refund was sent — use the refund box if something is owed.`;
     }
-    case "released":
-      return releasedMessage(value);
+    // The loser of two presses at once (issue #1228): it cancelled nothing and moved no money, so it
+    // must not read as a cancel or a refund.
+    case "alreadyCancelled":
+      return "This booking was already cancelled, so this press changed nothing. Nothing was refunded.";
     case "refunded":
       return `Refunded ${formatCents(Number(value) || 0)} to the card it came from.`;
     case "resent": {
@@ -281,10 +264,6 @@ export function actionMessage(
           return "That reservation no longer exists.";
         case "not_booked":
           return "This checkout hasn’t been paid, so there is nothing to cancel. It lapses on its own.";
-        // The status write landed and releasing the boat threw (PR #1214 review). Not "nothing
-        // changed": the booking IS cancelled, and the refund is the operator's to send.
-        case "not_released":
-          return "This booking is cancelled, but its boat couldn’t be released and the crew haven’t been told. Press Release the boat to finish it. No refund was sent — refund from the box.";
         default:
           return "Couldn’t cancel just now. Try again in a moment.";
       }
@@ -935,30 +914,6 @@ function PaneActions({
             </SubmitButton>
           </div>
 
-        </form>
-      )}
-
-      {/* A HALF-APPLIED CANCEL (security review). `cancelReservation` writes the reservation,
-          then the event; if anything between them throws, the reservation reads Cancelled while
-          the event stays `scheduled` — the boat still held, neighbours still unsellable, the crew
-          never told, and nothing on screen saying so. The core repairs this on a re-run and its
-          comment says so, but the UI hid the only control that could trigger one: `!cancelled`
-          removed the whole cancel block the moment the first write landed. So the repair gets its
-          own affordance, and it states the consequence rather than the mechanism. */}
-      {!confirming && cancelled && actions.needsRelease && (
-        <form action={cancelBooking} className="mb-3" data-testid="release-repair">
-          {hidden}
-          <input type="hidden" name="by" value="operator" />
-          <p className="mb-2 text-xs text-bad">
-            This booking is cancelled but its boat was never released — the departure is still
-            blocking that hull, and the crew were never told they’re off. Finish it:
-          </p>
-          <SubmitButton
-            data-commits="release"
-            className="btn-primary min-h-[44px] w-full"
-          >
-            Release the boat
-          </SubmitButton>
         </form>
       )}
 

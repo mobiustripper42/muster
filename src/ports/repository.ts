@@ -317,23 +317,6 @@ export interface Repository {
    * which it never appears again. On a healthy system it costs nothing.
    */
   listActiveVesselDays(fromDate: string, toDate: string): Promise<VesselDay[]>;
-  /**
-   * Cancel a Muster event **iff no active Muster reservation still holds it** (#616) — the
-   * write that releases the hull. Returns `true` if this call cancelled it, `false` if it was
-   * already cancelled, absent, not Muster-owned, or still claimed.
-   *
-   * A conditional write rather than `getEvent` + `saveEvent`, for the same reason
-   * `bookPendingIfHullFree` and `saveSeatIfState` are: the read-then-write version has a window.
-   * Cancelling reservation A frees the slot immediately (the claim check filters
-   * `status='booked'`), so a new buyer B can win that exact slot **between** the caller's read
-   * and its write — and the unconditional `saveEvent` would then cancel B's live, paid booking,
-   * collapse the shift and tell the crew they're off a boat B is actually on.
-   *
-   * Takes the SAME hull-day advisory lock `bookPendingIfHullFree` takes, so the two genuinely
-   * serialize instead of merely being individually atomic.
-   */
-  cancelEventIfUnclaimed(id: EventId): Promise<boolean>;
-
   // ── Reservations ───────────────────────────────────────────────────────────
   saveReservation(reservation: Reservation): Promise<void>;
   getReservation(id: ReservationId): Promise<Reservation | null>;
@@ -406,20 +389,32 @@ export interface Repository {
   ): Promise<boolean>;
 
   /**
-   * Cancel a PAID booking: `status booked → cancelled`, with `cancelledBy` and `updatedAt`. Returns
-   * true iff THIS call made that transition; a missing, pending or already cancelled row returns
-   * false and writes nothing.
+   * Cancel a PAID booking and free its boat in ONE save (issue #1228): the reservation goes
+   * `booked → cancelled` with `cancelledBy` and `updatedAt`, and its Event goes `cancelled`, together
+   * or not at all. A cancelled booking whose boat is still held cannot be created.
    *
-   * The same guard as `cancelPendingIfUnpaid`, for the same reason: two presses that both read
-   * `booked` — a customer's double tap, or the customer and the operator at once — must not both
-   * own the cancel. The owner is the press that goes on to refund, and a whole-row save from each
-   * read made both of them owners (PR #1214 review).
+   * Returns `{ cancelled, released }`. `cancelled` is true iff THIS call made the transition; a
+   * missing, pending or already cancelled row returns `{ cancelled: false, released: false }` and
+   * writes nothing, so the first press's `cancelledBy` stands. `released` is true iff this call also
+   * cancelled the Event. It is false, with `cancelled: true`, when another active Muster booking
+   * still holds the Event, or when the Event is absent, not Muster's or already cancelled: none of
+   * those undoes the cancel, or the caller would read a lost press and send no refund.
+   *
+   * The guard is the same as `cancelPendingIfUnpaid`'s, for the same reason: two presses that both
+   * read `booked` — a customer's double tap, or the customer and the operator at once — must not
+   * both own the cancel. The owner is the press that goes on to refund.
+   *
+   * The release is conditional for the reason `bookPendingIfHullFree` is: cancelling the reservation
+   * frees the slot at once, so a new buyer can win it between two separate writes, and an
+   * unconditional Event write would cancel their live, paid booking. Postgres takes the SAME
+   * hull-day advisory lock `bookPendingIfHullFree` takes, first, so the two serialize.
    */
-  cancelIfBooked(
+  cancelBookingAndRelease(
     reservationId: ReservationId,
+    eventId: EventId,
     by: CancelledBy,
     at: string,
-  ): Promise<boolean>;
+  ): Promise<{ cancelled: boolean; released: boolean }>;
 
   /**
    * The row carrying this Stripe PaymentIntent id in its `paymentIntentIds`, or null. How confirm
@@ -509,7 +504,7 @@ export interface Repository {
    *
    * **Why a lease rather than a lock.** The refund makes a Stripe network call, and a Postgres
    * transaction must not be held open across one — so the mutex is a row taken before the call
-   * and released after, not a lock spanning it. `cancelEventIfUnclaimed` can use an advisory
+   * and released after, not a lock spanning it. `cancelBookingAndRelease` can use an advisory
    * lock because everything it touches is in the database; this cannot.
    *
    * **Lazily expired**, the same lazy-on-read rule the pending row uses (§2.8.1): an existing row whose `expiresAt` is

@@ -1205,65 +1205,6 @@ export class PostgresRepository implements Repository {
       date: r.date,
     }));
   }
-  async cancelEventIfUnclaimed(id: EventId): Promise<boolean> {
-    // Release the hull (#616), conditionally. The mirror of `saveBookingIfSlotFree`: that one
-    // claims a slot iff nobody holds it, this one releases a slot iff nobody holds it, and they
-    // take the SAME hull-day advisory lock so the pair is serialized rather than merely each
-    // being atomic on its own. Without the shared lock, a cancel and a fresh booking of the
-    // just-freed slot interleave and the cancel wins — cancelling a customer who has paid.
-    const client = await this.#pool.connect();
-    try {
-      await client.query("begin");
-      // **Locks are taken in the SAME ORDER as `saveBookingIfSlotFree`: hull-day advisory lock
-      // first, event row second.** Reversing them deadlocks — this path would hold the row and
-      // want the advisory lock while a concurrent booking holds the advisory lock and wants the
-      // row, which Postgres resolves by aborting one of them with a 40P01 the caller has no
-      // handling for. So the first read is deliberately WITHOUT `for update`: it exists only to
-      // learn the hull-day the lock is keyed on.
-      const probe = await client.query(
-        "select vessel_id, date from events where id=$1",
-        [id],
-      );
-      if (!probe.rows[0]) {
-        await client.query("rollback");
-        return false;
-      }
-      await client.query("select pg_advisory_xact_lock(hashtext($1))", [
-        `${probe.rows[0].vessel_id}|${probe.rows[0].date}`,
-      ]);
-      // NOW take the row, and re-read its status under both locks — the unlocked probe above
-      // proves nothing about the row's state by the time we hold the lock.
-      const found = await client.query(
-        "select status, source from events where id=$1 for update",
-        [id],
-      );
-      const row = found.rows[0];
-      if (!row || row.source !== "muster" || row.status !== "scheduled") {
-        await client.query("rollback");
-        return false;
-      }
-      const claimed = await client.query(
-        `select 1 from reservations
-          where event_id=$1 and source='muster' and status='booked' limit 1`,
-        [id],
-      );
-      if ((claimed.rowCount ?? 0) > 0) {
-        await client.query("rollback");
-        return false; // somebody is on this boat — never release it
-      }
-      const updated = await client.query(
-        "update events set status='cancelled' where id=$1 and status='scheduled'",
-        [id],
-      );
-      await client.query("commit");
-      return (updated.rowCount ?? 0) > 0;
-    } catch (e) {
-      await client.query("rollback");
-      throw e;
-    } finally {
-      client.release();
-    }
-  }
 
   // ── Reservation catalog (DEC-123/125) — read-only in 12.0 ───────────────────
   async listOfferings(): Promise<Offering[]> {
@@ -1844,20 +1785,75 @@ export class PostgresRepository implements Repository {
     return (res.rowCount ?? 0) > 0;
   }
 
-  async cancelIfBooked(
+  async cancelBookingAndRelease(
     reservationId: ReservationId,
+    eventId: EventId,
     by: CancelledBy,
     at: string,
-  ): Promise<boolean> {
-    // One guarded statement: a second press's update waits on the first's row lock, re-evaluates
-    // `status='booked'` after it commits, and matches nothing.
-    const res = await this.#pool.query(
-      `update reservations
-          set status='cancelled', cancelled_by=$2, updated_at=$3
-        where id=$1 and status='booked'`,
-      [reservationId, by, at],
-    );
-    return (res.rowCount ?? 0) > 0;
+  ): Promise<{ cancelled: boolean; released: boolean }> {
+    // The booking's cancel and its boat's release are ONE transaction (issue #1228): both land or
+    // neither does. It takes the SAME hull-day advisory lock `bookPendingIfHullFree` takes, so a
+    // cancel and a confirm of the slot it frees serialize instead of merely being atomic apiece —
+    // without it, a buyer who wins the freed slot between the two writes has their live, paid
+    // booking's Event cancelled under them.
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      // **Hull-day advisory lock first, rows second** — the order `bookPendingIfHullFree` uses.
+      // Taking a row first and then wanting the advisory lock is how a cancel and a confirm
+      // deadlock (a 40P01 the caller has no handling for). So this first read is deliberately
+      // WITHOUT `for update`: it only learns which hull-day the lock is keyed on.
+      const probe = await client.query("select vessel_id, date from events where id=$1", [eventId]);
+      const hullDay = probe.rows[0];
+      if (hullDay) {
+        await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+          `${hullDay.vessel_id}|${hullDay.date}`,
+        ]);
+      }
+      // NOW the Event row, and its status re-read under both locks. A missing Event has nothing to
+      // lock or release: the booking still cancels below.
+      const found = hullDay
+        ? await client.query("select status, source from events where id=$1 for update", [eventId])
+        : null;
+      // One guarded statement: a second press waits on the first's lock, re-evaluates
+      // `status='booked'` after it commits, and matches nothing.
+      const cancelled = await client.query(
+        `update reservations
+            set status='cancelled', cancelled_by=$2, updated_at=$3
+          where id=$1 and status='booked'`,
+        [reservationId, by, at],
+      );
+      if ((cancelled.rowCount ?? 0) === 0) {
+        await client.query("rollback");
+        return { cancelled: false, released: false };
+      }
+      // An Event that is gone, not Muster's or already cancelled releases nothing — and does NOT
+      // roll the cancel back, or the caller would read a lost press and send no refund.
+      const event = found?.rows[0];
+      let released = false;
+      if (event && event.source === "muster" && event.status === "scheduled") {
+        const claimed = await client.query(
+          `select 1 from reservations
+            where event_id=$1 and source='muster' and status='booked' limit 1`,
+          [eventId],
+        );
+        // Somebody else is on this boat — never release it.
+        if ((claimed.rowCount ?? 0) === 0) {
+          const updated = await client.query(
+            "update events set status='cancelled' where id=$1 and status='scheduled'",
+            [eventId],
+          );
+          released = (updated.rowCount ?? 0) > 0;
+        }
+      }
+      await client.query("commit");
+      return { cancelled: true, released };
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
   }
 
   async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {

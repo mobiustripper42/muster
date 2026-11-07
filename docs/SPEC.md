@@ -1849,6 +1849,9 @@ a zero refund — never a negative one, and never a charge.
 **The 14-day boundary is inclusive.** Exactly 14 days out is refundable. The published wording reads
 inclusive and the edge favours the customer.
 
+**Cancelling a booking and freeing its boat are one write.** Both happen together or neither does, so a
+booking never reads cancelled while its boat is still held.
+
 **Cancellation insurance moves the line to 72 hours and replaces the fee** (operator, 2026-10-09).
 $30 buys a 72-hour window instead of 14 days, and **no $50**: an insured customer cancelling in time
 gets everything paid back except the insurance itself. What is kept is what was charged for it — a

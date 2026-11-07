@@ -8,7 +8,7 @@
  * Not a test file itself (no `.test`): it exports a function that registers the
  * describe/it blocks; each adapter's test file calls it with a fresh-repo factory.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkIntegrity } from "../admin/integrity.js";
 import { asId } from "../domain/ids.js";
 import type {
@@ -2022,6 +2022,43 @@ export function runRepositoryContract(
       expect(await repo.getBookingCutoffHours()).toBe(24);
       await repo.setBookingCutoffHours(0, "2026-07-12T00:05:00.000Z");
       expect(await repo.getBookingCutoffHours()).toBe(0);
+    });
+
+    // The write stores what it is given and the read canonicalizes, on both adapters (issue #1159).
+    describe("contact phone", () => {
+      const AT = "2026-07-12T00:00:00.000Z";
+      afterEach(() => vi.restoreAllMocks());
+
+      it("AC1: no row reads as null, and nothing is logged", async () => {
+        const err = vi.spyOn(console, "error").mockImplementation(() => {});
+        expect(await repo.getContactPhone()).toBeNull();
+        expect(err).not.toHaveBeenCalled();
+      });
+
+      it.each(["", "   "])("AC1: a blank row (%j) reads as null, and nothing is logged", async (raw) => {
+        await repo.setContactPhone(raw, AT);
+        const err = vi.spyOn(console, "error").mockImplementation(() => {});
+        expect(await repo.getContactPhone()).toBeNull();
+        expect(err).not.toHaveBeenCalled();
+      });
+
+      it.each(["(216) 555-0100", "216-555-0100", "+12165550100"])("AC2: a row of %j reads as +12165550100", async (raw) => {
+        await repo.setContactPhone(raw, AT);
+        expect(await repo.getContactPhone()).toBe("+12165550100");
+      });
+
+      it("AC2: a second write replaces the first", async () => {
+        await repo.setContactPhone("(330) 555-0199", AT);
+        await repo.setContactPhone("(216) 555-0100", "2026-07-12T00:05:00.000Z");
+        expect(await repo.getContactPhone()).toBe("+12165550100");
+      });
+
+      it("AC3: a row canonicalizePhone rejects reads as null, with one log line", async () => {
+        await repo.setContactPhone("call Drew", AT);
+        const err = vi.spyOn(console, "error").mockImplementation(() => {});
+        expect(await repo.getContactPhone()).toBeNull();
+        expect(err).toHaveBeenCalledOnce();
+      });
     });
 
     it("payments: save/get/listForReservation; idempotent upsert on id; optional stripe ids", async () => {

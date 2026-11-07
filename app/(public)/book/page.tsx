@@ -39,6 +39,8 @@ import {
   type SlotRow,
 } from "@core/reservations/availability-screen.js";
 import { formatCents } from "@core/reservations/calendar-detail.js";
+import { readContactPhone } from "@core/reservations/contact-phone.js";
+import { CallUsToBook } from "../../../components/checkout/at-contact-phone";
 import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { getRepo } from "../../lib/repo";
@@ -225,6 +227,8 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   // The picked day has nothing to sell online but something to sell by phone: say so, once, above
   // the rows. A day with some times still online needs no notice — the rows say which is which.
   const phoneDay = availRows.length === 0 && rows.some((r) => r.phoneOnly);
+  // The operator's number, read only on the day that shows it (issue #1159). Never throws.
+  const contactPhone = phoneDay ? await readContactPhone(getRepo()) : null;
   // The legend's "Call to book" key appears only in a month that has such a day — at the fallback
   // (no cutoff) it would explain a state that never shows. The picked day draws as `selected`, so
   // it counts through `phoneDay` rather than its cell.
@@ -482,15 +486,16 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       {formatShortDay(selectedDate)} — choose a start time
                     </div>
                     {rows.length === 0 && <Notice>No departures on this day.</Notice>}
-                    {/* DEC-193. No number yet — issue #1159 adds the operator's contact phone.
-                        One template literal, not JSX text around `{…}`: written that way the
-                        compiled output dropped the space after the date ("Oct 4online"). */}
+                    {/* DEC-193. The first half is one template literal, not JSX text around `{…}`:
+                        written that way the compiled output dropped the space after the date
+                        ("Oct 4online"). */}
                     {/* `mb-2.5`, the rows' own spacing — the Notice carries no margin, so without
                         the wrapper it sat flush against the first row. */}
                     {phoneDay && (
                       <div className="mb-2.5">
                         <Notice>
-                          {`Too late to book ${formatShortDay(selectedDate)} online. Call us and we’ll book it for you.`}
+                          {`Too late to book ${formatShortDay(selectedDate)} online. `}
+                          <CallUsToBook phone={contactPhone} />.
                         </Notice>
                       </div>
                     )}

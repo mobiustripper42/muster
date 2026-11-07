@@ -191,6 +191,33 @@ if (!dbUp) {
   });
 
   /**
+   * The operator's contact phone as production gets it (issue #1159): a hand-written row, until
+   * issue #1166 gives it a field. Postgres-only because the in-memory double has no key to be wrong
+   * about. A write and a read that agreed on the wrong key would pass the contract and never see
+   * the row the operator's SQL leaves.
+   */
+  describe("contact phone in app_settings", () => {
+    it("AC2: a hand-written row under booking.contact_phone is read and canonicalized", async () => {
+      await truncateAll(pool);
+      await pool.query(`insert into app_settings(key, value, updated_at) values ($1,$2,$3)`, [
+        "booking.contact_phone",
+        "(216) 555-0100",
+        "2026-07-12T00:00:00.000Z",
+      ]);
+      expect(await new PostgresRepository(pool).getContactPhone()).toBe("+12165550100");
+    });
+
+    it("AC2: a write keeps the string as typed, under booking.contact_phone", async () => {
+      await truncateAll(pool);
+      await new PostgresRepository(pool).setContactPhone("(216) 555-0100", "2026-07-12T00:00:00.000Z");
+      const { rows } = await pool.query("select value from app_settings where key=$1", [
+        "booking.contact_phone",
+      ]);
+      expect(rows).toEqual([{ value: "(216) 555-0100" }]);
+    });
+  });
+
+  /**
    * The limiter's one real race (Phase 18.3a, DEC-189): simultaneous requests from one address.
    * Postgres-only — the in-memory double is single-threaded and would pass by construction. A
    * read-then-write counter hands several callers the same number and lets a burst through; the

@@ -101,6 +101,8 @@ import {
   type PaymentConfig,
 } from "../reservations/payment-config.js";
 import { BOOKING_CUTOFF_KEY, parseBookingCutoffHours } from "../reservations/booking-cutoff.js";
+import type { CanonicalPhone } from "../customers/identity.js";
+import { CONTACT_PHONE_KEY, parseContactPhone } from "../reservations/contact-phone.js";
 import { XOLA_TRIP_MINUTES, minutesOfDay } from "../reservations/hull-busy.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { FailureWindow, Repository, ShiftChangeRow } from "../ports/repository.js";
@@ -1425,6 +1427,17 @@ export class PostgresRepository implements Repository {
       `insert into app_settings(key, value, updated_at) values ($1,$2,$3)
        on conflict (key) do update set value=excluded.value, updated_at=excluded.updated_at`,
       [BOOKING_CUTOFF_KEY, String(hours), at],
+    );
+  }
+  async getContactPhone(): Promise<CanonicalPhone | null> {
+    const { rows } = await this.#pool.query("select value from app_settings where key=$1", [CONTACT_PHONE_KEY]);
+    return parseContactPhone(rows[0]?.value);
+  }
+  async setContactPhone(raw: string, at: string): Promise<void> {
+    await this.#pool.query(
+      `insert into app_settings(key, value, updated_at) values ($1,$2,$3)
+       on conflict (key) do update set value=excluded.value, updated_at=excluded.updated_at`,
+      [CONTACT_PHONE_KEY, raw, at],
     );
   }
   async savePayment(p: Payment): Promise<void> {

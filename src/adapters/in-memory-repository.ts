@@ -86,6 +86,8 @@ import {
   pendingIntervalsFor,
 } from "../reservations/hull-busy.js";
 import type { FailureWindow, Repository } from "../ports/repository.js";
+import type { CanonicalPhone } from "../customers/identity.js";
+import { parseContactPhone } from "../reservations/contact-phone.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { GuestId, WaiverTemplateId } from "../domain/ids.js";
 import type {
@@ -161,6 +163,8 @@ export class InMemoryRepository implements Repository {
   #paymentConfig: Partial<PaymentConfig> = {};
   /** `booking.cutoff_hours` (DEC-193). 0 is the fallback — no cutoff. */
   #bookingCutoffHours = 0;
+  /** The raw string as written; the read canonicalizes, as the postgres row does. */
+  #contactPhone: string | null = null;
   readonly #shifts = new Map<ShiftId, Shift>();
   readonly #seats = new Map<SeatId, Seat>();
   readonly #asks = new Map<AskId, Ask>();
@@ -565,6 +569,12 @@ export class InMemoryRepository implements Repository {
   }
   async setBookingCutoffHours(hours: number, _at: string): Promise<void> {
     this.#bookingCutoffHours = hours;
+  }
+  async getContactPhone(): Promise<CanonicalPhone | null> {
+    return parseContactPhone(this.#contactPhone);
+  }
+  async setContactPhone(raw: string, _at: string): Promise<void> {
+    this.#contactPhone = raw;
   }
   async savePayment(payment: Payment): Promise<void> {
     // Insert-only (mirrors the postgres `on conflict do nothing`): a payment row is

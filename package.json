@@ -29,6 +29,7 @@
     "db:seed:insurance": "tsx db/seed-insurance-dev.ts",
     "db:seed:self-cancel": "tsx db/seed-self-cancel-dev.ts",
     "db:seed:booking-cutoff": "tsx db/seed-booking-cutoff-dev.ts",
+    "db:seed:contact-phone": "tsx db/seed-contact-phone-dev.ts",
     "db:seed:trail": "tsx db/seed-trail-dev.ts",
     "db:seed:reminders": "tsx db/seed-reminders-dev.ts",
     "db:seed:departure": "tsx db/seed-departure-dev.ts",

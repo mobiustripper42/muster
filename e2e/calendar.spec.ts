@@ -17,8 +17,6 @@ import {
   fillHydrated,
   plantPayment,
   plantVesselBlock,
-  readTrailFor,
-  reopenEvent,
   resetAndSeed,
   signInAsAdmin,
 } from "./fixtures.js";
@@ -1118,39 +1116,6 @@ test.describe("admin reservation actions (#616)", () => {
     // is no green success line beside it.
     await expect(page.getByTestId("action-error")).toContainText(/nothing was sent/i);
     await expect(page.getByTestId("action-done")).toHaveCount(0);
-  });
-
-  test("a half-applied cancel offers a repair instead of stranding the boat", async ({ page }) => {
-    // The state a crash between `cancelReservation`'s two writes leaves: reservation Cancelled,
-    // event still scheduled — so the hull is still held, the crew were never told, and the pane
-    // reads "Cancelled" with nothing indicating a repair is owed. The core self-heals on a
-    // re-run and its comment says so, but the first cut hid the cancel control the moment the
-    // reservation flipped, making the re-run unreachable. Security review.
-    await signInAsAdmin(page, "eric");
-    await page.goto(detail());
-    await page.getByTestId("cancel-start").click();
-    await page.getByRole("button", { name: CANCEL_BUTTON }).click();
-    await page.waitForURL(/cancelled=/);
-
-    // Put the event back to `scheduled` behind the app's back — exactly the half-written state.
-    await reopenEvent(BOOKED.date, BOOKED.time);
-    await page.goto(detail());
-
-    const repair = page.getByTestId("release-repair");
-    await expect(repair).toContainText("never released");
-    await repair.getByRole("button", { name: "Release the boat" }).click();
-    await page.waitForURL(/released=/);
-
-    // Repaired: the slot is back on sale and the repair prompt is gone.
-    await expect(page.getByTestId("release-repair")).toHaveCount(0);
-    // The repair cancelled nothing, so it records no second cancel and attempts no refund. It used
-    // to write "cancelled by operator" after the real cancel and quote at the operator's rate — after
-    // a customer's own cancel, that is the $50 the terms kept (PR #1214 review).
-    await expect(page.getByTestId("action-done")).toContainText("already cancelled");
-    await expect(page.getByTestId("action-error")).toHaveCount(0);
-    expect((await readTrailFor(RESV)).filter((e) => e.type === "cancelled")).toHaveLength(1);
-    await page.goto(`/admin/calendar?date=${BOOKED.date}`);
-    await expect(openAt(page, shortLabel(BOOKED.time))).toBeVisible();
   });
 
   test("resend is offered when there is somewhere to send, and reports back", async ({ page }) => {

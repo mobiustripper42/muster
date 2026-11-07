@@ -32,6 +32,7 @@ Lower value, still open:
 
 6. **Operator-side reservations**, `docs/SPEC.md §2.10`, §3.3 and §3.4, beyond the money paths already covered.
 7. **Check-in and waivers**, against `docs/design/check-in-and-waivers.md` and `docs/design/check-in-surfaces.md`.
+8. **Two saves in a row that must agree.** Every place the core writes one row and then another, where a failure between them leaves the two disagreeing, and whether each pair should be one write. The worked example is the cancel: it used to cancel the booking and then release its boat as two saves, and issue #1228 made them one (`cancelBookingAndRelease` in `src/ports/repository.ts`).
 
 ## Running an audit
 
@@ -83,8 +84,8 @@ Statuses are `open` unless a row says otherwise. IDs are each report's own; refe
 | F5 | S2 | A failed self-service refund leaves no work item; the operator email is best-effort | open |
 | F6 | S3 | Booked-row readers recompute tax and balance from the live tax rate (latent S1) | open |
 | F7 | S3 | `/book/success` tells a race loser they were refunded and texted before either happens | open |
-| F8 | S3 | Two concurrent self-cancel presses report a failed refund to both parties | check — likely fixed by pull request #1214 (`cancelIfBooked`) |
-| F9 | S3 | "Release the boat" after a self-cancel writes a second, misattributed `cancelled` row | check — likely fixed by pull request #1214 (`released=1|0`) |
+| F8 | S3 | Two concurrent self-cancel presses report a failed refund to both parties | check — likely fixed by pull request #1214; since issue #1228 the guard is in `cancelBookingAndRelease` |
+| F9 | S3 | "Release the boat" after a self-cancel writes a second, misattributed `cancelled` row | fixed — issue #1228 removed the button |
 | F10 | S3 | The operator's cancel tells the customer nothing; §3.3's cascade is not built | open — issue #1212 now tells the customer on every cancel, the operator's and their own (`docs/SPEC.md §2.8.4c`); §3.3's cascade is still not built |
 | F11 | S3 | The offering form says the tip is exempt from the service fee; it is in the fee base | open |
 | F12 | S3 | `/admin/integrity` goes red for good after cancelling an unpaid phone booking | open |
@@ -93,7 +94,7 @@ Statuses are `open` unless a row says otherwise. IDs are each report's own; refe
 | F15 | S4 | Tax rate: spec 8%, worked example and code fallback 7.25%, nothing seeds the row | open — the rate is a setting, 8% in production; do not raise the 7.25% code fallback (operator, 2026-10-10) |
 | F16 | S4 | §2.8.7 says a retry makes a second payment; the code reuses one PaymentIntent | open |
 | F17 | S4 | The cutoff's settings-page control is not built | open |
-| F18 | S4 | An override `Event` at the asker's slot: the read exempts it, the write does not (latent S1) | issue #945 |
+| F18 | S4 | An override `Event` at the asker's slot: the read exempts it, the write does not (latent S1) | deferred with issue #945 — unreachable until a per-trip override exists: issue #1228 stops a cancel leaving an unbooked Event |
 | F19 | S4 | Slots under a live pending row are hidden on the operator grid, not drawn busy | open |
 | F20 | S4 | A `payment_intent.succeeded` that matches no row is acked silently | open |
 | F21 | S4 | The customer record is created before the flip, not in step 6 | open |

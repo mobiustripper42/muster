@@ -268,27 +268,25 @@ describe("cancelReservation", () => {
     expect((await repo.getReservation(RESV))?.cancelledBy).toBe("customer");
   });
 
-  it("keeps the FIRST answer when a half-applied cancel is re-run (#724)", async () => {
-    // The repair path deliberately re-runs against an already-cancelled reservation. It must not
-    // rewrite who cancelled: the first answer is the real one, and a retry that happened to be
-    // driven from a different surface would otherwise silently relabel a customer cancellation
-    // as ours — which is the branch that pays a FULL refund.
-    const repo = await seeded();
-    await cancelReservation(deps(repo), RESV, "customer");
-    await cancelReservation(deps(repo), RESV, "operator");
+  it("AC11: a booking already cancelled answers alreadyCancelled and writes nothing — there is no repair to re-run", async () => {
+    // Who cancelled stands: a press from a different surface would otherwise relabel a customer
+    // cancellation as ours, which is the branch that pays a FULL refund (#724). The Event left
+    // scheduled is deliberate: this state can no longer be created, and nothing here repairs it.
+    const repo = await seeded({ status: "cancelled", cancelledBy: "customer" });
+    const relayed: unknown[] = [];
 
+    const result = await cancelReservation(
+      deps(repo, async (f) => {
+        relayed.push(f);
+      }),
+      RESV,
+      "operator",
+    );
+
+    expect(result).toEqual({ ok: true, alreadyCancelled: true });
     expect((await repo.getReservation(RESV))?.cancelledBy).toBe("customer");
-  });
-
-  it("is idempotent, and repairs a half-applied cancel", async () => {
-    // The state a crash between the two writes leaves behind: reservation cancelled, event
-    // still scheduled — the boat silently un-released. Re-running must finish the job rather
-    // than short-circuit on "already cancelled".
-    const repo = await seeded({ status: "cancelled" });
-    const result = await cancelReservation(deps(repo), RESV, "operator");
-
-    expect(result).toMatchObject({ ok: true, alreadyCancelled: true });
-    expect((await repo.getEvent(EVENT))?.status).toBe("cancelled");
+    expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");
+    expect(relayed).toEqual([]);
   });
 
   it("leaves the event alone when another active booking still holds it", async () => {
@@ -338,19 +336,86 @@ describe("cancelReservation", () => {
     expect(relayed).toEqual([]);
   });
 
-  it("a throw releasing the hull is reported, not thrown — the cancel has committed (PR #1214 review)", async () => {
-    // The status write has landed, so a throw would tell the caller nothing happened about a booking
-    // that is cancelled — and the customer's retry stops at "already cancelled" and cannot repair it.
+  it("AC7: a booked Muster row goes through the one write, carries no releaseFailed, and re-forms as it did", async () => {
     const repo = await seeded();
-    repo.cancelEventIfUnclaimed = async () => {
+    await formAllVesselDaysForTest(repo);
+    const writes: unknown[][] = [];
+    const real = repo.cancelBookingAndRelease.bind(repo);
+    repo.cancelBookingAndRelease = async (...args) => {
+      writes.push(args);
+      return real(...args);
+    };
+    const relayed: unknown[] = [];
+
+    const result = await cancelReservation(
+      deps(repo, async (f) => {
+        relayed.push(f);
+      }),
+      RESV,
+      "operator",
+    );
+
+    expect(writes).toEqual([[RESV, EVENT, "operator", NOW]]);
+    expect(result).toEqual({ ok: true, alreadyCancelled: false, freedEventId: EVENT });
+    expect(relayed).toHaveLength(1);
+    expect((await repo.getShift(asId<"ShiftId">(`shift-${VESSEL}-2026-08-20`)))?.state).toBe("Cancelled");
+  });
+
+  it("AC7: a write that throws is thrown — nothing happened, so nothing re-forms and nobody is told", async () => {
+    const repo = await seeded();
+    repo.cancelBookingAndRelease = async () => {
       throw new Error("hull-day lock timed out");
     };
+    const relayed: unknown[] = [];
 
-    const result = await cancelReservation(deps(repo), RESV, "customer");
+    await expect(
+      cancelReservation(
+        deps(repo, async (f) => {
+          relayed.push(f);
+        }),
+        RESV,
+        "customer",
+      ),
+    ).rejects.toThrow("hull-day lock timed out");
 
-    expect(result).toEqual({ ok: true, alreadyCancelled: false, releaseFailed: true });
-    expect((await repo.getReservation(RESV))?.status).toBe("cancelled");
+    expect((await repo.getReservation(RESV))?.status).toBe("booked");
     expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");
+    expect(relayed).toEqual([]);
+  });
+
+  it("AC4: a cancel that released nothing is still this press's cancel — it frees no event, and the re-form runs", async () => {
+    // A `released: false` read as a lost press would answer alreadyCancelled, and no refund follows.
+    const repo = await seeded();
+    repo.cancelBookingAndRelease = async () => ({ cancelled: true, released: false });
+    const relayed: unknown[] = [];
+
+    const result = await cancelReservation(
+      deps(repo, async (f) => {
+        relayed.push(f);
+      }),
+      RESV,
+      "operator",
+    );
+
+    expect(result).toEqual({ ok: true, alreadyCancelled: false });
+    expect(relayed).toHaveLength(1);
+  });
+
+  it("AC11: a write that changed nothing is a lost press — alreadyCancelled, and no re-form", async () => {
+    const repo = await seeded();
+    repo.cancelBookingAndRelease = async () => ({ cancelled: false, released: false });
+    const relayed: unknown[] = [];
+
+    const result = await cancelReservation(
+      deps(repo, async (f) => {
+        relayed.push(f);
+      }),
+      RESV,
+      "operator",
+    );
+
+    expect(result).toEqual({ ok: true, alreadyCancelled: true });
+    expect(relayed).toEqual([]);
   });
 });
 

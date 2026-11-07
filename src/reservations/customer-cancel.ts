@@ -59,8 +59,7 @@ export type CancelRefund =
   | { kind: "failed"; cents: number; movedCents: number };
 
 export type CustomerCancelOutcome =
-  /** `releaseFailed`: cancelled and refunded as below, but the boat is still held and the crew untold. */
-  | { ok: true; refund: CancelRefund; releaseFailed?: true }
+  | { ok: true; refund: CancelRefund }
   | {
       ok: false;
       reason: "not_offered" | "already_cancelled" | "quote_changed" | "reservation_missing";
@@ -166,11 +165,11 @@ export async function cancelByCustomer(
       "customer",
     );
   } catch (e) {
-    // `cancelReservation` reports a failed hull release rather than throwing, so a throw comes from
-    // the status write itself — which can still have committed (the connection dropped after it). If
-    // the booking is now cancelled, carry on to the trail row and the refund, or the customer is told
-    // "nothing changed" about a booking that is cancelled and unrefunded; the release never ran. If
-    // not, nothing changed and the throw is the caller's to report.
+    // A throw comes from the one write that cancels the booking and frees its boat, which can still
+    // have committed (the connection dropped after it). If the booking is now cancelled, the write
+    // landed whole: carry on to the trail row and the refund, or the customer is told "nothing
+    // changed" about a booking that is cancelled and unrefunded. If not, nothing changed and the
+    // throw is the caller's to report.
     const reread = await deps.repo
       .getReservation(reservationId)
       .catch((readErr: unknown) => {
@@ -179,7 +178,7 @@ export async function cancelByCustomer(
       });
     if (reread?.status !== "cancelled") throw e;
     logSwallowed("reservations:cancelByCustomer", e, `${reservationId} is cancelled but cancelReservation threw after the write`);
-    cancelled = { ok: true, alreadyCancelled: false, releaseFailed: true };
+    cancelled = { ok: true, alreadyCancelled: false };
   }
   if (!cancelled.ok) {
     return { ok: false, reason: cancelled.reason === "reservation_missing" ? "reservation_missing" : "not_offered" };
@@ -196,12 +195,10 @@ export async function cancelByCustomer(
     metadata: { reason: CANCEL_REASON, quotedCents: quote.refundCents },
   });
 
-  // The release failed only on THIS press's cancel, so it rides on whatever the refund leg says.
-  const released = cancelled.releaseFailed ? { releaseFailed: true as const } : {};
   const refunded = await refundAfterCancel(deps, reservationId, quote, posted.expectedRefundedCents);
   if (refunded.kind === "issued") {
     await tell(deps, reservationId, refunded);
-    return { ok: true, refund: refunded, ...released };
+    return { ok: true, refund: refunded };
   }
   if (refunded.kind === "other_press") return { ok: false, reason: "already_cancelled" };
 
@@ -216,7 +213,7 @@ export async function cancelByCustomer(
   });
   const failed: CancelRefund = { kind: "failed", cents: quote.refundCents, movedCents: refunded.movedCents };
   await tell(deps, reservationId, failed);
-  return { ok: true, refund: failed, ...released };
+  return { ok: true, refund: failed };
 }
 
 /** The notice, as the customer. Never throws (`tellSafely`): the cancel and refund stand. */

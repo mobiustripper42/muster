@@ -1849,6 +1849,9 @@ a zero refund — never a negative one, and never a charge.
 **The 14-day boundary is inclusive.** Exactly 14 days out is refundable. The published wording reads
 inclusive and the edge favours the customer.
 
+**Cancelling a booking and freeing its boat are one write.** Both happen together or neither does, so a
+booking never reads cancelled while its boat is still held.
+
 **Cancellation insurance moves the line to 72 hours and replaces the fee** (operator, 2026-10-09).
 $30 buys a 72-hour window instead of 14 days, and **no $50**: an insured customer cancelling in time
 gets everything paid back except the insurance itself. What is kept is what was charged for it — a
@@ -1915,14 +1918,13 @@ is left out when the booking has no departure on it. The refund line is one of:
 
 In the partly-failed line, `$594.00` is the figure that press tried: what the operator typed, or the
 terms' figure when the box was blank; the customer's own cancel has only the terms'. "Money was expected
-and none moved" is every exit where the cancel stood and the refund did not start or did not move: the
-boat was not released (the refund waits for the operator), a typed amount that does not parse, no Stripe
-keys, a stale or missing refund token, the refund refused or failing with nothing moved, no terms figure
+and none moved" is every exit where the cancel stood and the refund did not start or did not move: a
+typed amount that does not parse, no Stripe keys, a stale or missing refund token, the refund refused or failing with nothing moved, no terms figure
 to compute, and the operator typing $0 while the terms owe more. A person keeps the promise to be in
 touch; a refund sent later from the standalone refund box sends no second message.
 
-One notice per cancel, from the press that cancelled it. None from a refused press, the "Release the
-boat" repair, the loser of two presses, or a customer press that answers `already_cancelled` or
+One notice per cancel, from the press that cancelled it. None from a refused press, the loser of two
+presses, or a customer press that answers `already_cancelled` or
 `quote_changed`. An unpaid phone booking gets none: nothing was charged, and it has no booking link.
 A failed notice never undoes the cancel or the refund. Each notice writes one trail row, "Cancellation
 notice sent" when a channel reached the customer and "Cancellation notice failed" otherwise, recording

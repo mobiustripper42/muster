@@ -1439,37 +1439,171 @@ export function runRepositoryContract(
       expect(await repo.cancelPendingIfUnpaid(rid("pend-1"), "operator", CANCEL_AT)).toBe(false);
     });
 
-    // ── cancelIfBooked — the cancel of a PAID booking, one press only (PR #1214 review) ──────
+    // ── cancelBookingAndRelease — a PAID booking and its boat, one save (issue #1228) ─────────
     // The same guarded shape as `cancelPendingIfUnpaid`, for `booked`. Two presses that both read
     // `booked` (a customer's double tap, or the customer and the operator at once) must not both
     // own the cancel: the owner is the one that goes on to refund, so two owners meant two refund
     // attempts and a false "refund failed" from the loser.
-    it("cancelIfBooked: cancels a booked row and records who and when", async () => {
-      expect((await confirm(pendingRow())).result).toBe("won");
-      expect(await repo.cancelIfBooked(rid("pend-1"), "customer", CANCEL_AT)).toBe(true);
-      expect((await repo.getReservation(rid("pend-1")))!).toMatchObject({
+    //
+    // Both adapters must agree, because the two express it differently — Postgres in a transaction
+    // under the hull-day advisory lock, in-memory as a straight-line check — and a divergence means
+    // a cancel releases a paying customer's boat on exactly one of them.
+    const CANCEL_EVENT = asId<"EventId">("evt-cancel-1");
+    const LATER = "2026-06-30T09:05:00.000Z";
+    const cancelEvent = (over: Partial<Event> = {}): Event => ({
+      id: CANCEL_EVENT,
+      vesselId: asId<"VesselId">("v-1"),
+      date: "2026-08-20",
+      time: "17:00",
+      capacity: 12,
+      status: "scheduled",
+      source: "muster",
+      ...over,
+    });
+    const bookedRow = (over: Partial<Reservation> = {}): Reservation => ({
+      id: rid("resv-ann"),
+      eventId: CANCEL_EVENT,
+      source: "muster",
+      customerName: "Ann",
+      partySize: 4,
+      status: "booked",
+      ...over,
+    });
+
+    it("AC1: cancels a booked row with who and when, and cancels its Event, in one write", async () => {
+      await repo.saveEvent(cancelEvent());
+      await repo.saveReservation(bookedRow());
+
+      expect(await repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "customer", CANCEL_AT)).toEqual({
+        cancelled: true,
+        released: true,
+      });
+
+      expect((await repo.getReservation(rid("resv-ann")))!).toMatchObject({
+        status: "cancelled",
+        cancelledBy: "customer",
+        updatedAt: CANCEL_AT,
+      });
+      expect((await repo.getEvent(CANCEL_EVENT))?.status).toBe("cancelled");
+    });
+
+    it("AC3: the second of two presses changes nothing — the first press's answer stands", async () => {
+      await repo.saveEvent(cancelEvent());
+      await repo.saveReservation(bookedRow());
+      await repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "customer", CANCEL_AT);
+
+      expect(await repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "operator", LATER)).toEqual({
+        cancelled: false,
+        released: false,
+      });
+
+      expect((await repo.getReservation(rid("resv-ann")))!).toMatchObject({
         status: "cancelled",
         cancelledBy: "customer",
         updatedAt: CANCEL_AT,
       });
     });
 
-    it("cancelIfBooked: the second of two cancels writes nothing — the first answer stands", async () => {
-      expect((await confirm(pendingRow())).result).toBe("won");
-      expect(await repo.cancelIfBooked(rid("pend-1"), "customer", CANCEL_AT)).toBe(true);
-      expect(await repo.cancelIfBooked(rid("pend-1"), "operator", "2026-06-30T09:05:00.000Z")).toBe(false);
-      expect((await repo.getReservation(rid("pend-1")))!).toMatchObject({
-        status: "cancelled",
+    it("AC3: a row already cancelled frees nothing, even with its Event still scheduled — the write is not a repair", async () => {
+      await repo.saveEvent(cancelEvent());
+      await repo.saveReservation(bookedRow({ status: "cancelled", cancelledBy: "customer", updatedAt: CANCEL_AT }));
+
+      expect(await repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "operator", LATER)).toEqual({
+        cancelled: false,
+        released: false,
+      });
+
+      expect((await repo.getEvent(CANCEL_EVENT))?.status).toBe("scheduled");
+      expect((await repo.getReservation(rid("resv-ann")))!).toMatchObject({
         cancelledBy: "customer",
         updatedAt: CANCEL_AT,
       });
     });
 
-    it("cancelIfBooked: false for a missing row, and for a pending one — which it leaves pending", async () => {
-      expect(await repo.cancelIfBooked(rid("pend-nope"), "customer", CANCEL_AT)).toBe(false);
+    it("AC4: a second booked claim keeps the Event scheduled, and this reservation still cancels", async () => {
+      await repo.saveEvent(cancelEvent());
+      await repo.saveReservation(bookedRow());
+      await repo.saveReservation(bookedRow({ id: rid("resv-ben"), customerName: "Ben" }));
+
+      expect(await repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "operator", CANCEL_AT)).toEqual({
+        cancelled: true,
+        released: false,
+      });
+
+      expect((await repo.getReservation(rid("resv-ann")))!).toMatchObject({
+        status: "cancelled",
+        cancelledBy: "operator",
+        updatedAt: CANCEL_AT,
+      });
+      expect((await repo.getReservation(rid("resv-ben")))?.status).toBe("booked");
+      expect((await repo.getEvent(CANCEL_EVENT))?.status).toBe("scheduled");
+    });
+
+    it("AC4: a booked row whose Event row is missing still cancels, and releases nothing", async () => {
+      await repo.saveReservation(bookedRow());
+
+      expect(await repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "operator", CANCEL_AT)).toEqual({
+        cancelled: true,
+        released: false,
+      });
+
+      expect((await repo.getReservation(rid("resv-ann")))!).toMatchObject({
+        status: "cancelled",
+        cancelledBy: "operator",
+        updatedAt: CANCEL_AT,
+      });
+      expect(await repo.getEvent(CANCEL_EVENT)).toBeNull();
+    });
+
+    it.each([
+      ["already cancelled", { status: "cancelled" }],
+      ["not Muster's", { source: "xola" }],
+    ] as [string, Partial<Event>][])(
+      "AC4: an Event that is %s does not roll the cancel back, or the caller reads a lost press and no refund follows",
+      async (_label, over) => {
+        await repo.saveEvent(cancelEvent(over));
+        await repo.saveReservation(bookedRow());
+        const before = await repo.getEvent(CANCEL_EVENT);
+
+        expect(await repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "operator", CANCEL_AT)).toEqual({
+          cancelled: true,
+          released: false,
+        });
+
+        expect((await repo.getReservation(rid("resv-ann")))!).toMatchObject({
+          status: "cancelled",
+          cancelledBy: "operator",
+          updatedAt: CANCEL_AT,
+        });
+        expect(await repo.getEvent(CANCEL_EVENT)).toEqual(before);
+      },
+    );
+
+    it("AC5: nothing for a missing reservation — its Event stays scheduled, and a stale link never throws", async () => {
+      await repo.saveEvent(cancelEvent());
+
+      expect(await repo.cancelBookingAndRelease(rid("resv-nope"), CANCEL_EVENT, "customer", CANCEL_AT)).toEqual({
+        cancelled: false,
+        released: false,
+      });
+      expect((await repo.getEvent(CANCEL_EVENT))?.status).toBe("scheduled");
+
+      expect(
+        await repo.cancelBookingAndRelease(rid("resv-nope"), asId<"EventId">("evt-nope"), "customer", CANCEL_AT),
+      ).toEqual({ cancelled: false, released: false });
+    });
+
+    it("AC5: nothing for a pending row, which stays pending", async () => {
+      await repo.saveEvent(cancelEvent());
       await repo.saveReservation(pendingRow());
-      expect(await repo.cancelIfBooked(rid("pend-1"), "customer", CANCEL_AT)).toBe(false);
+
+      expect(await repo.cancelBookingAndRelease(rid("pend-1"), CANCEL_EVENT, "customer", CANCEL_AT)).toEqual({
+        cancelled: false,
+        released: false,
+      });
+
       expect((await repo.getReservation(rid("pend-1")))?.status).toBe("pending");
+      expect((await repo.getEvent(CANCEL_EVENT))?.status).toBe("scheduled");
     });
 
     // ── Checkout holds — acquire / lifecycle (12.1, DEC-109) ───────────────────
@@ -2068,51 +2202,6 @@ export function runRepositoryContract(
       );
     });
 
-    it("cancelEventIfUnclaimed: releases an unclaimed Muster slot, refuses a claimed one (#616)", async () => {
-      // Both adapters must agree, because the two express it differently — Postgres under a row
-      // lock plus the hull-day advisory lock, in-memory as a straight-line check — and a
-      // divergence means a cancel releases a paying customer's boat on exactly one of them.
-      const evt = {
-        id: asId<"EventId">("evt-cancel-1"),
-        vesselId: asId<"VesselId">("v-1"),
-        date: "2026-08-20",
-        time: "17:00",
-        capacity: 12,
-        status: "scheduled" as const,
-        source: "muster" as const,
-      };
-      await repo.saveEvent(evt);
-      await repo.saveReservation({
-        id: asId<"ReservationId">("resv-holds-it"),
-        eventId: evt.id,
-        source: "muster",
-        customerName: "Ann",
-        partySize: 4,
-        status: "booked",
-      });
-
-      // Claimed ⇒ refused, and the event is untouched.
-      expect(await repo.cancelEventIfUnclaimed(evt.id)).toBe(false);
-      expect((await repo.getEvent(evt.id))?.status).toBe("scheduled");
-
-      // Released once the claim goes away.
-      await repo.saveReservation({
-        id: asId<"ReservationId">("resv-holds-it"),
-        eventId: evt.id,
-        source: "muster",
-        customerName: "Ann",
-        partySize: 4,
-        status: "cancelled",
-      });
-      expect(await repo.cancelEventIfUnclaimed(evt.id)).toBe(true);
-      expect((await repo.getEvent(evt.id))?.status).toBe("cancelled");
-
-      // Idempotent: a second call reports it did nothing rather than re-cancelling.
-      expect(await repo.cancelEventIfUnclaimed(evt.id)).toBe(false);
-      // Unknown id is `false`, never a throw — the cancel path must not 500 on a stale link.
-      expect(await repo.cancelEventIfUnclaimed(asId<"EventId">("evt-nope"))).toBe(false);
-    });
-
     it("resurrecting a cancelled slot re-freezes price and duration IDENTICALLY on both adapters (#616)", async () => {
       // The divergence code review caught: postgres writes `price`/`duration_minutes` from
       // `?? null` unconditionally, so a candidate carrying neither NULLS them. An in-memory
@@ -2132,9 +2221,10 @@ export function runRepositoryContract(
       const won = await repo.bookPendingIfHullFree(rid("pend-res-1"), first, PATCH, SINCE);
       expect(won.result).toBe("won");
 
-      const ann = (await repo.getReservation(rid("pend-res-1")))!;
-      await repo.saveReservation({ ...ann, status: "cancelled" });
-      expect(await repo.cancelEventIfUnclaimed(first.id)).toBe(true);
+      expect(await repo.cancelBookingAndRelease(rid("pend-res-1"), first.id, "customer", NOW)).toEqual({
+        cancelled: true,
+        released: true,
+      });
 
       // Re-book with NO price and NO duration — both must come back absent, not inherited.
       await repo.saveReservation(pendingRow({ id: rid("pend-res-2"), ...slot, customerName: "Ben", partySize: 2 }));

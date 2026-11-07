@@ -10,7 +10,9 @@
  * booking keeps 14:00 unsellable on that hull. It also keeps the crew rostered — `formShifts`
  * collapses a shift to `Cancelled` only when EVERY event on the vessel-day has cancelled. So the
  * event is cancelled too, which is exactly what the importer does on the Xola side when a trip
- * loses its last live booking (`import-reservations.ts:226`).
+ * loses its last live booking (`import-reservations.ts:226`). **Both land in one save**
+ * (`cancelBookingAndRelease`, issue #1228), so a booking cancelled with its boat still held cannot
+ * be created.
  *
  * The re-sale that then has to keep working is not free: `events_muster_slot_identity` is
  * status-agnostic, so a cancelled row still owns its slot identity and would brick the slot
@@ -114,16 +116,13 @@ export interface CancelDeps {
 export type CancelOutcome =
   | {
       ok: true;
-      /** True when the reservation was already cancelled — the call still repairs the event. */
+      /**
+       * True when this call cancelled nothing because the reservation already was: the loser of two
+       * presses, which owns neither the cancel nor its refund. Nothing was written.
+       */
       alreadyCancelled: boolean;
       /** The event cancelled, or absent when another active booking still holds it. */
       freedEventId?: EventId;
-      /**
-       * The reservation is cancelled but releasing its hull threw: the event still holds the boat
-       * and the crew have not been told. Reported, never thrown — the status write has committed,
-       * and a throw would tell the caller nothing changed (PR #1214 review).
-       */
-      releaseFailed?: true;
     }
   | {
       ok: false;
@@ -235,52 +234,31 @@ export async function cancelReservation(
   // overwritten by the next pull and would tell the customer nothing.
   if (reservation.source !== "muster") return { ok: false, reason: "not_muster" };
   // §2.8.10: cancellation acts on a row with money behind it and must never be handed a
-  // `pending` one. Allow-list (§2.8.1): `booked` cancels; `cancelled` re-runs for the repair
-  // below; anything else is refused before any write. `eventIdOfBooked` after that is the
-  // write-bug guard only — a booked row with no event.
-  const alreadyCancelled = reservation.status === "cancelled";
-  if (!isBooked(reservation) && !alreadyCancelled) return { ok: false, reason: "not_booked" };
+  // `pending` one. Allow-list (§2.8.1): `booked` cancels; `cancelled` is the loser of two presses
+  // and writes nothing; anything else is refused before any write. `eventIdOfBooked` after that is
+  // the write-bug guard only — a booked row with no event.
+  if (reservation.status === "cancelled") return { ok: true, alreadyCancelled: true };
+  if (!isBooked(reservation)) return { ok: false, reason: "not_booked" };
   const eventId = eventIdOfBooked(reservation);
 
-  // **Conditional, not a whole-row save** (PR #1214 review). Two presses that both read `booked`
-  // above would both have written `cancelled`, both relabelled `cancelledBy`, and both gone on to
-  // refund. Only one wins the write. The loser stops here, as already cancelled, and leaves the
-  // release to the winner, which is running it now; re-forming twice would relay the crew's
-  // notices twice.
-  if (!alreadyCancelled && !(await deps.repo.cancelIfBooked(reservationId, by, deps.now()))) {
-    return { ok: true, alreadyCancelled: true };
-  }
-
-  // **Deliberately NOT an early return on `alreadyCancelled`.** A crash between the two writes
-  // leaves the reservation cancelled and the event scheduled — a boat silently un-released,
-  // with the surface reading "Cancelled" and nothing to suggest otherwise. Re-running finishes
-  // the job. That is only safe because every write below is idempotent.
-  // Release the hull through the CONDITIONAL write, not a read-then-`saveEvent`.
+  // **One write: the reservation AND its boat** (issue #1228). It is conditional, not a whole-row
+  // save (PR #1214 review): two presses that both read `booked` above would both have written
+  // `cancelled`, both relabelled `cancelledBy`, and both gone on to refund. Only one wins the
+  // write. The loser stops here, as already cancelled, and leaves the re-form to the winner, which
+  // is running it now; re-forming twice would relay the crew's notices twice.
   //
-  // The obvious version — read the event, check nobody else holds it, write it cancelled — has
-  // a real window, and code review caught it. Cancelling the reservation a few lines above frees
-  // the slot *immediately* (the claim check filters `status='booked'`), so a new buyer can win
-  // this exact slot between that read and this write. An unconditional `saveEvent` would then
+  // The release inside it is conditional too: cancelling the reservation frees the slot at once,
+  // so a new buyer can win it between two separate writes, and an unconditional event write would
   // cancel their live, paid booking, collapse the shift and tell the crew they are off a boat
-  // somebody is on. `cancelEventIfUnclaimed` does the check and the write under the same
-  // hull-day advisory lock the booking path takes, so the two serialize.
+  // somebody is on. Postgres does the check and both writes under the hull-day advisory lock the
+  // booking path takes.
   //
-  // **A throw here is reported, not thrown** (PR #1214 review). The status write above has
-  // committed, so the booking IS cancelled; throwing would tell the caller nothing changed. Nothing
-  // is re-formed either — the event still holds the hull, so there is nothing for the crew to hear
-  // yet. A re-run repairs it, which is what the pane's "Release the boat" press does.
-  let cancelledEvent: boolean;
-  try {
-    cancelledEvent = await deps.repo.cancelEventIfUnclaimed(eventId);
-  } catch (e) {
-    logSwallowed(
-      "reservations:cancel:release",
-      e,
-      `reservation ${reservationId} is cancelled but its boat was not released — the crew have not been told`,
-    );
-    return { ok: true, alreadyCancelled, releaseFailed: true };
-  }
-  const freedEventId: EventId | undefined = cancelledEvent ? eventId : undefined;
+  // **A throw is thrown.** The write is one transaction, so a throw means neither row changed and
+  // the caller can say so. (A connection that dropped after the commit is the caller's to read
+  // back; `cancelByCustomer` does.)
+  const written = await deps.repo.cancelBookingAndRelease(reservationId, eventId, by, deps.now());
+  if (!written.cancelled) return { ok: true, alreadyCancelled: true };
+  const freedEventId: EventId | undefined = written.released ? eventId : undefined;
 
   // Re-form so the shift collapses and its crew are told. Best-effort by the same contract the
   // booking webhook uses: the cancellation is COMMITTED by this point, so a channel hiccup or
@@ -347,7 +325,7 @@ export async function cancelReservation(
 
   return {
     ok: true,
-    alreadyCancelled,
+    alreadyCancelled: false,
     ...(freedEventId !== undefined ? { freedEventId } : {}),
   };
 }

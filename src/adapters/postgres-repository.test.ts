@@ -947,65 +947,151 @@ if (!dbUp) {
   });
 
   /**
-   * Cancel racing a fresh booking of the slot it just freed (#616, code review).
-   *
-   * Cancelling a reservation frees its slot the instant the reservation row flips — the claim
-   * check filters `status='booked'`. So there is a real window between "reservation cancelled"
-   * and "event cancelled" in which a new buyer can win that exact slot. The first cut wrote the
-   * event with an unconditional `saveEvent`, which would cancel the new customer's live, PAID
-   * booking, collapse the shift and tell the crew they're off a boat somebody is on.
-   *
-   * `cancelEventIfUnclaimed` takes the same hull-day advisory lock `saveBookingIfSlotFree` takes,
-   * so the two serialize. Negative-control it by reverting that method to a bare
-   * `update events set status='cancelled'` and this goes red with a cancelled event under a
-   * booked reservation.
+   * A cancelled booking frees its boat in the same save (issue #1228). The half-cancelled state —
+   * reservation cancelled, Event still scheduled — is what these exist to make unreachable, on the
+   * one adapter where the write can fail halfway or lose a race.
    */
-  describe("cancel racing a re-book of the freed slot (#616)", () => {
+  describe("cancelBookingAndRelease — one transaction under the hull-day lock (issue #1228)", () => {
     const VESSEL5 = asId<"VesselId">("vessel-brew-11");
     const DATE5 = "2026-07-04";
     const NOW5 = () => "2026-07-12T00:00:00.000Z";
+    const AT = NOW5();
 
-    it("never cancels an event a new buyer has just won", async () => {
+    const buyer = (key: string, name: string) => ({
+      offeringId: asId<"OfferingId">("off-race-cancel"),
+      vesselId: VESSEL5,
+      date: DATE5,
+      time: "13:30",
+      guestCount: 4,
+      priceCents: 50000,
+      extrasCents: 0,
+      customerName: name,
+      idempotencyKey: key,
+    });
+
+    /** Ann, booked and paid, on a clean database. */
+    const annBooked = async (repo: PostgresRepository) => {
       await truncateAll(pool);
-      const repo = new PostgresRepository(pool);
-
-      const buyer = (key: string, name: string) => ({
-        offeringId: asId<"OfferingId">("off-race-cancel"),
-        vesselId: VESSEL5,
-        date: DATE5,
-        time: "13:30",
-        guestCount: 4,
-        priceCents: 50000,
-        extrasCents: 0,
-        customerName: name,
-        idempotencyKey: key,
-      });
-
       const first = await bookViaFlip(repo, buyer("sess_race_1", "Ann"), NOW5);
       expect(first.outcome).toBe("booked");
-      const eventId = (first as { reservation: { eventId: EventId } }).reservation.eventId;
-      const annId = (first as { reservation: { id: ReservationId } }).reservation.id;
+      const { id: annId, eventId } = (first as { reservation: { id: ReservationId; eventId: EventId } }).reservation;
+      return { annId, eventId };
+    };
 
-      // Ann cancels. Her reservation flips first — exactly as `cancelReservation` does it — and
-      // that alone re-opens the slot. Ben buys it in the window before the event is released.
+    it("AC2: an Event update that fails inside the write leaves both rows as they were", async () => {
+      const repo = new PostgresRepository(pool);
+      const { annId, eventId } = await annBooked(repo);
+
+      // Scoped to this one row: `muster_test` is shared with the other Postgres test files.
+      await pool.query(
+        `create or replace function test_1228_refuse_event_update() returns trigger
+           language plpgsql as $$ begin raise exception 'test trigger refused the Event update'; end $$`,
+      );
+      await pool.query(
+        `create trigger test_1228_refuse_event_update before update on events
+           for each row when (old.id = '${eventId}')
+           execute function test_1228_refuse_event_update()`,
+      );
+      try {
+        await expect(repo.cancelBookingAndRelease(annId, eventId, "customer", AT)).rejects.toThrow(
+          "test trigger refused the Event update",
+        );
+      } finally {
+        await pool.query("drop trigger if exists test_1228_refuse_event_update on events");
+        await pool.query("drop function if exists test_1228_refuse_event_update()");
+      }
+
       const ann = await repo.getReservation(annId);
-      await repo.saveReservation({ ...ann!, status: "cancelled" });
+      expect(ann?.status).toBe("booked");
+      expect(ann?.cancelledBy).toBeUndefined();
+      expect((await repo.getEvent(eventId))?.status).toBe("scheduled");
+    });
 
-      const [ben, released] = await Promise.all([
-        bookViaFlip(repo, buyer("sess_race_2", "Ben"), NOW5),
-        repo.cancelEventIfUnclaimed(eventId),
+    it("AC3: two presses at once — exactly one cancels, and its answer stands", async () => {
+      const repo = new PostgresRepository(pool);
+      const { annId, eventId } = await annBooked(repo);
+
+      const [customer, operator] = await Promise.all([
+        repo.cancelBookingAndRelease(annId, eventId, "customer", AT),
+        repo.cancelBookingAndRelease(annId, eventId, "operator", AT),
       ]);
 
-      // **The invariant is the FINAL STATE, not a relationship between the two return values.**
-      //
-      // A first version asserted `released === false` whenever Ben booked, and that was wrong
-      // about this system rather than about the code: the release can genuinely commit first and
-      // Ben's booking then RESURRECT the slot (the #616 resurrect path, three describes up), so
-      // `released: true` and a booked Ben are both true in sequence and nothing is broken.
-      //
-      // What must never happen — in any interleaving — is a booked reservation sitting on a
-      // cancelled event. That is the state the unguarded `saveEvent` produced: a paid customer
-      // on a boat the system believes is not sailing, with the shift collapsed under them.
+      const wins = [customer, operator].filter((r) => r.cancelled);
+      expect(wins).toEqual([{ cancelled: true, released: true }]);
+      expect((await repo.getReservation(annId))?.cancelledBy).toBe(customer.cancelled ? "customer" : "operator");
+      expect((await repo.getEvent(eventId))?.status).toBe("cancelled");
+    });
+
+    it("AC6: waits on the hull-day advisory lock before it touches either row", async () => {
+      // The lock `bookPendingIfHullFree` takes first, held here by a stand-in for a confirm in
+      // flight. The write must queue on it, holding nothing: a row lock taken first is how a cancel
+      // and a confirm deadlock, and a key that differs from the confirm's serializes nothing.
+      const repo = new PostgresRepository(pool);
+      const { annId, eventId } = await annBooked(repo);
+      const hullDay = `${String(VESSEL5)}|${DATE5}`;
+
+      const confirm = await pool.connect();
+      let write: Promise<{ cancelled: boolean; released: boolean }> | undefined;
+      try {
+        await confirm.query("begin");
+        await confirm.query("select pg_advisory_xact_lock(hashtext($1))", [hullDay]);
+
+        write = repo.cancelBookingAndRelease(annId, eventId, "customer", AT);
+
+        await vi.waitFor(
+          async () => {
+            const { rows } = await pool.query<{ waiting: number }>(
+              `select count(*)::int as waiting from pg_locks
+                where locktype = 'advisory' and not granted
+                  and objid = (hashtext($1)::bigint & 4294967295)::oid`,
+              [hullDay],
+            );
+            expect(rows[0]!.waiting).toBe(1);
+          },
+          { timeout: 2000, interval: 25 },
+        );
+
+        // Neither row is locked while it waits, so a NOWAIT lock on each succeeds at once.
+        const probe = await pool.connect();
+        try {
+          await probe.query("begin");
+          await probe.query("select 1 from events where id=$1 for update nowait", [eventId]);
+          await probe.query("select 1 from reservations where id=$1 for update nowait", [annId]);
+        } finally {
+          await probe.query("rollback");
+          probe.release();
+        }
+        expect((await repo.getReservation(annId))?.status).toBe("booked");
+
+        await confirm.query("commit");
+        expect(await write).toEqual({ cancelled: true, released: true });
+      } finally {
+        await confirm.query("rollback");
+        confirm.release();
+        await write?.catch(() => undefined);
+      }
+      expect((await repo.getEvent(eventId))?.status).toBe("cancelled");
+    });
+
+    it("AC6: a cancel and a confirm on one hull-day at once — no deadlock, and a paid booking's Event is never cancelled", async () => {
+      const repo = new PostgresRepository(pool);
+      const { annId, eventId } = await annBooked(repo);
+
+      // Ann's cancel against Ben's confirm of the very slot it frees. Promise.all rejects on a
+      // 40P01, which is what a lock-order inversion between the two produces.
+      const [ben, cancel] = await Promise.all([
+        bookViaFlip(repo, buyer("sess_race_2", "Ben"), NOW5),
+        repo.cancelBookingAndRelease(annId, eventId, "customer", AT),
+      ]);
+
+      expect(cancel.cancelled).toBe(true);
+      expect((await repo.getReservation(annId))?.status).toBe("cancelled");
+
+      // **The invariant is the FINAL STATE, not a relationship between the two return values.** The
+      // release can genuinely commit first and Ben's booking then RESURRECT the slot (the #616
+      // resurrect path, three describes up), so a release and a booked Ben are both true in sequence
+      // and nothing is broken. What must never happen, in any interleaving, is a booked reservation
+      // on a cancelled Event: a paid customer on a boat the system believes is not sailing.
       const { rows } = await pool.query(
         `select e.status as event_status,
                 count(r.id) filter (where r.status='booked')::int as booked
@@ -1015,36 +1101,9 @@ if (!dbUp) {
           group by e.status`,
         [eventId],
       );
-      const state = rows[0];
-      expect(released || ben.outcome === "booked").toBe(true); // one of them had to happen
-      if (state.booked > 0) expect(state.event_status).toBe("scheduled");
-      if (state.event_status === "cancelled") expect(state.booked).toBe(0);
-    });
-
-    it("refuses to release a slot that is still claimed", async () => {
-      await truncateAll(pool);
-      const repo = new PostgresRepository(pool);
-      const booked = await bookViaFlip(
-        repo,
-        {
-          offeringId: asId<"OfferingId">("off-race-cancel"),
-          vesselId: VESSEL5,
-          date: DATE5,
-          time: "15:30",
-          guestCount: 4,
-          priceCents: 50000,
-          extrasCents: 0,
-          customerName: "Cal",
-          idempotencyKey: "sess_race_3",
-        },
-        NOW5,
-      );
-      expect(booked.outcome).toBe("booked");
-      const eventId = (booked as { reservation: { eventId: EventId } }).reservation.eventId;
-
-      // The reservation is still `booked` — releasing here would strand a paying customer.
-      expect(await repo.cancelEventIfUnclaimed(eventId)).toBe(false);
-      expect((await repo.getEvent(eventId))?.status).toBe("scheduled");
+      expect(rows).toEqual([
+        ben.outcome === "booked" ? { event_status: "scheduled", booked: 1 } : { event_status: "cancelled", booked: 0 },
+      ]);
     });
   });
 

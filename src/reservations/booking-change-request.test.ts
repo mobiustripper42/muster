@@ -104,18 +104,14 @@ describe("customerCancelledEmail — the customer cancelled a paid booking from 
     expect(mail.text).not.toContain(formatCents(0));
   });
 
-  it("a boat that was not released says so, in the subject and the body (PR #1214 review)", () => {
-    // The only other trace is a log line and the pane's repair block, which shows only to someone
-    // who opens this booking.
-    const mail = customerCancelledEmail({ ...base, refund: { kind: "issued", cents: 41240 }, releaseFailed: true });
-    expect(mail.subject).toContain("Boat not released");
-    expect(mail.text).toContain("The boat was NOT released");
-    expect(mail.text).toContain(formatCents(41240));
-  });
-
-  it("a released boat says nothing about releasing", () => {
-    const mail = customerCancelledEmail({ ...base, refund: { kind: "issued", cents: 41240 } });
+  it("AC12 (issue #1228): takes no releaseFailed — a caller still passing one changes nothing, and no subject reads Boat not released", () => {
+    // The cast is how a stale caller gets past the type the parameter has left.
+    const stale = { ...base, refund: { kind: "issued", cents: 41240 }, releaseFailed: true } as Parameters<
+      typeof customerCancelledEmail
+    >[0];
+    const mail = customerCancelledEmail(stale);
     expect(mail.subject).not.toContain("Boat not released");
     expect(mail.text).not.toContain("NOT released");
+    expect(mail.subject).toBe(`Cancelled by the customer — ${base.customerName} (${base.tripLabel})`);
   });
 });

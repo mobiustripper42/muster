@@ -126,22 +126,22 @@ Statuses are `open` unless a row says otherwise. IDs are each report's own; refe
 | A2 | S2 | Archived or disabled crew can sign in afresh; an existing session never re-checks | after release | open — crew-only (admin access is re-checked); with issue #1230. Until fixed, `db:admin revoke` alongside `db:crew archive` |
 | A3 | S2 | A cancelled booking's leaked code cannot be revoked and works forever | May 1 | open — narrowed: a cancelled booking now hides Manage, but the link still shows name, trip, amounts and receipts, and cannot be revoked |
 | A4 | S2 (conditional) | The rate limiter keys only on a forwarded header; a null key means no limit; the 40-bit trip code rests on it | May 1 | open — conditional on Vercel overwriting `x-forwarded-for` and the origin taking only Cloudflare traffic; the operator confirms |
-| A5 | S3 | The crew session is a stateless bearer with no server-side revoke | — | open |
-| A6 | S3 | The 72-hour pay link shows full phone and email, cannot be revoked, and several can be live | — | open |
-| A7 | S3 | `/b/find` has no per-client limit | — | open |
-| A8 | S3 | Every change or cancel request emails the live booking code to the operator inbox | — | open |
-| A9 | S3 | Without Twilio, the log fallback redacts `/b/<code>` but not `/p/<token>` or `/w/<code>` | — | open |
-| A10 | S3 | No `noindex`, no `robots.txt`, no security headers | — | open |
-| A11 | S3 | Three paths put another person's data or writes on a customer page | — | open |
-| A12 | S3 | `/api/guest-contact` lets any signed-in subject stamp or erase "Texted by" on any reservation | — | open |
-| A13 | S3 | The balance-checkout URL round-trips through the query string, rendered unvalidated | — | open |
-| A14 | S3 | `SESSION_SECRET` has no minimum length, a repo-public fallback, and also signs pay links | — | open |
-| A15 | S3 | `/api/health` opens a database connection per anonymous request | — | open |
-| A16 | S3 | `CRON_SECRET` is compared with `!==` | — | open |
-| A17 | S4 | `/b/<code>?error=__proto__` throws during render | — | open |
-| A18 | S4 | `/book/success` is an unauthenticated, unlimited Stripe read | — | open |
-| A19 | S4 | `gusto.csv` answers the feature flag before the session check | — | open |
-| A20 | S4 | Stale docs and comments | — | open |
+| A5 | S3 | The crew session is a stateless bearer with no server-side revoke | after release | open — crew-only; with A2 and issue #1230 |
+| A6 | S3 | The 72-hour pay link shows full phone and email, cannot be revoked, and several can be live | Feb 1 | open |
+| A7 | S3 | `/b/find` has no per-client limit | May 1 | open — issue #800 |
+| A8 | S3 | Every change or cancel request emails the live booking code to the operator inbox | after release | open |
+| A9 | S3 | Without Twilio, the log fallback redacts `/b/<code>` but not `/p/<token>` or `/w/<code>` | after release | open — only bites with Twilio unconfigured; production has it |
+| A10 | S3 | No `noindex`, no `robots.txt`, no security headers | Feb 1 | open |
+| A11 | S3 | Three paths put another person's data or writes on a customer page | Feb 1 | open — read the report's three paths first; may be a privacy leak |
+| A12 | S3 | `/api/guest-contact` lets any signed-in subject stamp or erase "Texted by" on any reservation | May 1 | open |
+| A13 | S3 | The balance-checkout URL round-trips through the query string, rendered unvalidated | Feb 1 | open — goes with deposits and money F29 |
+| A14 | S3 | `SESSION_SECRET` has no minimum length, a repo-public fallback, and also signs pay links | Feb 1 | open — hardening pull request with A16 and A17; refuse to start without a real secret |
+| A15 | S3 | `/api/health` opens a database connection per anonymous request | Feb 1 | open |
+| A16 | S3 | `CRON_SECRET` is compared with `!==` | Feb 1 | open — with A14 |
+| A17 | S4 | `/b/<code>?error=__proto__` throws during render | Feb 1 | open — with A14 |
+| A18 | S4 | `/book/success` is an unauthenticated, unlimited Stripe read | after release | open |
+| A19 | S4 | `gusto.csv` answers the feature flag before the session check | after release | open |
+| A20 | S4 | Stale docs and comments | Feb 1 | open — with the spec sweep (money F16) |
 
 ### Payroll — `docs/audit/2026-11-03-payroll-2.9.md`
 

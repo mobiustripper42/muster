@@ -963,6 +963,42 @@ Materialized the same day as issues #1114–#1124, all `lane:a`; 18.10 (issue #1
 
 ---
 
+## Phase 19: Payment complete — deposits, and the money findings that block launch
+
+**Muster Reservations goes live 2027-02-01: it accepts bookings from that day** (operator,
+2026-11-07). Guests and crew are on the water from 2027-05-01, and anything Crew waits until after
+the release. This is the first of the phases to Feb 1; Phase 20 (launch hardening and cutover) and
+Phase 21 (the customer's trip, and the UI and wording pass) follow, then a walk-through demo for Drew.
+
+Deposits come back (issue #1235): a fixed amount or a percentage, the balance due a set number of
+days out and collected automatically, charged in full inside that window, no tax on a deposit until
+the trip is finalized. Tax stays a setting; it may change (operator, 2026-11-08). The money rows are
+the `Feb 1` findings in `docs/audit/README.md`'s ledger — each is re-read against current code when
+its task is specced, not trusted from the one-line summary.
+
+**Hold the line on additions.** Phase 16 took 42 of its 79 points mid-phase (Phase 16 retro). A new
+pre-launch need goes to Phase 20 or 21 unless it blocks a row here.
+
+| # | Task | Est | Closes | Status |
+|---|------|-----|--------|--------|
+| 19.0 | **Deposits — spec.** A decision record superseding DEC-155, a new `docs/SPEC.md` section, and the full-payment sentences rewritten. Settles the saved card, failed and declined balance charges, the cancel terms, phone bookings and payment links, and which tax rate a finalized trip uses | 5 | — | [ ] [#1235](https://github.com/mobiustripper42/muster/issues/1235) |
+| 19.1 | **Deposits — build.** Three or more tasks, added once 19.0 is approved: the deposit charge with a saved card; automatic balance collection (issue #712); past-due and failed-charge notifications and a dashboard. Money F29 and capability A13 fold in | — | #712 | [ ] |
+| 19.2 | **The reconciler.** Money F3 (15.16 is marked shipped and was never built) and F20 (a payment that matches no booking is acked silently) | 8 | — | [ ] |
+| 19.3 | **A stale payment that succeeds late is refunded and alerted.** Money F2 | 5 | — | [ ] |
+| 19.4 | **A booking blocks its boat for its hold minutes, not its trip time.** Money F1 | 3 | — | [ ] |
+| 19.5 | **A failed confirmation send is not counted as told, and is retried.** Money F4 | 3 | — | [ ] |
+| 19.6 | **A failed refund is a work item someone sees, and a retry is not refused.** Money F5 and U2 | 5 | — | [ ] |
+| 19.7 | **A booked trip reads its frozen tax and balance, not today's setting.** Money F6 | 3 | — | [ ] |
+| 19.8 | **Money copy.** Money F7, F11, F14, F27 | 3 | — | [ ] |
+| 19.9 | **Admin lists tell the truth.** `/admin/integrity` and `/admin/purchases`: money F12, F13 | 3 | — | [ ] |
+| 19.10 | **Spec and comment sweep.** Money F16, F22, F23, F28; capability A20 | 2 | — | [ ] |
+| 19.11 | **End-to-end refund check.** Its own issue, per the operator's order of 2026-10-11 | 3 | — | [ ] |
+
+**Phase 19 total: 12 rows, 43 points before 19.1** (~59 with 19.1's rough 16). Drafted at the Phase 16
+retro, 2026-11-08. Hand step, no row: confirm production's tax setting reads 8% (money F15).
+
+---
+
 ## Phase Boundary Checklist
 
 At the end of every phase:

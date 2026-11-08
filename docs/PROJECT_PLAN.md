@@ -994,8 +994,10 @@ pre-launch need goes to a later phase unless it blocks a row here.
 | 19.9 | **Admin lists tell the truth.** `/admin/integrity` and `/admin/purchases`: money F12, F13 | 3 | — | [ ] |
 | 19.10 | **Spec and comment sweep.** Money F16, F22, F23, F28; capability A20 | 2 | — | [ ] |
 | 19.11 | **End-to-end refund check.** Its own issue, per the operator's order of 2026-10-11 | 3 | — | [ ] |
+| 19.12 | **A stranger's booking cannot join your customer record.** Checkout merges on an unverified phone (`src/customers/resolve.ts`); 16.9 closed the cancel path, not the merge. Deferred out of Phase 16 on 2026-10-31; back in for launch (operator, 2026-11-08) | 5 | #1213 | [ ] [#1213](https://github.com/mobiustripper42/muster/issues/1213) |
+| 19.13 | **A goodwill refund takes an amount off the trip; tax, fee and tip follow it.** What Drew types is the amount off the trip, not the amount back to the card (operator, 2026-11-04); DEC-199 | 5 | #1222 | [ ] [#1222](https://github.com/mobiustripper42/muster/issues/1222) |
 
-**Phase 19 total: 12 rows, 43 points before 19.1** (~59 with 19.1's rough 16). Drafted at the Phase 16
+**Phase 19 total: 14 rows, 53 points before 19.1** (~69 with 19.1's rough 16). 19.12 and 19.13 added 2026-11-08 at the operator's call. Drafted at the Phase 16
 retro, 2026-11-08. Hand step, no row: confirm production's tax setting reads 8% (money F15).
 
 ---

@@ -18,7 +18,7 @@ Weight the reservation phases (12 to 16) and anything a customer or the operator
 
 ## Where things are
 
-`docs/PROJECT_PLAN.md` (each phase's table; a row's last column links its issue — read the issue with no tools beyond the repository, so only what the repo says counts). `docs/SPEC.md`. Decisions in `docs/decisions/`, resolved with `grep -rl DEC-<id> docs/decisions/`. The code under `src/`, `app/`, `db/migrations/` and `vercel.json`.
+`docs/PROJECT_PLAN.md` (each phase's table). Do not open the GitHub issues the rows link; judge each row from the repository only. `docs/SPEC.md`. Decisions in `docs/decisions/`, resolved with `grep -rl DEC-<id> docs/decisions/`. The code under `src/`, `app/`, `db/migrations/` and `vercel.json`.
 
 ## Rules
 

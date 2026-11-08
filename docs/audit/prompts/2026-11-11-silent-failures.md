@@ -18,7 +18,7 @@ Weight anything on a booking, a payment, a refund, a cancel, a customer message 
 
 ## Where the code is
 
-Everything under `src/` and `app/`. Start from `app/lib/swallowed.ts` and its callers, `src/reservations/`, `app/b/`, `app/(public)/book/`, `app/api/webhooks/`, `app/api/cron/`, and the adapters in `src/adapters/` that talk to Stripe, Twilio and email. `src/log.ts` is the logger; `.claude/CLAUDE-context.md` says what reads production logs.
+Everything under `src/` and `app/`. Start from `app/lib/swallowed.ts` and its callers, `src/reservations/`, `app/b/`, `app/(public)/book/`, `app/api/webhooks/`, `app/api/cron/`, and the adapters in `src/adapters/` that talk to Stripe, Twilio and email. `src/log.ts` is the logger.
 
 ## Rules
 

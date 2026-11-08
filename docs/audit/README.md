@@ -87,7 +87,7 @@ Statuses are `open` unless a row says otherwise. IDs are each report's own; refe
 | F6 | S3 | Booked-row readers recompute tax and balance from the live tax rate (latent S1) | Feb 1 | open |
 | F7 | S3 | `/book/success` tells a race loser they were refunded and texted before either happens | Feb 1 | open |
 | F8 | S3 | Two concurrent self-cancel presses report a failed refund to both parties | — | check — likely fixed by pull request #1214; since issue #1228 the guard is in `cancelBookingAndRelease` |
-| F9 | S3 | "Release the boat" after a self-cancel writes a second, misattributed `cancelled` row | — | fixed — issue #1228 removed the button |
+| F9 | S3 | "Release the boat" after a self-cancel writes a second, misattributed `cancelled` row | — | fixed — pull request #1229 removed the button (issue #1228) |
 | F10 | S3 | The operator's cancel tells the customer nothing; §3.3's cascade is not built | May 1 | open — issue #1212 now tells the customer on every cancel, the operator's and their own (`docs/SPEC.md §2.8.4c`); §3.3's cascade is still not built |
 | F11 | S3 | The offering form says the tip is exempt from the service fee; it is in the fee base | Feb 1 | open |
 | F12 | S3 | `/admin/integrity` goes red for good after cancelling an unpaid phone booking | Feb 1 | open |
@@ -96,7 +96,7 @@ Statuses are `open` unless a row says otherwise. IDs are each report's own; refe
 | F15 | S4 | Tax rate: spec 8%, worked example and code fallback 7.25%, nothing seeds the row | Feb 1 | open — the rate is a setting, 8% in production; do not raise the 7.25% code fallback (operator, 2026-10-10). Feb 1: confirm production's row reads 8%, no code change |
 | F16 | S4 | §2.8.7 says a retry makes a second payment; the code reuses one PaymentIntent | Feb 1 | open — spec and comment sweep with F22, F23, F28 |
 | F17 | S4 | The cutoff's settings-page control is not built | May 1 | open |
-| F18 | S4 | An override `Event` at the asker's slot: the read exempts it, the write does not (latent S1) | after release | deferred with issue #945 — unreachable until a per-trip override exists: issue #1228 stops a cancel leaving an unbooked Event |
+| F18 | S4 | An override `Event` at the asker's slot: the read exempts it, the write does not (latent S1) | after release | issue #945 (deferred) — unreachable until a per-trip override exists: issue #1228 stops a cancel leaving an unbooked Event |
 | F19 | S4 | Slots under a live pending row are hidden on the operator grid, not drawn busy | May 1 | open |
 | F20 | S4 | A `payment_intent.succeeded` that matches no row is acked silently | Feb 1 | open — goes with F3 |
 | F21 | S4 | The customer record is created before the flip, not in step 6 | after release | open |
@@ -152,7 +152,7 @@ Statuses are `open` unless a row says otherwise. IDs are each report's own; refe
 | F3 | S2 | Admin edits and deletes write no trail row | after release | open |
 | F4 | S2 | The edit trail is write-only; a crew self-edit is invisible to the operator (not built) | after release | open |
 | F5 | S2 | An event on two live shifts pays the tip to the later shift and the estimate to both | after release | open |
-| F6 | S2 | `?period=from|to` is validated for shape only (low) | after release | open |
+| F6 | S2 | `?period=from/to` is validated for shape only (low) | after release | open |
 | F7 | S2 | `tips.csv` is still served with `TIME_CLOCK` on, so tips can be imported twice (low) | after release | open |
 | F8 | S2 | The punch write and its trail row are two writes, not one transaction (low) | after release | open |
 | F9 | S3 | The screen and the Gusto file round the same minutes at different units | after release | open |
@@ -180,7 +180,7 @@ Statuses are `open` unless a row says otherwise. IDs are each report's own; refe
 | S1-1 | S1 | Tapping "in" re-checks only double-booking; the other five eligibility rules are trusted from the ask | after release | open |
 | S1-2 | S1 | A revived cancelled shift restores its old `Confirmed` crew unchecked; so does a merge after a collapsed split | after release | open |
 | S1-3 | S1 | The override can put one person in two required seats; the shift reads `Crewed` | after release | open |
-| S1-4 | S1 | Two concurrent commits by one person on two same-date shifts both win (issue #554) | after release | open |
+| S1-4 | S1 | Two concurrent commits by one person on two same-date shifts both win (issue #554, closed not planned) | after release | open |
 | S1-5 | S1 | A confirmed person who goes on PTO, takes the day off, or is archived stays `Confirmed` | after release | open |
 | S1-6 | S1 | The override seats someone with a lapsed MMC, on PTO, off that day, or confirmed elsewhere | after release | open |
 | S2-1 | S2 | A seat left in `Claimed` is never asked, boarded, `Crewed` or `Completed` | after release | open |

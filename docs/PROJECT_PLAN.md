@@ -1033,7 +1033,7 @@ two reservations, and import already works for them (operator, 2026-11-07).
 | 21.3 | **Not indexable.** Capability A10: `noindex`, `robots.txt`, security headers | 2 | — | [ ] |
 | 21.4 | **Nobody sees another customer's data.** Capability A11's three paths, read in the report first | 3 | — | [ ] |
 | 21.5 | **`/api/health` stops opening a database connection per anonymous request.** Capability A15 | 1 | — | [ ] |
-| 21.6 | **Xola cutover.** Import the two Xola bookings, refine the import a little, cancel them in Xola. The issue's label says 5; the operator calls it a non-issue | 3 | #467 | [ ] [#467](https://github.com/mobiustripper42/muster/issues/467) |
+| 21.6 | **Xola cutover.** The one-time Xola import of the two Xola bookings, refined a little, as issue #467 specifies (DEC-126). The issue's label says 5; the operator calls it a non-issue | 3 | #467 | [ ] [#467](https://github.com/mobiustripper42/muster/issues/467) |
 | 21.7 | **Go-live runbook.** Seed the catalog, verify the Stripe dashboard, guard test-vs-live keys | 3 | #623 | [ ] [#623](https://github.com/mobiustripper42/muster/issues/623) |
 | 21.8 | **Audit the live Vercel env against `docs/DEPLOY.md`** | 2 | #545 | [ ] [#545](https://github.com/mobiustripper42/muster/issues/545) |
 | 21.9 | **Xola's end state.** DEC-124 as written is wrong; decide what actually happens | 2 | #837 | [ ] [#837](https://github.com/mobiustripper42/muster/issues/837) |

@@ -996,8 +996,11 @@ pre-launch need goes to a later phase unless it blocks a row here.
 | 19.11 | **End-to-end refund check.** Its own issue, per the operator's order of 2026-10-11 | 3 | — | [ ] |
 | 19.12 | **A stranger's booking cannot join your customer record.** Checkout merges on an unverified phone (`src/customers/resolve.ts`); 16.9 closed the cancel path, not the merge. Deferred out of Phase 16 on 2026-10-31; back in for launch (operator, 2026-11-08) | 5 | #1213 | [ ] [#1213](https://github.com/mobiustripper42/muster/issues/1213) |
 | 19.13 | **A goodwill refund takes an amount off the trip; tax, fee and tip follow it.** What Drew types is the amount off the trip, not the amount back to the card (operator, 2026-11-04); DEC-199 | 5 | #1222 | [ ] [#1222](https://github.com/mobiustripper42/muster/issues/1222) |
+| 19.14 | **Purchases is useful.** Time windows (this week…), grouping, sorting | 3 | #1142 | [ ] [#1142](https://github.com/mobiustripper42/muster/issues/1142) |
+| 19.15 | **Calendar: the List runs forward from today, and a date picker jumps to any day** | 3 | #1157 | [ ] [#1157](https://github.com/mobiustripper42/muster/issues/1157) |
+| 19.16 | **Breadcrumbs and browser title** | 3 | #502 | [ ] [#502](https://github.com/mobiustripper42/muster/issues/502) |
 
-**Phase 19 total: 14 rows, 53 points before 19.1** (~69 with 19.1's rough 16). 19.12 and 19.13 added 2026-11-08 at the operator's call. Drafted at the Phase 16
+**Phase 19 total: 17 rows, 62 points before 19.1** (~78 with 19.1's rough 16). 19.12–19.16 added 2026-11-08 at the operator's call. Drafted at the Phase 16
 retro, 2026-11-08. Hand step, no row: confirm production's tax setting reads 8% (money F15).
 
 ---
@@ -1038,6 +1041,36 @@ two reservations, and import already works for them (operator, 2026-11-07).
 
 **Phase 21 total: 10 tasks, 25 points.** Drafted 2026-11-08. Phase 22 (the customer's trip, and the
 UI and wording pass) follows, then the walk-through demo for Drew.
+
+---
+
+## Phase 22: The customer's trip, and the UI and wording pass
+
+The customer rows are issue #1216's proposed list. The operator's full UI review runs here, before
+the walk-through demo for Drew; its fixes get rows of their own.
+
+| # | Task | Est | Closes | Status |
+|---|------|-----|--------|--------|
+| 22.1 | **After paying, land on the booking itself** (`/b/<code>`), not a check-your-texts card | 3 | #1177 | [ ] [#1177](https://github.com/mobiustripper42/muster/issues/1177) |
+| 22.2 | **Polish the customer's booking page** | 3 | #1138 | [ ] [#1138](https://github.com/mobiustripper42/muster/issues/1138) |
+| 22.3 | **Book & pay: name and phone fail silently off-screen** | 2 | #1077 | [ ] [#1077](https://github.com/mobiustripper42/muster/issues/1077) |
+| 22.4 | **Checkout at 375 and ~900, with the price before the card** | 5 | #794 | [ ] [#794](https://github.com/mobiustripper42/muster/issues/794) |
+| 22.5 | **Tell a declined customer their departure is still held** | 2 | #964 | [ ] [#964](https://github.com/mobiustripper42/muster/issues/964) |
+| 22.6 | **Catch a mistyped mobile number at checkout** | 3 | #1129 | [ ] [#1129](https://github.com/mobiustripper42/muster/issues/1129) |
+| 22.7 | **`/book` calendar: swipe, and a better month pager** | 3 | #785 | [ ] [#785](https://github.com/mobiustripper42/muster/issues/785) |
+| 22.8 | **The "too big" calendar day is a dead cell** | 2 | #752 | [ ] [#752](https://github.com/mobiustripper42/muster/issues/752) |
+| 22.9 | **A sold-out notice offers what is still open that day** | 3 | #667 | [ ] [#667](https://github.com/mobiustripper42/muster/issues/667) |
+| 22.10 | **"Cruise" → "trip" in customer copy** | 1 | #1215 | [ ] [#1215](https://github.com/mobiustripper42/muster/issues/1215) |
+| 22.11 | **`/book` keeps the guest's details when they go back** | 2 | #1203 | [ ] [#1203](https://github.com/mobiustripper42/muster/issues/1203) |
+| 22.12 | **The running list of small UI things** | 3 | #1226 | [ ] [#1226](https://github.com/mobiustripper42/muster/issues/1226) |
+| 22.13 | **The UI and wording review.** The operator's pass over every screen with `@ui-reviewer`; fixes become rows | 5 | — | [ ] |
+| 22.14 | **The walk-through demo for Drew.** A script and demo data | 2 | — | [ ] |
+
+**Phase 22 total: 14 tasks, 39 points.** Drafted 2026-11-08. Then: release, 2027-02-01.
+
+**Phases 19–22: about 145 points plus Phase 20's fixes, in 12 weeks.** At Phase 16's pace (79 points
+in 46 days) that is the whole window with no slack. The lever is 19.1: decide after 19.0 which
+deposit pieces must be ready on Feb 1 — a February booking's balance is not due until April.
 
 ---
 

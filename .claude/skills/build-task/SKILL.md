@@ -1,17 +1,17 @@
 ---
 name: build-task
-description: Build a specced task through @test-writer and @implementer instead of coding it in the session. For any task that changes behavior and has a criterion the Proof slot can check, whatever its points, once the spec is written into the issue from this skill's task-spec.md and the branch is cut. Replaces the prove / build / run-the-proof steps and ends by running /kill-this.
+description: Build a specced task through @test-writer and @implementer instead of coding it in the session. For any task that changes behavior and has a criterion the Proof slot can check, whatever its points, once the spec has been walked with the operator from this skill's task-spec.md and the branch is cut; Step 0 writes the spec into the issue. Replaces the prove / build / run-the-proof steps and ends by running /kill-this.
 ---
 
 You are the Lead. You do not write production code or tests in this skill. You check the spec, hand
 work to two agents, verify what they return, and ship. Every check below is one you run yourself —
 an agent's report that something passed is a claim, not a result.
 
-**The operator running this skill is the approval of the spec.** The spec was written into the
-issue from `task-spec.md` (beside this file) and worked through with the operator before now:
-the summary first, then the job and acceptance criteria, then the `[Lead]` lines. Do not present
-it again. From here the run goes to the pull request, stopping only where information turns out
-to be missing.
+**The operator running this skill is the approval of the spec.** The spec was worked through
+with the operator from `task-spec.md` (beside this file) before now: the summary first, then the
+job and acceptance criteria, then the `[Lead]` lines. Step 0 writes it into the issue; the
+operator does not. Do not present it again. From here the run goes to the pull request,
+stopping only where information turns out to be missing.
 
 ## Step 0 — Gate
 
@@ -22,11 +22,23 @@ Abort with a one-line reason if any of these fail:
   order. A task that is only layout, spacing or styling
   has nothing for `@test-writer` to assert: use the normal loop, with `@ui-reviewer` and a
   screenshot at the hand-back.
-- **Branch.** You are on `task/X.Y-*`, not `main`.
+- **Branch.** You are on `task/X.Y-*` or `task/<issue>-*`, not `main`.
 - **Proof slot.** `.claude/CLAUDE-context.md` § Workflow Mechanisms names a real `Proof` and
   `Proof command`. If it says `none`, there is nothing to write tests in — use the normal loop.
-- **Spec.** Read the issue body with `gh issue view <N>`. Every section in `task-spec.md` is
-  present and non-empty, and `Open questions` is empty. "None" is an answer; blank is not.
+- **Spec.** Decide by the issue body, not by memory of the conversation. If the body already has
+  every section heading in `task-spec.md`, it is the spec — an earlier run's, with its `[code]`,
+  `[Lead]` and `[you]` lines, or one written by hand: write nothing. A spec already in the issue is
+  changed by editing it there, never by re-writing it from the conversation. Otherwise write the
+  spec the operator walked in this conversation, in this order:
+  1. Every section was settled in the walk. If one was not, or there was no walk, abort naming
+     what is missing, with the issue untouched.
+  2. Write the body file in the scratchpad.
+  3. If the body holds anything — the request the issue was filed with — post it as an issue
+     comment, so it is kept and the agents, who read only the body, never take it for the spec.
+  4. `gh issue edit <N> --body-file <file>`. If it fails, stop. Print the issue's link.
+
+  Then read the body back with `gh issue view <N>`: every section in `task-spec.md` is present
+  and non-empty, and `Open questions` is empty. "None" is an answer; blank is not.
 
 The issue body is the spec. Agents are pointed at it by number. Never paraphrase it into a prompt.
 The one exception is a second readback round, whose prompt names the lines that changed.
@@ -50,11 +62,13 @@ abandoned before then leaves it as a commit on the branch.
 
 Spawn `@test-writer` with: the issue number, and the instruction **readback only — write nothing.**
 
-It returns four sections: **Assumptions** (things it would have to decide that the spec does
-not), **Questions**, an **Interface check**, and a **Reuse check** (existing code that already
+It returns five sections: **Assumptions** (things it would have to decide that the spec does
+not), **Questions**, an **Interface check**, a **Reuse check** (existing code that already
 does something the spec would build, and anything the spec describes in more than one place
-without naming one shared home for it). An Interfaces entry reported NOT FOUND and not marked new
-is a question. If all but the Interface check are empty, go to Step 2.
+without naming one shared home for it), and a **Removal check** (every test that uses something
+the spec removes or renames). An Interfaces entry reported NOT FOUND and not marked new
+is a question. If Assumptions, Questions and the Reuse check are empty, and the Removal check is
+`None` or holds only `used by no test`, go to Step 2.
 
 Sort each item, and write every one you accept into the section of the issue it belongs to
 (`gh issue edit <N> --body-file`). An answer that lives only in this conversation is invisible to
@@ -80,6 +94,14 @@ new, with its file added to "Files touched". A CSS class is not a signature and 
 place that described it is reworded to point at that home. When the places describe it differently,
 choosing one changes what a criterion does: sort it as a `[you]` item above, with your
 recommendation.
+
+**A test that uses something removed** goes onto Interfaces' Removes line, with its file added to
+"Files touched", saying what happens to it. When the behaviour it checks goes away with the removed
+thing, it is deleted: a `[code]` line citing the criterion or Removes entry that takes the
+behaviour away. When the behaviour survives under what replaces it, it is retargeted: a `[code]`
+line naming the replacement. When the spec does not say whether the behaviour survives, sort it as
+a `[you]` item above, with your recommendation. A removal changes what that test checks, not what
+a criterion does, so it earns no second round on its own.
 
 Keep every `[code]` and `[Lead]` line, word for word, for the receipt.
 
@@ -108,7 +130,7 @@ It returns one of three things:
 - **A stub report** — a stub would force a test to bend: edit an existing test, or work around
   what the stub cannot provide. Bring it to the operator with your recommendation; do not let
   `@test-writer` bend the test to get past it.
-- **The tests** — the files it created or edited (tests, fixtures, helpers), the stubs it wrote, a
+- **The tests** — the files it created, edited or deleted (tests, fixtures, helpers), the stubs it wrote, a
   map of acceptance criterion → test names, and how each test fares against the stubs.
 
 **Why stubs.** A red test proves something only when it fails on its own assertion: that failure is
@@ -124,7 +146,10 @@ Check, in order:
 1. **Coverage both ways.** Every acceptance criterion has at least one test, except one marked
    `(by hand)`, which is checked at the hand-back instead. Every test names the criterion it
    covers. A gap either way goes back to `@test-writer`. A test file that existed before this run
-   and appears in its Files list was edited: that is a stub report, not a test.
+   and appears in its Files list was edited: that is a stub report, not a test — unless Interfaces'
+   Removes line lists it, and the edit is the deletion or retarget that line names. A retargeted
+   test keeps its own name, with no criterion id, and is exempt from the naming rule and from
+   check 2: it guards behaviour that already exists, so it may pass against the stubs.
 2. **Fails for the right reason.** Run the `Proof command` yourself, against the stubs. Each test
    must fail on its own assertion — a wrong value, a missing row, a call that didn't throw — not on
    a missing file or function, a typo, a bad import path, or broken setup. The one exception is a
@@ -132,7 +157,7 @@ Check, in order:
    reason, when the report marks it new in this task. A test that passes
    against the stubs is accepted only beside the failing partner the report names, the test that
    proves the behaviour it guards. Anything else goes back to `@test-writer`.
-3. **Lock the tests.** Commit every file `@test-writer` created or edited, except the stubs, on its
+3. **Lock the tests.** Commit every file `@test-writer` created, edited or deleted, except the stubs, on its
    own: `git add <files>` then `git commit -m "build-task: tests (squashed at ship)"`. Record
    `TESTS=$(git rev-parse HEAD)`, and keep the test files: every file a `@test-writer` report in
    this run lists under Files. The commit is the lock: it holds the original bytes, so a
@@ -200,6 +225,7 @@ Print it every time, before the hand-back, and append it to the pull request bod
 /build-task receipt — issue #<N>
   readback      — <rounds>, <questions asked>
   settled       — none | each [code] and [Lead] line added during the run, word for word, one per line
+  removals      — none | each removed thing the Removal check searched, with its tests or "used by no test"
   test-writer   — <tests> tests across <criteria> criteria
   stubs         — <n> written, <n> left as stubs, <n> tests passing beside a partner
   implementer   — <rounds> rounds, <stops> stops (a run started again after a Stop counts it)

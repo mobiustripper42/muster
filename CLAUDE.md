@@ -22,7 +22,7 @@ Project-specific docs are listed in `.claude/CLAUDE-context.md` under `## Additi
 
 ## Micro Workflow (every task, no exceptions)
 
-1. **Spec it** — **after a `/clear`, a fresh context starts by reading the open session file's Next Steps** (found the way `/kill-this` finds it; at session start `/its-alive`'s briefing has already done this, from the previous session): it holds the next task, the standing rules, the parking lot and what the last task left for this one. Restore its parking lot as this conversation's; obey the standing rules from the file. Then: poker estimate + acceptance criteria. A task with a screen is not specced until it names the job in one line, the existing screen and components it reuses, and what's on the screen in order with its actual wording — approved before code. Reuse is the default; anything new is named and argued for. Rules and data alone ("admin can book") are not a spec. Pin what "done" looks like before writing code: enumerate the concrete set from source and confirm it. Live words override prior docs. **Get the whole spec down before any code is written** — the model does its best work on a complete brief in one turn, not one assembled across a dozen exchanges. **A task that changes behaviour, whatever its points, and has a criterion the `Proof` slot can check is specced in its issue body, from `.claude/skills/build-task/task-spec.md`**, and built with `/build-task`, which the operator runs to approve the spec. It replaces the plan, prove, build and run-the-proof steps below and ends in `/kill-this`. Everything else — layout, styling, docs, configuration, or a repo whose `Proof` is `none` — takes the steps below.
+1. **Spec it** — **after a `/clear`, a fresh context starts by reading the open session file's Next Steps** (found the way `/kill-this` finds it; at session start `/its-alive`'s briefing has already done this, from the previous session): it holds the next task, the standing rules, the parking lot and what the last task left for this one. Restore its parking lot as this conversation's; obey the standing rules from the file. Then: poker estimate + acceptance criteria. A task with a screen is not specced until it names the job in one line, the existing screen and components it reuses, and what's on the screen in order with its actual wording — approved before code. Reuse is the default; anything new is named and argued for. Rules and data alone ("admin can book") are not a spec. Pin what "done" looks like before writing code: enumerate the concrete set from source and confirm it. Live words override prior docs. **Get the whole spec down before any code is written** — the model does its best work on a complete brief in one turn, not one assembled across a dozen exchanges. **A task that changes behaviour, whatever its points, and has a criterion the `Proof` slot can check is specced from `.claude/skills/build-task/task-spec.md`**, walked through with the operator, and built with `/build-task`, which the operator runs to approve the spec; its Step 0 writes the spec into the issue body. It replaces the plan, prove, build and run-the-proof steps below and ends in `/kill-this`. Everything else — layout, styling, docs, configuration, or a repo whose `Proof` is `none` — takes the steps below.
 2. **Plan it** — summarize what you're going to do. Wait for explicit approval.
 3. **Cut the branch** — `git checkout -b task/X.Y-short-description`.
 4. **Prove it first** — where a check can be written, it comes before the change: write it, run it, watch it fail *for the reason you expect*. That failure is what proves the check bites; one written afterwards has never been observed failing, so it may assert nothing. The check must exercise the thing in its own title — a test named for one thing that calls another turns an unverified claim into an apparently-verified one. **What counts as a check: the `Proof` slot in `.claude/CLAUDE-context.md` § Workflow Mechanisms.**
@@ -40,7 +40,7 @@ Project-specific docs are listed in `.claude/CLAUDE-context.md` under `## Additi
 
 ## Migration Protocol
 
-- **All schema changes go through migrations.** Migrations are the source of truth — never edit schema through a dashboard, never hand-patch an applied migration.
+- **All schema changes go through migrations.** Migrations are the source of truth — never edit schema through a dashboard, never hand-patch an applied migration. Applied means merged and run against a shared database; before that it is a draft on its branch.
 - **Before creating one:** check for open pull requests touching the same tables (`gh pr list`). If they overlap, merge first or rename to a later timestamp.
 
 Toolchain specifics live in `.claude/CLAUDE-context.md` under `## Migration Protocol (project)`. Projects without a database mark it `N/A` there.
@@ -70,7 +70,7 @@ Two things the gate cannot check, which is why they are here:
 | Skill | When | What |
 |-------|------|------|
 | `/its-alive` | Session start | Open the per-session file, read context, recommend a task |
-| `/build-task` | A task that changes behaviour, spec in the issue | `@test-writer` readback and failing tests, `@implementer` to green, the Lead verifies, then `/kill-this`. Running it approves the spec |
+| `/build-task` | A task that changes behaviour, spec walked | `@test-writer` readback and failing tests, `@implementer` to green, the Lead verifies, then `/kill-this`. Running it approves the spec |
 | `/kill-this` | **Per task** | Build check, commit, open a pull request, append `## Task <N>`. Run once per task |
 | `/save-this` | Between tasks, before `/clear` | Write the next task, open PRs, standing rules, parking lot and carry-over into the session file's Next Steps |
 | `/its-dead` | Session end (once) | Stamp `ended:`, tally points, close the session file |
@@ -103,7 +103,7 @@ Two things the gate cannot check, which is why they are here:
 
 ## Pull Request Workflow
 
-- One branch per task: `task/X.Y-short-description`. Pull request title references the issue: `closes #N`.
+- One branch per task: `task/X.Y-short-description`, or `task/<issue>-short-description` for a task with no plan row. Pull request title references the issue: `closes #N`.
 - `/kill-this` opens the pull request. Self-merge after review unless a stakeholder needs to look.
 - Keep ≤3 open pull requests. Prefer 1.
 - Never two open pull requests with migrations on the same table.
@@ -158,7 +158,7 @@ For every task — bug, feature, or question — explain the plan and wait befor
 2. For a bug or question: explain the cause and your proposed fix first.
 3. Wait for "go", "do it", or equivalent.
 
-**A task specced in its issue for `/build-task` is the one exception, and only in form:** the written plan is the issue body, and the approval is the operator running `/build-task`. Writing the spec into the issue and cutting the branch are part of speccing it; nothing else is done before that run.
+**A task specced for `/build-task` is the one exception, and only in form:** the written plan is the spec as presented in the conversation from `task-spec.md`, the approval is the operator running `/build-task`, and its Step 0 writes that spec into the issue. Cutting the branch is part of speccing it; nothing else is done before that run.
 
 **Answering a question you asked is not approval.** This is where "or equivalent" gets abused, and it is the observed failure — twice in one session, twice again in another. A scoping answer, a preference between options you offered, and a refusal to decide all say *what the thing should be*. None says *start building it*. Approval is a reply to the written plan, so if no plan was written, nothing said since can have approved one. When the register is collaborative and fast and you're clearly agreeing, that is exactly when this goes wrong.
 
@@ -172,7 +172,7 @@ Check the spec's out-of-scope list in `docs/SPEC.md` before adding anything. App
 
 If a task feels bigger than its estimate: stop, re-estimate, update PROJECT_PLAN.md. If it's scope creep, flag it and move on.
 
-**An observation becomes a check, a deny, or a median-gap line — or it stays a note.** A rule you can't attach to a session, transcript or pull request is a proposal; say so. And a rule that could have been a mechanism and was written as prose instead will be skimmed past forever after — which is the failure that produced this line: a prose rule was broken 11 times, 4 of them after it was written, while a mechanical deny was obeyed 7 times out of 7.
+**An observation becomes a check, a deny, or a median-gap line — or it stays a note.** A rule you can't attach to a session, transcript or pull request is a proposal; say so. And a rule that could have been a mechanism and was written as prose instead will be skimmed past forever after. Mechanisms get obeyed where prose doesn't (`<jig>/docs/research/checker-roi/`).
 
 **Prefer removing.** A retired rule with a decision explaining why it went is worth more than a new one.
 

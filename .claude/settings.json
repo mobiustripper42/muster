@@ -7,7 +7,9 @@
       "Write",
       "Glob",
       "Grep",
-      "Bash(*)"
+      "Bash(*)",
+      "mcp__square__get_type_info",
+      "mcp__square__get_service_info"
     ],
     "deny": [
       "Bash(git reset --hard*)",

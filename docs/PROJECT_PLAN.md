@@ -984,16 +984,16 @@ pre-launch need goes to a later phase unless it blocks a row here.
 |---|------|-----|--------|--------|
 | 19.0 | **Deposits — spec.** A decision record superseding DEC-155, a new `docs/SPEC.md` section, and the full-payment sentences rewritten. Settles the saved card, failed and declined balance charges, the cancel terms, phone bookings and payment links, and which tax rate a finalized trip uses | 5 | — | [ ] [#1235](https://github.com/mobiustripper42/muster/issues/1235) |
 | 19.1 | **Deposits — build.** Three or more tasks, added once 19.0 is approved: the deposit charge with a saved card; automatic balance collection (issue #712); past-due and failed-charge notifications and a dashboard. Money F29 and capability A13 fold in | — | #712 | [ ] |
-| 19.2 | **The reconciler.** Money F3 (15.16 is marked shipped and was never built) and F20 (a payment that matches no booking is acked silently) | 8 | — | [ ] |
-| 19.3 | **A stale payment that succeeds late is refunded and alerted.** Money F2 | 5 | — | [ ] |
-| 19.4 | **A booking blocks its boat for its hold minutes, not its trip time.** Money F1 | 3 | — | [ ] |
-| 19.5 | **A failed confirmation send is not counted as told, and is retried.** Money F4 | 3 | — | [ ] |
-| 19.6 | **A failed refund is a work item someone sees, and a retry is not refused.** Money F5 and U2 | 5 | — | [ ] |
-| 19.7 | **A booked trip reads its frozen tax and balance, not today's setting.** Money F6 | 3 | — | [ ] |
-| 19.8 | **Money copy.** Money F7, F11, F14, F27 | 3 | — | [ ] |
-| 19.9 | **Admin lists tell the truth.** `/admin/integrity` and `/admin/purchases`: money F12, F13 | 3 | — | [ ] |
-| 19.10 | **Spec and comment sweep.** Money F16, F22, F23, F28; capability A20 | 2 | — | [ ] |
-| 19.11 | **End-to-end refund check.** Its own issue, per the operator's order of 2026-10-11 | 3 | — | [ ] |
+| 19.2 | **The reconciler.** Money F3 (15.16 is marked shipped and was never built) and F20 (a payment that matches no booking is acked silently) | 8 | — | [ ] [#1236](https://github.com/mobiustripper42/muster/issues/1236) |
+| 19.3 | **A stale payment that succeeds late is refunded and alerted.** Money F2 | 5 | — | [ ] [#1237](https://github.com/mobiustripper42/muster/issues/1237) |
+| 19.4 | **A booking blocks its boat for its hold minutes, not its trip time.** Money F1 | 3 | — | [ ] [#1238](https://github.com/mobiustripper42/muster/issues/1238) |
+| 19.5 | **A failed confirmation send is not counted as told, and is retried.** Money F4 | 3 | — | [ ] [#1239](https://github.com/mobiustripper42/muster/issues/1239) |
+| 19.6 | **A failed refund is a work item someone sees, and a retry is not refused.** Money F5 and U2 | 5 | — | [ ] [#1240](https://github.com/mobiustripper42/muster/issues/1240) |
+| 19.7 | **A booked trip reads its frozen tax and balance, not today's setting.** Money F6 | 3 | — | [ ] [#1241](https://github.com/mobiustripper42/muster/issues/1241) |
+| 19.8 | **Money copy.** Money F7, F11, F14, F27 | 3 | — | [ ] [#1242](https://github.com/mobiustripper42/muster/issues/1242) |
+| 19.9 | **Admin lists tell the truth.** `/admin/integrity` and `/admin/purchases`: money F12, F13 | 3 | — | [ ] [#1243](https://github.com/mobiustripper42/muster/issues/1243) |
+| 19.10 | **Spec and comment sweep.** Money F16, F22, F23, F28; capability A20 | 2 | — | [ ] [#1244](https://github.com/mobiustripper42/muster/issues/1244) |
+| 19.11 | **End-to-end refund check.** Its own issue, per the operator's order of 2026-10-11 | 3 | — | [ ] [#1245](https://github.com/mobiustripper42/muster/issues/1245) |
 | 19.12 | **A stranger's booking cannot join your customer record.** Checkout merges on an unverified phone (`src/customers/resolve.ts`); 16.9 closed the cancel path, not the merge. Deferred out of Phase 16 on 2026-10-31; back in for launch (operator, 2026-11-08) | 5 | #1213 | [ ] [#1213](https://github.com/mobiustripper42/muster/issues/1213) |
 | 19.13 | **A goodwill refund takes an amount off the trip; tax, fee and tip follow it.** What Drew types is the amount off the trip, not the amount back to the card (operator, 2026-11-04); DEC-199 | 5 | #1222 | [ ] [#1222](https://github.com/mobiustripper42/muster/issues/1222) |
 | 19.14 | **Purchases is useful.** Time windows (this week…), grouping, sorting | 3 | #1142 | [ ] [#1142](https://github.com/mobiustripper42/muster/issues/1142) |

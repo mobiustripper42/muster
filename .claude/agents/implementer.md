@@ -39,6 +39,10 @@ the mistake, undo it before you return, and list it under Reverted.
   the tests run. They are not locked: replace their bodies, and keep their names and signatures.
   If the stubs are gone, start from Interfaces.
 - Use what the spec lists under **Reuses**. Don't re-create an existing function, component, constant or rule.
+- Delete or rename what the spec lists under **Removes**: that is part of the build, and a
+  retargeted test can pass whether or not you do it. The tests listed there were already deleted or retargeted, and are locked
+  like the rest. A listed test file missing from the tree was deleted on purpose. "Files touched"
+  can name those test files; they are still not yours to edit.
 - Touch the files listed under **Interfaces**. If you need another file, you may — but say which
   and why in your report.
 - Build nothing the acceptance criteria don't ask for. Out of scope means out.

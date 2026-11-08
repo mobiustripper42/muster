@@ -35,7 +35,7 @@ TASK_NUM=$(($(grep -c "^## Task " "$SESSION_FILE") + 1))
 
 ## Step 1 — Build check
 
-Look up the project's build check in `.claude/CLAUDE-context.md §Commands` (e.g. `npm run build`, `cargo build`, `make`), **with the Read tool** — never a `sed`/`grep` one-liner. Run it. Fix errors before proceeding. Do not commit broken code.
+Look up the project's build check in `.claude/CLAUDE-context.md §Commands` (e.g. `npm run build`, `cargo build`, `make`), **with the Read tool** — never a `sed`/`grep` one-liner. Run it. Fix errors before proceeding. Do not commit broken code. A failure in a test the diff does not reach gets one re-run; failing again, it is real — stop and report it, never ship past it.
 
 If no build step is defined (markdown-only / domain project), skip silently.
 
@@ -47,8 +47,10 @@ Stage all uncommitted code changes on the **task branch** (the current `$BRANCH`
 git add -A
 git commit -m "<phase/task summary>
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+<attribution line>"
 ```
+
+**`<attribution line>` is the one the session's own instructions give for commits**, copied as given; none given, no trailer. A fixed model name here was wrong on every commit made by any other model, and a commit's history keeps it.
 
 **Name the files being staged**, one line from `git diff --cached --name-only`. `git add -A` sweeps whatever is in the tree, so a file list that doesn't look like the task you just did is the signal — an unrelated edit riding along is caught here or not at all.
 
@@ -62,6 +64,8 @@ If there is nothing to commit, surface that and stop here — no PR for no code.
 Capture `SUBJECT=$(git log -1 --format=%s)` for the PR title.
 
 ## Step 3 — Code review, in the background
+
+**Every branch diff in this skill is against `origin/main`, fetched first** — `git fetch origin main`, once, here, and three-dot, so it starts at the branch point. Local `main` can sit behind it, and a diff against a stale `main` carries other people's merged work into the checks without saying so (observed in Haul). Where a project's trunk is not `main` (Step 4), read that name for `main` throughout.
 
 Do Step 3.4's screen check and Step 3.5's trigger check **first**: each is a property of the diff and needs no review to answer. Then start every review this PR gets **in one message, each as a background agent** (`run_in_background: true`):
 
@@ -81,13 +85,13 @@ When addressing review findings before opening the PR: Read every file before ed
 
 ### Step 3.4 — Screen check (does this PR want `@ui-reviewer`?)
 
-Get the project's UI rules from `.claude/ui-context.md` **with the Read tool**. **Absent:** no UI review; Step 3.6's row says why. Otherwise match its definition of a screen file against the branch diff (`git diff $(git merge-base HEAD main)...HEAD --name-only`). **No match:** no UI review. **A match:** list the routes the changed files reach, by its route rule, and start `@ui-reviewer` on them in Step 3.
+Get the project's UI rules from `.claude/ui-context.md` **with the Read tool**. **Absent:** no UI review; Step 3.6's row says why. Otherwise match its definition of a screen file against the branch diff (`git diff $(git merge-base HEAD origin/main)...HEAD --name-only`). **No match:** no UI review. **A match:** list the routes the changed files reach, by its route rule, and start `@ui-reviewer` on them in Step 3.
 
 The scope is the screens this task touched, in the languages `ui-context.md` names for review (the project's default language when it names none). Every screen is `/retro`'s pass at phase end.
 
 ### Step 3.5 — High-blast-radius check (does this PR want `/security-review`?)
 
-Get the project's trigger table from `.claude/CLAUDE-context.md` under `## Blast-Radius Triggers` **with the Read tool** — never a `sed`/`grep` one-liner. Then match the table against the branch diff (`git diff $(git merge-base HEAD main)...HEAD --name-only`). If that section is absent, fall back to the five generic triggers below.
+Get the project's trigger table from `.claude/CLAUDE-context.md` under `## Blast-Radius Triggers` **with the Read tool** — never a `sed`/`grep` one-liner. Then match the table against the branch diff (`git diff $(git merge-base HEAD origin/main)...HEAD --name-only`). If that section is absent, fall back to the five generic triggers below.
 
 | Trigger | What to match |
 |---|---|
@@ -157,17 +161,17 @@ Set `EXISTING_PR_STATE` to one of `OPEN`, `MERGED`, `CLOSED`, `NONE`. Method 1 =
 Compose `BODY`:
 
 **## Summary**
-One-line description.
+One-line description. On a stacked branch — one cut from another task branch, not from `main` — a second line: `Stacked on PR #<parent>, merge that first.` — against `main` its diff shows the parent's commits too.
 
 **## Files changed**
-Bulleted list from `git diff --name-only $BASE..HEAD`.
+Bulleted list from `git diff --name-only origin/$BASE...HEAD`.
 
 **## Code review**
 Lead with the Step 3.6 receipt — which passes ran, which didn't, and why — then the findings from each, under its own sub-heading so the reviewer can tell them apart. "Clean bill of health" is a statement about a pass that *ran*; never write it in place of a pass that didn't.
 
 **## Test plan**
 
-Generated by you from `git diff --name-only $BASE..HEAD`. **Always two sections, in this order and under these headings**, because they answer different questions and one cannot substitute for the other:
+Generated by you from `git diff --name-only origin/$BASE...HEAD`. **Always two sections, in this order and under these headings**, because they answer different questions and one cannot substitute for the other:
 
 **`### Verified (automated)`** — what you ran and what it returned. Commands and counts: the gate, the specific spec files, the new cases and what each one pins. A number that isn't in the output is a number you made up.
 
@@ -229,7 +233,7 @@ Compose the task block:
 
 **Code review:** <findings summary or "Clean">
 **PR:** [PR #<PR_NUMBER>](<PR_URL>)
-**Points:** <effort estimate>
+**Points:** <effort estimate — a number; an unpointed task is `0 (unpointed)`>
 **Blocked:** <only if blocked>
 **Branch:** <BRANCH>
 **Opened at:** <ISO 8601 timestamp>

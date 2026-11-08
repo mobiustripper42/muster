@@ -35,10 +35,10 @@ For each open issue, ask the user: "Move to next phase, leave open, or close as 
 
 ## Step 1.5 — UI review over every screen
 
-Run only when `.claude/ui-context.md` exists; read it with the Read tool. It comes before Step 2 because a fix lands as a phase-N pull request and changes the numbers. Step 2's pull request list doesn't exist yet, so find the phase's merged pull requests from the earliest `createdAt` among Step 1's closed issues — the start Step 2 uses, so an open issue carried in from an earlier phase doesn't widen the window:
+Run only when `.claude/ui-context.md` exists; read it with the Read tool. It comes before Step 2 because a fix lands as a phase-N pull request and changes the numbers. Step 2's pull request list doesn't exist yet, so work out its `window_start_iso` here, as Step 2 defines it, and find the phase's merged pull requests from there:
 
 ```
-gh pr list --state merged --search "merged:>=<earliest closed createdAt>" --json number,files --limit 100
+gh pr list --state merged --search "merged:><window_start_iso>" --json number,files --limit 100   # >= when it is phase_start_iso
 ```
 
 **No changed file is a screen file or a strings file**, as `ui-context.md` defines them: skip this step; the retro has no UI review line. **Otherwise** invoke `@ui-reviewer` on every route `ui-context.md`'s route rule lists, in the languages and at the viewports it names (the project's default language when it names none). Give it the open issues an earlier run filed (`gh issue list --state open --search '"UI review" in:title'`), so it does not report them again.
@@ -61,9 +61,13 @@ gh issue list --label "phase:<N>" --state closed --json number,createdAt,closedA
 - `planned` = Σ of the phase's original estimates in PROJECT_PLAN.md.
 - `phase_start_iso` = the first `createdAt`; `phase_end_iso` = the last `closedAt`. `days` = the gap between them, in days.
 - `re_estimated` = tasks whose points changed between original estimate and final. `net_drift` = Σ final − Σ original; positive means tasks ran bigger than pointed.
-- `prs` = PRs merged between those two dates. Count them here, since the numbers line needs them before the version bumps run; Step 9.1 reuses this list:
+- `window_start_iso` = the last `closedAt` among phase `<N-1>`'s closed issues; for Phase 1, or when phase `<N-1>` has no closed issues, `phase_start_iso`. Starting at the first issue's `createdAt` instead dropped every pull request merged between the last phase's close and this phase's first issue (observed in Haul) — work done in the gap belongs to no phase otherwise.
   ```
-  gh pr list --state merged --search "merged:>=<phase_start_iso> merged:<=<phase_end_iso>" --json number,title,mergedAt --limit 100
+  gh issue list --label "phase:<N-1>" --state closed --json closedAt --limit 200
+  ```
+- `prs` = PRs merged after `window_start_iso`, up to `phase_end_iso`. Count them here, since the numbers line needs them before the version bumps run; Step 9.1 reuses this list. `days` still runs from `phase_start_iso`. **The lower bound is exclusive (`>`) when it is phase `<N-1>`'s close**: the pull request that closed that phase's last issue merged at that moment, and `>=` would count it in both phases and patch-bump it twice. From `phase_start_iso` it is `>=`:
+  ```
+  gh pr list --state merged --search "merged:><window_start_iso> merged:<=<phase_end_iso>" --json number,title,mergedAt --limit 100
   ```
 
 **No rate is computed.** Points, days and drift are enough to derive one later if it is ever wanted, and a per-week number was the thing the old retro led with while nobody used it. Never re-pair PR-open → PR-merge to recover "effort" — that window math is the bug an earlier velocity model died on.
@@ -125,7 +129,7 @@ Show it verbatim:
 
 ## Step 7 — Append to RETROSPECTIVES.md
 
-Read `docs/RETROSPECTIVES.md` first (Edit requires a prior Read). If it doesn't exist, create it with Write and the header `# Retrospectives\n\n`. Otherwise Edit the file by replacing the `# Retrospectives\n\n` header with `# Retrospectives\n\n## Phase <N> — <YYYY-MM-DD>\n\n...block...\n\n` so the new phase lands at the top. The block:
+Read `docs/RETROSPECTIVES.md` first (Edit requires a prior Read). If it doesn't exist, create it with Write and the header `# Retrospectives\n\n`. Otherwise Edit it so the new block lands at the top: insert it directly above the first `## Phase` heading, or at the end of the file when there is none. Never anchor on the header's wording — the scaffold's reads `# [Project Name] — Phase Retrospectives`, and an Edit keyed on `# Retrospectives` cannot match it (observed in Haul). The block:
 
 ```
 ## Phase <N> — <YYYY-MM-DD>

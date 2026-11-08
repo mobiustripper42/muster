@@ -1,19 +1,21 @@
 <!--
 The spec for a task headed for /build-task: any task that changes behaviour, whatever its points.
-It is the issue body: write it with `gh issue edit <N> --body-file`, and write every change there,
-not only in the chat. The agents read the issue by number and never see the conversation.
+It is the issue body: /build-task's Step 0 writes it there from the walk, and every later change
+is written there too, not only in the chat. The agents read the issue by number and never see the
+conversation.
 
 A small task fills the same sections, briefly. A bug fix's AC1 is the reproduction, stated as the
 behaviour it should have; a section with nothing to say is "None".
 
-The Lead writes this from the spec conversation and reads the code to fill Interfaces and to find
-what it must reuse — readback's reuse check is the second look, not the first. Walk the
-operator through it in this order, and stop at the first part they say is wrong:
+The Lead drafts this from the spec conversation and reads the code to fill Interfaces, to find
+what it must reuse, and to search the tests for everything it removes — readback's reuse and
+removal checks are the second look, not the first. Walk the operator through it in this order,
+and stop at the first part they say is wrong:
   1. Summary
   2. Job and acceptance criteria
   3. Every [Lead] line, grouped by section. [you] and [code] lines only if asked.
-The operator approves by running /build-task. It refuses to start while any section is blank or
-Open questions has anything in it. "None" is an answer; blank is not.
+The operator approves the walk by running /build-task. Its Step 0 writes the spec into the issue,
+then refuses to start while any section is blank or Open questions has anything in it. "None" is an answer; blank is not.
 
 Every line in the sections below carries its source:
   [you]  — the operator said it
@@ -48,6 +50,7 @@ Every line in the sections below carries its source:
 - **New or changed signatures:** `functionName(arg: Type): ReturnType`, route `POST /api/…`, …
 - **Data shapes:** table/column, type, or JSON shape the tests will assert on
 - **Reuses:** existing functions, components, constants and rules this must call rather than re-create
+- **Removes:** each export, constant, copy or config key, route, page or file this deletes or renames, and every test that uses it, with what happens to that test: deleted, or retargeted to what replaces it. "None" when nothing goes
 
 ## Screen
 <!-- Only if the task has a screen. Otherwise write "None".

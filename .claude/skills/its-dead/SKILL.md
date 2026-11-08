@@ -36,11 +36,13 @@ Do **not** write `wall_clock`, `active`, `breaks`, `duration`, or any time-deriv
 Scan the body for the per-task `**Points:**` field (`/kill-this` writes one per task):
 
 ```
-grep -oE "^\*\*Points:\*\* *[0-9]+" "$SESSION_FILE" | grep -oE "[0-9]+"
+grep -E "^\*\*Points:\*\*" "$SESSION_FILE"
 ```
 
-Sum and write the total into the frontmatter:
+Sum the lines whose value starts with a number, taking that leading number; write the total into the frontmatter:
 - `points: <SUM>`
+
+**A line whose value is 0 or does not start with a number is an unpointed task, and counts 0** — `/kill-this` writes `0 (unpointed)`, and Haul's older files carry `**Points:** unpointed (planning work)` and `**Points:** —`. Name each one in Step 4's output as unpointed, so a 0 is visibly a choice. A numeric-only grep skipped the non-numeric lines, so the cross-check below came up short and the tally stopped on every session with an unpointed task (observed in Haul).
 
 **No `-A <N>` window, and that is the fix, not a simplification.** This step used to read `grep -A 5 "^## Task " | grep "Points:"`, which assumes `**Points:**` sits within five lines of its `## Task` heading. It does not: `/kill-this`'s own block template puts the open-ended `**Completed:**` bullet list first (`kill-this/SKILL.md` § Step 5), so in one observed session the four real gaps were 61, 55, 52 and 53 lines. The windowed command matched nothing and returned `points: 0`. `^\*\*Points:\*\*` is anchored and unique to that template, so it needs no window to avoid a false match.
 
@@ -78,6 +80,7 @@ Emit as plain prose lines, never fenced; drop the leading `>`, it marks the exam
 > Wall clock: Xh Ym  (started <ISO_STARTED>, ended <END_UTC>)
 > PRs this session: #N1, #N2, ...   (from pr_numbers list)
 > Total points: <SUM>
+> Unpointed: Task <N>, Task <M>   (only when Step 2 found any)
 
 **Do not write this to the file.** The user verifies; `/retro` computes the persisted numbers at phase end.
 

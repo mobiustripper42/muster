@@ -967,8 +967,9 @@ Materialized the same day as issues #1114–#1124, all `lane:a`; 18.10 (issue #1
 
 **Muster Reservations goes live 2027-02-01: it accepts bookings from that day** (operator,
 2026-11-07). Guests and crew are on the water from 2027-05-01, and anything Crew waits until after
-the release. This is the first of the phases to Feb 1; Phase 20 (launch hardening and cutover) and
-Phase 21 (the customer's trip, and the UI and wording pass) follow, then a walk-through demo for Drew.
+the release. This is the first of the phases to Feb 1; Phase 20 (the overnight audits), Phase 21
+(launch hardening and cutover) and Phase 22 (the customer's trip, and the UI and wording pass)
+follow, then a walk-through demo for Drew.
 
 Deposits come back (issue #1235): a fixed amount or a percentage, the balance due a set number of
 days out and collected automatically, charged in full inside that window, no tax on a deposit until
@@ -977,7 +978,7 @@ the `Feb 1` findings in `docs/audit/README.md`'s ledger — each is re-read agai
 its task is specced, not trusted from the one-line summary.
 
 **Hold the line on additions.** Phase 16 took 42 of its 79 points mid-phase (Phase 16 retro). A new
-pre-launch need goes to Phase 20 or 21 unless it blocks a row here.
+pre-launch need goes to a later phase unless it blocks a row here.
 
 | # | Task | Est | Closes | Status |
 |---|------|-----|--------|--------|
@@ -996,6 +997,45 @@ pre-launch need goes to Phase 20 or 21 unless it blocks a row here.
 
 **Phase 19 total: 12 rows, 43 points before 19.1** (~59 with 19.1's rough 16). Drafted at the Phase 16
 retro, 2026-11-08. Hand step, no row: confirm production's tax setting reads 8% (money F15).
+
+---
+
+## Phase 20: The overnight audits
+
+Five audits run as scheduled cloud sessions, one a night, 2026-11-10 to 11-14: plan vs. code,
+silent failures, test vs. production database, operator-side reservations, and paired saves. Their
+prompts are in `docs/audit/prompts/2026-11-1*.md`. Each pushes a report to an `audit/<name>` branch.
+Their own phase, after Phase 19, so their fixes land in December rather than beside the January
+wording pass, and so their triage cannot grow Phase 19 or 21 (operator, 2026-11-08).
+
+| # | Task | Est | Closes | Status |
+|---|------|-----|--------|--------|
+| 20.0 | **Bring in the five reports and triage them.** Each report into `docs/audit/`, its findings into the ledger with a **When**, and every `Feb 1` finding added below as a row of this phase | 3 | — | [ ] |
+
+**Phase 20 total: 3 points until 20.0 runs** — sized once the reports land, about 2026-11-15.
+
+---
+
+## Phase 21: Launch hardening and cutover
+
+The `Feb 1` capability-URL findings, the cutover issues, and the production settings. Xola holds
+two reservations, and import already works for them (operator, 2026-11-07).
+
+| # | Task | Est | Closes | Status |
+|---|------|-----|--------|--------|
+| 21.1 | **Secrets and request hardening.** Capability A14 (refuse to start without a real `SESSION_SECRET`), A16 (constant-time `CRON_SECRET` compare), A17 (`?error=__proto__`), and A1's cleanup (the dev-code route answers only in local development) | 3 | — | [ ] |
+| 21.2 | **The pay link.** Capability A6: mask the phone and email, let the operator revoke one, one live link per booking | 5 | — | [ ] |
+| 21.3 | **Not indexable.** Capability A10: `noindex`, `robots.txt`, security headers | 2 | — | [ ] |
+| 21.4 | **Nobody sees another customer's data.** Capability A11's three paths, read in the report first | 3 | — | [ ] |
+| 21.5 | **`/api/health` stops opening a database connection per anonymous request.** Capability A15 | 1 | — | [ ] |
+| 21.6 | **Xola cutover.** Import the two Xola bookings, refine the import a little, cancel them in Xola. The issue's label says 5; the operator calls it a non-issue | 3 | #467 | [ ] [#467](https://github.com/mobiustripper42/muster/issues/467) |
+| 21.7 | **Go-live runbook.** Seed the catalog, verify the Stripe dashboard, guard test-vs-live keys | 3 | #623 | [ ] [#623](https://github.com/mobiustripper42/muster/issues/623) |
+| 21.8 | **Audit the live Vercel env against `docs/DEPLOY.md`** | 2 | #545 | [ ] [#545](https://github.com/mobiustripper42/muster/issues/545) |
+| 21.9 | **Xola's end state.** DEC-124 as written is wrong; decide what actually happens | 2 | #837 | [ ] [#837](https://github.com/mobiustripper42/muster/issues/837) |
+| 21.10 | **Set the booking cutoff to 24 hours in production** | 1 | #1170 | [ ] [#1170](https://github.com/mobiustripper42/muster/issues/1170) |
+
+**Phase 21 total: 10 tasks, 25 points.** Drafted 2026-11-08. Phase 22 (the customer's trip, and the
+UI and wording pass) follows, then the walk-through demo for Drew.
 
 ---
 

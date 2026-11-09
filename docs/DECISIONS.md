@@ -204,6 +204,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-198 — Customers cancel online only when the terms refund something
 - DEC-199 — A refund lowers the price and never re-opens the balance
 - DEC-200 — A checkout whose total changed is refused, not charged at either price
+- DEC-201 — Deposits return, with the balance collected automatically
 
 ### Check-in & waivers
 - DEC-187 — Check-in & waivers is in scope, specced in its own files that SPEC.md indexes

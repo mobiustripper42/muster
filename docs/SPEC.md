@@ -1649,8 +1649,9 @@ touched: a refused retry leaves its row, its hold and its intent exactly as they
 picks them up at the new total. If that row's last intent has already been paid, the answer is
 `already_paid`, as in 2.8.5, since "you have not been charged" would be false. A refusal ends the
 claim; it does not fall through to the next boat. A post that carries no whole-cents total is refused
-the same way, before any dependency is touched. The payment link is not subject to this: it shows
-and charges the frozen invoice.
+the same way, before any dependency is touched. With a deposit, the balance the page showed is
+compared the same way (2.8.4d). The payment link is not subject to this: it shows and charges the
+frozen invoice.
 
 **The booking cutoff.** A length of time before a departure, in hours, inside which the public site
 does not sell it (DEC-193). It is measured backwards from the departure time the way `departed` is
@@ -1913,7 +1914,8 @@ live code it already has, never a new one), a blank line, and `- ` and the busin
 
 The opening is `Hi <first name>, your trip<when> is cancelled.` when the customer asked, whoever pressed
 the button, and `Hi <first name>, we had to cancel your trip<when>. We're sorry.` when the operator
-cancelled ("We cancelled — weather, crew, mechanical"). `<when>` is ` on Sat, Nov 28 at 3:30 PM`, and
+cancelled ("We cancelled — weather, crew, mechanical"). A release for an unpaid balance has its own
+opening, sent by the job that released it, not a press (2.8.4d). `<when>` is ` on Sat, Nov 28 at 3:30 PM`, and
 is left out when the booking has no departure on it. The refund line is one of:
 
 | What happened | The refund line |
@@ -1959,12 +1961,14 @@ settled it; DEC-201 says why deposits came back after DEC-155 took them out.
 |---|---|---|
 | **Deposit** | $100 | a fixed amount, or a percentage of the quote — one or the other, chosen by the setting |
 | **Balance due** | 30 days before departure | when the saved card is charged for the rest |
+| **Retries** | 3 and 6 days after the balance was due | when a failed balance charge is tried again |
 | **Release** | 21 days before departure | when a balance still unpaid cancels the booking |
 
-The retries (below) fall between the second and third. The release is stated in days before departure
-because the published terms state it that way (below), so changing the setting means changing the
-terms. The settings are live; what a booking was told
-is frozen onto it, so changing a setting moves no booking that already exists.
+The release is stated in days before departure because the published terms state it that way (below),
+so changing the setting means changing the terms. The settings are live. What a booking was told — the
+deposit, the due date and the release date — is frozen onto it, so changing those settings moves no
+booking that already exists. The retries are not told to anyone and stay live: a change applies to
+every retry not yet made.
 
 **What is charged at booking.** The deposit, and nothing else. The quote — every component in 2.8.4a,
 tax and the service fee and the tip included — is computed and frozen onto the invoice exactly as it
@@ -1977,9 +1981,9 @@ paid, and it is charged later. Three exceptions, each charging the whole quote a
 - **A comp** (2.8.4a) charges nothing, as it does today.
 
 **Insurance comes out of the deposit** (operator, 2026-11-08). An insured booking pays $100 at
-booking, and $30 of that $100 is the insurance; the deposit is never raised to make room for it. A
-deposit that would be smaller than the insurance — a percentage deposit on a small quote — is raised
-to the insurance, so the insurance is always paid at booking. The tip and the service fee are paid
+booking, and $30 of that $100 is the insurance; the deposit does not grow by $30 because insurance was
+bought. The one exception is a deposit smaller than the insurance itself — a percentage deposit on a
+small quote — which is raised to the insurance, so the insurance is always paid at booking. The tip and the service fee are paid
 with the balance; neither is split across payments.
 
 **No tax on a deposit** (operator, 2026-11-08). The deposit is held until the trip is **finalized** —
@@ -1998,8 +2002,18 @@ booking is never charged for another. A returning customer enters their card aga
 Above the pay button the checkout says: `We'll charge the balance of $<balance> to this card on <due
 date>.` The provider mechanics are verified against its documentation when this is built, not here.
 
-**The due date and the release date are columns on the reservation**, computed at booking from the
-two settings — each has a time in it, and the customer was told both (2.8.4).
+**The balance the page showed is checked like the total.** 2.8.4's price check (DEC-200) compares the
+due-now total, which is now the deposit, and a fare, fee or tax change can move the balance while a
+fixed deposit stays put. So the checkout sends the balance it showed beside the due-now total, and a
+difference in either is refused the same way: nothing written, nothing charged, and no card saved
+against a figure the customer never saw.
+
+**The due date and the release date are columns on the reservation**, computed from the two settings
+when the deposit is paid — each has a time in it, and the customer was told both (2.8.4). Whether a
+booking is inside the balance window is judged at the same moment. For a web booking that is the
+checkout; for a phone booking it is when the customer pays the link, which can be up to 72 hours after
+the operator wrote it. A link paid after the trip has crossed into the window charges the whole quote,
+so a due date is never already past when it is set.
 
 **Collecting the balance.** With the defaults:
 
@@ -2009,8 +2023,7 @@ two settings — each has a time in it, and the customer was told both (2.8.4).
 | 27 and 24 days out | if it is still unpaid, Muster charges the saved card again |
 | The release date, 21 days out | if it is still unpaid, Muster cancels the booking (below) |
 
-The retries are 3 and 6 days after the due date, a fourth setting, and any that would fall on or after
-the release date is skipped.
+A retry that would fall on or after the release date is skipped.
 
 **Every failed charge tells both sides.** The customer gets a text and an email — whichever the booking
 has and the deployment has set up — that the charge did not go through and a link to their booking,
@@ -2021,17 +2034,19 @@ amount, the reason the provider gave and the release date. Each one writes a tra
 retry: only the customer can approve it. They are told on the first attempt, the same way, and the
 release date does not move.
 
-**The manage page pays the balance**, on demand, at any time before the release — early, or after a
-failed charge. It is the same payment as the scheduled one and never a second. **The payment link is
+**The manage page pays the balance**, on demand, while the booking stands — early, after a failed
+charge, or on a booking whose auto-cancel an admin stopped. It is the same payment as the scheduled one and never a second. **The payment link is
 never used for a balance**; it stays the unpaid phone booking's (2.10.6).
 
 **The release cancels the booking and keeps the deposit.** BrewBoat's published terms gain one
 sentence, live on brewcle.com before 2027-02-01: *"If your balance isn't paid 21 days before your
 trip, your booking is cancelled and your deposit is not refunded."* With that sentence the forfeit is a
 term the customer agreed to; without it, 2.8.4c's "never published" rule would return the deposit less
-$50. The cancel frees the boat in the same write, tells the crew, and tells the customer by 2.8.4c's
-cancellation notice, with the line `No refund is due under your booking's cancellation terms.` The
-admins are emailed.
+$50. The cancel frees the boat in the same write and tells the crew. The customer gets 2.8.4c's
+cancellation notice with a third opening, `Hi <first name>, your balance wasn't paid, so your
+trip<when> is cancelled.`, and the line `No refund is due under your booking's cancellation terms.`
+The release is not a press, so the notice is sent by the job that released the booking, once, and
+writes 2.8.4c's trail row the same way. The admins are emailed.
 
 **An admin can stop the auto-cancel on one booking** (operator, 2026-11-08) — the customer who called
 to say they are sorting it out. A stopped booking is never released by Muster; it stays on the
@@ -2061,7 +2076,7 @@ deposit unless the quote falls to it or below, which charges the whole quote. Af
 paid, money back is a refund, which lowers the price and the balance with it (DEC-199).
 
 **What is reused, and what is not.** The dormant balance path is replaced, not switched on.
-`depositMode`/`depositPercent` in payment configuration (`src/domain/entities.ts:840-866`) become the
+`depositMode`/`depositPercent` in payment configuration (`src/reservations/payment-config.ts:21-35`) become the
 deposit setting, which also takes a fixed amount; `balanceDueDaysBeforeEvent` becomes the balance-due
 setting. The re-minted Stripe Checkout balance link (DEC-107's amendment) goes, and capability A13 goes
 with it. Money F29 — the defects 2.8.10 lists — and money F6 — booked readers re-deriving tax and the
@@ -2071,11 +2086,12 @@ charge is issue #712, at the due date this section sets, not seven days out.
 **What must be ready on 2027-02-01, and what by 2027-03-15.** Guests are on the water from 2027-05-01,
 so the first balance falls due around 2027-04-01 and nothing collects one before then.
 
-- **By 2027-02-01:** the deposit charge and the saved card; the whole quote inside the balance window;
-  the manage page showing what is paid, what is due and the due date; cancelling a booking with only
-  the deposit paid; the payment link taking the deposit; the published terms' new sentence.
-- **By 2027-03-15:** the scheduled balance charge, the retries, the release and its stop, the
-  notifications to the customer and to the admins, and the past-due list. Two weeks before the first
+- **By 2027-02-01:** the deposit charge and the saved card; the balance checked like the total; the
+  whole quote inside the balance window; the manage page showing what is paid, what is due and the due
+  date; cancelling a booking with only the deposit paid; the payment link taking the deposit; deposits
+  kept out of every revenue and tax report; the published terms' new sentence.
+- **By 2027-03-15:** the scheduled balance charge, the retries, the manage page paying the balance, the
+  release and its stop, the notifications to the customer and to the admins, and the past-due list. Two weeks before the first
   charge, because a slip past 2027-04-01 puts every balance back on the operator texting a link —
   exactly what DEC-155 removed deposits to avoid.
 
@@ -2311,7 +2327,8 @@ rate, never recomputed from live settings at billing time, which the freeze rule
 the dormant path does not do (money F6). And it must stop deriving what is owed purely from recorded
 payments (money F29): a booking whose payment record is briefly missing — 2.8.6
 writes it last, and any failure there leaves a gap until the provider retries — currently reads as
-owing the whole fare, so the balance link would bill a paid customer a second time in full. The
+owing the whole fare, so the scheduled balance charge would bill a paid customer's saved card a second
+time in full. The
 existing chargeback guard does not cover that shape.
 
 **Blocks.** An operator's hold on a boat is its own thing with its own lifetime. It occupies a hull; it
@@ -3061,8 +3078,8 @@ through it.
 # 3. Cross-cutting
 
 Behavior that spans surfaces. **Payments appears here only where it surfaces inside the admin app**
-(the cancel flow and the dispute alert). Deposit-vs-full, refund-schedule numbers, and the Stripe
-integration internals are parked (§4) — they are Drew's decisions and build-phase plumbing.
+(the cancel flow and the dispute alert). Deposits and the balance are §2.8.4d and the refund
+schedule is §2.8.4c; the Stripe integration internals are build-phase plumbing.
 
 ## 3.1 Notifications & push
 

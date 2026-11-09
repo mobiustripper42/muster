@@ -2,7 +2,9 @@
 /**
  * What a /build-task run spent, read from the session's own transcripts, for the receipt.
  *
- *   node .claude/skills/build-task/cost.mjs --since <ISO time the run started>
+ *   node .claude/skills/build-task/cost.mjs --since <ISO time the run started> [--receipt <file>]
+ *
+ * With `--receipt`, the lines also replace the receipt file's placeholder cost line.
  *
  * The session's transcript is `~/.claude/projects/<cwd, / as ->/<CLAUDE_CODE_SESSION_ID>.jsonl`,
  * as /its-alive records it, and each subagent's is beside it under `<id>/subagents/`, with its
@@ -21,7 +23,7 @@
  * known only to whoever goes back and counts by hand.
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -103,6 +105,32 @@ export function format(t) {
   ]
 }
 
+/** The receipt's cost line as SKILL.md's template writes it, for `--receipt` to fill. */
+const COST_PREFIX = '  cost          — '
+export const PLACEHOLDER = `${COST_PREFIX}<cost.mjs>`
+
+/**
+ * Puts the cost lines into the receipt file: the first placeholder becomes the first line, the rest
+ * follow it, so they stay inside the receipt's fence. With no placeholder they go at the end, in the
+ * same shape.
+ *
+ * Why the script writes them: in Haul the Lead retyped them, and its receipts carried the cost in
+ * four shapes, so no two runs could be compared without retyping them again (issue 113).
+ */
+export function writeReceipt(file, lines) {
+  const text = readFileSync(file, 'utf8')
+  const rows = text.split('\n')
+  const filled = [`${COST_PREFIX}${lines[0]}`, ...lines.slice(1)]
+  const i = rows.indexOf(PLACEHOLDER)
+  if (i >= 0) {
+    rows.splice(i, 1, ...filled)
+    writeFileSync(file, rows.join('\n'))
+    return 'replaced'
+  }
+  writeFileSync(file, `${text}${text && !text.endsWith('\n') ? '\n' : ''}${filled.join('\n')}\n`)
+  return 'appended'
+}
+
 /** The session's transcript and its subagents', by session id. Throws with a reason it can print. */
 export function load({ home = homedir(), cwd = process.cwd(), sessionId = process.env.CLAUDE_CODE_SESSION_ID } = {}) {
   if (!sessionId) throw new Error('no CLAUDE_CODE_SESSION_ID in this shell')
@@ -139,14 +167,26 @@ if (process.argv[1]?.endsWith('cost.mjs')) {
     return i >= 0 ? argv[i + 1] : undefined
   }
   const since = Date.parse(arg('--since') ?? '')
+  let lines
   try {
     if (Number.isNaN(since)) throw new Error('pass --since <ISO time the run started>')
     const { main, subagents } = load({ cwd: arg('--cwd') ?? process.cwd() })
     const t = tally(main, subagents, since)
     // A mistyped or future start would otherwise read as a run that cost nothing.
     if (!t.roles.length) throw new Error(`nothing logged since ${arg('--since')}; check the start time`)
-    console.log(format(t).join('\n'))
+    lines = format(t)
   } catch (e) {
-    console.log(`unavailable — ${e.message}`)
+    lines = [`unavailable — ${e.message}`]
+  }
+  console.log(lines.join('\n'))
+  const receipt = arg('--receipt')
+  // A directory, an unreadable file or a full disk throws here, and the cost must never fail a run.
+  if (receipt) {
+    try {
+      if (!existsSync(receipt)) console.log(`unavailable — no receipt file at ${receipt}`)
+      else if (writeReceipt(receipt, lines) === 'appended') console.log(`no cost placeholder in ${receipt}; appended at the end`)
+    } catch (e) {
+      console.log(`unavailable — could not write receipt: ${e.message}`)
+    }
   }
 }

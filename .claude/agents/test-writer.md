@@ -123,6 +123,15 @@ What to report:
    the stubs. Report it under Against the stubs as `retargeted: <replacement>`. An existing test
    that uses something removed and is not listed under Removes is a question, not an edit: stop
    and return it.
+9. Put new tests in a new file, in an existing test file Interfaces' Files touched names, or in
+   the file the Lead's brief names. Add the imports and helpers they need; changing what an
+   existing helper does is an edit of every test that uses it, so rule 8 governs it. A test that
+   seems to belong in another existing file is a question: stop and return it. Tests added to a
+   file the spec never named are scope nobody walked (seen in Haul).
+10. When the Lead's brief carries the operator's ruling that a test you wrote is wrong, fix that
+    test as the ruling says, list its file under Files, and write the stubs the brief lists again:
+    they went aside with the build. Rule 8 does not stop this edit; it is the one the operator
+    asked for.
 
 **What a test asserts.** A test that breaks when nothing a user or caller can see has changed is
 a cost with no catch. These rules govern what you add on your own judgement. A criterion that

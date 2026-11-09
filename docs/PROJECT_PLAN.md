@@ -963,19 +963,17 @@ Materialized the same day as issues #1114–#1124, all `lane:a`; 18.10 (issue #1
 
 ---
 
-## Phase 19: Payment complete — deposits, and the money findings that block launch
+## Phase 19: Deposits
 
 **Muster Reservations goes live 2027-02-01: it accepts bookings from that day** (operator,
 2026-11-07). Guests and crew are on the water from 2027-05-01, and anything Crew waits until after
-the release. This is the first of the phases to Feb 1; Phase 20 (the overnight audits), Phase 21
-(launch hardening and cutover) and Phase 22 (the customer's trip, and the UI and wording pass)
-follow, then a walk-through demo for Drew.
+the release. Phase 20 (the money findings that block launch), Phase 21 (the overnight audits),
+Phase 22 (launch hardening and cutover) and Phase 23 (the customer's trip, and the UI and wording
+pass) follow, then a walk-through demo for Drew. Delivery against the dates is assessed as it goes,
+not planned here (operator, 2026-11-09).
 
-Deposits come back (issue #1235): a fixed amount or a percentage, the balance due a set number of
-days out and collected automatically, charged in full inside that window, no tax on a deposit until
-the trip is finalized. Tax stays a setting; it may change (operator, 2026-11-08). The money rows are
-the `Feb 1` findings in `docs/audit/README.md`'s ledger — each is re-read against current code when
-its task is specced, not trusted from the one-line summary.
+Deposits come back: `docs/SPEC.md §2.8.4d` is the spec (19.0, DEC-201). Split into its own phase on
+2026-11-09; the money findings that shared Phase 19 moved to Phase 20 unchanged.
 
 **Hold the line on additions.** Phase 16 took 42 of its 79 points mid-phase (Phase 16 retro). A new
 pre-launch need goes to a later phase unless it blocks a row here.
@@ -983,94 +981,113 @@ pre-launch need goes to a later phase unless it blocks a row here.
 | # | Task | Est | Closes | Status |
 |---|------|-----|--------|--------|
 | 19.0 | **Deposits — spec.** A decision record superseding DEC-155, a new `docs/SPEC.md` section, and the full-payment sentences rewritten. Settles the saved card, failed and declined balance charges, the cancel terms, phone bookings and payment links, and which tax rate a finalized trip uses | 5 | — | [ ] [#1235](https://github.com/mobiustripper42/muster/issues/1235) |
-| 19.1 | **Deposits — build.** Three or more tasks, added once 19.0 is approved: the deposit charge with a saved card; automatic balance collection (issue #712); past-due and failed-charge notifications and a dashboard. Money F29 and capability A13 fold in | — | #712 | [ ] |
-| 19.2 | **The reconciler.** Money F3 (15.16 is marked shipped and was never built) and F20 (a payment that matches no booking is acked silently) | 8 | — | [ ] [#1236](https://github.com/mobiustripper42/muster/issues/1236) |
-| 19.3 | **A stale payment that succeeds late is refunded and alerted.** Money F2 | 5 | — | [ ] [#1237](https://github.com/mobiustripper42/muster/issues/1237) |
-| 19.4 | **A booking blocks its boat for its hold minutes, not its trip time.** Money F1 | 3 | — | [ ] [#1238](https://github.com/mobiustripper42/muster/issues/1238) |
-| 19.5 | **A failed confirmation send is not counted as told, and is retried.** Money F4 | 3 | — | [ ] [#1239](https://github.com/mobiustripper42/muster/issues/1239) |
-| 19.6 | **A failed refund is a work item someone sees, and a retry is not refused.** Money F5 and U2 | 5 | — | [ ] [#1240](https://github.com/mobiustripper42/muster/issues/1240) |
-| 19.7 | **A booked trip reads its frozen tax and balance, not today's setting.** Money F6 | 3 | — | [ ] [#1241](https://github.com/mobiustripper42/muster/issues/1241) |
-| 19.8 | **Money copy.** Money F7, F11, F14, F27 | 3 | — | [ ] [#1242](https://github.com/mobiustripper42/muster/issues/1242) |
-| 19.9 | **Admin lists tell the truth.** `/admin/integrity` and `/admin/purchases`: money F12, F13 | 3 | — | [ ] [#1243](https://github.com/mobiustripper42/muster/issues/1243) |
-| 19.10 | **Spec and comment sweep.** Money F16, F22, F23, F28; capability A20 | 2 | — | [ ] [#1244](https://github.com/mobiustripper42/muster/issues/1244) |
-| 19.11 | **End-to-end refund check.** Its own issue, per the operator's order of 2026-10-11 | 3 | — | [ ] [#1245](https://github.com/mobiustripper42/muster/issues/1245) |
-| 19.12 | **A stranger's booking cannot join your customer record.** Checkout merges on an unverified phone (`src/customers/resolve.ts`); 16.9 closed the cancel path, not the merge. Deferred out of Phase 16 on 2026-10-31; back in for launch (operator, 2026-11-08) | 5 | #1213 | [ ] [#1213](https://github.com/mobiustripper42/muster/issues/1213) |
-| 19.13 | **A goodwill refund takes an amount off the trip; tax, fee and tip follow it.** What Drew types is the amount off the trip, not the amount back to the card (operator, 2026-11-04); DEC-199 | 5 | #1222 | [ ] [#1222](https://github.com/mobiustripper42/muster/issues/1222) |
-| 19.14 | **Purchases is useful.** Time windows (this week…), grouping, sorting | 3 | #1142 | [ ] [#1142](https://github.com/mobiustripper42/muster/issues/1142) |
-| 19.15 | **Calendar: the List runs forward from today, and a date picker jumps to any day** | 3 | #1157 | [ ] [#1157](https://github.com/mobiustripper42/muster/issues/1157) |
-| 19.16 | **Breadcrumbs and browser title** | 3 | #502 | [ ] [#502](https://github.com/mobiustripper42/muster/issues/502) |
+| 19.1 | **The deposit at checkout.** The four settings — deposit (fixed or percent, $100 default), balance due, retries, release; the invoice's amount due now; the three whole-quote exceptions and the insurance floor; the due-date and release-date columns; the card saved on the deposit charge; the balance line above the pay button; DEC-200's check covering the balance | 8 | — | [ ] [#1250](https://github.com/mobiustripper42/muster/issues/1250) |
+| 19.2 | **The payment link takes the deposit.** The window judged when the link is paid; the card saved | 3 | — | [ ] [#1251](https://github.com/mobiustripper42/muster/issues/1251) |
+| 19.3 | **The manage page and cancel with a deposit.** What is paid, what is due, the due date; a cancel with only the deposit paid | 3 | — | [ ] [#1252](https://github.com/mobiustripper42/muster/issues/1252) |
+| 19.4 | **Deposits in no revenue or tax report.** Tax reports cover finalized trips only | 3 | — | [ ] [#1253](https://github.com/mobiustripper42/muster/issues/1253) |
+| 19.5 | **A booked trip reads its frozen tax and balance, not today's setting.** Money F6 | 3 | — | [ ] [#1241](https://github.com/mobiustripper42/muster/issues/1241) |
+| 19.6 | **The scheduled balance charge.** The off-session charge on the due date, the retries, no retry when the bank asks the customer to approve, the manage page paying the balance; the Stripe Checkout balance link goes. Money F29 and capability A13. Reads the frozen rate, which 19.5 (money F6) fixes | 8 | #712 | [ ] [#1254](https://github.com/mobiustripper42/muster/issues/1254) |
+| 19.7 | **The release.** The auto-cancel at the release date and an admin's stop; the release notice; on every failed charge the customer is texted and emailed a link to pay, and the admins are emailed; admin email on every release | 5 | — | [ ] [#1255](https://github.com/mobiustripper42/muster/issues/1255) |
+| 19.8 | **The past-due list on purchases.** A screen: its filter, order and wording are specced with the task | 3 | — | [ ] [#1256](https://github.com/mobiustripper42/muster/issues/1256) |
 
-**Phase 19 total: 17 rows, 62 points before 19.1** (~78 with 19.1's rough 16). 19.12–19.16 added 2026-11-08 at the operator's call. Drafted at the Phase 16
-retro, 2026-11-08. Hand step, no row: confirm production's tax setting reads 8% (money F15).
+**Phase 19 total: 9 tasks, 41 points.** Split 2026-11-09 from the 19.0 spec. Hand step, no row: the
+published terms' new sentence (`docs/SPEC.md §2.8.4d`) goes on brewcle.com — the operator's.
 
 ---
 
-## Phase 20: The overnight audits
+## Phase 20: The money findings that block launch
+
+The money rows are the `Feb 1` findings in `docs/audit/README.md`'s ledger — each is re-read against
+current code when its task is specced, not trusted from the one-line summary. They were Phase 19's
+rows 19.2–19.16 until deposits took Phase 19 (2026-11-09); money F6 moved into Phase 19 as 19.5, because the balance charge reads the frozen rate.
+
+| # | Task | Est | Closes | Status |
+|---|------|-----|--------|--------|
+| 20.1 | **The reconciler.** Money F3 (15.16 is marked shipped and was never built) and F20 (a payment that matches no booking is acked silently) | 8 | — | [ ] [#1236](https://github.com/mobiustripper42/muster/issues/1236) |
+| 20.2 | **A stale payment that succeeds late is refunded and alerted.** Money F2 | 5 | — | [ ] [#1237](https://github.com/mobiustripper42/muster/issues/1237) |
+| 20.3 | **A booking blocks its boat for its hold minutes, not its trip time.** Money F1 | 3 | — | [ ] [#1238](https://github.com/mobiustripper42/muster/issues/1238) |
+| 20.4 | **A failed confirmation send is not counted as told, and is retried.** Money F4 | 3 | — | [ ] [#1239](https://github.com/mobiustripper42/muster/issues/1239) |
+| 20.5 | **A failed refund is a work item someone sees, and a retry is not refused.** Money F5 and U2 | 5 | — | [ ] [#1240](https://github.com/mobiustripper42/muster/issues/1240) |
+| 20.6 | **Money copy.** Money F7, F11, F14, F27 | 3 | — | [ ] [#1242](https://github.com/mobiustripper42/muster/issues/1242) |
+| 20.7 | **Admin lists tell the truth.** `/admin/integrity` and `/admin/purchases`: money F12, F13 | 3 | — | [ ] [#1243](https://github.com/mobiustripper42/muster/issues/1243) |
+| 20.8 | **Spec and comment sweep.** Money F16, F22, F23, F28; capability A20 | 2 | — | [ ] [#1244](https://github.com/mobiustripper42/muster/issues/1244) |
+| 20.9 | **End-to-end refund check.** Its own issue, per the operator's order of 2026-10-11 | 3 | — | [ ] [#1245](https://github.com/mobiustripper42/muster/issues/1245) |
+| 20.10 | **A stranger's booking cannot join your customer record.** Checkout merges on an unverified phone (`src/customers/resolve.ts`); 16.9 closed the cancel path, not the merge. Deferred out of Phase 16 on 2026-10-31; back in for launch (operator, 2026-11-08) | 5 | #1213 | [ ] [#1213](https://github.com/mobiustripper42/muster/issues/1213) |
+| 20.11 | **A goodwill refund takes an amount off the trip; tax, fee and tip follow it.** What Drew types is the amount off the trip, not the amount back to the card (operator, 2026-11-04); DEC-199 | 5 | #1222 | [ ] [#1222](https://github.com/mobiustripper42/muster/issues/1222) |
+| 20.12 | **Purchases is useful.** Time windows (this week…), grouping, sorting | 3 | #1142 | [ ] [#1142](https://github.com/mobiustripper42/muster/issues/1142) |
+| 20.13 | **Calendar: the List runs forward from today, and a date picker jumps to any day** | 3 | #1157 | [ ] [#1157](https://github.com/mobiustripper42/muster/issues/1157) |
+| 20.14 | **Breadcrumbs and browser title** | 3 | #502 | [ ] [#502](https://github.com/mobiustripper42/muster/issues/502) |
+
+**Phase 20 total: 14 tasks, 54 points.** 20.10–20.14 added 2026-11-08 at the operator's call. Drafted
+at the Phase 16 retro, 2026-11-08. Hand step, no row: confirm production's tax setting reads 8% (money
+F15).
+
+---
+
+## Phase 21: The overnight audits
 
 Five audits run as scheduled cloud sessions, one a night, 2026-11-10 to 11-14: plan vs. code,
 silent failures, test vs. production database, operator-side reservations, and paired saves. Their
 prompts are in `docs/audit/prompts/2026-11-1*.md`. Each pushes a report to an `audit/<name>` branch.
-Their own phase, after Phase 19, so their fixes land in December rather than beside the January
-wording pass, and so their triage cannot grow Phase 19 or 21 (operator, 2026-11-08).
+Their own phase, after Phases 19 and 20, so their fixes land before the wording pass, and so their
+triage cannot grow Phase 20 or 22 (operator, 2026-11-08).
 
 | # | Task | Est | Closes | Status |
 |---|------|-----|--------|--------|
-| 20.0 | **Bring in the five reports and triage them.** Each report into `docs/audit/`, its findings into the ledger with a **When**, and every `Feb 1` finding added below as a row of this phase | 3 | — | [ ] |
+| 21.0 | **Bring in the five reports and triage them.** Each report into `docs/audit/`, its findings into the ledger with a **When**, and every `Feb 1` finding added below as a row of this phase | 3 | — | [ ] |
 
-**Phase 20 total: 3 points until 20.0 runs** — sized once the reports land, about 2026-11-15.
+**Phase 21 total: 3 points until 21.0 runs** — sized once the reports land, about 2026-11-15.
 
 ---
 
-## Phase 21: Launch hardening and cutover
+## Phase 22: Launch hardening and cutover
 
 The `Feb 1` capability-URL findings, the cutover issues, and the production settings. Xola holds
 two reservations, and import already works for them (operator, 2026-11-07).
 
 | # | Task | Est | Closes | Status |
 |---|------|-----|--------|--------|
-| 21.1 | **Secrets and request hardening.** Capability A14 (refuse to start without a real `SESSION_SECRET`), A16 (constant-time `CRON_SECRET` compare), A17 (`?error=__proto__`), and A1's cleanup (the dev-code route answers only in local development) | 3 | — | [ ] |
-| 21.2 | **The pay link.** Capability A6: mask the phone and email, let the operator revoke one, one live link per booking | 5 | — | [ ] |
-| 21.3 | **Not indexable.** Capability A10: `noindex`, `robots.txt`, security headers | 2 | — | [ ] |
-| 21.4 | **Nobody sees another customer's data.** Capability A11's three paths, read in the report first | 3 | — | [ ] |
-| 21.5 | **`/api/health` stops opening a database connection per anonymous request.** Capability A15 | 1 | — | [ ] |
-| 21.6 | **Xola cutover.** The one-time Xola import of the two Xola bookings, refined a little, as issue #467 specifies (DEC-126). The issue's label says 5; the operator calls it a non-issue | 3 | #467 | [ ] [#467](https://github.com/mobiustripper42/muster/issues/467) |
-| 21.7 | **Go-live runbook.** Seed the catalog, verify the Stripe dashboard, guard test-vs-live keys | 3 | #623 | [ ] [#623](https://github.com/mobiustripper42/muster/issues/623) |
-| 21.8 | **Audit the live Vercel env against `docs/DEPLOY.md`** | 2 | #545 | [ ] [#545](https://github.com/mobiustripper42/muster/issues/545) |
-| 21.9 | **Xola's end state.** DEC-124 as written is wrong; decide what actually happens | 2 | #837 | [ ] [#837](https://github.com/mobiustripper42/muster/issues/837) |
-| 21.10 | **Set the booking cutoff to 24 hours in production** | 1 | #1170 | [ ] [#1170](https://github.com/mobiustripper42/muster/issues/1170) |
+| 22.1 | **Secrets and request hardening.** Capability A14 (refuse to start without a real `SESSION_SECRET`), A16 (constant-time `CRON_SECRET` compare), A17 (`?error=__proto__`), and A1's cleanup (the dev-code route answers only in local development) | 3 | — | [ ] |
+| 22.2 | **The pay link.** Capability A6: mask the phone and email, let the operator revoke one, one live link per booking | 5 | — | [ ] |
+| 22.3 | **Not indexable.** Capability A10: `noindex`, `robots.txt`, security headers | 2 | — | [ ] |
+| 22.4 | **Nobody sees another customer's data.** Capability A11's three paths, read in the report first | 3 | — | [ ] |
+| 22.5 | **`/api/health` stops opening a database connection per anonymous request.** Capability A15 | 1 | — | [ ] |
+| 22.6 | **Xola cutover.** The one-time Xola import of the two Xola bookings, refined a little, as issue #467 specifies (DEC-126). The issue's label says 5; the operator calls it a non-issue | 3 | #467 | [ ] [#467](https://github.com/mobiustripper42/muster/issues/467) |
+| 22.7 | **Go-live runbook.** Seed the catalog, verify the Stripe dashboard, guard test-vs-live keys | 3 | #623 | [ ] [#623](https://github.com/mobiustripper42/muster/issues/623) |
+| 22.8 | **Audit the live Vercel env against `docs/DEPLOY.md`** | 2 | #545 | [ ] [#545](https://github.com/mobiustripper42/muster/issues/545) |
+| 22.9 | **Xola's end state.** DEC-124 as written is wrong; decide what actually happens | 2 | #837 | [ ] [#837](https://github.com/mobiustripper42/muster/issues/837) |
+| 22.10 | **Set the booking cutoff to 24 hours in production** | 1 | #1170 | [ ] [#1170](https://github.com/mobiustripper42/muster/issues/1170) |
 
-**Phase 21 total: 10 tasks, 25 points.** Drafted 2026-11-08. Phase 22 (the customer's trip, and the
+**Phase 22 total: 10 tasks, 25 points.** Drafted 2026-11-08. Phase 23 (the customer's trip, and the
 UI and wording pass) follows, then the walk-through demo for Drew.
 
 ---
 
-## Phase 22: The customer's trip, and the UI and wording pass
+## Phase 23: The customer's trip, and the UI and wording pass
 
 The customer rows are issue #1216's proposed list. The operator's full UI review runs here, before
 the walk-through demo for Drew; its fixes get rows of their own.
 
 | # | Task | Est | Closes | Status |
 |---|------|-----|--------|--------|
-| 22.1 | **After paying, land on the booking itself** (`/b/<code>`), not a check-your-texts card | 3 | #1177 | [ ] [#1177](https://github.com/mobiustripper42/muster/issues/1177) |
-| 22.2 | **Polish the customer's booking page** | 3 | #1138 | [ ] [#1138](https://github.com/mobiustripper42/muster/issues/1138) |
-| 22.3 | **Book & pay: name and phone fail silently off-screen** | 2 | #1077 | [ ] [#1077](https://github.com/mobiustripper42/muster/issues/1077) |
-| 22.4 | **Checkout at 375 and ~900, with the price before the card** | 5 | #794 | [ ] [#794](https://github.com/mobiustripper42/muster/issues/794) |
-| 22.5 | **Tell a declined customer their departure is still held** | 2 | #964 | [ ] [#964](https://github.com/mobiustripper42/muster/issues/964) |
-| 22.6 | **Catch a mistyped mobile number at checkout** | 3 | #1129 | [ ] [#1129](https://github.com/mobiustripper42/muster/issues/1129) |
-| 22.7 | **`/book` calendar: swipe, and a better month pager** | 3 | #785 | [ ] [#785](https://github.com/mobiustripper42/muster/issues/785) |
-| 22.8 | **The "too big" calendar day is a dead cell** | 2 | #752 | [ ] [#752](https://github.com/mobiustripper42/muster/issues/752) |
-| 22.9 | **A sold-out notice offers what is still open that day** | 3 | #667 | [ ] [#667](https://github.com/mobiustripper42/muster/issues/667) |
-| 22.10 | **"Cruise" → "trip" in customer copy** | 1 | #1215 | [ ] [#1215](https://github.com/mobiustripper42/muster/issues/1215) |
-| 22.11 | **`/book` keeps the guest's details when they go back** | 2 | #1203 | [ ] [#1203](https://github.com/mobiustripper42/muster/issues/1203) |
-| 22.12 | **The running list of small UI things** | 3 | #1226 | [ ] [#1226](https://github.com/mobiustripper42/muster/issues/1226) |
-| 22.13 | **The UI and wording review.** The operator's pass over every screen with `@ui-reviewer`; fixes become rows | 5 | — | [ ] |
-| 22.14 | **The walk-through demo for Drew.** A script and demo data | 2 | — | [ ] |
+| 23.1 | **After paying, land on the booking itself** (`/b/<code>`), not a check-your-texts card | 3 | #1177 | [ ] [#1177](https://github.com/mobiustripper42/muster/issues/1177) |
+| 23.2 | **Polish the customer's booking page** | 3 | #1138 | [ ] [#1138](https://github.com/mobiustripper42/muster/issues/1138) |
+| 23.3 | **Book & pay: name and phone fail silently off-screen** | 2 | #1077 | [ ] [#1077](https://github.com/mobiustripper42/muster/issues/1077) |
+| 23.4 | **Checkout at 375 and ~900, with the price before the card** | 5 | #794 | [ ] [#794](https://github.com/mobiustripper42/muster/issues/794) |
+| 23.5 | **Tell a declined customer their departure is still held** | 2 | #964 | [ ] [#964](https://github.com/mobiustripper42/muster/issues/964) |
+| 23.6 | **Catch a mistyped mobile number at checkout** | 3 | #1129 | [ ] [#1129](https://github.com/mobiustripper42/muster/issues/1129) |
+| 23.7 | **`/book` calendar: swipe, and a better month pager** | 3 | #785 | [ ] [#785](https://github.com/mobiustripper42/muster/issues/785) |
+| 23.8 | **The "too big" calendar day is a dead cell** | 2 | #752 | [ ] [#752](https://github.com/mobiustripper42/muster/issues/752) |
+| 23.9 | **A sold-out notice offers what is still open that day** | 3 | #667 | [ ] [#667](https://github.com/mobiustripper42/muster/issues/667) |
+| 23.10 | **"Cruise" → "trip" in customer copy** | 1 | #1215 | [ ] [#1215](https://github.com/mobiustripper42/muster/issues/1215) |
+| 23.11 | **`/book` keeps the guest's details when they go back** | 2 | #1203 | [ ] [#1203](https://github.com/mobiustripper42/muster/issues/1203) |
+| 23.12 | **The running list of small UI things** | 3 | #1226 | [ ] [#1226](https://github.com/mobiustripper42/muster/issues/1226) |
+| 23.13 | **The UI and wording review.** The operator's pass over every screen with `@ui-reviewer`; fixes become rows | 5 | — | [ ] |
+| 23.14 | **The walk-through demo for Drew.** A script and demo data | 2 | — | [ ] |
 
-**Phase 22 total: 14 tasks, 39 points.** Drafted 2026-11-08. Then: release, 2027-02-01.
+**Phase 23 total: 14 tasks, 39 points.** Drafted 2026-11-08. Then: release, 2027-02-01.
 
-**Phases 19–22: about 145 points plus Phase 20's fixes, in 12 weeks.** At Phase 16's pace (79 points
-in 46 days) that is the whole window with no slack. The lever is 19.1: decide after 19.0 which
-deposit pieces must be ready on Feb 1 — a February booking's balance is not due until April.
+**Phases 19–23: 162 points plus Phase 21's fixes.**
 
 ---
 

@@ -103,7 +103,7 @@ line naming the replacement. When the spec does not say whether the behaviour su
 a `[you]` item above, with your recommendation. A removal changes what that test checks, not what
 a criterion does, so it earns no second round on its own.
 
-Keep every `[code]` and `[Lead]` line, word for word, for the receipt.
+Keep every `[code]` and `[Lead]` line, word for word, for the pull request body (Step 6).
 
 **Rounds.** One round by default. Run a second only when round 1 changed what an acceptance
 criterion does — a criterion's text, or a `[code]`/`[Lead]` line that adds behaviour no criterion
@@ -146,7 +146,10 @@ Check, in order:
 1. **Coverage both ways.** Every acceptance criterion has at least one test, except one marked
    `(by hand)`, which is checked at the hand-back instead. Every test names the criterion it
    covers. A gap either way goes back to `@test-writer`. A test file that existed before this run
-   and appears in its Files list was edited: that is a stub report, not a test — unless Interfaces'
+   and appears in its Files list: read `git diff "$START" -- <file>`. Tests added to it, with the
+   imports and helpers they need, are new tests, not an edit — but only in a file Interfaces'
+   Files touched names; added anywhere else goes back to `@test-writer`. A change to an existing
+   test's name or body is an edit, and that is a stub report, not a test — unless Interfaces'
    Removes line lists it, and the edit is the deletion or retarget that line names. A retargeted
    test keeps its own name, with no criterion id, and is exempt from the naming rule and from
    check 2: it guards behaviour that already exists, so it may pass against the stubs.
@@ -182,7 +185,14 @@ It returns one of:
   Then stop, and bring the Stop to the operator with the stash's ref, the patch's path and
   `START`. They decide whether the spec or the test was wrong, how it is fixed, and whether the
   build comes back. A Stop is not a failed round. A run started again after it keeps this run's
-  `START`, so Step 5 still folds the earlier commits in.
+  `START`, so Step 5 still folds the earlier commits in. When they rule a test wrong, the fix goes
+  to `@test-writer` with their ruling as its brief and the stub list, saying the stubs went into
+  the stash with the build: it fixes that test and writes the stubs again. Step 2's checks 1 to 3
+  run on what it returns; the Lead commits it, that commit is the new `TESTS`, and any file it
+  lists joins the test files. If the build comes back, first put each stub file back as `HEAD`
+  has it (`git checkout HEAD -- <file>`, or delete one `HEAD` lacks), then `git stash apply
+  "$REF"`. Then Step 3 again. A test the Lead fixes by hand is never locked, and Step 4 then reads
+  it as a violation.
 
 ## Step 4 — Verify
 
@@ -204,12 +214,14 @@ which.
 ## Step 5 — Ship
 
 First `git reset --soft "$START"`, so the work already in the tree, the tests and the code ship as
-one commit and `/kill-this`'s `git diff HEAD~1` shows all three. Then run `/kill-this`. When it
-reaches code-review findings, route each one:
+one commit and `/kill-this`'s `git diff HEAD~1` shows all three. This is the only reset: by the
+time a review route runs, `/kill-this` has pushed that commit, and folding again would rewrite a
+pushed branch (seen in Haul). A route's test commit and its fix commit ship as commits of their
+own on top. Then run `/kill-this`. When it reaches code-review findings, route each one:
 
 | Finding | Goes to |
 |---|---|
-| Real bug a test should have caught | `@test-writer` (new test, no stubs — it must fail against the current code on its own assertion; committed on its own; `TESTS` is that commit, and its file joins the test files), then `@implementer` |
+| Real bug a test should have caught | `@test-writer` (new test, no stubs, in the test file the Lead's brief names — it must fail against the current code on its own assertion; the Lead commits it on its own; `TESTS` is that commit, and its file joins the test files), then `@implementer` |
 | Real bug, tests are fine | fresh `@implementer`, finding as its brief |
 | One-line cleanup, naming, a constant | fix it yourself |
 | Architectural | escalate to `@architect`, as `@code-review` already says |
@@ -224,26 +236,36 @@ Print it every time, before the hand-back, and append it to the pull request bod
 ```
 /build-task receipt — issue #<N>
   readback      — <rounds>, <questions asked>
-  settled       — none | each [code] and [Lead] line added during the run, word for word, one per line
+  settled       — none | <n>, word for word in the pull request body
   removals      — none | each removed thing the Removal check searched, with its tests or "used by no test"
   test-writer   — <tests> tests across <criteria> criteria
   stubs         — <n> written, <n> left as stubs, <n> tests passing beside a partner
   implementer   — <rounds> rounds, <stops> stops (a run started again after a Stop counts it)
   test lock     — intact | violated (<file>)
   review routes — <n> to test-writer, <n> to implementer, <n> fixed by Lead
-  cost          — <first line of cost.mjs>
-<the rest of cost.mjs's lines, as printed>
+  cost          — <cost.mjs>
 ```
 
-For the cost, run this from the repo root after `/kill-this` has opened the pull request, with the
-time Step 0 printed:
+Write every line but the cost, after `/kill-this` has opened the pull request, into a file in the
+scratchpad, keeping the cost line exactly as the template has it. Then, from the repo root, with
+the time Step 0 printed:
 
-    node .claude/skills/build-task/cost.mjs --since <time> 2>/dev/null || echo "unavailable — cost.mjs did not run"
+    node .claude/skills/build-task/cost.mjs --since <time> --receipt <file> 2>/dev/null || echo "unavailable — cost.mjs did not run"
 
-It reads this session's transcripts and prints the output tokens each role wrote and the active
-minutes, which include short waits on the operator but not long ones. Whatever it prints goes in
-the receipt as is, `unavailable — <why>` included, and the run carries on.
+It reads this session's transcripts and writes the output tokens each role wrote and the active
+minutes, which include short waits on the operator but not long ones, into the file in place of
+`<cost.mjs>`. Never type or reshape those lines: in Haul they were retyped in four shapes, and the
+receipts could not be compared. Whatever it writes stays, `unavailable — <why>` included, and the
+run carries on. If it printed the `echo` line, it never ran: put that line where `<cost.mjs>` was.
+If it printed `no receipt file at`, `could not write receipt` or `no cost placeholder`, fix the file
+and run it again; once more failing, the cost line is `unavailable — <what it printed>`. The new
+body for `gh pr edit` is the current body, then `## /build-task receipt`, then that file, then,
+unless `settled` is none, `### Settled, word for word` with each `[code]` and `[Lead]` line added
+during the run, one per line; print the file as the receipt.
 
 The receipt is also what this workflow spent, in a shape the old loop's session file can be
 compared against. `settled` is the operator's audit of the calls made without them — every
-`[Lead]` line, and a judgment call filed as `[code]`, shows up there.
+`[Lead]` line, and a judgment call filed as `[code]`, shows up there. The lines go in the pull
+request body and not the printed receipt because in Haul the block ran long and hand-backs
+summarised it, and a summary of a call made without the operator is not an audit of it. The
+hand-back links to that section instead of restating it.

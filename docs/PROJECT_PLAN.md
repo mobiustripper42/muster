@@ -981,12 +981,12 @@ pre-launch need goes to a later phase unless it blocks a row here.
 | # | Task | Est | Closes | Status |
 |---|------|-----|--------|--------|
 | 19.0 | **Deposits — spec.** A decision record superseding DEC-155, a new `docs/SPEC.md` section, and the full-payment sentences rewritten. Settles the saved card, failed and declined balance charges, the cancel terms, phone bookings and payment links, and which tax rate a finalized trip uses | 5 | — | [ ] [#1235](https://github.com/mobiustripper42/muster/issues/1235) |
-| 19.1 | **The deposit at checkout.** The deposit setting (fixed or percent, $100 default); the invoice's amount due now; the three whole-quote exceptions and the insurance floor; the due-date and release-date columns; the card saved on the deposit charge; the balance line above the pay button; DEC-200's check covering the balance | 8 | — | [ ] [#1250](https://github.com/mobiustripper42/muster/issues/1250) |
+| 19.1 | **The deposit at checkout.** The four settings — deposit (fixed or percent, $100 default), balance due, retries, release; the invoice's amount due now; the three whole-quote exceptions and the insurance floor; the due-date and release-date columns; the card saved on the deposit charge; the balance line above the pay button; DEC-200's check covering the balance | 8 | — | [ ] [#1250](https://github.com/mobiustripper42/muster/issues/1250) |
 | 19.2 | **The payment link takes the deposit.** The window judged when the link is paid; the card saved | 3 | — | [ ] [#1251](https://github.com/mobiustripper42/muster/issues/1251) |
 | 19.3 | **The manage page and cancel with a deposit.** What is paid, what is due, the due date; a cancel with only the deposit paid | 3 | — | [ ] [#1252](https://github.com/mobiustripper42/muster/issues/1252) |
 | 19.4 | **Deposits in no revenue or tax report.** Tax reports cover finalized trips only | 3 | — | [ ] [#1253](https://github.com/mobiustripper42/muster/issues/1253) |
-| 19.5 | **The scheduled balance charge.** The off-session charge on the due date, the retries, the manage page paying the balance; the Stripe Checkout balance link goes. Money F29 and capability A13. Reads the frozen rate, so 20.6 (money F6) lands first | 8 | #712 | [ ] [#1254](https://github.com/mobiustripper42/muster/issues/1254) |
-| 19.6 | **The release.** The auto-cancel at the release date and an admin's stop; the release notice; admin email on every failure and every release | 5 | — | [ ] [#1255](https://github.com/mobiustripper42/muster/issues/1255) |
+| 19.5 | **The scheduled balance charge.** The off-session charge on the due date, the retries, no retry when the bank asks the customer to approve, the manage page paying the balance; the Stripe Checkout balance link goes. Money F29 and capability A13. Reads the frozen rate, so 20.6 (money F6) lands first | 8 | #712 | [ ] [#1254](https://github.com/mobiustripper42/muster/issues/1254) |
+| 19.6 | **The release.** The auto-cancel at the release date and an admin's stop; the release notice; on every failed charge the customer is texted and emailed a link to pay, and the admins are emailed; admin email on every release | 5 | — | [ ] [#1255](https://github.com/mobiustripper42/muster/issues/1255) |
 | 19.7 | **The past-due list on purchases.** A screen: its filter, order and wording are specced with the task | 3 | — | [ ] [#1256](https://github.com/mobiustripper42/muster/issues/1256) |
 
 **Phase 19 total: 8 tasks, 38 points.** Split 2026-11-09 from the 19.0 spec. Hand step, no row: the
@@ -1088,6 +1088,7 @@ the walk-through demo for Drew; its fixes get rows of their own.
 **Phase 23 total: 14 tasks, 39 points.** Drafted 2026-11-08. Then: release, 2027-02-01.
 
 **Phases 19–23: 162 points plus Phase 21's fixes.**
+
 ---
 
 ## Phase Boundary Checklist

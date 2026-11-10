@@ -1857,4 +1857,32 @@ describe("createDeparturePaymentIntent — the deposit at checkout (issue #1250)
     expect(row.balanceDueAt).toBeUndefined();
     expect(row.balanceReleaseAt).toBeUndefined();
   });
+
+  // From review (2026-11-10): the customer is stored on the row as soon as it is created, before the
+  // mint. Stripe refuses a repeated idempotency key with different parameters, so a retry that
+  // restated the name and email must find the customer on the row, not send `customer_<id>` again.
+  it("AC9: a retry after a failed mint, with a restated name and email, reuses the customer the first attempt made", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    vi.spyOn(pay, "createPaymentIntent").mockRejectedValueOnce(new Error("stripe: 503"));
+
+    await expect(createDeparturePaymentIntent(repo, pay, deposit, far)).rejects.toThrow("stripe: 503");
+    const afterFailedMint = await onlyRow(repo);
+    const customerId = `cus_fake_customer_${afterFailedMint.id}`;
+    expect(afterFailedMint.stripeCustomerId).toBe(customerId);
+
+    const again = await createDeparturePaymentIntent(
+      repo,
+      pay,
+      { ...deposit, customerName: "Mary Smith", email: "mary.smith@x.io" },
+      far,
+    );
+    expect(again.ok).toBe(true);
+
+    const row = await onlyRow(repo);
+    expect(row.customerName).toBe("Mary Smith");
+    expect(pay.createdCustomers).toEqual([{ idempotencyKey: `customer_${row.id}`, name: "Mary" }]);
+    expect(row.stripeCustomerId).toBe(customerId);
+    expect(pay.intents.at(-1)).toMatchObject({ amountCents: 10000, customerId, setupFutureUsage: "off_session" });
+  });
 });

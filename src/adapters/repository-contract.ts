@@ -983,6 +983,18 @@ export function runRepositoryContract(
       expect((await repo.getReservation(rid("pend-1")))!.stripeCustomerId).toBe("cus_first");
     });
 
+    // From review (2026-11-10): the customer is stored the moment it is created, before the intent
+    // is minted, so a retry after a failed mint finds it on the row rather than re-sending
+    // `customer_<reservationId>` with the restated name — which Stripe refuses.
+    it("AC9: saveStripeCustomerId stores the provider customer on the row and keeps the first", async () => {
+      await repo.saveReservation(firstAttempt());
+      await repo.saveStripeCustomerId(rid("pend-1"), "cus_first");
+      expect((await repo.getReservation(rid("pend-1")))!.stripeCustomerId).toBe("cus_first");
+
+      await repo.saveStripeCustomerId(rid("pend-1"), "cus_second");
+      expect((await repo.getReservation(rid("pend-1")))!.stripeCustomerId).toBe("cus_first");
+    });
+
     // ── checkout_attempts — the count the screen actually claims to show (15.9, issue #977) ──
     // `/admin/abandonment` has always said "Card form counts payment attempts" while deriving that
     // number from `paymentIntentIds.length`. 15.8 made the two disagree: a retry that reuses its

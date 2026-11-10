@@ -15,7 +15,7 @@ import { createDeparturePaymentIntent } from "@core/reservations/create-departur
 import { applyDiscount } from "@core/reservations/discount.js";
 import { payLinkMoney } from "@core/reservations/pay-by-link.js";
 import { PAYMENT_CONFIG_DEFAULTS, type PaymentConfig } from "@core/reservations/payment-config.js";
-import { depositCopy, totalsFor } from "./money";
+import { depositCopy, elementsOptions, totalsFor } from "./money";
 
 const V = asId<"VesselId">("v");
 const vessel: Vessel = { id: V, name: "Boat", coiMaxPax: 12, manning: [] };
@@ -229,5 +229,27 @@ describe("depositCopy", () => {
     expect(depositCopy(m, totalsFor(m, TIP_20, m.flexCents, true))?.termsLine).toBe(
       "We'll charge the balance of $586.01 to this card on Mon, Oct 12.",
     );
+  });
+});
+
+/**
+ * The payment form's options (issue #1250, from review 2026-11-10) — one home, so the `<Elements>`
+ * the form mounts and the intent the server mints agree. Stripe's deferred Elements docs:
+ * `setupFutureUsage` "should match the setup_future_usage provided on the Intent used when
+ * confirming payment". With the deposit the form offers cards only; pay in full keeps today's methods.
+ */
+describe("elementsOptions", () => {
+  it("AC9: with the deposit chosen the form saves the card for later and offers cards only", () => {
+    expect(elementsOptions(10000, true)).toEqual({
+      mode: "payment",
+      amount: 10000,
+      currency: "usd",
+      setupFutureUsage: "off_session",
+      paymentMethodTypes: ["card"],
+    });
+  });
+
+  it("AC15: with pay in full the form saves nothing and keeps the methods it shows today", () => {
+    expect(elementsOptions(65294, false)).toEqual({ mode: "payment", amount: 65294, currency: "usd" });
   });
 });

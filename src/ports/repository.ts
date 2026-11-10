@@ -459,6 +459,14 @@ export interface Repository {
   recordCheckoutAttempt(attempt: Reservation, paymentIntentId: string | null): Promise<void>;
 
   /**
+   * **Store the provider customer on the row the moment it exists** (issue #1250), before the intent
+   * is minted — so a retry after a failed mint finds it here instead of re-sending
+   * `customer_<reservationId>` with a restated name, which Stripe refuses. First one kept
+   * (`coalesce`), on any status: it is a fact about the provider, not one of the customer's answers.
+   */
+  saveStripeCustomerId(reservationId: ReservationId, customerId: string): Promise<void>;
+
+  /**
    * **Claim the right to send this customer their booking confirmation** (15.3, issue #971).
    *
    * Returns `true` only for the caller whose write transitioned the row from "nobody told" to

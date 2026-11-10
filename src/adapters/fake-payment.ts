@@ -212,6 +212,7 @@ export class FakePaymentPort implements PaymentPort {
   /** Every `createCustomer` call, in order, WITHOUT deduping on the key (issue #1250) — a test that
    *  asserts "one customer" is asserting the caller made one call, not that the fake collapsed two. */
   readonly createdCustomers: { idempotencyKey: string; name: string }[] = [];
+  readonly #customerParams = new Map<string, string>();
 
   async createCustomer(input: {
     idempotencyKey: string;
@@ -221,6 +222,15 @@ export class FakePaymentPort implements PaymentPort {
     metadata: Record<string, string>;
   }): Promise<{ customerId: string }> {
     this.createdCustomers.push({ idempotencyKey: input.idempotencyKey, name: input.name });
+    // Stripe refuses a key it has seen with different parameters; the fake says so too (issue #1250),
+    // so a caller that restates the customer on a retry fails here rather than only in production.
+    const { idempotencyKey, ...params } = input;
+    const seen = JSON.stringify(params);
+    const earlier = this.#customerParams.get(idempotencyKey);
+    if (earlier !== undefined && earlier !== seen) {
+      throw new Error(`FakePaymentPort: idempotency key ${idempotencyKey} was reused with different parameters`);
+    }
+    this.#customerParams.set(idempotencyKey, seen);
     return { customerId: `cus_fake_${input.idempotencyKey}` };
   }
 

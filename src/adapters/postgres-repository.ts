@@ -1951,6 +1951,13 @@ export class PostgresRepository implements Repository {
     );
   }
 
+  async saveStripeCustomerId(reservationId: ReservationId, customerId: string): Promise<void> {
+    await this.#pool.query(
+      `update reservations set stripe_customer_id = coalesce(stripe_customer_id, $2) where id = $1`,
+      [reservationId, customerId],
+    );
+  }
+
   async claimConfirmationSend(reservationId: ReservationId, atIso: string): Promise<boolean> {
     // **The claim is the `where … is null`, and `returning` is how we learn whether we won it.**
     // One statement, so two callers racing — the signed webhook and `/book/success`, which fire

@@ -496,7 +496,7 @@ export async function attachPaymentIntent(
   // The provider customer a deposit's card is saved to: one per reservation, made on the first
   // deposit attempt and reused by every later one. Made before the old intent is retired, so an
   // outage here leaves the customer's last intent as it was. A customer made for an intent that is
-  // then never minted is harmless: the key makes a repeat return the same one. A pay-in-full attempt
+  // then never minted is kept on the row (`saveStripeCustomerId`) and reused. A pay-in-full attempt
   // creates none and sends none, even when the row already holds one from an earlier deposit attempt.
   let customerId = pending.stripeCustomerId;
   if (balance && customerId === undefined) {
@@ -507,6 +507,9 @@ export async function attachPaymentIntent(
       ...(pending.phone !== undefined ? { phone: pending.phone } : {}),
       metadata: { reservation_id: String(pending.id) },
     }));
+    // Stored at once, before the mint: if the mint fails, the retry finds the customer on the row
+    // instead of re-sending this key with a restated name or email, which Stripe refuses.
+    await repo.saveStripeCustomerId(pending.id, customerId);
   }
   const attempt: Reservation =
     customerId !== undefined && pending.stripeCustomerId === undefined

@@ -925,6 +925,12 @@ export class InMemoryRepository implements Repository {
     this.#reservations.set(attempt.id, clone(next));
   }
 
+  async saveStripeCustomerId(reservationId: ReservationId, customerId: string): Promise<void> {
+    const row = this.#reservations.get(reservationId);
+    if (!row || row.stripeCustomerId !== undefined) return;
+    this.#reservations.set(reservationId, clone({ ...row, stripeCustomerId: customerId }));
+  }
+
   async claimConfirmationSend(reservationId: ReservationId, atIso: string): Promise<boolean> {
     const row = this.#reservations.get(reservationId);
     if (!row) return false;

@@ -306,11 +306,17 @@ export class StripePaymentPort implements PaymentPort {
     // The inline-Elements charge (12.5, DEC-134). `automatic_payment_methods` mirrors the
     // deferred `Elements` mount client-side; the metadata (incl. `purpose`) is what the
     // `payment_intent.succeeded` webhook books from.
+    //
+    // A deposit (`setupFutureUsage` given, issue #1250) is card-only: the form offers cards only
+    // (`elementsOptions`), so the intent names `payment_method_types: ["card"]` instead — Stripe takes
+    // either that or `automatic_payment_methods`, not both (`PaymentIntentCreateParams` in the pinned SDK).
     const intent = await this.#stripe.paymentIntents.create({
       amount: input.amountCents,
       currency: input.currency,
       metadata: input.metadata,
-      automatic_payment_methods: { enabled: true },
+      ...(input.setupFutureUsage !== undefined
+        ? { payment_method_types: ["card"] }
+        : { automatic_payment_methods: { enabled: true } }),
       // #679. `description` is the only human-readable field on a raw PaymentIntent — hosted
       // Checkout gets a line item, this path does not. `receipt_email` is what makes Stripe
       // send the guest a receipt at all; in live mode it sends regardless of the account's

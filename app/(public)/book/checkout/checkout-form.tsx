@@ -39,6 +39,7 @@ import { InsuranceBox } from "../../../../components/checkout/insurance-box";
 import { ContactFields, type ContactValues } from "../../../../components/checkout/contact-fields";
 import {
   depositCopy,
+  elementsOptions,
   totalsFor,
   type CheckoutMoney,
   type ScreenTotals,
@@ -160,9 +161,12 @@ export function CheckoutForm(props: CheckoutFormProps) {
   return (
     <Elements
       stripe={stripePromise}
-      // DEFERRED mode: amount-only, no PaymentIntent at mount. The initial amount is fine to
-      // freeze here — tip changes go through elements.update({ amount }) in the bridge.
-      options={{ mode: "payment", amount: dueNowCents, currency: "usd" }}
+      // Remounted on the choice (issue #1250): the card-saving and the method types must match the
+      // intent the deposit mints, and `elements.update` is not relied on to change them.
+      key={payDeposit ? "deposit" : "full"}
+      // DEFERRED mode: no PaymentIntent at mount. The initial amount is fine to freeze here — tip
+      // changes go through elements.update({ amount }) in the bridge.
+      options={elementsOptions(dueNowCents, payDeposit)}
     >
       <StripeBridge amountCents={dueNowCents}>{inner}</StripeBridge>
     </Elements>
@@ -236,7 +240,7 @@ function PaymentChoice({
           data-testid="pay-deposit"
           aria-pressed={payDeposit}
           onClick={() => onChoose(true)}
-          className={`px-3 py-2.5 text-left ${tileLook(payDeposit)}`}
+          className={`min-h-[44px] px-3 py-2.5 text-left ${tileLook(payDeposit)}`}
         >
           <span className="block text-[15px] font-bold">{copy.depositLabel}</span>
           <span className="block text-xs text-muted">{copy.depositNote}</span>
@@ -246,7 +250,7 @@ function PaymentChoice({
           data-testid="pay-full"
           aria-pressed={!payDeposit}
           onClick={() => onChoose(false)}
-          className={`px-3 py-2.5 text-left ${tileLook(!payDeposit)}`}
+          className={`min-h-[44px] px-3 py-2.5 text-left ${tileLook(!payDeposit)}`}
         >
           <span className="block text-[15px] font-bold">{copy.fullLabel}</span>
         </button>
@@ -427,9 +431,10 @@ function InnerForm(p: InnerProps) {
             payDeposit={p.payDeposit}
             onChoose={(deposit) => {
               p.setDepositChosen(deposit);
-              // The terms box gains a line when the deposit is chosen, so a tick given before it
-              // is not consent to it — the customer ticks the terms they read.
-              if (deposit) setAgreed(false);
+              // The terms box gains a line when the choice changes to the deposit, so a tick given
+              // before it is not consent to it — the customer ticks the terms they read. Re-tapping
+              // the tile already chosen leaves the tick alone.
+              if (deposit && !p.payDeposit) setAgreed(false);
             }}
           />
         ) : null}

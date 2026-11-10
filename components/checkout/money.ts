@@ -20,6 +20,32 @@ export function money(cents: number): string {
   return `$${dollars}.${String(abs % 100).padStart(2, "0")}`;
 }
 
+/** The options the deferred `<Elements>` mounts with (`StripeElementsOptionsMode`'s fields we use). */
+export interface ElementsOptions {
+  mode: "payment";
+  amount: number;
+  currency: "usd";
+  setupFutureUsage?: "off_session";
+  paymentMethodTypes?: string[];
+}
+
+/**
+ * The one home for the payment form's options (issue #1250). With the deposit chosen the form saves
+ * the card for the balance and offers cards only; pay in full keeps the methods it shows today.
+ *
+ * Stripe's deferred Elements docs: `setupFutureUsage` "should match the setup_future_usage provided on
+ * the Intent used when confirming payment" — so the form is remounted on the choice, not
+ * `elements.update`d, to change the saving or the method types.
+ */
+export function elementsOptions(dueNowCents: number, payDeposit: boolean): ElementsOptions {
+  return {
+    mode: "payment",
+    amount: dueNowCents,
+    currency: "usd",
+    ...(payDeposit ? { setupFutureUsage: "off_session" as const, paymentMethodTypes: ["card"] } : {}),
+  };
+}
+
 /**
  * The payment choice's and the terms box's wording (issue #1250), or null when no deposit is offered
  * — inside the balance window, or a quote at or below the deposit. Pure, so the strings are tested

@@ -116,8 +116,9 @@ export function PhoneBookingForm({
             inputName="hasFlex"
           />
         ) : null}
-        {/* Deposits are not in use (§2.8.4a), and the box re-totals in full-payment terms only. */}
-        {money.depositMode ? null : (
+        {/* The box re-totals in whole-quote terms only. The phone booking takes no deposit (issue
+            #1250), so a balance here would be a stale figure, and the box hides rather than lie. */}
+        {totals.balanceCents > 0 ? null : (
           <DiscountBox value={discount} onChange={setDiscount} invalid={parsed === null} comped={d.comped} />
         )}
         <CheckoutSummary m={shown} tipBps={tip.bps} t={totals} />
@@ -128,7 +129,7 @@ export function PhoneBookingForm({
         </p>
       </div>
 
-      <PayBar m={shown} t={totals}>
+      <PayBar t={totals}>
         <span data-testid="book-phone" className="ml-auto">
           <SubmitButton className="btn-primary btn-lg">
             Book it

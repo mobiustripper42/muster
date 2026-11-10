@@ -75,6 +75,7 @@ import type { MessageId, ParticipantId, ThreadId } from "../domain/ids.js";
 import type { ShiftChangeRow } from "../ports/repository.js";
 import {
   PAYMENT_CONFIG_DEFAULTS,
+  parseDepositCents,
   type PaymentConfig,
 } from "../reservations/payment-config.js";
 import { slotIdentity } from "../reservations/availability.js";
@@ -547,7 +548,11 @@ export class InMemoryRepository implements Repository {
   // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
   // ── Payments (DEC-107) ──────────────────────────────────────────────────────
   async getPaymentConfig(): Promise<PaymentConfig> {
-    return { ...PAYMENT_CONFIG_DEFAULTS, ...this.#paymentConfig };
+    const config = { ...PAYMENT_CONFIG_DEFAULTS, ...this.#paymentConfig };
+    // The deposit reads through the same parse Postgres applies to its stored text, so a value that
+    // is not whole cents falls to the default and is logged in both adapters (issue #1250).
+    const stored = this.#paymentConfig.depositCents;
+    return { ...config, depositCents: parseDepositCents(stored === undefined ? undefined : String(stored)) };
   }
   async setPaymentConfig(patch: Partial<PaymentConfig>, _at: string): Promise<void> {
     this.#paymentConfig = { ...this.#paymentConfig, ...patch };
@@ -631,11 +636,20 @@ export class InMemoryRepository implements Repository {
    * a row it read before two retries would otherwise rewind the count to zero here and not there.
    */
   #storeWholeReservation(reservation: Reservation): void {
+    const stored = this.#reservations.get(reservation.id);
+    // The provider customer and the saved card have the same owners in Postgres: they are not in
+    // `RESERVATION_COLUMNS`, so a whole-row write neither sets nor clears them (issue #1250) —
+    // `recordCheckoutAttempt` sets the customer once, the confirm flip sets the card.
+    const { stripeCustomerId: _c, stripePaymentMethodId: _p, ...incoming } = reservation;
     this.#reservations.set(
       reservation.id,
       clone({
-        ...reservation,
-        checkoutAttempts: this.#reservations.get(reservation.id)?.checkoutAttempts ?? 0,
+        ...incoming,
+        checkoutAttempts: stored?.checkoutAttempts ?? 0,
+        ...(stored?.stripeCustomerId !== undefined ? { stripeCustomerId: stored.stripeCustomerId } : {}),
+        ...(stored?.stripePaymentMethodId !== undefined
+          ? { stripePaymentMethodId: stored.stripePaymentMethodId }
+          : {}),
       }),
     );
   }
@@ -784,6 +798,9 @@ export class InMemoryRepository implements Repository {
       updatedAt: patch.updatedAt,
       ...(patch.customerId !== undefined ? { customerId: patch.customerId } : {}),
       ...(patch.extrasCents !== undefined ? { extrasCents: patch.extrasCents } : {}),
+      ...(patch.stripePaymentMethodId !== undefined
+        ? { stripePaymentMethodId: patch.stripePaymentMethodId }
+        : {}),
     };
     this.#reservations.set(reservationId, clone(booked));
     return { result: "won", eventId, reservation: clone(booked) };
@@ -873,14 +890,19 @@ export class InMemoryRepository implements Repository {
     // Unconditional, for the same reason the append is (15.9): a customer whose submit landed after
     // a rival took the hull still submitted. This is the only writer of the counter.
     const checkoutAttempts = (row.checkoutAttempts ?? 0) + 1;
+    // The provider customer is written once and the first is kept (issue #1250), on any status —
+    // like the append, it is a fact about the provider, not one of the customer's answers.
+    const stripeCustomerId = row.stripeCustomerId ?? attempt.stripeCustomerId;
+    const withCustomer = stripeCustomerId !== undefined ? { stripeCustomerId } : {};
     if (row.status !== "pending") {
-      this.#reservations.set(attempt.id, clone({ ...row, paymentIntentIds, checkoutAttempts }));
+      this.#reservations.set(attempt.id, clone({ ...row, paymentIntentIds, checkoutAttempts, ...withCustomer }));
       return;
     }
     const next: Reservation = {
       ...row,
       paymentIntentIds,
       checkoutAttempts,
+      ...withCustomer,
       // The customer's answers, re-stated (#946).
       customerName: attempt.customerName,
       partySize: attempt.partySize,
@@ -897,6 +919,9 @@ export class InMemoryRepository implements Repository {
     // of NULL. The two adapters must agree on the empty case as well as the changed one.
     assign(next, "email", attempt.email);
     assign(next, "phone", attempt.phone);
+    // The balance dates are the invoice's (issue #1250): an attempt with no balance clears them.
+    assign(next, "balanceDueAt", attempt.balanceDueAt);
+    assign(next, "balanceReleaseAt", attempt.balanceReleaseAt);
     this.#reservations.set(attempt.id, clone(next));
   }
 

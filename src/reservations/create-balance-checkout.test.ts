@@ -52,7 +52,7 @@ const depositPayment = (over: Partial<Payment> = {}): Payment => ({
   ...over,
 });
 
-async function seed(cfg: Partial<PaymentConfig> = { depositMode: "deposit", depositPercent: 25, taxRateBps: 725 }) {
+async function seed(cfg: Partial<PaymentConfig> = { taxRateBps: 725 }) {
   const repo = new InMemoryRepository();
   await repo.saveEvent(musterEvent());
   await repo.saveReservation(reservation());
@@ -156,8 +156,8 @@ describe("createBalanceCheckout", () => {
   it("computes from actual payments, not the config — no drift when depositPercent changes", async () => {
     const repo = await seed();
     await repo.savePayment(depositPayment()); // 16125 was actually collected at 25%
-    // Operator later cranks the deposit to 60% — the balance MUST still be 53625−16125.
-    await repo.setPaymentConfig({ depositPercent: 60 }, "now");
+    // Operator later raises the deposit to $600 — the balance MUST still be 53625−16125.
+    await repo.setPaymentConfig({ depositCents: 60000 }, "now");
     const r = await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS);
     expect(r.ok && r.amountCents).toBe(37500);
   });
@@ -208,7 +208,7 @@ describe("createBalanceCheckout", () => {
 
   it("reservation_missing when it doesn't exist", async () => {
     const repo = new InMemoryRepository();
-    await repo.setPaymentConfig({ depositMode: "deposit", depositPercent: 25, taxRateBps: 725 }, "now");
+    await repo.setPaymentConfig({ taxRateBps: 725 }, "now");
     expect(await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS)).toMatchObject({ reason: "reservation_missing" });
   });
 
@@ -223,7 +223,7 @@ describe("createBalanceCheckout", () => {
     const { price: _p, ...noPrice } = musterEvent();
     await repo.saveEvent(noPrice);
     await repo.saveReservation(reservation());
-    await repo.setPaymentConfig({ depositMode: "deposit", depositPercent: 25, taxRateBps: 725 }, "now");
+    await repo.setPaymentConfig({ taxRateBps: 725 }, "now");
     expect(await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS)).toMatchObject({ reason: "unpriced" });
   });
 });
@@ -259,7 +259,7 @@ describe("a refund never raises the balance (issue #841)", () => {
     const repo = new InMemoryRepository();
     await repo.saveEvent(musterEvent({ price: FARE }));
     await repo.saveReservation(reservation());
-    await repo.setPaymentConfig({ depositMode: "full", taxRateBps: TAX_BPS }, "now");
+    await repo.setPaymentConfig({ taxRateBps: TAX_BPS }, "now");
     await repo.savePayment(payment);
     return repo;
   }
@@ -377,7 +377,7 @@ describe("balance composes the party fare — includes frozen extras (#474)", ()
     const repo = new InMemoryRepository();
     await repo.saveEvent(musterEvent()); // price 50000 base
     await repo.saveReservation(reservation({ extrasCents: 6000 }));
-    await repo.setPaymentConfig({ depositMode: "deposit", depositPercent: 25, taxRateBps: 725 }, "now");
+    await repo.setPaymentConfig({ taxRateBps: 725 }, "now");
     await repo.savePayment(depositWithExtras());
 
     const r = await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS);

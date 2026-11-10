@@ -3,8 +3,8 @@
 import { money, type CheckoutMoney, type ScreenTotals } from "./money";
 
 /**
- * The money block (16.1d, issue #1092) — fare, extras, tip, tax, fee, total, and in deposit mode
- * what is due now and what is left. Shared by the customer's checkout and the operator's phone
+ * The money block (16.1d, issue #1092) — fare, extras, tip, tax, fee, total, and, with a deposit
+ * chosen, what is due now and what is left. Shared by the customer's checkout and the operator's phone
  * booking, so the figure the operator reads out on the phone is the one this block shows a
  * customer for the same trip, party and tip.
  *
@@ -28,7 +28,7 @@ export function CheckoutSummary({
   t: ScreenTotals;
   frozen?: boolean;
 }) {
-  const { tipCents, flexCents, dueNowCents, totalCents } = t;
+  const { tipCents, flexCents, dueNowCents, totalCents, balanceCents } = t;
   return (
     <div className="pt-5">
       <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Summary</div>
@@ -71,18 +71,16 @@ export function CheckoutSummary({
           <span>Total</span>
           <span className="font-mono">{money(totalCents)}</span>
         </div>
-        {m.depositMode && (
+        {balanceCents > 0 && (
           <>
             <div className="mt-1 flex justify-between border-t border-line pt-2 font-semibold" data-testid="summary-due-now">
               <span>Due now</span>
               <span className="font-mono">{money(dueNowCents)}</span>
             </div>
             <div className="flex justify-between py-1 text-muted">
-              {/* Not "charged" — nothing collects this automatically (#617; #712 is the
-                  unbuilt auto-collect). Promising it at the point of sale is the worst
-                  place to promise it. */}
+              {/* The day it is charged is the terms box's line, where the tick is the consent. */}
               <span>Balance · due before your trip</span>
-              <span className="font-mono">{money(m.balanceLaterCents)}</span>
+              <span className="font-mono">{money(balanceCents)}</span>
             </div>
           </>
         )}

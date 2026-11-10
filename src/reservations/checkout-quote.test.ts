@@ -19,7 +19,7 @@ import { guestPricing } from "./availability-screen.js";
 import { priceBooking } from "./booking-invoice.js";
 import { checkoutQuote } from "./checkout-quote.js";
 import { chargeTotals } from "./discount.js";
-import { PAYMENT_CONFIG_DEFAULTS, chargeNowCents, feeCentsFor, taxCentsFor, type PaymentConfig } from "./payment-config.js";
+import { PAYMENT_CONFIG_DEFAULTS, feeCentsFor, taxCentsFor, type PaymentConfig } from "./payment-config.js";
 import { GRATUITY_DEFAULT_BPS, gratuityCentsFor, gratuityKindsFor, gratuityTiersFor } from "./pricing.js";
 import { FLEX_INSURANCE_CENTS } from "./refund-terms.js";
 
@@ -35,17 +35,18 @@ const offering = (over: Partial<Offering> = {}): Offering => ({
   basePriceCents: 49900, priceVariations: [], extraGuestPriceCents: 4000, includedGuestCount: 10, ...over,
 });
 
-const FULL: PaymentConfig = { ...PAYMENT_CONFIG_DEFAULTS, depositMode: "full" };
-const DEPOSIT: PaymentConfig = { ...PAYMENT_CONFIG_DEFAULTS, depositMode: "deposit", depositPercent: 25 };
+const FULL: PaymentConfig = { ...PAYMENT_CONFIG_DEFAULTS };
+/** A different deposit — inert without a clock, which is what the operator's form passes. */
+const DEPOSIT: PaymentConfig = { ...PAYMENT_CONFIG_DEFAULTS, depositCents: 25000 };
 
 /** `app/(public)/book/checkout/page.tsx` before 16.1d, lines 209–223, verbatim but for names. */
 function oldPageArithmetic(o: Offering, boatCapacity: number, baseCents: number, guests: number, config: PaymentConfig) {
   const fare = guestPricing(o, boatCapacity, baseCents, guests);
   const taxCents = taxCentsFor(fare.fareCents, config.taxRateBps);
   const serviceFeeCents = feeCentsFor(fare.fareCents, config.serviceFeeBps);
-  const dueNowBeforeTipCents = chargeNowCents(fare.fareCents, taxCents, serviceFeeCents, config);
-  const depositMode = config.depositMode === "deposit";
-  const balanceLaterCents = depositMode ? fare.fareCents + taxCents + serviceFeeCents - dueNowBeforeTipCents : 0;
+  // The old page charged the whole quote unless a deposit mode was set; with no clock there is no
+  // deposit (issue #1250), so the whole quote is what it shows.
+  const dueNowBeforeTipCents = fare.fareCents + taxCents + serviceFeeCents;
   const tiersBps = gratuityTiersFor(o);
   const defaultBps = gratuityKindsFor(o).find((k) => k.kind === "pre")?.defaultBps ?? GRATUITY_DEFAULT_BPS;
   return {
@@ -62,8 +63,8 @@ function oldPageArithmetic(o: Offering, boatCapacity: number, baseCents: number,
     serviceFeeCents,
     serviceFeeBps: config.serviceFeeBps,
     dueNowBeforeTipCents,
-    depositMode,
-    balanceLaterCents,
+    depositCents: null,
+    balanceDueOn: null,
     tiers: tiersBps.map((bps) => ({ bps, tipCents: gratuityCentsFor(fare.fareCents, bps) })),
     defaultBps: tiersBps.includes(defaultBps) ? defaultBps : tiersBps[0]!,
     // Not on the old page: the insurance on offer (16.8), added by the screen when ticked.
@@ -80,10 +81,11 @@ describe("checkoutQuote reproduces what /book/checkout showed before 16.1d", () 
   });
 
   it("deposit mode, with extra guests over the included count", () => {
-    // 12 guests, 10 included → 2 extras at $40. Deposit mode puts a balance on the screen.
+    // 12 guests, 10 included → 2 extras at $40. With no clock there is no deposit (issue #1250),
+    // so the whole quote, with its extras, is what the screen shows.
     const q = quote(offering(), 12, DEPOSIT);
     expect(q.extraGuests).toBe(2);
-    expect(q.balanceLaterCents).toBeGreaterThan(0);
+    expect(q.depositCents).toBeNull();
     expect(q).toEqual(oldPageArithmetic(offering(), 12, 49900, 12, DEPOSIT));
   });
 
@@ -129,8 +131,44 @@ describe("checkoutQuote agrees with what is charged, at every tip tier", () => {
           serviceFeeBps: q.serviceFeeBps,
         });
         expect(t.totalCents).toBe(invoice.totalCents);
-        expect(t.totalCents - q.balanceLaterCents).toBe(invoice.amountDueNowCents);
+        // No clock, no deposit (issue #1250): what is due now is the whole quote.
+        expect(q.depositCents).toBeNull();
+        expect(q.balanceDueOn).toBeNull();
+        expect(t.totalCents).toBe(invoice.amountDueNowCents);
       }
     });
   }
+});
+
+/**
+ * The deposit on the quote (issue #1250). The public checkout passes the clock; the operator's form
+ * passes none and stays on the whole quote (the retargeted cases above). The window's exact boundary
+ * is `insideBalanceWindow`'s (`deposit.test.ts`); here, one case either side.
+ *
+ * A departure on Wed, Nov 11 at 15:30 has its balance due 30 days before: Mon, Oct 12, 15:30 EDT.
+ */
+describe("checkoutQuote — the deposit and the day the balance is due (issue #1250)", () => {
+  const NOV_11 = "2026-11-11";
+  const quoteAt = (asOf: string, time = TIME) =>
+    checkoutQuote(
+      { offering: offering(), vessel, vesselId: V12, events: [], config: FULL, date: NOV_11, time, guestCount: 2 },
+      asOf,
+    );
+
+  it("AC16: outside the balance window the quote carries the deposit and the day the balance is charged", () => {
+    const q = quoteAt("2026-10-01T12:00:00.000Z");
+    expect(q.depositCents).toBe(10000);
+    expect(q.balanceDueOn).toBe("Mon, Oct 12");
+  });
+
+  it("AC5: inside the balance window it carries neither", () => {
+    const q = quoteAt("2026-10-20T12:00:00.000Z");
+    expect(q.depositCents).toBeNull();
+    expect(q.balanceDueOn).toBeNull();
+  });
+
+  it("AC14: the day is the vessel-local one, not the UTC one", () => {
+    // 22:30 EDT on Oct 12 is 02:30Z on Oct 13.
+    expect(quoteAt("2026-10-01T12:00:00.000Z", "22:30").balanceDueOn).toBe("Mon, Oct 12");
+  });
 });

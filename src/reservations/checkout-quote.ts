@@ -11,6 +11,9 @@
  *
  * Pure. Plain data out, so a server page can hand it straight to a client island.
  */
+import { vesselDateOf } from "../config/tenant.js";
+import { balanceDates, insideBalanceWindow } from "./availability.js";
+import { formatShortDay } from "./availability-screen.js";
 import type { BookingInvoiceInput } from "./booking-invoice.js";
 import { priceBooking } from "./booking-invoice.js";
 import { effectiveIncludedGuests, GRATUITY_DEFAULT_BPS, gratuityKindsFor, gratuityTiersFor } from "./pricing.js";
@@ -34,11 +37,15 @@ export interface CheckoutQuote {
   taxRateBps: number;
   serviceFeeCents: number;
   serviceFeeBps: number;
-  /** Charged now, tip excluded: the deposit share + full tax + full fee, or the whole total. */
+  /** The whole quote, tip and insurance excluded — what is due now when the customer pays in full.
+   *  The deposit, when one is chosen, is `depositCents` (`totalsFor`). */
   dueNowBeforeTipCents: number;
-  depositMode: boolean;
-  /** The fare left to collect later (deposit mode only; 0 in full mode). */
-  balanceLaterCents: number;
+  /** The deposit the customer may pay instead of the whole quote (issue #1250), or null when none
+   *  is on offer: no clock was given, or the departure is inside the balance window. Not null does
+   *  not yet mean offered — a quote at or below it is paid whole (`depositOffered`). */
+  depositCents: number | null;
+  /** The vessel-local day the balance would be charged, `"Mon, Oct 12"`; null with `depositCents`. */
+  balanceDueOn: string | null;
   /** Each pre-trip tip tier the offering sells, with its amount on THIS fare (DEC-124). */
   tiers: { bps: number; tipCents: number }[];
   /** The tier preselected: the offering's default when it is one of its tiers, else the first. */
@@ -46,7 +53,7 @@ export interface CheckoutQuote {
   /**
    * Cancellation insurance's price (16.8), undiscounted — what ticking the box adds. Every figure
    * above leaves it out, the way they leave out the tip: it is untaxed, outside the fee and tip
-   * bases and outside the deposit split, so the screen adds it back on top (`totalsWithTip`).
+   * bases, so the screen adds it back on top (`totalsFor`).
    */
   flexCents: number;
 }
@@ -65,17 +72,27 @@ export interface ScreenTotals {
   serviceFeeCents: number;
   totalCents: number;
   dueNowCents: number;
+  /** What is left after `dueNowCents`: the deposit's balance, or 0 when the whole quote is due. */
+  balanceCents: number;
 }
 
-export function checkoutQuote(input: Omit<BookingInvoiceInput, "gratuityBps" | "hasFlex">): CheckoutQuote {
+/**
+ * @param asOf The clock the deposit is judged by. **Absent means no deposit** — `depositCents` and
+ *   `balanceDueOn` are null and the screen shows the whole quote. The public checkout passes the
+ *   page's clock; the operator's form passes nothing and stays as it was.
+ */
+export function checkoutQuote(
+  input: Omit<BookingInvoiceInput, "gratuityBps" | "hasFlex" | "deposit">,
+  asOf?: string,
+): CheckoutQuote {
   const tiersBps = gratuityTiersFor(input.offering);
   // Tip-free: with a 0 tier, the invoice's due-now and total are exactly the figures the screen
   // adds the chosen tip to. The tip is outside the deposit split and untaxed (DEC-124), so adding
   // it back on the client is the same sum `priceBooking` makes — the test holds it to that.
   const invoice = priceBooking({ ...input, gratuityBps: 0 });
   const fareCents = invoice.fareCents + invoice.extrasCents;
-  const pretipTotal = invoice.totalCents;
-  const depositMode = input.config.depositMode === "deposit";
+  const withDeposit =
+    asOf !== undefined && !insideBalanceWindow(input.date, input.time, asOf, input.config);
   const includedGuests = effectiveIncludedGuests(input.offering, input.vessel);
   const preferred =
     gratuityKindsFor(input.offering).find((k) => k.kind === "pre")?.defaultBps ?? GRATUITY_DEFAULT_BPS;
@@ -93,8 +110,10 @@ export function checkoutQuote(input: Omit<BookingInvoiceInput, "gratuityBps" | "
     serviceFeeCents: invoice.serviceFeeCents,
     serviceFeeBps: invoice.serviceFeeBps,
     dueNowBeforeTipCents: invoice.amountDueNowCents,
-    depositMode,
-    balanceLaterCents: depositMode ? pretipTotal - invoice.amountDueNowCents : 0,
+    depositCents: withDeposit ? input.config.depositCents : null,
+    balanceDueOn: withDeposit
+      ? formatShortDay(vesselDateOf(new Date(balanceDates(input.date, input.time, input.config).dueAt)))
+      : null,
     tiers: tiersBps.map((bps) => ({
       bps,
       tipCents: priceBooking({ ...input, gratuityBps: bps }).gratuityCents,

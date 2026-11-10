@@ -24,7 +24,7 @@
  * the format asserts its own idea of correct, which is how "Wed, Aug 12" passes while the page
  * says something else.
  */
-import { vesselDateOf } from "../src/config/tenant.js";
+import { addDays, vesselDateOf } from "../src/config/tenant.js";
 import { formatShortDay } from "../src/reservations/availability-screen.js";
 import {
   demoBookingCode,
@@ -58,6 +58,29 @@ export const BOOKED_3 = DEMO.bookings[2]!;
 
 /** An OPEN slot on the booked day: same date, a departure nobody has taken. */
 export const OPEN_TIME = DEMO.departureTimes[1]!; // 15:30
+
+/**
+ * A departure day INSIDE the balance window (issue #1250): 20 days out, so the whole quote is due at
+ * checkout and no deposit is offered, whatever time of day the suite runs — the window is
+ * `balanceDueDaysBeforeEvent` (30 unset, and `resetAndSeed` wipes `app_settings`). The seeded week
+ * moves with today and sits roughly three to eight weeks out, so a spec that pointed at it was on one side of the
+ * window or the other depending on the date.
+ *
+ * Inside the seed's season (which starts today), before its first booking (`MIN_BOOKING_LEAD_DAYS`,
+ * 21), so every boat is free; and past the 14-day cancellation line, so the terms read as they do
+ * further out.
+ */
+export const INSIDE_BALANCE_WINDOW = addDays(TODAY, 20);
+
+/**
+ * A departure day OUTSIDE the balance window (issue #1250): at least 40 days out, and after the
+ * seeded week so no seeded booking is on it. That puts it past the seed's season end, which is the
+ * last day of that week — a spec that books it extends the season first.
+ */
+export const OUTSIDE_BALANCE_WINDOW = ((a: string, b: string) => (a > b ? a : b))(
+  addDays(TODAY, 40),
+  addDays(DEMO.window.end, 1),
+);
 
 /** "September 2026" — the calendar header, formatted exactly as `buildMonthCalendar` does. */
 export function monthLabel(isoDay: string): string {

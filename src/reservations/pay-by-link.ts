@@ -15,6 +15,7 @@ import type { CheckoutQuote, ScreenTotals } from "./checkout-quote.js";
 import type { ReservationId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
+import { hasBalance } from "./booking-invoice.js";
 import { attachPaymentIntent } from "./create-departure-payment-intent.js";
 import { flexChargedCents } from "./discount.js";
 
@@ -55,7 +56,6 @@ export function payLinkMoney(inv: BookingInvoice): {
   tip: { bps: number; tipCents: number };
   totals: ScreenTotals;
 } {
-  const depositMode = inv.amountDueNowCents < inv.totalCents;
   // The tip- and insurance-free share of the charge, for the shape's sake — the screen reads `totals`.
   const dueNowBeforeTipCents = inv.amountDueNowCents - inv.gratuityCents - flexChargedCents(inv);
   return {
@@ -66,6 +66,8 @@ export function payLinkMoney(inv: BookingInvoice): {
       serviceFeeCents: inv.serviceFeeCents,
       totalCents: inv.totalCents,
       dueNowCents: inv.amountDueNowCents,
+      // The frozen balance, not a recompute — 0 for every invoice the phone booking writes.
+      balanceCents: hasBalance(inv) ? inv.totalCents - inv.amountDueNowCents : 0,
     },
     money: {
       // Undiscounted, with the discount as its own row (DEC-194) — the summary subtracts it.
@@ -81,8 +83,9 @@ export function payLinkMoney(inv: BookingInvoice): {
       serviceFeeCents: inv.serviceFeeCents,
       serviceFeeBps: inv.serviceFeeBps,
       dueNowBeforeTipCents,
-      depositMode,
-      balanceLaterCents: depositMode ? inv.totalCents - inv.amountDueNowCents : 0,
+      // The link offers no choice in 19.1 (the deposit on it is 19.2's): no deposit, no balance day.
+      depositCents: null,
+      balanceDueOn: null,
       flexCents: inv.flexCents ?? 0,
     },
     tip: { bps: inv.gratuityBps, tipCents: inv.gratuityCents },

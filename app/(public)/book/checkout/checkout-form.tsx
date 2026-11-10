@@ -34,10 +34,16 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { Stripe, StripeElements } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { CheckoutSummary } from "../../../../components/checkout/checkout-summary";
-import { Checkbox } from "../../../../components/ui/choice";
+import { Checkbox, tileLook } from "../../../../components/ui/choice";
 import { InsuranceBox } from "../../../../components/checkout/insurance-box";
 import { ContactFields, type ContactValues } from "../../../../components/checkout/contact-fields";
-import { totalsFor, type CheckoutMoney, type ScreenTotals, type TipTier } from "../../../../components/checkout/money";
+import {
+  depositCopy,
+  totalsFor,
+  type CheckoutMoney,
+  type ScreenTotals,
+  type TipTier,
+} from "../../../../components/checkout/money";
 import { PayBar } from "../../../../components/checkout/pay-bar";
 import { TipTiles } from "../../../../components/checkout/tip-tiles";
 import { usePaymentLock } from "../../../../components/checkout/payment-lock";
@@ -116,9 +122,17 @@ export function CheckoutForm(props: CheckoutFormProps) {
     };
   }, [props.publishableKey]);
 
+  // The payment choice (issue #1250): the deposit is preselected whenever one is offered, and the
+  // customer may decline it. The payment link offers none.
+  const [depositChosen, setDepositChosen] = useState(true);
+
   const tip = props.tiers.find((t) => t.bps === tipBps) ?? props.tiers[0]!;
-  // Re-totalled as the tip and the box change; the payment link's are the frozen invoice's own.
-  const totals = props.pay ? props.pay.totals : totalsFor(props.money, tip.tipCents, flexCents);
+  // The whole quote, to ask whether a deposit is on offer — it moves with the tip and the insurance.
+  const whole = totalsFor(props.money, tip.tipCents, flexCents);
+  const deposit = props.pay ? null : depositCopy(props.money, whole);
+  const payDeposit = deposit !== null && depositChosen;
+  // Re-totalled as the tip, the box and the choice change; the payment link's are the frozen invoice's own.
+  const totals = props.pay ? props.pay.totals : totalsFor(props.money, tip.tipCents, flexCents, payDeposit);
   const dueNowCents = totals.dueNowCents;
 
   const inner = (bridge: { stripe: Stripe | null; elements: StripeElements | null; inElements: boolean }) => (
@@ -130,6 +144,9 @@ export function CheckoutForm(props: CheckoutFormProps) {
       setFlexChosen={setFlexChosen}
       totals={totals}
       dueNowCents={dueNowCents}
+      deposit={deposit}
+      payDeposit={payDeposit}
+      setDepositChosen={setDepositChosen}
       stripeFailed={stripeFailed}
       {...bridge}
     />
@@ -184,6 +201,11 @@ type InnerProps = CheckoutFormProps & {
   setFlexChosen: (on: boolean) => void;
   totals: ScreenTotals;
   dueNowCents: number;
+  /** The payment choice's wording, or null when no deposit is offered (`depositCopy`). */
+  deposit: ReturnType<typeof depositCopy>;
+  /** The deposit is what is being paid: offered and chosen. */
+  payDeposit: boolean;
+  setDepositChosen: (on: boolean) => void;
   stripe: Stripe | null;
   elements: StripeElements | null;
   inElements: boolean;
@@ -194,6 +216,43 @@ type InnerProps = CheckoutFormProps & {
 function submitLabel(pay: boolean, submitting: boolean): string {
   if (pay) return submitting ? "Paying…" : "🔒 Pay";
   return submitting ? "Booking…" : "🔒 Book & pay";
+}
+
+/** The deposit-or-full choice (issue #1250): two tiles, the deposit first and preselected. */
+function PaymentChoice({
+  copy,
+  payDeposit,
+  onChoose,
+}: {
+  copy: NonNullable<ReturnType<typeof depositCopy>>;
+  payDeposit: boolean;
+  onChoose: (deposit: boolean) => void;
+}) {
+  return (
+    <div className="pt-5" role="group" aria-label="Payment option">
+      <div className="grid grid-cols-1 gap-2">
+        <button
+          type="button"
+          data-testid="pay-deposit"
+          aria-pressed={payDeposit}
+          onClick={() => onChoose(true)}
+          className={`px-3 py-2.5 text-left ${tileLook(payDeposit)}`}
+        >
+          <span className="block text-[15px] font-bold">{copy.depositLabel}</span>
+          <span className="block text-xs text-muted">{copy.depositNote}</span>
+        </button>
+        <button
+          type="button"
+          data-testid="pay-full"
+          aria-pressed={!payDeposit}
+          onClick={() => onChoose(false)}
+          className={`px-3 py-2.5 text-left ${tileLook(!payDeposit)}`}
+        >
+          <span className="block text-[15px] font-bold">{copy.fullLabel}</span>
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** Who the payment link's booking is for — the operator took it, so it's shown, not asked. */
@@ -257,6 +316,11 @@ function InnerForm(p: InnerProps) {
             // The figure on the pay bar (issue #1217): the server refuses if it is not the total
             // it is about to freeze.
             shownDueNowCents: p.dueNowCents,
+            // The choice and the balance it leaves (issue #1250): the server refuses a balance that
+            // is not the one it is about to freeze, and charges the whole quote if the deposit is no
+            // longer on offer.
+            payDeposit: p.payDeposit,
+            shownBalanceCents: p.totals.balanceCents,
           });
       if (!res.ok) {
         setError(res.message);
@@ -355,6 +419,21 @@ function InnerForm(p: InnerProps) {
           </>
         )}
 
+        {/* THE PAYMENT CHOICE (issue #1250) — only when a deposit is offered, after the tip and the
+            insurance because both move the total it states. Two tiles in the tip tiles' look. */}
+        {p.deposit ? (
+          <PaymentChoice
+            copy={p.deposit}
+            payDeposit={p.payDeposit}
+            onChoose={(deposit) => {
+              p.setDepositChosen(deposit);
+              // The terms box gains a line when the deposit is chosen, so a tick given before it
+              // is not consent to it — the customer ticks the terms they read.
+              if (deposit) setAgreed(false);
+            }}
+          />
+        ) : null}
+
         {/* CARD */}
         <div className="pt-5">
           <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Payment</div>
@@ -421,6 +500,13 @@ function InnerForm(p: InnerProps) {
               <span data-testid="cancellation-terms">
                 {p.hasFlex ? p.cancellationTerms.flex : p.cancellationTerms.standard}
               </span>
+              {/* Inside the box, so the required tick is the explicit consent to the saved-card
+                  charge Stripe's docs require. Only while the deposit is the choice. */}
+              {p.deposit && p.payDeposit ? (
+                <span className="block pt-1.5" data-testid="balance-terms">
+                  {p.deposit.termsLine}
+                </span>
+              ) : null}
             </span>
           </Checkbox>
           {p.pay ? null : (
@@ -467,7 +553,7 @@ function InnerForm(p: InnerProps) {
         </div>
       )}
 
-      <PayBar m={p.money} t={p.totals}>
+      <PayBar t={p.totals}>
         {/* Genuine DEC-090 exception: this form submits via a client onSubmit
             (elements.submit → server action → confirmPayment), not a form action, so
             useFormStatus/<SubmitButton> never sees pending; the local `submitting` state

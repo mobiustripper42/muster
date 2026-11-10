@@ -120,6 +120,8 @@ export class FakePaymentPort implements PaymentPort {
       description: input.description,
       receiptEmail: input.receiptEmail,
       metadata: input.metadata,
+      customerId: input.customerId,
+      setupFutureUsage: input.setupFutureUsage,
     });
     const cached = this.#intentsByKey.get(input.idempotencyKey);
     if (cached) {
@@ -205,6 +207,21 @@ export class FakePaymentPort implements PaymentPort {
   async listWebhookEndpoints(): Promise<readonly WebhookEndpointInfo[]> {
     if (this.listWebhookEndpointsError) throw this.listWebhookEndpointsError;
     return this.webhookEndpoints;
+  }
+
+  /** Every `createCustomer` call, in order, WITHOUT deduping on the key (issue #1250) — a test that
+   *  asserts "one customer" is asserting the caller made one call, not that the fake collapsed two. */
+  readonly createdCustomers: { idempotencyKey: string; name: string }[] = [];
+
+  async createCustomer(input: {
+    idempotencyKey: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    metadata: Record<string, string>;
+  }): Promise<{ customerId: string }> {
+    this.createdCustomers.push({ idempotencyKey: input.idempotencyKey, name: input.name });
+    return { customerId: `cus_fake_${input.idempotencyKey}` };
   }
 
   parseEvent(rawBody: string, signature: string): PaymentEvent | null {

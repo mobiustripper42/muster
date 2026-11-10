@@ -2,7 +2,7 @@
  * Start a BALANCE checkout (Phase 11.2b, DEC-107) — collect the remaining balance on a
  * deposit booking, ON DEMAND. Computes the owed amount from the canonical deriver
  * (`balanceOwedCents` — total minus what the payments that took money carried, never a config
- * recompute of the deposit share) so it can't drift if `depositPercent`/price changed since the deposit,
+ * recompute of the deposit share) so it can't drift if `depositCents`/price changed since the deposit,
  * and opens a Stripe Checkout for exactly that. **Writes nothing** — the `Payment{kind:'balance'}`
  * is written by the webhook on completion (`metadata.purpose="balance"`), against the
  * already-claimed reservation (no re-claim; the boat was won at deposit, DEC-109).

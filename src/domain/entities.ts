@@ -797,6 +797,17 @@ export interface Reservation {
   tripMinutes?: number;
   /** Every money component in cents and its rate, frozen at write time (DEC-164). */
   invoice?: BookingInvoice;
+  // ── The deposit (issue #1250, `docs/SPEC.md §2.8.4d`) ─────────────────────────────────────
+  // ISO-8601 UTC text, house style as `reservedAt`. Absent on a booking with no balance.
+  /** When the balance falls due. Frozen with the invoice: a later settings change moves no booking. */
+  balanceDueAt?: string;
+  /** When an unpaid balance releases the seats. Frozen with `balanceDueAt`. */
+  balanceReleaseAt?: string;
+  /** The provider customer the deposit's card is saved to. Written once, on the first deposit
+   *  attempt, and kept — a pay-in-full retry does not clear it. */
+  stripeCustomerId?: string;
+  /** The card the paid deposit used, read off the succeeded intent by the confirm flip. */
+  stripePaymentMethodId?: string;
 }
 
 /**
@@ -837,14 +848,14 @@ export interface BookingInvoice {
   totalCents: number;
   /**
    * What was asked of the provider for THIS charge, frozen at the same instant as the components
-   * above (15.4). Under `depositMode: "full"` it equals `totalCents`; under `"deposit"` it is the
-   * deposit share of the fare plus tax and service fee in full plus the whole gratuity and the
-   * whole insurance, and the remainder is collected later against this same invoice.
+   * above (15.4). It equals `totalCents` when the customer pays in full; with a deposit chosen it
+   * is the fixed deposit (`dueNowCents`) — tip and insurance inside it, not on top — and the
+   * remainder is collected later against this same invoice (`hasBalance`).
    *
    * **It is here because it cannot be recomputed from the row.** Every other field is a component
-   * or a rate; this one needs `depositMode`/`depositPercent`, which live in live `PaymentConfig`
-   * and are not frozen anywhere. Recomputing it after an operator changed the deposit share means
-   * a number that disagrees with the charge Stripe actually took.
+   * or a rate; this one needs `depositCents` and the customer's choice, and the first lives in live
+   * `PaymentConfig` and is not frozen anywhere. Recomputing it after an operator changed the
+   * deposit means a number that disagrees with the charge Stripe actually took.
    */
   amountDueNowCents: number;
 }

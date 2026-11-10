@@ -9,7 +9,7 @@
  *
  * No screen edits it yet. It is set by SQL until the settings page (issue #1166) ships.
  */
-import { logSwallowed } from "../log.js";
+import { parseWholeNumberSetting } from "../config/whole-number-setting.js";
 
 /** The `app_settings` key. */
 export const BOOKING_CUTOFF_KEY = "booking.cutoff_hours";
@@ -21,12 +21,10 @@ export const BOOKING_CUTOFF_KEY = "booking.cutoff_hours";
  * either, because the operator believes a cutoff is in force.
  */
 export function parseBookingCutoffHours(raw: string | null | undefined): number {
-  if (raw === null || raw === undefined) return 0;
-  if (/^\s*\d+\s*$/.test(raw)) return Number(raw.trim());
-  logSwallowed(
-    "reservations:booking-cutoff",
-    new Error(`${BOOKING_CUTOFF_KEY} is ${JSON.stringify(raw)}, not a whole number of hours`),
+  return parseWholeNumberSetting(
+    raw,
+    BOOKING_CUTOFF_KEY,
+    0,
     "the booking cutoff reads as 0 — the public site is selling right up to departure",
   );
-  return 0;
 }

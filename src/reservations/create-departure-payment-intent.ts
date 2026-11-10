@@ -32,8 +32,8 @@ import type { Reservation } from "../domain/entities.js";
 import { asId, type OfferingId, type ReservationId, type VesselId } from "../domain/ids.js";
 import type { PaymentIntentState, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
-import { insuranceOnSale } from "./availability.js";
-import { priceBooking } from "./booking-invoice.js";
+import { balanceDates, insuranceOnSale } from "./availability.js";
+import { hasBalance, priceBooking } from "./booking-invoice.js";
 import { claimDepartureSlot } from "./claim.js";
 import { recordTrail } from "./trail.js";
 import { candidateHoldMinutes, XOLA_TRIP_MINUTES } from "./hull-busy.js";
@@ -69,6 +69,18 @@ export interface DeparturePaymentIntentRequest {
    * passes one.
    */
   shownDueNowCents?: number;
+  /**
+   * The customer chose the deposit (issue #1250). Absent is pay in full. A choice, not an order: a
+   * departure inside the balance window, or a quote at or below the deposit, is charged whole
+   * whatever was asked (`priceBooking`).
+   */
+  payDeposit?: boolean;
+  /**
+   * The balance the page showed, in cents — the quote less what is due now. Checked as
+   * `shownDueNowCents` is, and for the same reason: a different balance is `price_changed`, before
+   * anything is written, charged or created at the provider. Absent is no check.
+   */
+  shownBalanceCents?: number;
 }
 
 export type DeparturePaymentIntentStart =
@@ -163,13 +175,26 @@ export async function createDeparturePaymentIntent(
       guestCount: req.guestCount,
       gratuityBps: req.gratuityBps,
       hasFlex: req.hasFlex === true,
+      // The deposit is judged on the claim's clock, the instant the row is written under.
+      deposit: { asOf: at, chosen: req.payDeposit === true },
     });
     // The total the guest saw is not the total this attempt would freeze (issue #1217): refuse the
     // row. Here rather than at the call, because the price depends on the hull; and before any
-    // write, on both the fresh path and the retry path.
+    // write, on both the fresh path and the retry path. The balance is held to the same account
+    // (issue #1250): a page that showed a deposit against a quote that is now charged whole is stale.
     if (req.shownDueNowCents !== undefined && invoice.amountDueNowCents !== req.shownDueNowCents) {
       return null;
     }
+    if (
+      req.shownBalanceCents !== undefined &&
+      invoice.totalCents - invoice.amountDueNowCents !== req.shownBalanceCents
+    ) {
+      return null;
+    }
+    // Frozen with the invoice, like the price and tax: a later settings change moves no booking.
+    // Absent when this attempt has no balance, which is how a retry that turns to pay in full
+    // clears them.
+    const dates = hasBalance(invoice) ? balanceDates(req.date, req.time, config) : null;
     return {
       // The SAME row on a retry — its id is the booking's for life. Reserved time is set on the
       // FIRST write and never moved (§2.8.7): a resubmit must not park the hull indefinitely by
@@ -195,6 +220,9 @@ export async function createDeparturePaymentIntent(
       holdMinutes: prior?.holdMinutes ?? candidateHoldMinutes(offering!),
       tripMinutes: prior?.tripMinutes ?? offering!.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
       invoice,
+      ...(dates ? { balanceDueAt: dates.dueAt, balanceReleaseAt: dates.releaseAt } : {}),
+      // Carried, never created here: the provider customer is made at the mint, once, and kept.
+      ...(prior?.stripeCustomerId !== undefined ? { stripeCustomerId: prior.stripeCustomerId } : {}),
       ...(req.holderToken !== undefined ? { holderToken: req.holderToken } : {}),
       ...(req.email !== undefined ? { email: req.email } : {}),
       ...(req.phone !== undefined ? { phone: req.phone } : {}),
@@ -320,6 +348,9 @@ export async function createDeparturePaymentIntent(
       ...(req.email !== undefined && req.email !== "" ? { receiptEmail: req.email } : {}),
     },
     noteDetailsChanged,
+    // What the intent this row already holds was minted for (issue #1250): the stored invoice, which
+    // `recordCheckoutAttempt` re-freezes only after a mint or a raise succeeds.
+    claim.reused ? { priorHadBalance: hasBalance(claim.prior.invoice!) } : {},
   );
 }
 
@@ -364,13 +395,19 @@ export async function attachPaymentIntent(
   pending: Reservation,
   charge: IntentCharge,
   afterAttempt: () => Promise<void> = async () => {},
+  /**
+   * `priorHadBalance`: whether the attempt that minted this row's last intent had a balance, when
+   * the caller can say. Absent means the same answer as this attempt — the payment link's invoice is
+   * fixed, so it never changes between attempts.
+   */
+  opts: { priorHadBalance?: boolean } = {},
 ): Promise<{ ok: true; clientSecret: string; paymentIntentId: string } | { ok: false; reason: "already_paid" }> {
   const { repo, payments, now } = deps;
   const invoice = pending.invoice!; // every pending row carries one (DEC-164)
   // The charge is READ from the frozen invoice rather than recomputed, so what Stripe is asked
   // for and what the row says cannot drift. Until 15.4 this line recomputed it from live
   // `config` — the comment claimed the freeze and the code did not have it, and an operator
-  // moving `depositPercent` mid-checkout moved the charge away from the row that described it.
+  // moving `depositCents` mid-checkout moved the charge away from the row that described it.
   const amountCents = invoice.amountDueNowCents;
 
   // ── Reuse this checkout's own intent, or mint a fresh one (15.8) ─────────────
@@ -404,7 +441,15 @@ export async function attachPaymentIntent(
   // every retry, so the direct read is how a paid intent is normally seen.
   if (priorIntentId && priorState === "settled") return { ok: false, reason: "already_paid" };
 
-  if (priorIntentId && priorState === "reusable") {
+  // **A deposit saves the card; pay in full does not (issue #1250).** Whether the intent saves it is
+  // fixed when the intent is made and Stripe's docs do not show switching it on an open one, so a
+  // retry whose answer to "has a balance?" differs from the attempt that minted the last intent
+  // cannot raise it. It falls through to the retire-and-mint below, like any other intent we will
+  // not offer again, and is never updated in place.
+  const balance = hasBalance(invoice);
+  const sameAnswer = (opts.priorHadBalance ?? balance) === balance;
+
+  if (priorIntentId && priorState === "reusable" && sameAnswer) {
     let raised: { clientSecret: string } | undefined;
     // **The try wraps the provider call and nothing else.** With `recordCheckoutAttempt` inside it,
     // a database blip was diagnosed as a refused update and could tell a customer their booking was
@@ -447,6 +492,26 @@ export async function attachPaymentIntent(
       return { ok: true, clientSecret: raised.clientSecret, paymentIntentId: priorIntentId };
     }
   }
+
+  // The provider customer a deposit's card is saved to: one per reservation, made on the first
+  // deposit attempt and reused by every later one. Made before the old intent is retired, so an
+  // outage here leaves the customer's last intent as it was. A customer made for an intent that is
+  // then never minted is harmless: the key makes a repeat return the same one. A pay-in-full attempt
+  // creates none and sends none, even when the row already holds one from an earlier deposit attempt.
+  let customerId = pending.stripeCustomerId;
+  if (balance && customerId === undefined) {
+    ({ customerId } = await payments.createCustomer({
+      idempotencyKey: `customer_${pending.id}`,
+      name: pending.customerName,
+      ...(pending.email !== undefined ? { email: pending.email } : {}),
+      ...(pending.phone !== undefined ? { phone: pending.phone } : {}),
+      metadata: { reservation_id: String(pending.id) },
+    }));
+  }
+  const attempt: Reservation =
+    customerId !== undefined && pending.stripeCustomerId === undefined
+      ? { ...pending, stripeCustomerId: customerId }
+      : pending;
 
   // ── Retire the intent we are about to replace (15.10) ───────────────────────
   //
@@ -535,6 +600,7 @@ export async function attachPaymentIntent(
     description: charge.description,
     ...(charge.receiptEmail !== undefined ? { receiptEmail: charge.receiptEmail } : {}),
     metadata: {},
+    ...(balance && customerId !== undefined ? { customerId, setupFutureUsage: "off_session" as const } : {}),
   });
   // Stripe answered: APPEND its id to the row so confirm can find it (issue #916). Every id this
   // checkout has minted stays, oldest first (§2.8.5) — a superseded one that succeeds late still
@@ -542,7 +608,7 @@ export async function attachPaymentIntent(
   // invoice re-freezes only while the row is still `pending`, so a retry whose read landed before
   // a concurrent confirm cannot revert the just-booked, paid row to pending (@code-review).
   // `updatedAt` is the claim's clock, the same instant the row was written or re-priced under.
-  await repo.recordCheckoutAttempt(pending, intent.paymentIntentId);
+  await repo.recordCheckoutAttempt(attempt, intent.paymentIntentId);
   await afterAttempt();
   return { ok: true, clientSecret: intent.clientSecret, paymentIntentId: intent.paymentIntentId };
 }

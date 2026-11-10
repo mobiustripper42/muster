@@ -12,9 +12,9 @@
  */
 import type { BookingInvoice, Event, Offering, Vessel } from "../domain/entities.js";
 import type { VesselId } from "../domain/ids.js";
-import { resolveBasePrice, slotIdentity } from "./availability.js";
+import { insideBalanceWindow, resolveBasePrice, slotIdentity } from "./availability.js";
 import { applyDiscount, flexChargedCents } from "./discount.js";
-import { chargeNowCents, type PaymentConfig } from "./payment-config.js";
+import { dueNowCents, type PaymentConfig } from "./payment-config.js";
 import { composeFare, effectiveIncludedGuests } from "./pricing.js";
 import { FLEX_INSURANCE_CENTS } from "./refund-terms.js";
 
@@ -38,6 +38,10 @@ export interface BookingInvoiceInput {
   discountCents?: number;
   /** Cancellation insurance bought with the booking (16.8, SPEC §2.8.4c). Absent is none. */
   hasFlex?: boolean;
+  /** Whether the customer pays a deposit (issue #1250): when the deposit is judged and that they
+   *  chose it. Absent, `chosen: false`, or a departure inside the balance window ⇒ the whole quote
+   *  is due now. The phone booking passes nothing. */
+  deposit?: { asOf: string; chosen: boolean };
 }
 
 /**
@@ -46,6 +50,12 @@ export interface BookingInvoiceInput {
  */
 export function hasFlex(invoice: Pick<BookingInvoice, "flexCents"> | undefined): boolean {
   return (invoice?.flexCents ?? 0) > 0;
+}
+
+/** Does this attempt leave a balance — is less due now than the quote? The one home for the
+ *  question (issue #1250): the intent, the row's dates and the pay link all ask it of an invoice. */
+export function hasBalance(invoice: Pick<BookingInvoice, "amountDueNowCents" | "totalCents">): boolean {
+  return invoice.amountDueNowCents < invoice.totalCents;
 }
 
 /** The insurance as the refund policy takes it — what was charged for it, or null for none. A
@@ -89,8 +99,12 @@ export function priceBooking(input: BookingInvoiceInput): BookingInvoice {
     gratuityBps,
     flexCents,
   });
-  // `totalCents` is the whole quote, not the amount charged now: in deposit mode the charge is
-  // `chargeNowCents` and the remainder is collected later against this same invoice.
+  // `totalCents` is the whole quote, not the amount charged now: with the deposit chosen the charge
+  // is `dueNowCents` and the remainder is collected later against this same invoice.
+  const depositCents =
+    input.deposit?.chosen && !insideBalanceWindow(date, time, input.deposit.asOf, config)
+      ? config.depositCents
+      : null;
   return {
     // Fare and extras stay undiscounted so a receipt can say what came off (§2.8.4a).
     fareCents: priceCents,
@@ -108,10 +122,9 @@ export function priceBooking(input: BookingInvoiceInput): BookingInvoice {
     totalCents: d.totalCents,
     // What we are about to ask Stripe for, frozen HERE with everything else rather than
     // recomputed at the call site (15.4). It is the one money number the row cannot derive
-    // from its own components: the deposit split lives in `config`, which is live and which an
-    // operator can move while a card is being typed. Tip and insurance are added outside
-    // `chargeNowCents` — no deposit-split and no tax on either (DEC-124, §2.8.4a).
-    amountDueNowCents:
-      chargeNowCents(d.baseCents, d.taxCents, d.serviceFeeCents, config) + d.gratuityCents + d.flexDueCents,
+    // from its own components: the deposit lives in `config`, which is live and which an
+    // operator can move while a card is being typed. The deposit takes the tip and the insurance
+    // inside it, not on top (§2.8.4d).
+    amountDueNowCents: dueNowCents(d.totalCents, depositCents),
   };
 }

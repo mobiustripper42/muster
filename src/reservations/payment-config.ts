@@ -16,54 +16,71 @@
  * §3.3 cancel cascade stays parked (self-service cancel is #616).
  */
 
+import { parseWholeNumberSetting } from "../config/whole-number-setting.js";
 import type { PaymentStatus, ReservationStatus } from "../domain/entities.js";
 
 export interface PaymentConfig {
-  /** Charge the whole price up front, or a deposit now + balance later (11.2b). */
-  depositMode: "full" | "deposit";
-  /** Deposit as an integer percent (used only when `depositMode === "deposit"`). */
-  depositPercent: number;
+  /** The deposit a customer may pay now instead of the whole quote, in cents — one fixed number,
+   *  not a percent (issue #1250, `docs/SPEC.md §2.8.4d`). Stored as `payment.deposit_cents`. */
+  depositCents: number;
   /** Sales-tax rate in BASIS POINTS (725 = 7.25%) — integer, float-free (DEC-112). Ohio. */
   taxRateBps: number;
   /** Service fee in BASIS POINTS (300 = 3%) on everything but tax — fare, extras, insurance and the
-   *  tip (DEC-196); untaxed. Formerly the fare only (DEC-134). Charged IN FULL with the deposit
-   *  charge; the balance carries none. */
+   *  tip (DEC-196); untaxed. Formerly the fare only (DEC-134). */
   serviceFeeBps: number;
-  /** How many days before the event the balance is due — a formalized default; the
-   *  scheduler that reads it (auto-emit) is P12+. Balance is collected on demand for now. */
+  /** How many days before the departure the balance is due. Inside this window a booking is paid
+   *  whole at checkout (`insideBalanceWindow`). */
   balanceDueDaysBeforeEvent: number;
+  /** How many days before the departure an unpaid balance releases the seats. */
+  balanceReleaseDaysBeforeEvent: number;
 }
 
 /**
  * Defaults (BrewBoat). Overridden per-field by any `payment.*` key in `app_settings`.
  *
- * **`depositMode` is `full`, and that is a deliberate reversal (issue #617).** It was `deposit` at
- * 25% from the day this file was written — and nothing overrides it: production's `app_settings`
- * holds a single row and it isn't this one. So any environment nobody had configured charged 25%
- * and left 75% owed to a collection mechanism **that does not exist**. Nothing reads
- * `balanceDueDaysBeforeEvent` on a schedule; issue #712 is the unbuilt auto-collect. Collecting
- * meant the operator noticing, opening the booking, copying a link and texting it, per booking.
- *
- * A default is what an unconfigured deploy inherits, so it should be the posture that cannot leak
- * revenue by being forgotten. Deposit mode is untouched and fully supported — it is now opt-IN,
- * which is the right direction for a mode whose back half is manual.
- *
- * `depositPercent` stays at 25 so opting in remains one setting rather than two.
- *
- * **This IS the operator's choice, for every environment — recorded as DEC-155**, which reverses
- * DEC-107 on the default and launch posture only. issue #617 also asked for that posture to be an
- * explicit row in production's `app_settings` rather than inherited; it is answered by the
- * decision instead — full payment everywhere, carried by this default, with no per-environment row
- * to set and none to forget.
+ * `depositCents` is $100 (`docs/SPEC.md §2.8.4d`): an unconfigured deploy offers the customer a
+ * deposit on a trip more than `balanceDueDaysBeforeEvent` days out, and the whole quote inside it.
  */
 export const PAYMENT_CONFIG_DEFAULTS: PaymentConfig = {
-  depositMode: "full",
-  depositPercent: 25,
+  depositCents: 10000,
   taxRateBps: 725, // Ohio state sales tax 7.25% (operator-adjustable)
   serviceFeeBps: 300, // 3% of everything but tax (operator-adjustable), untaxed (DEC-196)
-  balanceDueDaysBeforeEvent: 14,
+  balanceDueDaysBeforeEvent: 30,
+  balanceReleaseDaysBeforeEvent: 21,
 };
 
+/** The `app_settings` key for the deposit. */
+export const DEPOSIT_CENTS_KEY = "payment.deposit_cents";
+
+/**
+ * Parse the stored deposit. Absent ⇒ the default, silently; whole cents ⇒ that; anything else
+ * (`"abc"`, `"-5"`, `"10.5"`) ⇒ the default **and a log line**, so a typo in a hand-written SQL row
+ * does not turn the deposit off without anyone knowing. Same shape as `parseBookingCutoffHours`.
+ */
+export function parseDepositCents(raw: string | null | undefined): number {
+  return parseWholeNumberSetting(
+    raw,
+    DEPOSIT_CENTS_KEY,
+    PAYMENT_CONFIG_DEFAULTS.depositCents,
+    "the deposit reads as the default — customers are offered it, not the figure the operator set",
+  );
+}
+
+/** Is a deposit offered on this quote? Not inside the balance window, and only when the quote is
+ *  more than the deposit — a quote at or below it is just paid whole. */
+export function depositOffered(
+  totalCents: number,
+  depositCents: number,
+  insideBalanceWindow: boolean,
+): boolean {
+  return !insideBalanceWindow && totalCents > depositCents;
+}
+
+/** What is due now: the deposit, or the whole quote (no deposit, or a quote at or below it). The one
+ *  home of the split — `priceBooking` charges it and `totalsFor` shows it. */
+export function dueNowCents(totalCents: number, depositCents: number | null): number {
+  return depositCents === null || totalCents <= depositCents ? totalCents : depositCents;
+}
 /** Tax on a taxable amount, integer cents (round half-up). Pure — used by the charge builder. */
 export function taxCentsFor(taxableCents: number, taxRateBps: number): number {
   return Math.round((taxableCents * taxRateBps) / 10000);
@@ -75,24 +92,6 @@ export function taxCentsFor(taxableCents: number, taxRateBps: number): number {
  *  from live config. */
 export function feeCentsFor(baseCents: number, serviceFeeBps: number): number {
   return Math.round((baseCents * serviceFeeBps) / 10000);
-}
-
-/**
- * The amount to charge NOW given the config: full price+tax+fee, or the deposit share.
- * `feeCents` is the frozen service fee (DEC-134) — like tax, it is collected IN FULL with
- * the now-charge so the balance carries none. Callers on the pre-fee hosted paths pass 0.
- */
-export function chargeNowCents(
-  priceCents: number,
-  taxCents: number,
-  feeCents: number,
-  config: PaymentConfig,
-): number {
-  if (config.depositMode === "full") return priceCents + taxCents + feeCents;
-  // Deposit is a share of the price; tax + fee are collected in full with the deposit charge
-  // so the balance row carries zero of either (keeps Σ tax == total tax per reservation, and
-  // the fee one-shot — the later balance charge carries NO second fee).
-  return Math.round((priceCents * config.depositPercent) / 100) + taxCents + feeCents;
 }
 
 /**
@@ -158,7 +157,7 @@ export const tookMoney = (p: { status: PaymentStatus }): boolean =>
  * recompute of the deposit share. `total = fare + tax`, minus what every payment that took
  * money contributed toward fare+tax (the deposit carried all the tax, so the residual is pure
  * principal). The `Payment` entity mandates balance be derived, not stored, so this is
- * the ONE authority: immune to a `depositPercent`/price change between deposit and
+ * the ONE authority: immune to a `depositCents`/price change between deposit and
  * balance. `<= 0` means nothing owed.
  *
  * **A refund never changes the balance (issue #841).** Money that went back to the card lowers

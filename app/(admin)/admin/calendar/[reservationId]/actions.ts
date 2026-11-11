@@ -120,9 +120,8 @@ export async function createBalanceLink(formData: FormData): Promise<void> {
   // makes it worth recording rather than what excuses it: "it charges nobody and changes no
   // state" is true of the press and false of the result — a URL now exists that will take this
   // customer's money, at an amount derived at this instant. The customer's half lands in
-  // `payments` when they pay; this half has never been written down anywhere, and while
-  // `depositMode` is `"full"` (DEC-155) the customer's half is dormant, so the trail is the
-  // whole record.
+  // `payments` when they pay; this half has never been written down anywhere, so the trail is the
+  // only record of the press.
   //
   // **Before the redirect, which throws.** `redirect()` unwinds by exception, so an emit placed
   // after it never runs — the defect `@code-review` found in `reissueBookingLink` on issue #1052,

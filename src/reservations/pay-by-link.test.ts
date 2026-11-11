@@ -222,19 +222,18 @@ describe("payLinkMoney — the summary is the invoice frozen at booking", () => 
       serviceFeeCents: inv.serviceFeeCents,
       totalCents: inv.totalCents,
       dueNowCents: inv.amountDueNowCents,
+      balanceCents: 0,
     });
-    expect(money.depositMode).toBe(false);
   });
 
   it("insurance bought on the phone rides the link at its frozen figures (16.8)", async () => {
     const { row } = await phoneBooked(undefined, { hasFlex: true });
     const inv = row.invoice!;
     expect(inv.flexCents).toBe(3000);
-    const { money, totals } = payLinkMoney(inv);
+    const { totals } = payLinkMoney(inv);
     expect(totals.flexCents).toBe(3000);
     expect(totals.dueNowCents).toBe(inv.amountDueNowCents);
-    expect(money.depositMode).toBe(false);
-    expect(money.balanceLaterCents).toBe(0);
+    expect(totals.balanceCents).toBe(0);
   });
 
   it("a discount that reached the insurance: the link charges what is left of it, and its tax and fee", async () => {
@@ -244,17 +243,19 @@ describe("payLinkMoney — the summary is the invoice frozen at booking", () => 
     const inv = row.invoice!;
     // $20 of insurance left: 7.25% tax $1.45 and 3% fee $0.60.
     expect(inv.amountDueNowCents).toBe(2000 + 145 + 60);
-    const { money, totals } = payLinkMoney(inv);
+    const { totals } = payLinkMoney(inv);
     expect(totals.dueNowCents).toBe(2205);
-    expect(money.depositMode).toBe(false);
+    expect(totals.balanceCents).toBe(0);
   });
 
   it("a deposit-mode invoice shows what is due now and what is left", async () => {
     const { row } = await phoneBooked();
     const inv = { ...row.invoice!, amountDueNowCents: 20000 + row.invoice!.gratuityCents };
-    const { money } = payLinkMoney(inv);
-    expect(money.depositMode).toBe(true);
-    expect(money.balanceLaterCents).toBe(inv.totalCents - inv.amountDueNowCents);
+    const { money, totals } = payLinkMoney(inv);
+    // The link offers no choice in 19.1, so it carries no deposit; the balance is the frozen one.
+    expect(money.depositCents).toBeNull();
+    expect(totals.dueNowCents).toBe(inv.amountDueNowCents);
+    expect(totals.balanceCents).toBe(inv.totalCents - inv.amountDueNowCents);
   });
 });
 

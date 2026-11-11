@@ -54,6 +54,7 @@ export async function confirmBookingFromIntent(
     amountCents: pi.amountReceivedCents,
     currency: pi.currency,
     metadata: pi.metadata,
+    ...(pi.paymentMethodId !== undefined ? { paymentMethodId: pi.paymentMethodId } : {}),
   }, opts);
 }
 

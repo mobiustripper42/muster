@@ -12,6 +12,7 @@ import { asId } from "../domain/ids.js";
 import type { PaymentEvent } from "../ports/payment.js";
 import { priceBooking } from "./booking-invoice.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
+import { confirmBookingByPaymentIntent } from "./confirm-booking.js";
 import { createDeparturePaymentIntent } from "./create-departure-payment-intent.js";
 import { abandonedCheckouts } from "./abandonment.js";
 import { eventIdForSlot } from "./availability.js";
@@ -43,8 +44,10 @@ async function seededRepo(): Promise<InMemoryRepository> {
   await repo.saveOffering(offering());
   await repo.saveVessel(vessel(SMALL, 6));
   await repo.saveVessel(vessel(BIG, 12));
-  // Deposit mode + real rates so the frozen metadata exercises every money field.
-  await repo.setPaymentConfig({ depositMode: "deposit", depositPercent: 25, taxRateBps: 725 }, NOW);
+  // Real rates so the frozen invoice exercises every money field. The departure is the same day as
+  // `NOW`, inside the balance window (issue #1250), so these tests charge the whole quote; the
+  // deposit is pinned in its own block below, on a clock 40 days out.
+  await repo.setPaymentConfig({ taxRateBps: 725 }, NOW);
   return repo;
 }
 
@@ -128,9 +131,9 @@ describe("createDeparturePaymentIntent — cancellation insurance (16.8)", () =>
     expect(r.ok).toBe(true);
     const [row] = await repo.listAllReservations();
     expect(row!.invoice!.flexCents).toBe(3000);
-    // Deposit 12475 + tax 3835 (7.25% of fare + insurance) + fee 1886 (3% of fare + insurance + tip)
-    // + tip 9980 + the whole $30.
-    expect(pay.intents[0]!.amountCents).toBe(12475 + 3835 + 1886 + 9980 + 3000);
+    // Inside the balance window, so the whole quote: fare 49900 + tax 3835 (7.25% of fare +
+    // insurance) + fee 1886 (3% of fare + insurance + tip) + tip 9980 + the whole $30.
+    expect(pay.intents[0]!.amountCents).toBe(49900 + 3835 + 1886 + 9980 + 3000);
   });
 
   it("not ticked: no insurance on the row", async () => {
@@ -160,9 +163,9 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     expect(await repo.listAllReservations()).toHaveLength(1); // the pending row IS the claim (14.7)
 
     // fare 49900 (4 guests ≤ 6 included → no extras); tax 3618; fee 1796 (3% of fare + tip,
-    // DEC-196); tip 9980; deposit share 12475 → amount = 12475 + 3618 + 1796 + 9980 = 27869.
+    // DEC-196); tip 9980 → the whole quote, 65294, inside the balance window.
     const intent = pay.intents[0]!;
-    expect(intent.amountCents).toBe(27869);
+    expect(intent.amountCents).toBe(65294);
     expect(intent.currency).toBe("usd");
     // Stripe is told the amount and nothing else (15.6). The frozen money lives on OUR row.
     expect(intent.metadata).toEqual({});
@@ -178,7 +181,7 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
       gratuityCents: 9980,
       gratuityBps: 2000,
       totalCents: 65294,
-      amountDueNowCents: 27869,
+      amountDueNowCents: 65294,
     });
     expect(row!.eventId).toBeNull(); // no Event yet — the row names the slot
   });
@@ -265,7 +268,7 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
       taxCents: 5793,
       gratuityCents: 15980,
     });
-    expect(pay.intents[0]!.amountCents).toBe(Math.round(79900 * 0.25) + 5793 + 2876 + 15980);
+    expect(pay.intents[0]!.amountCents).toBe(79900 + 5793 + 2876 + 15980);
   });
 });
 
@@ -320,7 +323,7 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     const { deps, confirm, alert } = makeDeps(repo, pay);
 
     const m = pay.intents[0]!.metadata;
-    const r = await processBookingWebhook(deps, piEvent("pi_fake_1", 27869, m), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, piEvent("pi_fake_1", 65294, m), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "booked" });
 
     const evId = eventIdForSlot(SMALL, DATE, TIME);
@@ -339,8 +342,8 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     expect(payments).toHaveLength(1);
     expect(payments[0]).toMatchObject({
       id: "pay_pi_fake_1",
-      kind: "deposit",
-      amountCents: 27869,
+      kind: "full",
+      amountCents: 65294,
       taxCents: 3618,
       gratuityCents: 9980,
       serviceFeeCents: 1796,
@@ -661,10 +664,10 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
       gratuityCents: 15980,
       gratuityBps: 2000,
       totalCents: 49900 + 30000 + 5793 + 2876 + 15980,
-      // The whole quote above; what the deposit charge actually asks for below (15.4). This stays
-      // a `toEqual` rather than a `toMatchObject` precisely so a component silently appearing
+      // What the charge actually asks for (15.4) — inside the balance window, the whole quote. This
+      // stays a `toEqual` rather than a `toMatchObject` precisely so a component silently appearing
       // fails here.
-      amountDueNowCents: 19975 + 5793 + 2876 + 15980,
+      amountDueNowCents: 49900 + 30000 + 5793 + 2876 + 15980,
     });
   });
 
@@ -680,12 +683,13 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     const pay = new FakePaymentPort();
     await createDeparturePaymentIntent(repo, pay, { ...req, guestCount: 8 }, now);
     const [row] = await pendingRows(repo);
-    // fare 79900 → deposit 25% = 19975, + tax 5793 + fee 2876 (both in full) + tip 15980.
-    expect(row!.invoice!.amountDueNowCents).toBe(19975 + 5793 + 2876 + 15980);
+    // fare 79900 + tax 5793 + fee 2876 + tip 15980 — the whole quote, inside the balance window.
+    expect(row!.invoice!.amountDueNowCents).toBe(79900 + 5793 + 2876 + 15980);
     // What Stripe was actually asked for, and the row, are one number.
     expect(pay.intents[0]!.amountCents).toBe(row!.invoice!.amountDueNowCents);
-    // And it is NOT the quote — the assertion that makes deposit mode the discriminating case.
-    expect(row!.invoice!.amountDueNowCents).not.toBe(row!.invoice!.totalCents);
+    // And it IS the quote: the departure is inside the balance window (issue #1250). The deposit
+    // case, where the two part, is pinned in the deposit block below.
+    expect(row!.invoice!.amountDueNowCents).toBe(row!.invoice!.totalCents);
   });
 
   it("sends Stripe NO metadata at all (15.6)", async () => {
@@ -1086,7 +1090,7 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
       await createDeparturePaymentIntent(repo, pay, req, now);
       await repo.saveOffering(tripOffering(edit)); // the edit lands while the customer is paying
       const { deps } = makeDeps(repo, pay);
-      const r = await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, pay.intents[0]!.metadata), FAKE_SIGNATURE);
+      const r = await processBookingWebhook(deps, piEvent("pi_fake_1", pay.intents[0]!.amountCents, pay.intents[0]!.metadata), FAKE_SIGNATURE);
       expect(r).toEqual({ handled: true, outcome: "booked" });
       return repo;
     }
@@ -1094,7 +1098,7 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     it("price edited → the charge and the frozen invoice are unchanged", async () => {
       const repo = await startThenEdit({ basePriceCents: 99900 });
       const [payment] = await repo.listPaymentsForReservation(await resIdBy(repo, "pi_fake_1"));
-      expect(payment!.amountCents).toBe(27570);
+      expect(payment!.amountCents).toBe(65294);
       const pending = await repo.getReservationByPaymentIntentId("pi_fake_1");
       expect(pending!.invoice!.fareCents).toBe(49900);
     });
@@ -1315,7 +1319,11 @@ describe("createDeparturePaymentIntent — the total the page showed (issue #121
   const later = () => LATER;
   const rival = { ...req, email: "dana@x.io", phone: "+14405550102", holderToken: TOKEN_B };
 
-  async function pageShows(repo: InMemoryRepository, vesselId: typeof SMALL): Promise<number> {
+  async function pageShows(
+    repo: InMemoryRepository,
+    vesselId: typeof SMALL,
+    deposit?: { asOf: string; chosen: boolean },
+  ): Promise<number> {
     const vessels = await repo.listVessels();
     return priceBooking({
       offering: (await repo.getOffering(OFF))!,
@@ -1327,6 +1335,7 @@ describe("createDeparturePaymentIntent — the total the page showed (issue #121
       time: TIME,
       guestCount: req.guestCount,
       gratuityBps: req.gratuityBps,
+      ...(deposit ? { deposit } : {}),
     }).amountDueNowCents;
   }
 
@@ -1340,29 +1349,33 @@ describe("createDeparturePaymentIntent — the total the page showed (issue #121
     ];
   }
 
-  const MOVES: [string, (repo: InMemoryRepository) => Promise<void>][] = [
+  const MOVES: [string, (repo: InMemoryRepository) => Promise<void>, ("deposit" | undefined)?][] = [
     ["the offering's price, up", (repo) => repo.saveOffering(offering({ basePriceCents: 59900 }))],
     ["the offering's price, down", (repo) => repo.saveOffering(offering({ basePriceCents: 39900 }))],
     ["the tax rate, up", (repo) => repo.setPaymentConfig({ taxRateBps: 825 }, NOW)],
     ["the tax rate, down", (repo) => repo.setPaymentConfig({ taxRateBps: 625 }, NOW)],
     ["the service fee, up", (repo) => repo.setPaymentConfig({ serviceFeeBps: 400 }, NOW)],
     ["the service fee, down", (repo) => repo.setPaymentConfig({ serviceFeeBps: 200 }, NOW)],
-    ["the deposit percent, up", (repo) => repo.setPaymentConfig({ depositPercent: 50 }, NOW)],
-    ["the deposit percent, down", (repo) => repo.setPaymentConfig({ depositPercent: 10 }, NOW)],
+    // The deposit is a fixed sum since issue #1250, and it only moves due-now on a deposit checkout
+    // outside the balance window — so these two run 40 days out, with the deposit chosen.
+    ["the deposit percent, up", (repo) => repo.setPaymentConfig({ depositCents: 15000 }, NOW), "deposit"],
+    ["the deposit percent, down", (repo) => repo.setPaymentConfig({ depositCents: 5000 }, NOW), "deposit"],
   ];
 
-  for (const [label, move] of MOVES) {
+  for (const [label, move, mode] of MOVES) {
     it(`AC2: ${label} after the page loaded is refused`, async () => {
       const repo = await seededRepo();
-      const shown = await pageShows(repo, SMALL);
+      const at = mode === "deposit" ? "2026-05-25T12:00:00.000Z" : NOW;
+      const deposit = mode === "deposit" ? { asOf: at, chosen: true } : undefined;
+      const shown = await pageShows(repo, SMALL, deposit);
       await move(repo);
-      expect(await pageShows(repo, SMALL)).not.toBe(shown); // the move really did move the total
+      expect(await pageShows(repo, SMALL, deposit)).not.toBe(shown); // the move really did move the total
 
       const r = await createDeparturePaymentIntent(
         repo,
         new FakePaymentPort(),
-        { ...req, shownDueNowCents: shown },
-        now,
+        { ...req, shownDueNowCents: shown, ...(mode === "deposit" ? { payDeposit: true } : {}) },
+        () => at,
       );
       expect(r).toEqual(REFUSED);
     });
@@ -1547,5 +1560,329 @@ describe("createDeparturePaymentIntent — the total the page showed (issue #121
     expect(r).toEqual({ ok: false, reason: "already_paid" });
     expect(await repo.listAllReservations()).toEqual([before]);
     expect(pay.intents).toHaveLength(1);
+  });
+});
+
+/**
+ * The deposit at checkout (issue #1250, `docs/SPEC.md §2.8.4d`).
+ *
+ * The departure is `DATE` at `TIME`, America/New_York; `FAR` is 40 days before it, outside the
+ * 30-day balance window. The quote is SPEC §2.8.4a's worked example: fare $499, a 20% tip, tax 725
+ * bps and fee 300 bps — $652.94 — so a $100 deposit leaves $552.94.
+ *
+ * Due date: 30 days before 2026-07-04 is 2026-06-04, at 13:30 EDT → 17:30Z. Release: 21 days
+ * before is 2026-06-13, 13:30 EDT → 17:30Z.
+ */
+describe("createDeparturePaymentIntent — the deposit at checkout (issue #1250)", () => {
+  const FAR = "2026-05-25T12:00:00.000Z";
+  const far = () => FAR;
+  /** 20 days out: inside the balance window. */
+  const NEAR = "2026-06-14T12:00:00.000Z";
+  const near = () => NEAR;
+  const DUE_AT = "2026-06-04T17:30:00.000Z";
+  const RELEASE_AT = "2026-06-13T17:30:00.000Z";
+  const deposit = { ...req, payDeposit: true };
+  const payInFull = { ...req, payDeposit: false };
+
+  const onlyRow = async (repo: InMemoryRepository) => {
+    const rows = await repo.listAllReservations();
+    expect(rows).toHaveLength(1);
+    return rows[0]!;
+  };
+
+  it("AC3: the deposit chosen 40 days out freezes $100 due now against the $652.94 quote, and charges $100", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const r = await createDeparturePaymentIntent(repo, pay, deposit, far);
+    expect(r.ok).toBe(true);
+    const row = await onlyRow(repo);
+    expect(row.invoice!.amountDueNowCents).toBe(10000);
+    expect(row.invoice!.totalCents).toBe(65294);
+    expect(pay.intents).toHaveLength(1);
+    expect(pay.intents[0]!.amountCents).toBe(10000);
+  });
+
+  it("AC4: with insurance the deposit is still $100 — the insurance is inside it, not added to it", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const r = await createDeparturePaymentIntent(repo, pay, { ...deposit, hasFlex: true }, far);
+    expect(r.ok).toBe(true);
+    const row = await onlyRow(repo);
+    expect(row.invoice!.flexCents).toBe(3000);
+    expect(row.invoice!.totalCents).toBe(49900 + 3835 + 1886 + 9980 + 3000);
+    expect(row.invoice!.amountDueNowCents).toBe(10000);
+    expect(pay.intents[0]!.amountCents).toBe(10000);
+  });
+
+  it("AC5: inside the balance window the whole quote is due, whatever the post asked for — no customer, no saved card, no dates", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const r = await createDeparturePaymentIntent(repo, pay, deposit, near);
+    expect(r.ok).toBe(true);
+    const row = await onlyRow(repo);
+    expect(row.invoice!.amountDueNowCents).toBe(65294);
+    expect(pay.intents[0]!.amountCents).toBe(65294);
+    expect(pay.createdCustomers).toEqual([]);
+    expect(pay.intents[0]!.customerId).toBeUndefined();
+    expect(pay.intents[0]!.setupFutureUsage).toBeUndefined();
+    expect(row.stripeCustomerId).toBeUndefined();
+    expect(row.balanceDueAt).toBeUndefined();
+    expect(row.balanceReleaseAt).toBeUndefined();
+  });
+
+  it("AC6: a quote at the deposit is due whole, as inside the window", async () => {
+    const repo = await seededRepo();
+    await repo.setPaymentConfig({ depositCents: 65294 }, NOW);
+    const pay = new FakePaymentPort();
+    const r = await createDeparturePaymentIntent(repo, pay, deposit, far);
+    expect(r.ok).toBe(true);
+    const row = await onlyRow(repo);
+    expect(row.invoice!.amountDueNowCents).toBe(65294);
+    expect(pay.createdCustomers).toEqual([]);
+    expect(pay.intents[0]!.setupFutureUsage).toBeUndefined();
+    expect(row.balanceDueAt).toBeUndefined();
+    expect(row.balanceReleaseAt).toBeUndefined();
+  });
+
+  it("AC8: a deposit booking freezes the balance due and release instants, vessel-local clock, as ISO UTC", async () => {
+    const repo = await seededRepo();
+    await createDeparturePaymentIntent(repo, new FakePaymentPort(), deposit, far);
+    const row = await onlyRow(repo);
+    expect(row.balanceDueAt).toBe(DUE_AT);
+    expect(row.balanceReleaseAt).toBe(RELEASE_AT);
+  });
+
+  it("AC8: a retry re-freezes both dates with the invoice, from the settings it was priced under", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, deposit, far);
+    await repo.setPaymentConfig({ balanceDueDaysBeforeEvent: 35, balanceReleaseDaysBeforeEvent: 25 }, NOW);
+    const again = await createDeparturePaymentIntent(repo, pay, { ...deposit, gratuityBps: 2500 }, far);
+    expect(again.ok).toBe(true);
+    const row = await onlyRow(repo);
+    expect(row.invoice!.gratuityBps).toBe(2500);
+    // 35 days before 2026-07-04 is 2026-05-30; 25 days before is 2026-06-09. Both 13:30 EDT.
+    expect(row.balanceDueAt).toBe("2026-05-30T17:30:00.000Z");
+    expect(row.balanceReleaseAt).toBe("2026-06-09T17:30:00.000Z");
+  });
+
+  it("AC8: a retry that turns to pay in full clears both dates", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, deposit, far);
+    const again = await createDeparturePaymentIntent(repo, pay, payInFull, far);
+    expect(again.ok).toBe(true);
+    const row = await onlyRow(repo);
+    expect(row.invoice!.amountDueNowCents).toBe(65294);
+    expect(row.balanceDueAt).toBeUndefined();
+    expect(row.balanceReleaseAt).toBeUndefined();
+  });
+
+  it("AC9: a deposit attempt creates one provider customer keyed on the reservation, stores it, and the intent saves the card to it", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, deposit, far);
+    const row = await onlyRow(repo);
+    expect(pay.createdCustomers).toEqual([{ idempotencyKey: `customer_${row.id}`, name: "Mary" }]);
+    const customerId = `cus_fake_customer_${row.id}`;
+    expect(row.stripeCustomerId).toBe(customerId);
+    expect(pay.intents[0]).toMatchObject({ amountCents: 10000, customerId, setupFutureUsage: "off_session" });
+  });
+
+  it("AC9: every later deposit attempt on the row reuses that customer — raised or re-minted — and creates none", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, deposit, far);
+    // A raise: a changed tip on the same intent.
+    await createDeparturePaymentIntent(repo, pay, { ...deposit, gratuityBps: 2500 }, far);
+    // A re-mint: the provider could not describe the intent (15.10).
+    pay.intentStateError = new Error("stripe: 503");
+    const third = await createDeparturePaymentIntent(repo, pay, deposit, far);
+    expect(third.ok).toBe(true);
+
+    const row = await onlyRow(repo);
+    const customerId = `cus_fake_customer_${row.id}`;
+    expect(pay.createdCustomers).toHaveLength(1);
+    expect(row.stripeCustomerId).toBe(customerId);
+    expect(pay.intents).toHaveLength(2);
+    expect(pay.intents[1]).toMatchObject({ customerId, setupFutureUsage: "off_session" });
+  });
+
+  it("AC10: a retry that turns from pay in full to the deposit retires the intent and mints a fresh one", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, payInFull, far);
+    const again = await createDeparturePaymentIntent(repo, pay, deposit, far);
+    expect(again).toMatchObject({ ok: true, paymentIntentId: "pi_fake_2" });
+
+    expect(pay.amountUpdates).toEqual([]); // never updated in place
+    expect(pay.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+    expect(pay.liveAmountCents.has("pi_fake_1")).toBe(false);
+    expect(pay.intents).toHaveLength(2);
+    expect(pay.intents[1]).toMatchObject({ amountCents: 10000, setupFutureUsage: "off_session" });
+    expect((await onlyRow(repo)).paymentIntentIds).toEqual(["pi_fake_1", "pi_fake_2"]);
+  });
+
+  it("AC10: a retry that turns from the deposit to pay in full retires the card-saving intent and mints one that saves nothing", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, deposit, far);
+    const again = await createDeparturePaymentIntent(repo, pay, payInFull, far);
+    expect(again).toMatchObject({ ok: true, paymentIntentId: "pi_fake_2" });
+
+    expect(pay.amountUpdates).toEqual([]);
+    expect(pay.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+    expect(pay.intents[1]!.amountCents).toBe(65294);
+    expect(pay.intents[1]!.customerId).toBeUndefined();
+    expect(pay.intents[1]!.setupFutureUsage).toBeUndefined();
+    // The customer minted for the earlier attempt stays on the row.
+    const row = await onlyRow(repo);
+    expect(row.stripeCustomerId).toBe(`cus_fake_customer_${row.id}`);
+  });
+
+  it("AC10: a retry with the same answer still raises the intent it has", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, payInFull, far);
+    await createDeparturePaymentIntent(repo, pay, { ...payInFull, gratuityBps: 2500 }, far);
+    expect(pay.intents).toHaveLength(1);
+    expect(pay.cancelled).toEqual([]);
+    expect(pay.amountUpdates).toHaveLength(1);
+  });
+
+  describe("AC11: the confirm stores the card the deposit was paid with", () => {
+    function depsAt(repo: InMemoryRepository, payments: FakePaymentPort): WebhookDeps {
+      return {
+        repo,
+        payments,
+        now: far,
+        alertPaidButUnbooked: vi.fn(async () => {}),
+        sendConfirmation: vi.fn(async () => true),
+        notifyCustomerSoldOut: vi.fn(async () => {}),
+      };
+    }
+
+    it("AC11: confirmed by the webhook", async () => {
+      const repo = await seededRepo();
+      const pay = new FakePaymentPort();
+      await createDeparturePaymentIntent(repo, pay, deposit, far);
+      const body = JSON.stringify({
+        stripeEventId: "evt_test_fixture",
+        type: "payment_succeeded",
+        data: {
+          paymentIntentId: "pi_fake_1",
+          amountReceivedCents: 10000,
+          currency: "usd",
+          metadata: {},
+          paymentMethodId: "pm_card_visa",
+        },
+      });
+      const r = await processBookingWebhook(depsAt(repo, pay), body, FAKE_SIGNATURE);
+      expect(r).toEqual({ handled: true, outcome: "booked" });
+      const row = await repo.getReservationByPaymentIntentId("pi_fake_1");
+      expect(row!.stripePaymentMethodId).toBe("pm_card_visa");
+    });
+
+    it("AC11: confirmed by /book/success", async () => {
+      const repo = await seededRepo();
+      const pay = new FakePaymentPort();
+      await createDeparturePaymentIntent(repo, pay, deposit, far);
+      pay.succeededIntents.set("pi_fake_1", {
+        paymentIntentId: "pi_fake_1",
+        amountReceivedCents: 10000,
+        currency: "usd",
+        metadata: {},
+        paymentMethodId: "pm_card_mastercard",
+      });
+      const r = await confirmBookingByPaymentIntent(depsAt(repo, pay), "pi_fake_1");
+      expect(r).toEqual({ handled: true, outcome: "booked" });
+      const row = await repo.getReservationByPaymentIntentId("pi_fake_1");
+      expect(row!.stripePaymentMethodId).toBe("pm_card_mastercard");
+    });
+  });
+
+  it("AC12: a shown balance a cent off is refused — nothing written, nothing charged, no customer", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const r = await createDeparturePaymentIntent(
+      repo,
+      pay,
+      { ...deposit, shownDueNowCents: 10000, shownBalanceCents: 55293 },
+      far,
+    );
+    expect(r).toEqual({ ok: false, reason: "price_changed" });
+    expect(await repo.listAllReservations()).toHaveLength(0);
+    expect(pay.intents).toHaveLength(0);
+    expect(pay.createdCustomers).toEqual([]);
+  });
+
+  it("AC12: a balance shown on a pay-in-full attempt is refused — the invoice leaves none", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const r = await createDeparturePaymentIntent(
+      repo,
+      pay,
+      { ...payInFull, shownDueNowCents: 65294, shownBalanceCents: 55294 },
+      far,
+    );
+    expect(r).toEqual({ ok: false, reason: "price_changed" });
+    expect(await repo.listAllReservations()).toHaveLength(0);
+    expect(pay.intents).toHaveLength(0);
+  });
+
+  it("AC12: the balance the page showed goes through when it is the frozen one", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const r = await createDeparturePaymentIntent(
+      repo,
+      pay,
+      { ...deposit, shownDueNowCents: 10000, shownBalanceCents: 55294 },
+      far,
+    );
+    expect(r.ok).toBe(true);
+    expect(pay.intents[0]!.amountCents).toBe(10000);
+  });
+
+  it("AC15: offered a deposit, the customer pays in full — the whole quote, no customer, no saved card, no dates", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const r = await createDeparturePaymentIntent(repo, pay, payInFull, far);
+    expect(r.ok).toBe(true);
+    const row = await onlyRow(repo);
+    expect(row.invoice!.amountDueNowCents).toBe(65294);
+    expect(pay.intents[0]!.amountCents).toBe(65294);
+    expect(pay.createdCustomers).toEqual([]);
+    expect(pay.intents[0]!.customerId).toBeUndefined();
+    expect(pay.intents[0]!.setupFutureUsage).toBeUndefined();
+    expect(row.balanceDueAt).toBeUndefined();
+    expect(row.balanceReleaseAt).toBeUndefined();
+  });
+
+  // From review (2026-11-10): the customer is stored on the row as soon as it is created, before the
+  // mint. Stripe refuses a repeated idempotency key with different parameters, so a retry that
+  // restated the name and email must find the customer on the row, not send `customer_<id>` again.
+  it("AC9: a retry after a failed mint, with a restated name and email, reuses the customer the first attempt made", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    vi.spyOn(pay, "createPaymentIntent").mockRejectedValueOnce(new Error("stripe: 503"));
+
+    await expect(createDeparturePaymentIntent(repo, pay, deposit, far)).rejects.toThrow("stripe: 503");
+    const afterFailedMint = await onlyRow(repo);
+    const customerId = `cus_fake_customer_${afterFailedMint.id}`;
+    expect(afterFailedMint.stripeCustomerId).toBe(customerId);
+
+    const again = await createDeparturePaymentIntent(
+      repo,
+      pay,
+      { ...deposit, customerName: "Mary Smith", email: "mary.smith@x.io" },
+      far,
+    );
+    expect(again.ok).toBe(true);
+
+    const row = await onlyRow(repo);
+    expect(row.customerName).toBe("Mary Smith");
+    expect(pay.createdCustomers).toEqual([{ idempotencyKey: `customer_${row.id}`, name: "Mary" }]);
+    expect(row.stripeCustomerId).toBe(customerId);
+    expect(pay.intents.at(-1)).toMatchObject({ amountCents: 10000, customerId, setupFutureUsage: "off_session" });
   });
 });

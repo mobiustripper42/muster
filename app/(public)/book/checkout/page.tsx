@@ -261,16 +261,21 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
       </main>
     );
   }
-  const quote = checkoutQuote({
-    offering: chosen,
-    vessel: boat,
-    vesselId: boat.id,
-    events,
-    config,
-    date,
-    time,
-    guestCount: guests,
-  });
+  const quote = checkoutQuote(
+    {
+      offering: chosen,
+      vessel: boat,
+      vesselId: boat.id,
+      events,
+      config,
+      date,
+      time,
+      guestCount: guests,
+    },
+    // The clock the deposit is judged by (issue #1250): outside the balance window the quote carries
+    // it, inside it the screen shows the whole quote. The write judges it again on its own clock.
+    nowIso,
+  );
   const { tiers, defaultBps, ...money } = quote;
 
   const location = locations.find((l) => String(l.id) === String(chosen.locationId));

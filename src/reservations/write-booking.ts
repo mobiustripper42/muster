@@ -22,6 +22,7 @@ import type { Event, Reservation } from "../domain/entities.js";
 import type { ReservationId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { eventIdForSlot } from "./availability.js";
+import { hasBalance } from "./booking-invoice.js";
 import { pendingLiveSince } from "./pending.js";
 import { resolveCustomerId } from "../customers/resolve.js";
 
@@ -73,6 +74,7 @@ export async function confirmPendingRow(
   repo: Repository,
   paymentIntentId: string,
   now: () => string,
+  paymentMethodId?: string,
 ): Promise<ConfirmResult> {
   const row = await repo.getReservationByPaymentIntentId(paymentIntentId);
   if (!row) return { outcome: "unconfirmable", reason: "no_row" };
@@ -80,7 +82,7 @@ export async function confirmPendingRow(
   // id on the booked row is the idempotency key now that the reservation id is not derived.
   if (row.status === "booked") return { outcome: "already", reservation: row };
   if (row.status !== "pending") return { outcome: "unconfirmable", reason: "not_pending" };
-  return flipPendingRow(repo, row, now);
+  return flipPendingRow(repo, row, now, paymentMethodId);
 }
 
 /**
@@ -118,6 +120,7 @@ async function flipPendingRow(
   repo: Repository,
   row: Reservation,
   now: () => string,
+  paymentMethodId?: string,
 ): Promise<ConfirmResult> {
 
   if (
@@ -170,6 +173,9 @@ async function flipPendingRow(
     // Extras off the invoice too — the deposit-mode balance deriver collects them, so the number
     // has to be the one the customer was quoted rather than one Stripe echoed back.
     extrasCents: row.invoice.extrasCents,
+    // The card the deposit was paid with, for the balance to be charged to later (issue #1250). Only
+    // a booking that has a balance keeps one: a pay-in-full intent saved nothing to charge again.
+    ...(paymentMethodId !== undefined && hasBalance(row.invoice) ? { stripePaymentMethodId: paymentMethodId } : {}),
   };
 
   const res = await repo.bookPendingIfHullFree(
@@ -199,4 +205,6 @@ export type ConfirmPatch = {
   updatedAt: string;
   customerId?: Reservation["customerId"];
   extrasCents?: number;
+  /** The card a deposit was paid with (issue #1250). */
+  stripePaymentMethodId?: string;
 };

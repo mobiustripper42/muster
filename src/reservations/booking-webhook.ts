@@ -49,6 +49,7 @@ import {
 } from "../domain/ids.js";
 import type { CheckoutCompleted, DisputeUpdated, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
+import { hasBalance } from "./booking-invoice.js";
 import { bookedFareCents, flexCarveOutCents } from "./discount.js";
 import { balanceOwedCents } from "./payment-config.js";
 import type { SoldOutContact } from "./sold-out-notice.js";
@@ -225,6 +226,8 @@ interface BookingCharge {
   amountCents: number;
   currency: string;
   metadata: Record<string, string>;
+  /** The card the intent was paid with, stored on the row when it has a balance (issue #1250). */
+  paymentMethodId?: string;
 }
 
 export async function processBookingWebhook(
@@ -807,6 +810,7 @@ export async function processBookingCharge(
     deps.repo,
     charge.paymentIntentId,
     deps.now,
+    charge.paymentMethodId,
   );
 
   // **`no_row` is not a problem; it means the charge is not one of our bookings (15.6).**
@@ -951,8 +955,7 @@ export async function processBookingCharge(
     // Deposit or full, DERIVED from the row rather than taken from a metadata key (15.6): the
     // invoice says what the whole trip costs and what we asked for now, and a charge for less
     // than the total is a deposit by definition.
-    const kind =
-      invoice !== undefined && invoice.amountDueNowCents < invoice.totalCents ? "deposit" : "full";
+    const kind = invoice !== undefined && hasBalance(invoice) ? "deposit" : "full";
     await recordPayment(deps, charge, kind, reservationId, invoice);
 
     return { handled: true, outcome: result.outcome };

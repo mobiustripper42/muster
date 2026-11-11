@@ -108,6 +108,8 @@ describe("startElementsCheckout — the gates still answer for themselves", () =
     phone: "+12165550148",
     agreedToTerms: true,
     shownDueNowCents: 27869,
+    payDeposit: false,
+    shownBalanceCents: 0,
   };
 
   it("keeps the SPECIFIC message for a bad phone", async () => {
@@ -171,6 +173,18 @@ describe("startElementsCheckout — the gates still answer for themselves", () =
     for (const [label, sent] of NOT_WHOLE_CENTS) {
       it(`AC8: a post whose total is ${label} gets the price-changed message and touches no dependency`, async () => {
         expect(await postWithoutDependencies({ ...VALID, shownDueNowCents: sent as number })).toEqual(REFUSED_UNTOUCHED);
+      });
+    }
+
+    // The balance the page showed (issue #1250, AC12), refused at the same edge, the same way.
+    it("AC12: a post with no balance gets the price-changed message and touches no dependency", async () => {
+      const { shownBalanceCents: _sent, ...withoutBalance } = VALID;
+      expect(await postWithoutDependencies(withoutBalance as typeof VALID)).toEqual(REFUSED_UNTOUCHED);
+    });
+
+    for (const [label, sent] of NOT_WHOLE_CENTS) {
+      it(`AC12: a post whose balance is ${label} gets the price-changed message and touches no dependency`, async () => {
+        expect(await postWithoutDependencies({ ...VALID, shownBalanceCents: sent as number })).toEqual(REFUSED_UNTOUCHED);
       });
     }
 

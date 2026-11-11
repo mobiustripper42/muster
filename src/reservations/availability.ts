@@ -38,9 +38,10 @@ import {
   pendingIntervalsFor,
   type BusyInterval,
 } from "./hull-busy.js";
-import { zonedWallClockToInstant } from "../config/tenant.js";
+import { addDays, zonedWallClockToInstant } from "../config/tenant.js";
 import { isLivePending, pendingLiveSince } from "./pending.js";
 import { FLEX_CANCEL_HOURS_BEFORE } from "./refund-terms.js";
+import type { PaymentConfig } from "./payment-config.js";
 
 export interface EventAvailability {
   eventId: EventId;
@@ -201,6 +202,36 @@ export function insideBookingCutoff(date: string, time: string, asOf: string, ho
 export function insuranceOnSale(date: string, time: string, asOf: string): boolean {
   const msBefore = zonedWallClockToInstant(date, time).getTime() - Date.parse(asOf);
   return msBefore >= FLEX_CANCEL_HOURS_BEFORE * 3_600_000;
+}
+
+/**
+ * The instants a deposit booking's balance falls due and releases the seats (issue #1250,
+ * `docs/SPEC.md §2.8.4d`): the departure's clock time on the day N days before its date, in the
+ * vessel zone — a calendar subtraction, not `N × 24 hours`, so a daylight-time change between the
+ * two does not move the clock time an hour. Both are `toISOString()` strings.
+ */
+export function balanceDates(
+  date: string,
+  time: string,
+  config: PaymentConfig,
+): { dueAt: string; releaseAt: string } {
+  const at = (days: number) => zonedWallClockToInstant(addDays(date, -days), time).toISOString();
+  return { dueAt: at(config.balanceDueDaysBeforeEvent), releaseAt: at(config.balanceReleaseDaysBeforeEvent) };
+}
+
+/**
+ * Is `asOf` at or after this departure's balance due instant? Inside the window the whole quote is
+ * due at checkout and no deposit is offered. **`hasDeparted` asked about the due date** — the same
+ * `<=` boundary, so the exact due instant is inside, the way `insideBookingCutoff` measures its own
+ * line.
+ */
+export function insideBalanceWindow(
+  date: string,
+  time: string,
+  asOf: string,
+  config: PaymentConfig,
+): boolean {
+  return hasDeparted(addDays(date, -config.balanceDueDaysBeforeEvent), time, asOf);
 }
 
 /** The physical boat-slot identity for a Muster event (DEC-125 guardrail). ONE Brew 3

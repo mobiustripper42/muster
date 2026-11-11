@@ -97,7 +97,9 @@ import type {
 } from "../messaging/entities.js";
 import type { ThreadId } from "../domain/ids.js";
 import {
+  DEPOSIT_CENTS_KEY,
   PAYMENT_CONFIG_DEFAULTS,
+  parseDepositCents,
   type PaymentConfig,
 } from "../reservations/payment-config.js";
 import { BOOKING_CUTOFF_KEY, parseBookingCutoffHours } from "../reservations/booking-cutoff.js";
@@ -355,6 +357,11 @@ const toReservation = (r: any): Reservation => ({
   ...opt("tripMinutes", r.trip_minutes),
   ...opt("invoice", r.booking_invoice),
   ...opt("confirmationSentAt", r.confirmation_sent_at),
+  // The deposit (issue #1250): null on every row with no balance.
+  ...opt("balanceDueAt", r.balance_due_at),
+  ...opt("balanceReleaseAt", r.balance_release_at),
+  ...opt("stripeCustomerId", r.stripe_customer_id),
+  ...opt("stripePaymentMethodId", r.stripe_payment_method_id),
 });
 
 /**
@@ -363,6 +370,11 @@ const toReservation = (r: any): Reservation => ({
  * flips a row (`bookPendingIfHullFree`); before 14.4 each carried its own column list and the
  * 14.4 columns would have been a fourth place for them to drift apart. `id` first is
  * load-bearing: the pending-write insert and the flip both refer to it as `$1`.
+ *
+ * **Not here, by design:** `checkout_attempts` (15.9), and `stripe_customer_id` and
+ * `stripe_payment_method_id` (issue #1250). The customer is written once by `recordCheckoutAttempt`
+ * and the saved card by the confirm flip, so no whole-row upsert of a stale copy can clear either.
+ * The balance dates ARE here: they are frozen with the invoice and re-frozen with it.
  */
 const RESERVATION_COLUMNS = [
   "id",
@@ -388,6 +400,8 @@ const RESERVATION_COLUMNS = [
   "trip_minutes",
   "booking_invoice",
   "confirmation_sent_at",
+  "balance_due_at",
+  "balance_release_at",
 ] as const;
 
 /** The values for `RESERVATION_COLUMNS`, same order. `eventId` overridable — the booking write
@@ -417,6 +431,8 @@ function reservationValues(r: Reservation, eventId: EventId | null = r.eventId):
     r.tripMinutes ?? null,
     r.invoice ?? null,
     r.confirmationSentAt ?? null,
+    r.balanceDueAt ?? null,
+    r.balanceReleaseAt ?? null,
   ];
 }
 
@@ -1329,28 +1345,29 @@ export class PostgresRepository implements Repository {
       const n = kv.has(k) ? Number(kv.get(k)) : NaN;
       return Number.isFinite(n) ? n : d; // absent / unparseable ⇒ default (DEC-054)
     };
-    const mode = kv.get("payment.deposit_mode");
     return {
-      depositMode:
-        mode === "full" || mode === "deposit"
-          ? mode
-          : PAYMENT_CONFIG_DEFAULTS.depositMode,
-      depositPercent: num("payment.deposit_percent", PAYMENT_CONFIG_DEFAULTS.depositPercent),
+      // The deposit alone is read whole-or-default and logged when malformed (issue #1250); the
+      // other keys keep their lenient `num()` parse.
+      depositCents: parseDepositCents(kv.get(DEPOSIT_CENTS_KEY)),
       taxRateBps: num("payment.tax_rate_bps", PAYMENT_CONFIG_DEFAULTS.taxRateBps),
       serviceFeeBps: num("payment.service_fee_bps", PAYMENT_CONFIG_DEFAULTS.serviceFeeBps),
       balanceDueDaysBeforeEvent: num(
         "payment.balance_due_days",
         PAYMENT_CONFIG_DEFAULTS.balanceDueDaysBeforeEvent,
       ),
+      balanceReleaseDaysBeforeEvent: num(
+        "payment.balance_release_days",
+        PAYMENT_CONFIG_DEFAULTS.balanceReleaseDaysBeforeEvent,
+      ),
     };
   }
   async setPaymentConfig(patch: Partial<PaymentConfig>, at: string): Promise<void> {
     const entries: [string, string][] = [];
-    if (patch.depositMode !== undefined) entries.push(["payment.deposit_mode", patch.depositMode]);
-    if (patch.depositPercent !== undefined) entries.push(["payment.deposit_percent", String(patch.depositPercent)]);
+    if (patch.depositCents !== undefined) entries.push([DEPOSIT_CENTS_KEY, String(patch.depositCents)]);
     if (patch.taxRateBps !== undefined) entries.push(["payment.tax_rate_bps", String(patch.taxRateBps)]);
     if (patch.serviceFeeBps !== undefined) entries.push(["payment.service_fee_bps", String(patch.serviceFeeBps)]);
     if (patch.balanceDueDaysBeforeEvent !== undefined) entries.push(["payment.balance_due_days", String(patch.balanceDueDaysBeforeEvent)]);
+    if (patch.balanceReleaseDaysBeforeEvent !== undefined) entries.push(["payment.balance_release_days", String(patch.balanceReleaseDaysBeforeEvent)]);
     for (const [key, value] of entries) {
       await this.#pool.query(
         `insert into app_settings(key, value, updated_at) values ($1,$2,$3)
@@ -1693,7 +1710,8 @@ export class PostgresRepository implements Repository {
                 event_id=$2,
                 updated_at=coalesce($3, updated_at),
                 customer_id=coalesce($4, customer_id),
-                extras_cents=coalesce($5, extras_cents)
+                extras_cents=coalesce($5, extras_cents),
+                stripe_payment_method_id=coalesce($6, stripe_payment_method_id)
           where id=$1 and status='pending'
             and not exists (
               select 1 from reservations
@@ -1706,6 +1724,7 @@ export class PostgresRepository implements Repository {
           patch.updatedAt ?? null,
           patch.customerId ?? null,
           patch.extrasCents ?? null,
+          patch.stripePaymentMethodId ?? null,
         ],
       );
       if (flipped.rowCount === 0) {
@@ -1906,7 +1925,10 @@ export class PostgresRepository implements Repository {
               customer_name = case when status = 'pending' then $5 else customer_name end,
               party_size = case when status = 'pending' then $6 else party_size end,
               email = case when status = 'pending' then $7 else email end,
-              phone = case when status = 'pending' then $8 else phone end
+              phone = case when status = 'pending' then $8 else phone end,
+              balance_due_at = case when status = 'pending' then $9 else balance_due_at end,
+              balance_release_at = case when status = 'pending' then $10 else balance_release_at end,
+              stripe_customer_id = coalesce(stripe_customer_id, $11)
         where id = $1`,
       [
         attempt.id,
@@ -1920,7 +1942,19 @@ export class PostgresRepository implements Repository {
         attempt.partySize,
         attempt.email ?? null,
         attempt.phone ?? null,
+        // The balance dates are the invoice's: set with a deposit, cleared (NULL lands) when the
+        // attempt has none (issue #1250). The customer is written once and the first is kept.
+        attempt.balanceDueAt ?? null,
+        attempt.balanceReleaseAt ?? null,
+        attempt.stripeCustomerId ?? null,
       ],
+    );
+  }
+
+  async saveStripeCustomerId(reservationId: ReservationId, customerId: string): Promise<void> {
+    await this.#pool.query(
+      `update reservations set stripe_customer_id = coalesce(stripe_customer_id, $2) where id = $1`,
+      [reservationId, customerId],
     );
   }
 

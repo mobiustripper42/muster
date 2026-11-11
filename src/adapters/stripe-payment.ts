@@ -189,6 +189,15 @@ const DISPUTE_STATE: Readonly<Record<HandledDisputeStatus, DisputeState>> = {
   lost: "lost",
 };
 
+/** The payment method a PaymentIntent names (issue #1250), as the field to spread into
+ *  `PaymentSucceeded` — absent when the intent has none, rather than an empty string. Stripe sends
+ *  the id; an expanded object is read for its id. */
+function paymentMethodOf(pi: Stripe.PaymentIntent): { paymentMethodId?: string } {
+  const pm = pi.payment_method;
+  const id = typeof pm === "string" ? pm : pm?.id;
+  return id ? { paymentMethodId: id } : {};
+}
+
 function disputeState(status: Stripe.Dispute.Status): DisputeState {
   // **The RUN-time half, and the exhaustive switch alone did not have it.** The union is a claim
   // the pinned SDK makes at build time about a string that arrives over the wire months later:
@@ -297,17 +306,27 @@ export class StripePaymentPort implements PaymentPort {
     // The inline-Elements charge (12.5, DEC-134). `automatic_payment_methods` mirrors the
     // deferred `Elements` mount client-side; the metadata (incl. `purpose`) is what the
     // `payment_intent.succeeded` webhook books from.
+    //
+    // A deposit (`setupFutureUsage` given, issue #1250) is card-only: the form offers cards only
+    // (`elementsOptions`), so the intent names `payment_method_types: ["card"]` instead — Stripe takes
+    // either that or `automatic_payment_methods`, not both (`PaymentIntentCreateParams` in the pinned SDK).
     const intent = await this.#stripe.paymentIntents.create({
       amount: input.amountCents,
       currency: input.currency,
       metadata: input.metadata,
-      automatic_payment_methods: { enabled: true },
+      ...(input.setupFutureUsage !== undefined
+        ? { payment_method_types: ["card"] }
+        : { automatic_payment_methods: { enabled: true } }),
       // #679. `description` is the only human-readable field on a raw PaymentIntent — hosted
       // Checkout gets a line item, this path does not. `receipt_email` is what makes Stripe
       // send the guest a receipt at all; in live mode it sends regardless of the account's
       // email settings, so passing it IS the decision to send one.
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.receiptEmail !== undefined ? { receipt_email: input.receiptEmail } : {}),
+      // Only a deposit attempt (issue #1250): the customer the card is saved to, and the ask to keep
+      // it — top-level, so the payment form offers only methods that can be charged again.
+      ...(input.customerId !== undefined ? { customer: input.customerId } : {}),
+      ...(input.setupFutureUsage !== undefined ? { setup_future_usage: input.setupFutureUsage } : {}),
     },
     // **The options argument, and 15.11 is inert without it.** The first cut of that task computed
     // the key, added it to the port type and threaded it here — and stopped, leaving this call with
@@ -337,6 +356,7 @@ export class StripePaymentPort implements PaymentPort {
         amountReceivedCents: pi.amount_received,
         currency: pi.currency,
         metadata: pi.metadata ?? {},
+        ...paymentMethodOf(pi),
       };
     } catch (e) {
       // `null` reads as "not a succeeded payment", and a Stripe outage produces the same
@@ -421,6 +441,27 @@ export class StripePaymentPort implements PaymentPort {
       enabled: e.status === "enabled",
       enabledEvents: e.enabled_events,
     }));
+  }
+
+  async createCustomer(input: {
+    idempotencyKey: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    metadata: Record<string, string>;
+  }): Promise<{ customerId: string }> {
+    const customer = await this.#stripe.customers.create(
+      {
+        name: input.name,
+        metadata: input.metadata,
+        ...(input.email !== undefined ? { email: input.email } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone } : {}),
+      },
+      // The options argument, for the reason `createPaymentIntent`'s comment gives: without it the
+      // key is dropped silently and a retry creates a second customer. The sandbox pins the round trip.
+      { idempotencyKey: input.idempotencyKey },
+    );
+    return { customerId: customer.id };
   }
 
   parseEvent(rawBody: string, signature: string): PaymentEvent | null {
@@ -516,6 +557,7 @@ export class StripePaymentPort implements PaymentPort {
           amountReceivedCents: pi.amount_received ?? 0,
           currency: pi.currency ?? "usd",
           metadata: (pi.metadata ?? {}) as Record<string, string>,
+          ...paymentMethodOf(pi),
         },
       };
     }

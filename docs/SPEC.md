@@ -1959,7 +1959,7 @@ settled it; DEC-201 says why deposits came back after DEC-155 took them out.
 
 | Setting | Default | What it is |
 |---|---|---|
-| **Deposit** | $100 | a fixed amount, or a percentage of the quote — one or the other, chosen by the setting |
+| **Deposit** | $100 | a fixed amount of money, in cents — never a percentage of the quote. The settings screen refuses a deposit below the insurance price (below) |
 | **Balance due** | 30 days before departure | when the saved card is charged for the rest |
 | **Retries** | 3 and 6 days after the balance was due | when a failed balance charge is tried again |
 | **Release** | 21 days before departure | when a balance still unpaid cancels the booking |
@@ -1970,21 +1970,32 @@ deposit, the due date and the release date — is frozen onto it, so changing th
 booking that already exists. The retries are not told to anyone and stay live: a change applies to
 every retry not yet made.
 
-**What is charged at booking.** The deposit, and nothing else. The quote — every component in 2.8.4a,
-tax and the service fee and the tip included — is computed and frozen onto the invoice exactly as it
-is today, and its **amount due now** is the deposit. The **balance** is the quote less what has been
-paid, and it is charged later. Three exceptions, each charging the whole quote at booking instead:
+**What is charged at booking.** The deposit, and nothing else — unless the customer chooses to pay in
+full. The quote — every component in 2.8.4a, tax and the service fee and the tip included — is computed
+and frozen onto the invoice exactly as it is today, and its **amount due now** is the deposit. The
+**balance** is the quote less what has been paid, and it is charged later. Four cases charge the whole
+quote at booking instead:
 
+- **The customer pays in full.** The deposit is optional (operator, 2026-11-09, from Xola's checkout):
+  the checkout offers the deposit, preselected, and pay in full beside it, and a customer who picks
+  pay in full is charged the whole quote with no saved card and no balance. This is a choice the
+  customer makes; the three cases below are not.
 - **A booking inside the balance window** — departure closer than the balance-due setting. There is
-  no time to collect a balance, so there is no balance.
-- **A quote at or below the deposit.** A $90 trip has no $100 deposit.
+  no time to collect a balance, so there is no balance, and no choice is offered. The window is
+  judged at the checkout's own clock, so a post that asks for the deposit inside it is charged the whole
+  quote.
+- **A quote at or below the deposit.** A $90 trip has no $100 deposit, and no choice is offered.
 - **A comp** (2.8.4a) charges nothing, as it does today.
+
+The operator's phone booking never takes the deposit when it is written: its invoice is due whole. The
+payment link takes the deposit in its own task (2.10.6).
 
 **Insurance comes out of the deposit** (operator, 2026-11-08). An insured booking pays $100 at
 booking, and $30 of that $100 is the insurance; the deposit does not grow by $30 because insurance was
-bought. The one exception is a deposit smaller than the insurance itself — a percentage deposit on a
-small quote — which is raised to the insurance, so the insurance is always paid at booking. The tip and the service fee are paid
-with the balance; neither is split across payments.
+bought. The deposit is one fixed amount, so there is nothing to raise: the check that it is at least
+the insurance price belongs to the settings screen (issue #1166), which refuses a smaller one, and the
+insurance is then always paid at booking. The tip and the service fee are paid with the balance;
+neither is split across payments.
 
 **No tax on a deposit** (operator, 2026-11-08). The deposit is held until the trip is **finalized** —
 by a cancel, or by the balance being paid. Tax is computed at booking at the rate frozen on the
@@ -1999,14 +2010,25 @@ creates a payment-provider customer for the booking and asks for the card to be 
 off-session charge; the provider's ids are stored on our side, as 2.8.5 does for payment identity.
 There is no card on file for a person: a Muster customer is matched by phone, and a card saved on one
 booking is never charged for another. A returning customer enters their card again, as they do today.
-Above the pay button the checkout says: `We'll charge the balance of $<balance> to this card on <due
-date>.` The provider mechanics are verified against its documentation when this is built, not here.
+The card is saved only when the deposit is chosen: pay in full creates no customer and keeps no card,
+and a customer made for an earlier deposit attempt on the same booking stays on it unused. The last
+line of the terms box, shown only while the deposit is chosen, says: `We'll charge the balance of
+$<balance> to this card on <due date>.` — inside the box, so the required tick is the customer's
+explicit consent to the saved-card charge. The provider mechanics are verified against its
+documentation when this is built, not here.
+
+**The checkout shows the choice** after the tip and the insurance, because both move the total it
+states: `Pay deposit · $100.00`, preselected, with `$552.94 charged to this card on Mon, Oct 12` under
+it, and `Pay in full · $652.94`. The pay bar reads `Due now $100.00` over `$652.94 total` for the
+deposit and `Total $652.94` for pay in full. Where no deposit is offered, no choice is shown. A retry
+that changes the answer to "is there a balance?" retires the payment it had and starts a fresh one,
+because the provider's documentation does not show switching card-saving on one that is open.
 
 **The balance the page showed is checked like the total.** 2.8.4's price check (DEC-200) compares the
 due-now total, which is now the deposit, and a fare, fee or tax change can move the balance while a
-fixed deposit stays put. So the checkout sends the balance it showed beside the due-now total, and a
-difference in either is refused the same way: nothing written, nothing charged, and no card saved
-against a figure the customer never saw.
+fixed deposit stays put. So the checkout sends the balance it showed and whether the deposit was
+chosen, beside the due-now total, and a difference in either figure is refused the same way: nothing
+written, nothing charged, and no card saved against a figure the customer never saw.
 
 **The due date and the release date are columns on the reservation**, computed from the two settings
 when the deposit is paid — each has a time in it, and the customer was told both (2.8.4). Whether a
@@ -2076,9 +2098,8 @@ deposit unless the quote falls to it or below, which charges the whole quote. Af
 paid, money back is a refund, which lowers the price and the balance with it (DEC-199).
 
 **What is reused, and what is not.** The dormant balance path is replaced, not switched on.
-`depositMode`/`depositPercent` in payment configuration (`src/reservations/payment-config.ts:21-35`) become the
-deposit setting, which also takes a fixed amount; `balanceDueDaysBeforeEvent` becomes the balance-due
-setting. The re-minted Stripe Checkout balance link (DEC-107's amendment) goes, and capability A13 goes
+`depositMode`/`depositPercent` in payment configuration (`src/reservations/payment-config.ts`) are replaced
+by the one fixed deposit setting; `balanceDueDaysBeforeEvent` becomes the balance-due setting. The re-minted Stripe Checkout balance link (DEC-107's amendment) goes, and capability A13 goes
 with it. Money F29 — the defects 2.8.10 lists — and money F6 — booked readers re-deriving tax and the
 balance from the live rate — are fixed here, because both are the balance's readers. The scheduled
 charge is issue #712, at the due date this section sets, not seven days out.

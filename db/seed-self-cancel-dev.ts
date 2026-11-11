@@ -15,8 +15,9 @@
  *     date frozen on the row as a paid deposit leaves it: **Dana Whitcomb** (uninsured, 20 days out
  *     at 12:30, Cancel offered on the `fee` basis), **Ivo Brandt** (insured, 20 days out at 11:30,
  *     Cancel offered on the `insurance` basis) and **Nell Okafor** (uninsured, 10 days out at 12:30,
- *     inside the 14-day window: the request form, no Cancel). Each manage page's balance row reads
- *     "Balance · charged to your card on <day>".
+ *     inside the 14-day window: the request form, no Cancel). Dana's and Ivo's balance rows read
+ *     "Balance · charged to your card on <day>"; Nell's due date has already passed, so hers reads
+ *     "Balance due".
  *   - **Wren Calloway, 21 days out at 13:30** — refunded $200.00 through `refundReservation`, and
  *     not cancelled. A refund never makes the customer owe money: its `/b/` page reads "Paid in
  *     full" then "Refunded", with no balance row; the admin pane's Owes reads "Settled"; and
@@ -235,7 +236,7 @@ try {
   const nell = await bookPaid(addDays(today, 10), "12:30", "Nell Okafor", "330-555-1252", { deposit: true });
   if (nell) {
     console.log(
-      `            /b/${nell.code}   Deposit only, 10 days out: the balance reads "charged to your card on <day>"; ` +
+      `            /b/${nell.code}   Deposit only, 10 days out, the balance's due date already passed: the balance reads "Balance due", no day;` +
         `Manage → "✕ Request cancellation", no Cancel`,
     );
   }

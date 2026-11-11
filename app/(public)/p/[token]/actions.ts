@@ -70,7 +70,7 @@ export async function startPaymentLinkCheckout(input: StartPaymentLinkInput): Pr
       { repo: getRepo(), payments: new StripePaymentPort(secretKey, webhookSecret), now: () => new Date().toISOString() },
       link.reservationId,
       {
-        payDeposit: input.payDeposit,
+        payDeposit: input.payDeposit === true,
         shownDueNowCents: input.shownDueNowCents,
         shownBalanceCents: input.shownBalanceCents,
       },

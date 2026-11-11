@@ -8,8 +8,8 @@ work to two agents, verify what they return, and ship. Every check below is one 
 an agent's report that something passed is a claim, not a result.
 
 **The operator running this skill is the approval of the spec.** The spec was worked through
-with the operator from `task-spec.md` (beside this file) before now: the summary first, then the
-job and acceptance criteria, then the `[Lead]` lines. Step 0 writes it into the issue; the
+with the operator from `task-spec.md` (beside this file) before now, in the stops it lists.
+Step 0 writes it into the issue; the
 operator does not. Do not present it again. From here the run goes to the pull request,
 stopping only where information turns out to be missing.
 

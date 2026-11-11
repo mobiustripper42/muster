@@ -9,11 +9,20 @@ behaviour it should have; a section with nothing to say is "None".
 
 The Lead drafts this from the spec conversation and reads the code to fill Interfaces, to find
 what it must reuse, and to search the tests for everything it removes — readback's reuse and
-removal checks are the second look, not the first. Walk the operator through it in this order,
-and stop at the first part they say is wrong:
-  1. Summary
-  2. Job and acceptance criteria
-  3. Every [Lead] line, grouped by section. [you] and [code] lines only if asked.
+removal checks are the second look, not the first. Walk it in stops, one per reply, and wait for
+the operator's answer at each:
+  1. Summary and Job, together
+  2. Acceptance criteria
+  3. Interfaces — the [Lead] calls first, each a plain sentence: what changes and why, no file
+     names. The file and signature lists follow, for reference; the operator reads the calls and
+     skims the lists.
+  4. Screen
+  5. Seeds, Out of scope, Decisions and Open questions, together — they are usually short.
+[you] and [code] lines only if asked. At each stop the operator discusses it or approves it
+before the next goes out. Any word of approval is "Approved" — "next", "okay", "sounds good",
+"yes" — and moves to the next stop without asking whether it was one. The finished spec goes into
+the issue whole, at /build-task Step 0, and the agents read the full lists there; the walk is a
+conversation, not one document.
 The operator approves the walk by running /build-task. Its Step 0 writes the spec into the issue,
 then refuses to start while any section is blank or Open questions has anything in it. "None" is an answer; blank is not.
 

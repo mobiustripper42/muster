@@ -233,7 +233,7 @@ function PaymentChoice({
   onChoose: (deposit: boolean) => void;
 }) {
   return (
-    <div className="pt-5" role="group" aria-label="Payment option">
+    <div className="pb-3" role="group" aria-label="Payment option">
       <div className="grid grid-cols-1 gap-2">
         <button
           type="button"
@@ -423,25 +423,24 @@ function InnerForm(p: InnerProps) {
           </>
         )}
 
-        {/* THE PAYMENT CHOICE (issue #1250) — only when a deposit is offered, after the tip and the
-            insurance because both move the total it states. Two tiles in the tip tiles' look. */}
-        {p.deposit ? (
-          <PaymentChoice
-            copy={p.deposit}
-            payDeposit={p.payDeposit}
-            onChoose={(deposit) => {
-              p.setDepositChosen(deposit);
-              // The terms box gains a line when the choice changes to the deposit, so a tick given
-              // before it is not consent to it — the customer ticks the terms they read. Re-tapping
-              // the tile already chosen leaves the tick alone.
-              if (deposit && !p.payDeposit) setAgreed(false);
-            }}
-          />
-        ) : null}
-
-        {/* CARD */}
+        {/* PAYMENT — one heading over the payment choice and the card form (operator, 2026-11-10). */}
         <div className="pt-5">
           <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-muted">Payment</div>
+          {/* THE PAYMENT CHOICE (issue #1250) — only when a deposit is offered, after the tip and the
+              insurance because both move the total it states. Two tiles in the tip tiles' look. */}
+          {p.deposit ? (
+            <PaymentChoice
+              copy={p.deposit}
+              payDeposit={p.payDeposit}
+              onChoose={(deposit) => {
+                p.setDepositChosen(deposit);
+                // The terms box gains a line when the choice changes to the deposit, so a tick given
+                // before it is not consent to it — the customer ticks the terms they read. Re-tapping
+                // the tile already chosen leaves the tick alone.
+                if (deposit && !p.payDeposit) setAgreed(false);
+              }}
+            />
+          ) : null}
           {p.inElements ? (
             /* #679. Mounted bare, the Element collected its own name and phone — and Stripe's
                rule is that "details collected by Elements will override values passed here", so

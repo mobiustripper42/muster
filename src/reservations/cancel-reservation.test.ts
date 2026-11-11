@@ -508,6 +508,22 @@ describe("quoteCancelRefund", () => {
     expect(q.refundCents).toBe(33625);
   });
 
+  it("issue #1252 AC6: an OPERATOR cancellation of a booking with only the $100 deposit paid refunds the $100", () => {
+    // Shaped like the webhook's deposit row (`booking-webhook.ts` `recordPayment`): the invoice's
+    // tax, tip and fee ride on the $100, so a base that netted them out would give nothing back.
+    const depositOnly = [
+      payment({ kind: "deposit", amountCents: 10000, taxCents: 3625, gratuityCents: 10000, serviceFeeCents: 1800 }),
+    ];
+    const q = quoteCancelRefund({
+      by: "operator",
+      payments: depositOnly,
+      departureAt,
+      insurance: null,
+      now: new Date("2026-08-01T12:00:00.000Z"),
+    });
+    expect(q.refundCents).toBe(10000);
+  });
+
   it("a fully refunded booking quotes zero, not a negative", () => {
     const q = quoteCancelRefund({
       by: "operator",

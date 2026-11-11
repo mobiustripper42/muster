@@ -290,12 +290,12 @@ export default async function ManagePage({
                 ) : (
                   <>
                     <Row label="Paid so far" value={formatCents(m.paidCents)} mono />
-                    {/* "charged" promised an automatic collection that does not exist — nothing in
-                        Muster reads `balanceDueDaysBeforeEvent` on a schedule (#617; #712 is the
-                        unbuilt auto-collect). The obligation is real; the mechanism is a link the
-                        operator sends, so the label states the first and claims nothing about the second. */}
+                    {/* The label names the day the saved card is charged when the booking carries a
+                        frozen due date (`balanceDueAt`, set when the deposit was paid), read off the
+                        row and never recomputed from the setting; a booking with none states the
+                        obligation and claims no mechanism (#617). See `buildManageView`. */}
                     {m.balanceCents > 0 && (
-                      <Row label="Balance · due before your trip" value={formatCents(m.balanceCents)} mono strong />
+                      <Row label={view.balanceLabel} value={formatCents(m.balanceCents)} mono strong />
                     )}
                   </>
                 )}

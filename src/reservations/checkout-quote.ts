@@ -78,11 +78,19 @@ export interface ScreenTotals {
 }
 
 /**
+ * The vessel-local day of a balance due instant (`"Mon, Oct 12"`), from an ISO instant such as a
+ * booking's frozen `balanceDueAt` (issue #1252).
+ */
+export function dueDayLabel(dueAt: string): string {
+  return formatShortDay(vesselDateOf(new Date(dueAt)));
+}
+
+/**
  * The vessel-local day a deposit's balance is charged, as the checkout writes it (`"Mon, Oct 12"`).
  * The checkout's screen and the payment link's both name it.
  */
 export function balanceDueOn(date: string, time: string, config: PaymentConfig): string {
-  return formatShortDay(vesselDateOf(new Date(balanceDates(date, time, config).dueAt)));
+  return dueDayLabel(balanceDates(date, time, config).dueAt);
 }
 
 /**

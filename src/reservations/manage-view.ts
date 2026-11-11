@@ -18,6 +18,7 @@ import {
   type ReservationDetailView,
 } from "./calendar-detail.js";
 import { formatClock } from "./availability-screen.js";
+import { dueDayLabel } from "./checkout-quote.js";
 
 export type TripPhase = "upcoming" | "completed";
 
@@ -40,6 +41,9 @@ export interface ManageView {
   timing: TripTiming;
   /** True once the fare is settled (no balance) — gates the receipt's "Paid in full". */
   paidInFull: boolean;
+  /** The balance row's label: the day the saved card is charged, read from the booking's frozen
+   *  `balanceDueAt` (never recomputed from the setting), else "due before your trip" (issue #1252). */
+  balanceLabel: string;
 }
 
 /** "HH:MM" → minutes since midnight, or null on a malformed clock. */
@@ -110,5 +114,8 @@ export function buildManageView(input: ManageViewInput): ManageView {
     // common case on the operator-cancel path (#797): a full refund leaves exactly this state.
     paidInFull:
       detail.money.priceKnown && detail.money.paidCents > 0 && detail.money.balanceCents <= 0,
+    balanceLabel: input.reservation.balanceDueAt
+      ? `Balance · charged to your card on ${dueDayLabel(input.reservation.balanceDueAt)}`
+      : "Balance · due before your trip",
   };
 }

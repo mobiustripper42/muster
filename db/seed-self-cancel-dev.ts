@@ -11,6 +11,12 @@
  *   - **Pell Ostrander, 20 days out at 13:30** — then cancelled through `cancelByCustomer`, on
  *     `FakePaymentPort`, so it carries the customer's `cancelled` trail row and a real `issued`
  *     refund. Open it at `?cancelled=1&refund=issued` to see the notice with its trail figure.
+ *   - **Three bookings with only the $100 deposit paid** (issue #1252), each with the balance due
+ *     date frozen on the row as a paid deposit leaves it: **Dana Whitcomb** (uninsured, 20 days out
+ *     at 12:30, Cancel offered on the `fee` basis), **Ivo Brandt** (insured, 20 days out at 11:30,
+ *     Cancel offered on the `insurance` basis) and **Nell Okafor** (uninsured, 10 days out at 12:30,
+ *     inside the 14-day window: the request form, no Cancel). Each manage page's balance row reads
+ *     "Balance · charged to your card on <day>".
  *   - **Wren Calloway, 21 days out at 13:30** — refunded $200.00 through `refundReservation`, and
  *     not cancelled. A refund never makes the customer owe money: its `/b/` page reads "Paid in
  *     full" then "Refunded", with no balance row; the admin pane's Owes reads "Settled"; and
@@ -40,10 +46,12 @@ import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { addDays, vesselDateOf } from "../src/config/tenant.js";
 import { asId } from "../src/domain/ids.js";
 import type { Reservation } from "../src/domain/entities.js";
+import { balanceDates } from "../src/reservations/availability.js";
 import { formatCents } from "../src/reservations/calendar-detail.js";
 import { confirmBookingFromIntent } from "../src/reservations/confirm-booking.js";
 import { cancelByCustomer, customerCancelQuote } from "../src/reservations/customer-cancel.js";
 import { bookForCustomer } from "../src/reservations/operator-booking.js";
+import { dueNowCents } from "../src/reservations/payment-config.js";
 import { refundReservation } from "../src/reservations/refund-payment.js";
 import { demoBookingCode, reservationDemo } from "../src/reservations/seed-reservation.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
@@ -74,7 +82,13 @@ const repo = PostgresRepository.fromConnectionString(url);
 const payments = new FakePaymentPort();
 
 /** The operator books it on the phone, no insurance. */
-async function phoneBook(date: string, time: string, customerName: string, phone: string): Promise<Reservation | null> {
+async function phoneBook(
+  date: string,
+  time: string,
+  customerName: string,
+  phone: string,
+  hasFlex = false,
+): Promise<Reservation | null> {
   const res = await bookForCustomer(
     repo,
     {
@@ -86,7 +100,7 @@ async function phoneBook(date: string, time: string, customerName: string, phone
       gratuityBps: 2000,
       customerName,
       phone,
-      hasFlex: false,
+      hasFlex,
     },
     now,
   );
@@ -97,10 +111,34 @@ async function phoneBook(date: string, time: string, customerName: string, phone
   return res.reservation;
 }
 
-/** Book it and pay it: a payment for exactly what the row froze, confirmed as a paid link confirms it. */
-async function bookPaid(date: string, time: string, customerName: string, phone: string): Promise<{ row: Reservation; code: string } | null> {
-  const row = await phoneBook(date, time, customerName, phone);
-  if (!row) return null;
+/**
+ * Book it and pay it: a payment for exactly what the row froze, confirmed as a paid link confirms it.
+ * `deposit` pays only the deposit instead of the whole quote, and freezes the balance's due date on
+ * the row, as `startPayByLink` writes it when the customer picks the deposit.
+ */
+async function bookPaid(
+  date: string,
+  time: string,
+  customerName: string,
+  phone: string,
+  opts: { hasFlex?: boolean; deposit?: boolean } = {},
+): Promise<{ row: Reservation; code: string } | null> {
+  const booked = await phoneBook(date, time, customerName, phone, opts.hasFlex === true);
+  if (!booked) return null;
+  let row = booked;
+  if (opts.deposit) {
+    const config = await repo.getPaymentConfig();
+    const dates = balanceDates(date, time, config);
+    row = {
+      ...booked,
+      invoice: {
+        ...booked.invoice!,
+        amountDueNowCents: dueNowCents(booked.invoice!.totalCents, config.depositCents),
+      },
+      balanceDueAt: dates.dueAt,
+      balanceReleaseAt: dates.releaseAt,
+    };
+  }
   const pi = `pi_seed_self_cancel_${row.id}`;
   await repo.saveReservation({ ...row, paymentIntentIds: [pi] });
   const outcome = await confirmBookingFromIntent(
@@ -177,6 +215,29 @@ try {
         );
       }
     }
+  }
+
+  // ── Only the $100 deposit paid, the balance's due date frozen (issue #1252) ─
+  const dana = await bookPaid(farDate, "12:30", "Dana Whitcomb", "216-555-1252", { deposit: true });
+  if (dana) {
+    console.log(
+      `            /b/${dana.code}   Payment: "Paid so far" $100.00, then "Balance · charged to your card on <day>"; ` +
+        `Manage → "✕ Cancel booking", the confirm reads paid − $50`,
+    );
+  }
+  const ivo = await bookPaid(farDate, "11:30", "Ivo Brandt", "440-555-1252", { deposit: true, hasFlex: true });
+  if (ivo) {
+    console.log(
+      `            /b/${ivo.code}   Insured, deposit only: "Cancellation insurance" row, the balance reads "charged to your card on <day>"; ` +
+        `Manage → "✕ Cancel booking", the confirm reads paid − the insurance`,
+    );
+  }
+  const nell = await bookPaid(addDays(today, 10), "12:30", "Nell Okafor", "330-555-1252", { deposit: true });
+  if (nell) {
+    console.log(
+      `            /b/${nell.code}   Deposit only, 10 days out: the balance reads "charged to your card on <day>"; ` +
+        `Manage → "✕ Request cancellation", no Cancel`,
+    );
   }
 
   // ── 21 days out, paid, then a goodwill refund (issue #841) ─────────────────

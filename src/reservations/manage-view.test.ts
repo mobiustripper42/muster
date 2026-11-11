@@ -4,7 +4,7 @@
  * in calendar-detail.test.ts), so these tests focus on the customer-facing extras.
  */
 import { describe, expect, it } from "vitest";
-import type { Event, Offering, Reservation, Vessel } from "../domain/entities.js";
+import type { BookingInvoice, Event, Offering, Payment, Reservation, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import {
   buildManageView,
@@ -143,5 +143,77 @@ describe("buildManageView", () => {
     expect(v.detail.money.paidCents).toBe(0);
     expect(v.detail.money.balanceCents).toBe(0);
     expect(v.paidInFull).toBe(false);
+  });
+});
+
+/**
+ * The balance row's label (issue #1252): the day the saved card is charged, read from the due date
+ * frozen on the booking — never recomputed from the balance-due setting. The vessel-timezone edge
+ * of that day is `dueDayLabel`'s (`checkout-quote.test.ts`) and is not re-tested here.
+ *
+ * A deposit booking on Wed, Nov 11 at 15:30: $500 fare, 8% tax, a 20% tip and the 3% fee — $658.00
+ * in all, $100 of it paid. The deposit row is shaped like the webhook's (`booking-webhook.ts`
+ * `recordPayment`): the invoice's tip and fee ride on the $100 row, so the balance is the rest of
+ * the quote, $558.00.
+ */
+describe("buildManageView — the balance row's label (issue #1252)", () => {
+  const NOV_11: Event = { ...EVENT, date: "2026-11-11", time: "15:30", price: 50000 } as Event;
+  const INVOICE: BookingInvoice = {
+    fareCents: 50000,
+    extrasCents: 0,
+    taxCents: 4000,
+    taxRateBps: 800,
+    serviceFeeCents: 1800,
+    serviceFeeBps: 300,
+    gratuityCents: 10000,
+    gratuityBps: 2000,
+    totalCents: 65800,
+    amountDueNowCents: 10000,
+  };
+  const DEPOSIT_PAID = {
+    id: asId<"PaymentId">("pay-deposit"),
+    reservationId: RES.id,
+    method: "stripe",
+    kind: "deposit",
+    amountCents: 10000,
+    taxCents: 4000,
+    gratuityCents: 10000,
+    serviceFeeCents: 1800,
+    currency: "usd",
+    status: "succeeded",
+    stripePaymentIntentId: "pi_deposit",
+    createdAt: "2026-09-20T14:00:00.000Z",
+  } as Payment;
+  const depositBooking = (over: Partial<Reservation> = {}): ManageViewInput =>
+    input({
+      reservation: { ...RES, invoice: INVOICE, ...over },
+      event: NOV_11,
+      payments: [DEPOSIT_PAID],
+      taxRateBps: 800,
+      now: { date: "2026-10-01", time: "09:00" },
+    });
+
+  it("issue #1252 AC1: a booking with a balance and a due date names the day its card is charged, with the balance as the amount", () => {
+    // 15:30 EDT on Mon, Oct 12 — the 30 days before departure the booking froze.
+    const v = buildManageView(depositBooking({ balanceDueAt: "2026-10-12T19:30:00.000Z" }));
+
+    expect(v.detail.money.balanceCents).toBe(55800);
+    expect(v.balanceLabel).toBe("Balance · charged to your card on Mon, Oct 12");
+  });
+
+  it("issue #1252 AC2: the day is the frozen due date, not one recomputed from the balance-due setting", () => {
+    // Twelve days before departure: a date the default 30-day setting never produces, so a label
+    // recomputed from the setting would read Mon, Oct 12.
+    const v = buildManageView(depositBooking({ balanceDueAt: "2026-10-30T19:30:00.000Z" }));
+
+    expect(v.balanceLabel).toBe("Balance · charged to your card on Fri, Oct 30");
+  });
+
+  it("issue #1252 AC3: a booking with a balance and no due date states an obligation", () => {
+    // An unpaid phone booking, or one booked before deposits: nothing froze a due date.
+    const v = buildManageView(depositBooking());
+
+    expect(v.detail.money.balanceCents).toBeGreaterThan(0);
+    expect(v.balanceLabel).toBe("Balance · due before your trip");
   });
 });

@@ -76,11 +76,12 @@ test.describe("public /b/<code>", () => {
     expect(path).not.toContain("?");
   });
 
-  test("the balance row states an obligation, never an automatic charge (#617)", async ({ page }) => {
+  test("a booking with no due date states an obligation (#617)", async ({ page }) => {
     await page.goto(manageUrl());
 
-    // The seed pays nothing, so the balance row renders. Nothing in Muster collects it —
-    // #712 is the unbuilt auto-collect — so the label must not promise that it will.
+    // The seed pays nothing and freezes no `balanceDueAt`, so the balance row renders with no day:
+    // only a booking whose deposit froze a due date names the day its card is charged (issue
+    // #1252). With no due date, the label states the obligation and promises no charge.
     await expect(page.getByText(/Balance · due before your trip/)).toBeVisible();
     await expect(page.getByText(/charged before your trip/)).toHaveCount(0);
   });

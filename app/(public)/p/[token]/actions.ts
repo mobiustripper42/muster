@@ -20,26 +20,26 @@ import { readEmailEnv } from "../../../lib/auth-delivery";
 import { appBaseUrl } from "../../../lib/base-url";
 import { checkPaymentLink } from "../../../lib/payment-link";
 import { getRepo } from "../../../lib/repo";
-import { TENANT_NAME } from "../../../lib/tenant";
 import { logSwallowed } from "../../../lib/swallowed";
 import type { StartElementsCheckoutResult } from "../../book/checkout/actions";
 import { neverRejects } from "../../book/checkout/never-rejects";
+import { PRICE_CHANGED_MESSAGE } from "../../../../components/checkout/money";
+import { REFUSAL } from "./refusal";
 
 export interface StartPaymentLinkInput {
   token: string;
   /** The cancellation-terms box (DEC-188), gated here as at checkout. Stored nowhere. */
   agreedToTerms: boolean;
+  /** The customer chose the deposit rather than the whole quote (issue #1251). A choice, not an
+   *  order: the server charges the whole quote inside the balance window whatever is posted here. */
+  payDeposit: boolean;
+  /** The due-now the page showed, in cents. Required, so the form cannot omit it; refused if it is
+   *  not what this payment would charge. */
+  shownDueNowCents: number;
+  /** The balance the page showed, in cents — 0 when the whole quote was due. Required for the same
+   *  reason, and refused the same way. */
+  shownBalanceCents: number;
 }
-
-const EXPIRED = `This payment link has expired. Ask ${TENANT_NAME} for a new one.`;
-
-const REFUSAL: Record<"missing" | "paid" | "cancelled" | "already_paid", string> = {
-  missing: EXPIRED,
-  paid: "This trip is already paid — check your texts and email for the confirmation. You have not been charged twice.",
-  already_paid:
-    "This trip is already paid — check your texts and email for the confirmation. You have not been charged twice.",
-  cancelled: "This booking was cancelled, so there’s nothing to pay.",
-};
 
 /**
  * Put a payable intent on the operator's row and hand back its client secret — the pay page's
@@ -55,14 +55,25 @@ export async function startPaymentLinkCheckout(input: StartPaymentLinkInput): Pr
   if (!input.agreedToTerms) {
     return { ok: false, message: "Please agree to the cancellation terms to continue." };
   }
+  // The figures the page showed must be whole numbers of cents, as at the checkout (issues #1217,
+  // #1250): a post without one is refused with the price-changed words before any dependency is
+  // touched. The comparison with the real split is the core's.
+  if (!Number.isInteger(input.shownDueNowCents) || !Number.isInteger(input.shownBalanceCents)) {
+    return { ok: false, message: PRICE_CHANGED_MESSAGE };
+  }
   const link = checkPaymentLink(input.token);
-  if (!link.ok) return { ok: false, message: EXPIRED };
+  if (!link.ok) return { ok: false, message: REFUSAL.missing };
 
   // Everything past here can throw (Stripe, the database), and must not (issue #773).
   return neverRejects(async () => {
     const res = await startPayByLink(
       { repo: getRepo(), payments: new StripePaymentPort(secretKey, webhookSecret), now: () => new Date().toISOString() },
       link.reservationId,
+      {
+        payDeposit: input.payDeposit,
+        shownDueNowCents: input.shownDueNowCents,
+        shownBalanceCents: input.shownBalanceCents,
+      },
     );
     return res.ok ? { ok: true, clientSecret: res.clientSecret } : { ok: false, message: REFUSAL[res.reason] };
   });

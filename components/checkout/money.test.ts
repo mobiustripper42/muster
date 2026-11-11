@@ -15,7 +15,7 @@ import { createDeparturePaymentIntent } from "@core/reservations/create-departur
 import { applyDiscount } from "@core/reservations/discount.js";
 import { payLinkMoney } from "@core/reservations/pay-by-link.js";
 import { PAYMENT_CONFIG_DEFAULTS, type PaymentConfig } from "@core/reservations/payment-config.js";
-import { depositCopy, elementsOptions, totalsFor } from "./money";
+import { depositCopy, elementsOptions, splitFrozen, totalsFor, type ScreenTotals } from "./money";
 
 const V = asId<"VesselId">("v");
 const vessel: Vessel = { id: V, name: "Boat", coiMaxPax: 12, manning: [] };
@@ -171,7 +171,8 @@ describe("totalsFor on the operator's form, with a discount", () => {
 describe("the payment link shows the frozen invoice, never a recompute", () => {
   it("an invoice frozen under the old fee rule keeps its own fee and total", () => {
     const inv = { ...priceBooking({ ...input(FULL), gratuityBps: 2000 }), serviceFeeCents: 1617, totalCents: 70000, amountDueNowCents: 70000 };
-    const { totals } = payLinkMoney(inv);
+    // Three days before `input`'s departure: inside the balance window, so no deposit is offered.
+    const { totals } = payLinkMoney(inv, { config: FULL, date: "2026-07-04", time: "15:30", asOf: "2026-07-01T12:00:00.000Z" });
     expect(totals).toMatchObject({ serviceFeeCents: 1617, totalCents: 70000, dueNowCents: 70000 });
   });
 });
@@ -229,6 +230,52 @@ describe("depositCopy", () => {
     expect(depositCopy(m, totalsFor(m, TIP_20, m.flexCents, true))?.termsLine).toBe(
       "We'll charge the balance of $586.01 to this card on Mon, Oct 12.",
     );
+  });
+});
+
+/**
+ * The split of the payment link's frozen invoice (issue #1251). The price is the operator's and
+ * never re-totalled; only what is due now and the balance it leaves follow the choice. SPEC §2.8.4a's
+ * worked example: $652.94 frozen due in full, a $100 deposit, $552.94 left.
+ */
+describe("splitFrozen", () => {
+  const frozen: ScreenTotals = {
+    tipCents: 9980,
+    flexCents: 0,
+    taxCents: 3618,
+    serviceFeeCents: 1796,
+    totalCents: 65294,
+    dueNowCents: 65294,
+    balanceCents: 0,
+  };
+
+  it("AC1: with the deposit chosen the deposit is due now and the rest is the balance; every price figure is the frozen one", () => {
+    expect(splitFrozen(frozen, 10000, true)).toEqual({ ...frozen, dueNowCents: 10000, balanceCents: 55294 });
+  });
+
+  it("AC3: with Pay in full chosen the whole quote is due, whatever split the totals carried", () => {
+    expect(splitFrozen({ ...frozen, dueNowCents: 10000, balanceCents: 55294 }, 10000, false)).toEqual(frozen);
+  });
+});
+
+describe("the payment link's choice reads as the checkout's", () => {
+  it("AC1: a phone booking paid outside the window reads Pay deposit · $100.00, the balance and its day, Pay in full · $652.94, and the terms box's balance line", () => {
+    // The operator's invoice: written due in full, as every phone booking is.
+    const inv = priceBooking({ ...input(FULL), date: "2026-11-11", guestCount: 2, gratuityBps: 2000 });
+    expect(inv.amountDueNowCents).toBe(65294);
+    const { money, totals } = payLinkMoney(inv, {
+      config: FULL,
+      date: "2026-11-11",
+      time: "15:30",
+      asOf: "2026-10-01T12:00:00.000Z",
+    });
+    expect(totals).toMatchObject({ totalCents: 65294, dueNowCents: 10000, balanceCents: 55294 });
+    expect(depositCopy(money, totals)).toEqual({
+      depositLabel: "Pay deposit · $100.00",
+      depositNote: "$552.94 charged to this card on Mon, Oct 12",
+      fullLabel: "Pay in full · $652.94",
+      termsLine: "We'll charge the balance of $552.94 to this card on Mon, Oct 12.",
+    });
   });
 });
 

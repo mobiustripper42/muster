@@ -40,6 +40,7 @@ import { ContactFields, type ContactValues } from "../../../../components/checko
 import {
   depositCopy,
   elementsOptions,
+  splitFrozen,
   totalsFor,
   type CheckoutMoney,
   type ScreenTotals,
@@ -94,7 +95,8 @@ export interface PayMode {
   bookedFor: { name: string; phone: string; phoneLabel: string; email?: string | undefined };
   /** Insurance the operator sold on the phone (16.8) — fixed, like the tip. */
   hasFlex: boolean;
-  /** The frozen invoice's own figures (`payLinkMoney`) — shown as they are, never re-totalled. */
+  /** The frozen invoice's own price with the deposit-preselected split (`payLinkMoney`) — the price is
+   *  shown as it is, never re-totalled; the form re-derives only the split for Pay in full. */
   totals: ScreenTotals;
 }
 
@@ -124,16 +126,20 @@ export function CheckoutForm(props: CheckoutFormProps) {
   }, [props.publishableKey]);
 
   // The payment choice (issue #1250): the deposit is preselected whenever one is offered, and the
-  // customer may decline it. The payment link offers none.
+  // customer may decline it. The payment link offers it the same way (issue #1251), on the frozen price.
   const [depositChosen, setDepositChosen] = useState(true);
 
   const tip = props.tiers.find((t) => t.bps === tipBps) ?? props.tiers[0]!;
   // The whole quote, to ask whether a deposit is on offer — it moves with the tip and the insurance.
-  const whole = totalsFor(props.money, tip.tipCents, flexCents);
-  const deposit = props.pay ? null : depositCopy(props.money, whole);
+  // On the payment link nothing moves: it is the frozen invoice's own totals.
+  const whole = props.pay ? props.pay.totals : totalsFor(props.money, tip.tipCents, flexCents);
+  const deposit = depositCopy(props.money, whole);
   const payDeposit = deposit !== null && depositChosen;
-  // Re-totalled as the tip, the box and the choice change; the payment link's are the frozen invoice's own.
-  const totals = props.pay ? props.pay.totals : totalsFor(props.money, tip.tipCents, flexCents, payDeposit);
+  // Re-totalled as the tip, the box and the choice change; the payment link's are the frozen price
+  // with only the split following the choice — never a fresh price.
+  const totals = props.pay
+    ? splitFrozen(props.pay.totals, props.money.depositCents, payDeposit)
+    : totalsFor(props.money, tip.tipCents, flexCents, payDeposit);
   const dueNowCents = totals.dueNowCents;
 
   const inner = (bridge: { stripe: Stripe | null; elements: StripeElements | null; inElements: boolean }) => (
@@ -305,7 +311,15 @@ function InnerForm(p: InnerProps) {
         return;
       }
       const res = p.pay
-        ? await startPaymentLinkCheckout({ token: p.pay.token, agreedToTerms: agreed })
+        ? await startPaymentLinkCheckout({
+            token: p.pay.token,
+            agreedToTerms: agreed,
+            // The choice and the figures the page showed (issue #1251); the server refuses a split
+            // that is not the one it is about to make.
+            payDeposit: p.payDeposit,
+            shownDueNowCents: p.dueNowCents,
+            shownBalanceCents: p.totals.balanceCents,
+          })
         : await startElementsCheckout({
             offeringId: p.slot!.offeringId,
             date: p.slot!.date,

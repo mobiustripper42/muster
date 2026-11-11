@@ -13,6 +13,11 @@ export type CheckoutMoney = Omit<CheckoutQuote, "tiers" | "defaultBps">;
 export type TipTier = CheckoutQuote["tiers"][number];
 export type { ScreenTotals };
 
+/** What a refused price says to a customer, for both public actions (issues #1217, #1251). Here
+ *  because a `"use server"` module may export only async functions. */
+export const PRICE_CHANGED_MESSAGE =
+  "The price changed while you were checking out — reload to see the new total. You have not been charged.";
+
 /** Local mirror of `formatCents` — inlined so the client bundle stays tiny (book-controls idiom). */
 export function money(cents: number): string {
   const abs = Math.abs(cents);
@@ -67,6 +72,16 @@ export function depositCopy(
     fullLabel: `Pay in full · ${money(totals.totalCents)}`,
     termsLine: `We'll charge the balance of ${balance} to this card on ${m.balanceDueOn}.`,
   };
+}
+
+/**
+ * The split of a frozen invoice (issue #1251): the frozen totals unchanged except what is due now
+ * and the balance it leaves. The one home for it — the payment link's page and its form's two
+ * choices both read it, so nothing re-prices an invoice the operator already froze.
+ */
+export function splitFrozen(totals: ScreenTotals, depositCents: number | null, payDeposit: boolean): ScreenTotals {
+  const dueNow = dueNowCents(totals.totalCents, payDeposit ? depositCents : null);
+  return { ...totals, dueNowCents: dueNow, balanceCents: totals.totalCents - dueNow };
 }
 
 /**

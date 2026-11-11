@@ -26,12 +26,25 @@ import {
 } from "./fixtures.js";
 import { TEST_DATABASE_URL } from "../db/reset-test.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
-import { BOOKED, DEMO, OPEN_TIME, formatShortDay } from "./reservation-demo.js";
+import {
+  BALANCE_DUE_ON,
+  BOOKED,
+  DEMO,
+  INSIDE_BALANCE_WINDOW,
+  OPEN_TIME,
+  OUTSIDE_BALANCE_WINDOW,
+  extendSeasonThrough,
+  formatShortDay,
+  payBar,
+  termsBox,
+} from "./reservation-demo.js";
 
 /** The secret the e2e server signs with (`playwright.config.ts` pins the same expression). */
 const SECRET = process.env.SESSION_SECRET ?? "e2e-test-secret";
 
-const BOOK = `/admin/calendar?date=${BOOKED.date}&hold=${encodeURIComponent(`${DEMO.vesselId}|${OPEN_TIME}`)}&book=1&guests=2`;
+/** The operator's book-by-phone form for 2 guests at 15:30 on `date`. */
+const bookUrl = (date: string) =>
+  `/admin/calendar?date=${date}&hold=${encodeURIComponent(`${DEMO.vesselId}|${OPEN_TIME}`)}&book=1&guests=2`;
 
 /** Stripe.js whose payment never settles — `book-checkout.spec.ts`'s stand-in, for the in-flight lock. */
 const HANGING_STRIPE_JS = `
@@ -58,10 +71,10 @@ const HANGING_STRIPE_JS = `
   })();
 `;
 
-/** Book 2 guests at 15:30 by phone, and return the pane's page and what the booking owes. */
-async function bookByPhone(page: Page): Promise<{ owes: string }> {
+/** Book 2 guests at 15:30 on `date` by phone, and return the pane's page and what the booking owes. */
+async function bookByPhone(page: Page, date: string = BOOKED.date): Promise<{ owes: string }> {
   await signInAsAdmin(page, "eric");
-  await page.goto(BOOK);
+  await page.goto(bookUrl(date));
   await fillHydrated(page.getByPlaceholder("Guest’s full name"), "Phone Caller");
   await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0199");
   await page.getByTestId("book-phone").click();
@@ -152,7 +165,8 @@ test.describe("the payment link", () => {
   });
 
   test("the pay page: the trip, who it's for, the frozen money, the terms box, Pay — in that order", async ({ page, browser, baseURL }) => {
-    const { owes } = await bookByPhone(page);
+    // Inside the balance window, so the whole amount owed is due now (issue #1251).
+    const { owes } = await bookByPhone(page, INSIDE_BALANCE_WINDOW);
     const customer = await asCustomer(browser, page, baseURL, await copiedLink(page));
 
     await expect(customer.getByText("Pay for your trip")).toBeVisible();
@@ -162,7 +176,7 @@ test.describe("the payment link", () => {
     await expect(customer.getByRole("link", { name: "Change" })).toHaveCount(0);
 
     await expect(customer.getByRole("heading", { name: "Reservation Demo Cruise", level: 1 })).toBeVisible();
-    await expect(customer.getByTestId("pay-trip")).toHaveText(`${formatShortDay(BOOKED.date)} · ${shortTime(OPEN_TIME)} PM · 2 guests`);
+    await expect(customer.getByTestId("pay-trip")).toHaveText(`${formatShortDay(INSIDE_BALANCE_WINDOW)} · ${shortTime(OPEN_TIME)} PM · 2 guests`);
     await expect(customer.getByTestId("booked-for")).toHaveText("Phone Caller · (216) 555-0199");
     // Nothing to fill in, and the tip is the operator's.
     await expect(customer.getByPlaceholder("Full name")).toHaveCount(0);
@@ -197,7 +211,8 @@ test.describe("the payment link", () => {
 
   test("insurance sold on the phone: a row on the pay page, the 72-hour terms, no box to untick (16.8)", async ({ page, browser, baseURL }, info) => {
     await signInAsAdmin(page, "eric");
-    await page.goto(BOOK);
+    // Inside the balance window, so the whole amount owed is due now (issue #1251).
+    await page.goto(bookUrl(INSIDE_BALANCE_WINDOW));
     await clickHydrated(page.getByTestId("add-insurance"));
     await fillHydrated(page.getByPlaceholder("Guest’s full name"), "Phone Caller");
     await fillHydrated(page.getByPlaceholder(/^Mobile/), "216-555-0199");
@@ -318,5 +333,40 @@ test.describe("the payment link", () => {
     await expect(customer.getByTestId("pay-now")).toBeVisible();
     const fits = await customer.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
     expect(fits).toBe(true);
+  });
+
+  /**
+   * The deposit on the payment link (issue #1251, `docs/SPEC.md §2.8.4d`): the checkout's payment
+   * choice, in the checkout's wording, on a phone booking the operator wrote due in full. 2 guests at
+   * 15:30 with the operator's 20% tip is the checkout's money pin, $652.94; the $100 deposit leaves
+   * $552.94. The paying itself — the split written, the card saved, the refusals — is
+   * `pay-by-link.test.ts`.
+   */
+  test("AC1: outside the balance window the page offers Pay deposit · $100.00 preselected, its balance under it, and Pay in full · $652.94", async ({ page, browser, baseURL }) => {
+    await extendSeasonThrough(OUTSIDE_BALANCE_WINDOW);
+    const { owes } = await bookByPhone(page, OUTSIDE_BALANCE_WINDOW);
+    // The operator's pane asks for the whole quote: the phone booking is written due in full.
+    expect(owes).toBe("$652.94");
+    const customer = await asCustomer(browser, page, baseURL, await copiedLink(page));
+
+    await expect(customer.getByText("Pay deposit · $100.00", { exact: true })).toBeVisible();
+    await expect(customer.getByText(`$552.94 charged to this card on ${BALANCE_DUE_ON}`, { exact: true })).toBeVisible();
+    await expect(customer.getByText("Pay in full · $652.94", { exact: true })).toBeVisible();
+    await expect(customer.getByTestId("pay-deposit")).toHaveAttribute("aria-pressed", "true");
+
+    await expect(payBar(customer)).toHaveText(/^Due now\s*\$100\.00\s*\$652\.94 total$/);
+    await expect(termsBox(customer)).toHaveText(
+      new RegExp(`We'll charge the balance of \\$552\\.94 to this card on ${BALANCE_DUE_ON}\\.$`),
+    );
+  });
+
+  test("AC4: inside the balance window no payment choice is shown and the whole amount is due now", async ({ page, browser, baseURL }) => {
+    const { owes } = await bookByPhone(page, INSIDE_BALANCE_WINDOW);
+    const customer = await asCustomer(browser, page, baseURL, await copiedLink(page));
+
+    await expect(customer.getByTestId("due-now")).toHaveText(owes);
+    await expect(customer.getByText(/^Pay deposit · /)).toHaveCount(0);
+    await expect(customer.getByText(/^Pay in full · /)).toHaveCount(0);
+    await expect(termsBox(customer)).not.toContainText("We'll charge the balance");
   });
 });

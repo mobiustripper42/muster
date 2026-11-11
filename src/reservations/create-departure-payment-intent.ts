@@ -28,7 +28,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { logSwallowed } from "../log.js";
-import type { Reservation } from "../domain/entities.js";
+import type { BookingInvoice, Reservation } from "../domain/entities.js";
 import { asId, type OfferingId, type ReservationId, type VesselId } from "../domain/ids.js";
 import type { PaymentIntentState, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
@@ -182,15 +182,7 @@ export async function createDeparturePaymentIntent(
     // row. Here rather than at the call, because the price depends on the hull; and before any
     // write, on both the fresh path and the retry path. The balance is held to the same account
     // (issue #1250): a page that showed a deposit against a quote that is now charged whole is stale.
-    if (req.shownDueNowCents !== undefined && invoice.amountDueNowCents !== req.shownDueNowCents) {
-      return null;
-    }
-    if (
-      req.shownBalanceCents !== undefined &&
-      invoice.totalCents - invoice.amountDueNowCents !== req.shownBalanceCents
-    ) {
-      return null;
-    }
+    if (shownIsStale(invoice, req.shownDueNowCents, req.shownBalanceCents)) return null;
     // Frozen with the invoice, like the price and tax: a later settings change moves no booking.
     // Absent when this attempt has no balance, which is how a retry that turns to pay in full
     // clears them.
@@ -350,8 +342,22 @@ export async function createDeparturePaymentIntent(
     noteDetailsChanged,
     // What the intent this row already holds was minted for (issue #1250): the stored invoice, which
     // `recordCheckoutAttempt` re-freezes only after a mint or a raise succeeds.
-    claim.reused ? { priorHadBalance: hasBalance(claim.prior.invoice!) } : {},
+    { priorHadBalance: claim.reused ? hasBalance(claim.prior.invoice!) : false },
   );
+}
+
+/**
+ * Is what the page showed — due now, and the balance it leaves — not what this invoice charges
+ * (issues #1217, #1250, #1251)? Absent figures are no check. The checkout's row builder and the
+ * payment link's start both ask it, so the two refuse by one rule.
+ */
+export function shownIsStale(
+  invoice: BookingInvoice,
+  shownDueNowCents?: number,
+  shownBalanceCents?: number,
+): boolean {
+  if (shownDueNowCents !== undefined && invoice.amountDueNowCents !== shownDueNowCents) return true;
+  return shownBalanceCents !== undefined && invoice.totalCents - invoice.amountDueNowCents !== shownBalanceCents;
 }
 
 /** What the charge says to a person: the dashboard line, and whether Stripe emails a receipt. */
@@ -364,7 +370,7 @@ export interface IntentCharge {
  * The state of the last intent a row minted, or `unknown` when it has none or the port cannot say.
  * One read for the refusal and the attach, so they cannot disagree about whether a row is paid.
  */
-async function priorIntentState(payments: PaymentPort, row: Reservation): Promise<PaymentIntentState> {
+export async function priorIntentState(payments: PaymentPort, row: Reservation): Promise<PaymentIntentState> {
   const priorIntentId = row.paymentIntentIds?.at(-1);
   if (!priorIntentId) return "unknown";
   return payments.getPaymentIntentState(priorIntentId).catch((e: unknown) => {
@@ -396,11 +402,11 @@ export async function attachPaymentIntent(
   charge: IntentCharge,
   afterAttempt: () => Promise<void> = async () => {},
   /**
-   * `priorHadBalance`: whether the attempt that minted this row's last intent had a balance, when
-   * the caller can say. Absent means the same answer as this attempt — the payment link's invoice is
-   * fixed, so it never changes between attempts.
+   * `priorHadBalance`: whether the attempt that minted this row's last intent had a balance, read
+   * by the caller from the row's split before this attempt rewrites it. Unread when the row has no
+   * prior intent.
    */
-  opts: { priorHadBalance?: boolean } = {},
+  opts: { priorHadBalance: boolean },
 ): Promise<{ ok: true; clientSecret: string; paymentIntentId: string } | { ok: false; reason: "already_paid" }> {
   const { repo, payments, now } = deps;
   const invoice = pending.invoice!; // every pending row carries one (DEC-164)
@@ -447,7 +453,7 @@ export async function attachPaymentIntent(
   // cannot raise it. It falls through to the retire-and-mint below, like any other intent we will
   // not offer again, and is never updated in place.
   const balance = hasBalance(invoice);
-  const sameAnswer = (opts.priorHadBalance ?? balance) === balance;
+  const sameAnswer = opts.priorHadBalance === balance;
 
   if (priorIntentId && priorState === "reusable" && sameAnswer) {
     let raised: { clientSecret: string } | undefined;

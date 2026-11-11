@@ -38,20 +38,18 @@ import {
   fillHydrated,
   plantVesselBlock,
 } from "./fixtures.js";
-import type { Page } from "@playwright/test";
 import {
+  BALANCE_DUE_ON,
   BOOKED,
   DEMO,
   INSIDE_BALANCE_WINDOW,
   OPEN_TIME,
   OUTSIDE_BALANCE_WINDOW,
+  extendSeasonThrough,
   formatShortDay,
+  payBar,
+  termsBox,
 } from "./reservation-demo.js";
-import { PostgresRepository } from "../src/adapters/postgres-repository.js";
-import { TEST_DATABASE_URL } from "../db/reset-test.js";
-import { addDays } from "../src/config/tenant.js";
-import { asId } from "../src/domain/ids.js";
-import { PAYMENT_CONFIG_DEFAULTS } from "../src/reservations/payment-config.js";
 
 /** The stepper's landing value on `/book` — the offering's smallest boat (#715). Read off the
  *  fixture, because "2" was a constant that stopped being the default. */
@@ -76,34 +74,6 @@ const INSIDE_CHECKOUT =
 /** The same trip and party on a day OUTSIDE the balance window (issue #1250): a deposit is offered. */
 const OUTSIDE_CHECKOUT =
   `/book/checkout?offering=offering-reservation-demo&date=${OUTSIDE_BALANCE_WINDOW}&time=${OPEN_TIME}&guests=2`;
-
-/** The day the balance is charged for the outside-window departure, as the page writes it: the
- *  departure date less the balance-due setting, which `resetAndSeed` leaves at its default. */
-const BALANCE_DUE_ON = formatShortDay(
-  addDays(OUTSIDE_BALANCE_WINDOW, -PAYMENT_CONFIG_DEFAULTS.balanceDueDaysBeforeEvent),
-);
-
-/**
- * Run the demo offering's season through `date`. The seed's season ends with the seeded week, and a
- * departure far enough out to be outside the balance window can fall after it — late in a month it
- * always does. Written through the port, as `booking-cutoff.spec.ts` sets its cutoff.
- */
-async function extendSeasonThrough(date: string): Promise<void> {
-  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
-  try {
-    const offering = (await repo.getOffering(asId<"OfferingId">(DEMO.offeringId)))!;
-    if (offering.schedule.seasonEnd >= date) return;
-    await repo.saveOffering({ ...offering, schedule: { ...offering.schedule, seasonEnd: date } });
-  } finally {
-    await repo.close();
-  }
-}
-
-/** The pay bar's figures: its label, the due-now figure and, for a deposit, the total under it. */
-const payBar = (page: Page) => page.getByTestId("due-now").locator("..");
-
-/** The terms box — the label the required tick belongs to (#1112). */
-const termsBox = (page: Page) => page.locator("label", { has: page.getByTestId("agree-terms") });
 
 /**
  * A stand-in for Stripe.js whose payment never settles (issue #1082 part A). The e2e has no Stripe

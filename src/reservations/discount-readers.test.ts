@@ -13,6 +13,7 @@ import { buildReservationDetail, buildUnpaidBookingDetail } from "./calendar-det
 import { createBalanceCheckout } from "./create-balance-checkout.js";
 import { chargedFareCents } from "./discount.js";
 import { payLinkMoney } from "./pay-by-link.js";
+import { PAYMENT_CONFIG_DEFAULTS } from "./payment-config.js";
 import { buildPurchaseRows } from "./purchases-view.js";
 
 const EVENT_ID = asId<"EventId">("m-evt-1");
@@ -167,7 +168,13 @@ describe("an unpaid discounted booking", () => {
   });
 
   it("the payment link's summary carries the discount, and its total is what is charged", () => {
-    const { money } = payLinkMoney(invoice);
+    // Three days out: inside the balance window, so the frozen figures are shown as they are.
+    const { money } = payLinkMoney(invoice, {
+      config: PAYMENT_CONFIG_DEFAULTS,
+      date: "2026-07-04",
+      time: "13:30",
+      asOf: "2026-07-01T12:00:00.000Z",
+    });
     expect(money.discountCents).toBe(10000);
     // Fare stays the undiscounted figure, the discount is its own row, and the sum is the charge.
     expect(money.fareCents).toBe(49900);

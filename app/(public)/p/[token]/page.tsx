@@ -23,6 +23,7 @@ import type { Location, Offering, Reservation } from "@core/domain/entities.js";
 import { formatPhoneForDisplay, type CanonicalPhone } from "@core/customers/identity.js";
 import { formatClock, formatDuration, formatShortDay } from "@core/reservations/availability-screen.js";
 import { maskedPhone, payLinkMoney, payLinkState } from "@core/reservations/pay-by-link.js";
+import type { PaymentConfig } from "@core/reservations/payment-config.js";
 import { cancellationTerms } from "@core/reservations/refund-terms.js";
 import { hasFlex } from "@core/reservations/booking-invoice.js";
 import { stripTrailingSlashes } from "@core/config/base-url.js";
@@ -70,8 +71,10 @@ export default async function PayPage({
   let reservation: Reservation | null;
   let offering: Offering | null = null;
   let location: Location | null = null;
+  let config: PaymentConfig;
   try {
     const repo = getRepo();
+    config = await repo.getPaymentConfig();
     reservation = await repo.getReservation(link.reservationId);
     offering = reservation?.offeringId ? await repo.getOffering(reservation.offeringId) : null;
     location = offering?.locationId ? await repo.getLocation(offering.locationId) : null;
@@ -107,7 +110,13 @@ export default async function PayPage({
     );
   }
 
-  const { money, tip, totals } = payLinkMoney(r.invoice);
+  // The split is the live settings' at this moment, never the due-now the row holds (issue #1251).
+  const { money, tip, totals } = payLinkMoney(r.invoice, {
+    config,
+    date: r.date,
+    time: r.time,
+    asOf: new Date().toISOString(),
+  });
   const guests = r.partySize ?? 0;
   const durationLabel = formatDuration(r.tripMinutes ?? offering?.tripLengthMinutes);
   const phone = r.phone ?? "";

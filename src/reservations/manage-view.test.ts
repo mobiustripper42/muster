@@ -216,4 +216,26 @@ describe("buildManageView — the balance row's label (issue #1252)", () => {
     expect(v.detail.money.balanceCents).toBeGreaterThan(0);
     expect(v.balanceLabel).toBe("Balance · due before your trip");
   });
+
+  it("issue #1252 AC9: a booking whose due date has passed reads Balance due, with no day", () => {
+    // The 10-days-out booking an admin stopped: its balance fell due on Mon, Oct 12 and was never
+    // charged. Now is Sun, Nov 1, so naming a day the card "is charged" would be false.
+    const v = buildManageView({
+      ...depositBooking({ balanceDueAt: "2026-10-12T19:30:00.000Z" }),
+      now: { date: "2026-11-01", time: "09:00" },
+    });
+
+    expect(v.detail.money.balanceCents).toBe(55800);
+    expect(v.balanceLabel).toBe("Balance due");
+  });
+
+  it("issue #1252 AC9: the due date counts as passed at its own instant, and not a minute before", () => {
+    // Due 15:30 EDT on Mon, Oct 12 (19:30Z), compared in the vessel's own date and clock.
+    const due = { balanceDueAt: "2026-10-12T19:30:00.000Z" };
+    const at = buildManageView({ ...depositBooking(due), now: { date: "2026-10-12", time: "15:30" } });
+    const before = buildManageView({ ...depositBooking(due), now: { date: "2026-10-12", time: "15:29" } });
+
+    expect(at.balanceLabel).toBe("Balance due");
+    expect(before.balanceLabel).toBe("Balance · charged to your card on Mon, Oct 12");
+  });
 });

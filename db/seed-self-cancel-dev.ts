@@ -12,8 +12,8 @@
  *     `FakePaymentPort`, so it carries the customer's `cancelled` trail row and a real `issued`
  *     refund. Open it at `?cancelled=1&refund=issued` to see the notice with its trail figure.
  *   - **Three bookings with only the $100 deposit paid** (issue #1252), each with the balance due
- *     date frozen on the row as a paid deposit leaves it: **Dana Whitcomb** (uninsured, 20 days out
- *     at 12:30, Cancel offered on the `fee` basis), **Ivo Brandt** (insured, 20 days out at 11:30,
+ *     date frozen on the row as a paid deposit leaves it: **Dana Whitcomb** (uninsured, 45 days out
+ *     at 12:30, Cancel offered on the `fee` basis), **Ivo Brandt** (insured, 46 days out at 11:30,
  *     Cancel offered on the `insurance` basis) and **Nell Okafor** (uninsured, 10 days out at 12:30,
  *     inside the 14-day window: the request form, no Cancel). Dana's and Ivo's balance rows read
  *     "Balance · charged to your card on <day>"; Nell's due date has already passed, so hers reads
@@ -219,14 +219,15 @@ try {
   }
 
   // ── Only the $100 deposit paid, the balance's due date frozen (issue #1252) ─
-  const dana = await bookPaid(farDate, "12:30", "Dana Whitcomb", "216-555-1252", { deposit: true });
+  // Outside the 30-day balance window, so the due date is still ahead; a deposit inside it cannot exist.
+  const dana = await bookPaid(addDays(today, 45), "12:30", "Dana Whitcomb", "216-555-1252", { deposit: true });
   if (dana) {
     console.log(
       `            /b/${dana.code}   Payment: "Paid so far" $100.00, then "Balance · charged to your card on <day>"; ` +
         `Manage → "✕ Cancel booking", the confirm reads paid − $50`,
     );
   }
-  const ivo = await bookPaid(farDate, "11:30", "Ivo Brandt", "440-555-1252", { deposit: true, hasFlex: true });
+  const ivo = await bookPaid(addDays(today, 46), "11:30", "Ivo Brandt", "440-555-1252", { deposit: true, hasFlex: true });
   if (ivo) {
     console.log(
       `            /b/${ivo.code}   Insured, deposit only: "Cancellation insurance" row, the balance reads "charged to your card on <day>"; ` +
@@ -236,7 +237,7 @@ try {
   const nell = await bookPaid(addDays(today, 10), "12:30", "Nell Okafor", "330-555-1252", { deposit: true });
   if (nell) {
     console.log(
-      `            /b/${nell.code}   Deposit only, 10 days out, the balance's due date already passed: the balance reads "Balance due", no day;` +
+      `            /b/${nell.code}   Deposit only, 10 days out, the balance's due date already passed: the balance reads "Balance due", no day; ` +
         `Manage → "✕ Request cancellation", no Cancel`,
     );
   }

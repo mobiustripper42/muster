@@ -16,6 +16,7 @@ import { balanceDates, insideBalanceWindow } from "./availability.js";
 import { formatShortDay } from "./availability-screen.js";
 import type { BookingInvoiceInput } from "./booking-invoice.js";
 import { priceBooking } from "./booking-invoice.js";
+import type { PaymentConfig } from "./payment-config.js";
 import { effectiveIncludedGuests, GRATUITY_DEFAULT_BPS, gratuityKindsFor, gratuityTiersFor } from "./pricing.js";
 import { FLEX_INSURANCE_CENTS } from "./refund-terms.js";
 
@@ -77,6 +78,14 @@ export interface ScreenTotals {
 }
 
 /**
+ * The vessel-local day a deposit's balance is charged, as the checkout writes it (`"Mon, Oct 12"`).
+ * The checkout's screen and the payment link's both name it.
+ */
+export function balanceDueOn(date: string, time: string, config: PaymentConfig): string {
+  return formatShortDay(vesselDateOf(new Date(balanceDates(date, time, config).dueAt)));
+}
+
+/**
  * @param asOf The clock the deposit is judged by. **Absent means no deposit** — `depositCents` and
  *   `balanceDueOn` are null and the screen shows the whole quote. The public checkout passes the
  *   page's clock; the operator's form passes nothing and stays as it was.
@@ -111,9 +120,7 @@ export function checkoutQuote(
     serviceFeeBps: invoice.serviceFeeBps,
     dueNowBeforeTipCents: invoice.amountDueNowCents,
     depositCents: withDeposit ? input.config.depositCents : null,
-    balanceDueOn: withDeposit
-      ? formatShortDay(vesselDateOf(new Date(balanceDates(input.date, input.time, input.config).dueAt)))
-      : null,
+    balanceDueOn: withDeposit ? balanceDueOn(input.date, input.time, input.config) : null,
     tiers: tiersBps.map((bps) => ({
       bps,
       tipCents: priceBooking({ ...input, gratuityBps: bps }).gratuityCents,

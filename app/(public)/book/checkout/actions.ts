@@ -7,6 +7,7 @@ import { createDeparturePaymentIntent } from "@core/reservations/create-departur
 import { canonicalizePhone } from "@core/customers/identity.js";
 import { isHolderToken, mintHolderToken } from "@core/reservations/holder-token.js";
 import { cookies } from "next/headers";
+import { PRICE_CHANGED_MESSAGE } from "../../../../components/checkout/money";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 // Deliberately NOT defined in this file: every export of a `"use server"` module is a
@@ -52,10 +53,6 @@ export interface StartElementsCheckoutInput {
 export type StartElementsCheckoutResult =
   | { ok: true; clientSecret: string }
   | { ok: false; message: string };
-
-/** One copy for the reason map and the gate in `startElementsCheckout` (issue #1217). */
-const PRICE_CHANGED_MESSAGE =
-  "The price changed while you were checking out — reload to see the new total. You have not been charged.";
 
 const REASON_MESSAGES: Record<string, string> = {
   offering_missing: "That cruise isn't bookable anymore. Head back and pick another.",

@@ -24,8 +24,13 @@
  * the format asserts its own idea of correct, which is how "Wed, Aug 12" passes while the page
  * says something else.
  */
+import type { Page } from "@playwright/test";
+import { TEST_DATABASE_URL } from "../db/reset-test.js";
+import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { addDays, vesselDateOf } from "../src/config/tenant.js";
+import { asId } from "../src/domain/ids.js";
 import { formatShortDay } from "../src/reservations/availability-screen.js";
+import { PAYMENT_CONFIG_DEFAULTS } from "../src/reservations/payment-config.js";
 import {
   demoBookingCode,
   demoRevokedBookingCode,
@@ -81,6 +86,37 @@ export const OUTSIDE_BALANCE_WINDOW = ((a: string, b: string) => (a > b ? a : b)
   addDays(TODAY, 40),
   addDays(DEMO.window.end, 1),
 );
+
+/** The day the balance is charged for the outside-window departure, as the page writes it: the
+ *  departure date less the balance-due setting, which `resetAndSeed` leaves at its default. */
+export const BALANCE_DUE_ON = formatShortDay(
+  addDays(OUTSIDE_BALANCE_WINDOW, -PAYMENT_CONFIG_DEFAULTS.balanceDueDaysBeforeEvent),
+);
+
+/**
+ * Run the demo offering's season through `date`. The seed's season ends with the seeded week, and a
+ * departure far enough out to be outside the balance window can fall after it — late in a month it
+ * always does. Written through the port, as `booking-cutoff.spec.ts` sets its cutoff.
+ *
+ * Here rather than in `book-checkout.spec.ts` since issue #1251: the payment link's spec books a
+ * phone booking on the same outside-window day.
+ */
+export async function extendSeasonThrough(date: string): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const offering = (await repo.getOffering(asId<"OfferingId">(DEMO.offeringId)))!;
+    if (offering.schedule.seasonEnd >= date) return;
+    await repo.saveOffering({ ...offering, schedule: { ...offering.schedule, seasonEnd: date } });
+  } finally {
+    await repo.close();
+  }
+}
+
+/** The pay bar's figures: its label, the due-now figure and, for a deposit, the total under it. */
+export const payBar = (page: Page) => page.getByTestId("due-now").locator("..");
+
+/** The terms box — the label the required tick belongs to (#1112). */
+export const termsBox = (page: Page) => page.locator("label", { has: page.getByTestId("agree-terms") });
 
 /** "September 2026" — the calendar header, formatted exactly as `buildMonthCalendar` does. */
 export function monthLabel(isoDay: string): string {

@@ -16,6 +16,7 @@ import { cancelReservation, cancelUnpaidPhoneBooking } from "./cancel-reservatio
 import { confirmBookingFromIntent } from "./confirm-booking.js";
 import { bookForCustomer } from "./operator-booking.js";
 import { maskedPhone, payLinkMoney, payLinkState, startPayByLink } from "./pay-by-link.js";
+import { PAYMENT_CONFIG_DEFAULTS, type PaymentConfig } from "./payment-config.js";
 
 const BOAT = asId<"VesselId">("v-boat");
 const OFF = asId<"OfferingId">("off-1");
@@ -23,6 +24,23 @@ const DATE = "2026-07-04";
 const TIME = "13:30";
 const NOW = "2026-07-01T12:00:00.000Z";
 const now = () => NOW;
+
+/** 40 days before the departure: outside the balance window, so the deposit is offered (issue #1251). */
+const FAR = "2026-05-25T12:00:00.000Z";
+/** 20 days before: inside the balance window (30 days by default), so the whole quote is due. */
+const NEAR = "2026-06-14T12:00:00.000Z";
+
+/** The split the page and the charge work out, at `asOf`, for this file's departure. */
+const splitAt = (asOf: string, config: PaymentConfig = PAYMENT_CONFIG_DEFAULTS) => ({
+  config,
+  date: DATE,
+  time: TIME,
+  asOf,
+});
+
+/** The split at NOW, three days out — inside the balance window, so no deposit is offered and the
+ *  frozen figures are shown as they are. */
+const INSIDE_SPLIT = splitAt(NOW);
 
 const vessel: Vessel = { id: BOAT, name: "Brew 3", coiMaxPax: 12, manning: [] };
 const offering: Offering = {
@@ -94,7 +112,7 @@ function pay(payments: FakePaymentPort, paymentIntentId: string, amountCents: nu
 }
 
 const start = (repo: InMemoryRepository, payments: FakePaymentPort, id: ReservationId) =>
-  startPayByLink({ repo, payments, now }, id);
+  startPayByLink({ repo, payments, now }, id, { payDeposit: false });
 
 describe("startPayByLink — the customer pays the operator's booking", () => {
   it("charges the invoice frozen at booking, on the operator's own row, and books it on confirm", async () => {
@@ -209,7 +227,7 @@ describe("payLinkMoney — the summary is the invoice frozen at booking", () => 
   it("adds back up to exactly what the row will be charged, with the tip fixed at the operator's tier", async () => {
     const { row } = await phoneBooked();
     const inv = row.invoice!;
-    const { money, tip, totals } = payLinkMoney(inv);
+    const { money, tip, totals } = payLinkMoney(inv, INSIDE_SPLIT);
     expect(tip).toEqual({ bps: 2000, tipCents: inv.gratuityCents });
     expect(money.fareCents).toBe(inv.fareCents + inv.extrasCents);
     expect(money.baseCents).toBe(inv.fareCents);
@@ -230,7 +248,7 @@ describe("payLinkMoney — the summary is the invoice frozen at booking", () => 
     const { row } = await phoneBooked(undefined, { hasFlex: true });
     const inv = row.invoice!;
     expect(inv.flexCents).toBe(3000);
-    const { totals } = payLinkMoney(inv);
+    const { totals } = payLinkMoney(inv, INSIDE_SPLIT);
     expect(totals.flexCents).toBe(3000);
     expect(totals.dueNowCents).toBe(inv.amountDueNowCents);
     expect(totals.balanceCents).toBe(0);
@@ -243,7 +261,7 @@ describe("payLinkMoney — the summary is the invoice frozen at booking", () => 
     const inv = row.invoice!;
     // $20 of insurance left: 7.25% tax $1.45 and 3% fee $0.60.
     expect(inv.amountDueNowCents).toBe(2000 + 145 + 60);
-    const { totals } = payLinkMoney(inv);
+    const { totals } = payLinkMoney(inv, INSIDE_SPLIT);
     expect(totals.dueNowCents).toBe(2205);
     expect(totals.balanceCents).toBe(0);
   });
@@ -251,11 +269,12 @@ describe("payLinkMoney — the summary is the invoice frozen at booking", () => 
   it("a deposit-mode invoice shows what is due now and what is left", async () => {
     const { row } = await phoneBooked();
     const inv = { ...row.invoice!, amountDueNowCents: 20000 + row.invoice!.gratuityCents };
-    const { money, totals } = payLinkMoney(inv);
-    // The link offers no choice in 19.1, so it carries no deposit; the balance is the frozen one.
-    expect(money.depositCents).toBeNull();
-    expect(totals.dueNowCents).toBe(inv.amountDueNowCents);
-    expect(totals.balanceCents).toBe(inv.totalCents - inv.amountDueNowCents);
+    const { money, totals } = payLinkMoney(inv, splitAt(FAR));
+    // The split is the link's own, worked out from the total and the live deposit at the page's clock
+    // (issue #1251) — never the due-now the row happens to hold.
+    expect(money.depositCents).toBe(PAYMENT_CONFIG_DEFAULTS.depositCents);
+    expect(totals.dueNowCents).toBe(PAYMENT_CONFIG_DEFAULTS.depositCents);
+    expect(totals.balanceCents).toBe(inv.totalCents - PAYMENT_CONFIG_DEFAULTS.depositCents);
   });
 });
 
@@ -395,5 +414,398 @@ describe("the races (issue #1082)", () => {
     expect(trail.map((e) => e.type)).toContain("auto_refunded");
     // Never booked: still the operator's unpaid row, holding nothing new.
     expect(await repo.getReservation(row.id)).toMatchObject({ source: "admin", status: "pending" });
+  });
+});
+
+/**
+ * The payment link takes the deposit (issue #1251, `docs/SPEC.md §2.8.4d`). The operator's invoice
+ * — the price — is frozen when they book and never changes; the split (due now, the balance, its
+ * due and release dates) is decided when the customer pays the link, from the live settings.
+ *
+ * The window's edge and "at or below the deposit" are pinned where they live (`deposit.test.ts`,
+ * `payment-config.test.ts`); here each boundary gets one case either side, at the page
+ * (`payLinkMoney`) and at the charge (`startPayByLink`).
+ *
+ * 2 guests at 13:30 on Sat Jul 4 with the operator's 20% tip: $499 + tax $36.18 + tip $99.80 + fee
+ * $17.96 = $652.94. The $100 deposit leaves $552.94, due 30 days before (Thu Jun 4, 13:30 EDT) with
+ * the seats released 21 days before (Sat Jun 13).
+ */
+describe("the payment link takes the deposit (issue #1251)", () => {
+  const QUOTE = 65294;
+  const DEPOSIT = 10000;
+  const BALANCE = QUOTE - DEPOSIT;
+  const DUE_AT = "2026-06-04T17:30:00.000Z";
+  const RELEASE_AT = "2026-06-13T17:30:00.000Z";
+
+  /** What the form sends with the deposit chosen on a page that showed it. */
+  const DEPOSIT_SHOWN = { payDeposit: true, shownDueNowCents: DEPOSIT, shownBalanceCents: BALANCE };
+  /** What the form sends with Pay in full chosen: the whole quote, no balance. */
+  const FULL_SHOWN = { payDeposit: false, shownDueNowCents: QUOTE, shownBalanceCents: 0 };
+
+  /** The operator's phone booking, written at `at`, unpaid. */
+  async function phoneBookedAt(at: string, email?: string): Promise<{ repo: InMemoryRepository; row: Reservation }> {
+    const repo = new InMemoryRepository();
+    await repo.saveOffering(offering);
+    await repo.saveVessel(vessel);
+    const res = await bookForCustomer(
+      repo,
+      {
+        offeringId: OFF,
+        vesselId: BOAT,
+        date: DATE,
+        time: TIME,
+        guestCount: 2,
+        gratuityBps: 2000,
+        customerName: "Phone Caller",
+        phone: "216-555-0199",
+        ...(email ? { email } : {}),
+      },
+      () => at,
+    );
+    if (!res.ok) throw new Error(`fixture refused: ${res.reason}`);
+    expect(res.reservation.invoice!.totalCents).toBe(QUOTE);
+    return { repo, row: res.reservation };
+  }
+
+  const startAt = (
+    repo: InMemoryRepository,
+    payments: FakePaymentPort,
+    id: ReservationId,
+    at: string,
+    choice: { payDeposit: boolean; shownDueNowCents?: number; shownBalanceCents?: number },
+  ) => startPayByLink({ repo, payments, now: () => at }, id, choice);
+
+  /** The card goes through on this intent, paid with `paymentMethodId`, and the confirm runs at `at`. */
+  async function payAndConfirm(
+    repo: InMemoryRepository,
+    payments: FakePaymentPort,
+    paymentIntentId: string,
+    amountCents: number,
+    at: string,
+    paymentMethodId = "pm_card_visa",
+  ) {
+    payments.intentStates.set(paymentIntentId, "settled");
+    payments.succeededIntents.set(paymentIntentId, {
+      paymentIntentId,
+      amountReceivedCents: amountCents,
+      currency: "usd",
+      metadata: {},
+      paymentMethodId,
+    });
+    const deps: WebhookDeps = {
+      repo,
+      payments,
+      now: () => at,
+      alertPaidButUnbooked: vi.fn(async () => {}),
+      sendConfirmation: vi.fn(async () => true),
+      notifyCustomerSoldOut: vi.fn(async () => {}),
+    };
+    return confirmBookingFromIntent(deps, (await payments.getSucceededPaymentIntent(paymentIntentId))!);
+  }
+
+  describe("the page", () => {
+    it("AC1: outside the window, a quote above the deposit: the $100 deposit is offered, its balance day named, and preselected", async () => {
+      const { row } = await phoneBookedAt(FAR);
+      const inv = row.invoice!;
+      const { money, totals } = payLinkMoney(inv, splitAt(FAR));
+      expect(money.depositCents).toBe(DEPOSIT);
+      expect(money.balanceDueOn).toBe("Thu, Jun 4");
+      expect(totals).toEqual({
+        tipCents: inv.gratuityCents,
+        flexCents: 0,
+        taxCents: inv.taxCents,
+        serviceFeeCents: inv.serviceFeeCents,
+        totalCents: QUOTE,
+        dueNowCents: DEPOSIT,
+        balanceCents: BALANCE,
+      });
+    });
+
+    it("AC4: inside the window: no deposit, no balance day, the whole quote due", async () => {
+      const { row } = await phoneBookedAt(FAR);
+      const { money, totals } = payLinkMoney(row.invoice!, splitAt(NEAR));
+      expect(money.depositCents).toBeNull();
+      expect(money.balanceDueOn).toBeNull();
+      expect(totals).toMatchObject({ totalCents: QUOTE, dueNowCents: QUOTE, balanceCents: 0 });
+    });
+
+    it("AC5: a quote at the deposit: no deposit offered, the whole quote due", async () => {
+      const { row } = await phoneBookedAt(FAR);
+      const { money, totals } = payLinkMoney(row.invoice!, splitAt(FAR, { ...PAYMENT_CONFIG_DEFAULTS, depositCents: QUOTE }));
+      expect(money.depositCents).toBeNull();
+      expect(money.balanceDueOn).toBeNull();
+      expect(totals).toMatchObject({ totalCents: QUOTE, dueNowCents: QUOTE, balanceCents: 0 });
+    });
+
+    it("AC6: reloaded inside the window after a deposit attempt, the page shows the whole quote — never the row's stored deposit", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      await startAt(repo, new FakePaymentPort(), row.id, FAR, DEPOSIT_SHOWN);
+      const stored = (await repo.getReservation(row.id))!;
+      expect(stored.invoice!.amountDueNowCents).toBe(DEPOSIT);
+
+      const { money, totals } = payLinkMoney(stored.invoice!, splitAt(NEAR));
+      expect(money.depositCents).toBeNull();
+      expect(totals).toMatchObject({ totalCents: QUOTE, dueNowCents: QUOTE, balanceCents: 0 });
+    });
+  });
+
+  describe("paying with the deposit", () => {
+    it("AC2: $100 is charged and the card saved for this booking, to a provider customer made for it", async () => {
+      const { repo, row } = await phoneBookedAt(FAR, "caller@example.com");
+      const payments = new FakePaymentPort();
+
+      const res = await startAt(repo, payments, row.id, FAR, DEPOSIT_SHOWN);
+      expect(res).toMatchObject({ ok: true, paymentIntentId: "pi_fake_1" });
+      const customerId = `cus_fake_customer_${row.id}`;
+      expect(payments.createdCustomers).toEqual([{ idempotencyKey: `customer_${row.id}`, name: "Phone Caller" }]);
+      expect(payments.intents).toHaveLength(1);
+      expect(payments.intents[0]).toMatchObject({
+        amountCents: DEPOSIT,
+        customerId,
+        setupFutureUsage: "off_session",
+        receiptEmail: "caller@example.com",
+      });
+    });
+
+    it("AC2: the split is written — due now is the deposit, the due and release dates set — and the price is the operator's", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      await startAt(repo, new FakePaymentPort(), row.id, FAR, DEPOSIT_SHOWN);
+
+      const stored = (await repo.getReservation(row.id))!;
+      expect(stored.invoice).toEqual({ ...row.invoice!, amountDueNowCents: DEPOSIT });
+      expect(stored.balanceDueAt).toBe(DUE_AT);
+      expect(stored.balanceReleaseAt).toBe(RELEASE_AT);
+      expect(stored.stripeCustomerId).toBe(`cus_fake_customer_${row.id}`);
+    });
+
+    it("AC2: the deposit and its dates are read from the settings when the link is paid", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      // Changed after the operator booked, before the customer pays.
+      await repo.setPaymentConfig({ depositCents: 15000, balanceDueDaysBeforeEvent: 35, balanceReleaseDaysBeforeEvent: 25 }, FAR);
+      const payments = new FakePaymentPort();
+
+      const res = await startAt(repo, payments, row.id, FAR, { payDeposit: true });
+      expect(res.ok).toBe(true);
+      expect(payments.intents[0]!.amountCents).toBe(15000);
+      const stored = (await repo.getReservation(row.id))!;
+      expect(stored.invoice!.amountDueNowCents).toBe(15000);
+      // 35 days before Jul 4 is May 30; 25 days before is Jun 9. Both 13:30 EDT.
+      expect(stored.balanceDueAt).toBe("2026-05-30T17:30:00.000Z");
+      expect(stored.balanceReleaseAt).toBe("2026-06-09T17:30:00.000Z");
+    });
+
+    it("AC2: the booking books on confirm, keeping the card the deposit was paid with for the balance", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const payments = new FakePaymentPort();
+      await startAt(repo, payments, row.id, FAR, DEPOSIT_SHOWN);
+
+      const confirmed = await payAndConfirm(repo, payments, "pi_fake_1", DEPOSIT, FAR, "pm_card_visa");
+      expect(confirmed).toMatchObject({ handled: true, outcome: "booked" });
+      const stored = (await repo.getReservation(row.id))!;
+      expect(stored).toMatchObject({ source: "muster", status: "booked", stripePaymentMethodId: "pm_card_visa" });
+      expect(stored.invoice!.amountDueNowCents).toBe(DEPOSIT);
+    });
+  });
+
+  describe("paying in full", () => {
+    it("AC3: Pay in full on a page that offered the deposit: the whole quote, no provider customer, no saved card, no dates", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const payments = new FakePaymentPort();
+
+      const res = await startAt(repo, payments, row.id, FAR, FULL_SHOWN);
+      expect(res.ok).toBe(true);
+      expect(payments.intents).toHaveLength(1);
+      expect(payments.intents[0]!.amountCents).toBe(QUOTE);
+      expect(payments.intents[0]!.customerId).toBeUndefined();
+      expect(payments.intents[0]!.setupFutureUsage).toBeUndefined();
+      expect(payments.createdCustomers).toEqual([]);
+      const stored = (await repo.getReservation(row.id))!;
+      expect(stored.invoice).toEqual(row.invoice);
+      expect(stored.balanceDueAt).toBeUndefined();
+      expect(stored.balanceReleaseAt).toBeUndefined();
+
+      await payAndConfirm(repo, payments, "pi_fake_1", QUOTE, FAR, "pm_card_visa");
+      const booked = (await repo.getReservation(row.id))!;
+      expect(booked.status).toBe("booked");
+      expect(booked.stripePaymentMethodId).toBeUndefined();
+    });
+
+    it("AC3: Pay in full after a deposit attempt clears the split and both dates", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const payments = new FakePaymentPort();
+      await startAt(repo, payments, row.id, FAR, DEPOSIT_SHOWN);
+      expect((await repo.getReservation(row.id))!.balanceDueAt).toBe(DUE_AT);
+
+      const res = await startAt(repo, payments, row.id, FAR, FULL_SHOWN);
+      expect(res.ok).toBe(true);
+      const stored = (await repo.getReservation(row.id))!;
+      expect(stored.invoice).toEqual(row.invoice);
+      expect(stored.balanceDueAt).toBeUndefined();
+      expect(stored.balanceReleaseAt).toBeUndefined();
+    });
+  });
+
+  describe("no choice", () => {
+    it("AC4: paid inside the window, the whole quote is charged even when the deposit is asked for — no customer, no saved card, no dates", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const payments = new FakePaymentPort();
+
+      const res = await startAt(repo, payments, row.id, NEAR, { payDeposit: true });
+      expect(res.ok).toBe(true);
+      expect(payments.intents[0]!.amountCents).toBe(QUOTE);
+      expect(payments.intents[0]!.setupFutureUsage).toBeUndefined();
+      expect(payments.createdCustomers).toEqual([]);
+      const stored = (await repo.getReservation(row.id))!;
+      expect(stored.invoice).toEqual(row.invoice);
+      expect(stored.balanceDueAt).toBeUndefined();
+      expect(stored.balanceReleaseAt).toBeUndefined();
+    });
+
+    it("AC5: a quote at the deposit is charged whole, even outside the window and with the deposit asked for", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      await repo.setPaymentConfig({ depositCents: QUOTE }, FAR);
+      const payments = new FakePaymentPort();
+
+      const res = await startAt(repo, payments, row.id, FAR, { payDeposit: true });
+      expect(res.ok).toBe(true);
+      expect(payments.intents[0]!.amountCents).toBe(QUOTE);
+      expect(payments.intents[0]!.setupFutureUsage).toBeUndefined();
+      expect(payments.createdCustomers).toEqual([]);
+      const stored = (await repo.getReservation(row.id))!;
+      expect(stored.balanceDueAt).toBeUndefined();
+      expect(stored.balanceReleaseAt).toBeUndefined();
+    });
+  });
+
+  describe("the split changed under the page", () => {
+    it("AC6: the page showed the deposit and the trip has crossed into the window: refused — nothing written, nothing charged, no card saved", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const before = await repo.getReservation(row.id);
+      const payments = new FakePaymentPort();
+
+      expect(await startAt(repo, payments, row.id, NEAR, DEPOSIT_SHOWN)).toEqual({ ok: false, reason: "stale" });
+      expect(await repo.getReservation(row.id)).toEqual(before);
+      expect(payments.intents).toHaveLength(0);
+      expect(payments.createdCustomers).toEqual([]);
+    });
+
+    it("AC6: the deposit setting changed between the page and the press: refused — nothing written, nothing charged, no card saved", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const before = await repo.getReservation(row.id);
+      await repo.setPaymentConfig({ depositCents: 15000 }, FAR);
+      const payments = new FakePaymentPort();
+
+      expect(await startAt(repo, payments, row.id, FAR, DEPOSIT_SHOWN)).toEqual({ ok: false, reason: "stale" });
+      expect(await repo.getReservation(row.id)).toEqual(before);
+      expect(payments.intents).toHaveLength(0);
+      expect(payments.createdCustomers).toEqual([]);
+    });
+
+    it("AC6: refused on a retry too — the deposit attempt's intent and the row are left exactly as they were", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const payments = new FakePaymentPort();
+      await startAt(repo, payments, row.id, FAR, DEPOSIT_SHOWN);
+      const before = await repo.getReservation(row.id);
+
+      expect(await startAt(repo, payments, row.id, NEAR, DEPOSIT_SHOWN)).toEqual({ ok: false, reason: "stale" });
+      expect(await repo.getReservation(row.id)).toEqual(before);
+      expect(payments.intents).toHaveLength(1);
+      expect(payments.amountUpdates).toEqual([]);
+      expect(payments.cancelled).toEqual([]);
+    });
+
+    it("AC6: Pay in full on a page that showed the deposit sends what it charges, so it goes through after the window is crossed", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const payments = new FakePaymentPort();
+
+      const res = await startAt(repo, payments, row.id, NEAR, FULL_SHOWN);
+      expect(res.ok).toBe(true);
+      expect(payments.intents[0]!.amountCents).toBe(QUOTE);
+    });
+
+    it("AC6: a stale attempt whose last intent was paid in the other tab is already paid — never \"you have not been charged\"", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const payments = new FakePaymentPort();
+      await startAt(repo, payments, row.id, FAR, DEPOSIT_SHOWN);
+      pay(payments, "pi_fake_1", DEPOSIT);
+
+      expect(await startAt(repo, payments, row.id, NEAR, DEPOSIT_SHOWN)).toEqual({ ok: false, reason: "already_paid" });
+      expect(payments.intents).toHaveLength(1);
+    });
+  });
+
+  describe("a retry that changes the answer", () => {
+    it("AC7: a deposit attempt, then Pay in full: the card-saving intent is retired and a fresh one minted, never switched in place", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const payments = new FakePaymentPort();
+      await startAt(repo, payments, row.id, FAR, DEPOSIT_SHOWN);
+
+      const again = await startAt(repo, payments, row.id, FAR, FULL_SHOWN);
+      expect(again).toMatchObject({ ok: true, paymentIntentId: "pi_fake_2" });
+      expect(payments.amountUpdates).toEqual([]);
+      expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+      expect(payments.liveAmountCents.has("pi_fake_1")).toBe(false);
+      expect(payments.intents[1]!.amountCents).toBe(QUOTE);
+      expect(payments.intents[1]!.customerId).toBeUndefined();
+      expect(payments.intents[1]!.setupFutureUsage).toBeUndefined();
+      expect((await repo.getReservation(row.id))!.paymentIntentIds).toEqual(["pi_fake_1", "pi_fake_2"]);
+    });
+
+    it("AC7: Pay in full, then the deposit: retired and re-minted, the fresh intent saving the card", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const payments = new FakePaymentPort();
+      await startAt(repo, payments, row.id, FAR, FULL_SHOWN);
+
+      const again = await startAt(repo, payments, row.id, FAR, DEPOSIT_SHOWN);
+      expect(again).toMatchObject({ ok: true, paymentIntentId: "pi_fake_2" });
+      expect(payments.amountUpdates).toEqual([]);
+      expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+      expect(payments.intents[1]).toMatchObject({
+        amountCents: DEPOSIT,
+        customerId: `cus_fake_customer_${row.id}`,
+        setupFutureUsage: "off_session",
+      });
+    });
+
+    it("AC7: a deposit attempt, then a retry inside the window: retired and re-minted at the whole quote", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const payments = new FakePaymentPort();
+      await startAt(repo, payments, row.id, FAR, DEPOSIT_SHOWN);
+
+      const again = await startAt(repo, payments, row.id, NEAR, { payDeposit: true });
+      expect(again).toMatchObject({ ok: true, paymentIntentId: "pi_fake_2" });
+      expect(payments.amountUpdates).toEqual([]);
+      expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+      expect(payments.intents[1]!.amountCents).toBe(QUOTE);
+      expect(payments.intents[1]!.setupFutureUsage).toBeUndefined();
+    });
+
+    it("AC7: two attempts with the deposit keep the one card-saving intent and mint nothing", async () => {
+      const { repo, row } = await phoneBookedAt(FAR);
+      const payments = new FakePaymentPort();
+      const first = await startAt(repo, payments, row.id, FAR, DEPOSIT_SHOWN);
+      const second = await startAt(repo, payments, row.id, FAR, DEPOSIT_SHOWN);
+
+      expect(first.ok && second.ok && second.paymentIntentId).toBe("pi_fake_1");
+      expect(payments.intents).toHaveLength(1);
+      expect(payments.intents[0]).toMatchObject({ amountCents: DEPOSIT, setupFutureUsage: "off_session" });
+      expect(payments.cancelled).toEqual([]);
+      expect(payments.createdCustomers).toHaveLength(1);
+    });
+  });
+
+  it("AC8: the phone booking is written due in full with no dates, however far out — only the link's payment sets the split, and the price stays the operator's", async () => {
+    const { repo, row } = await phoneBookedAt(FAR);
+    const written = (await repo.getReservation(row.id))!;
+    expect(written.invoice!.amountDueNowCents).toBe(QUOTE);
+    expect(written.balanceDueAt).toBeUndefined();
+    expect(written.balanceReleaseAt).toBeUndefined();
+
+    await startAt(repo, new FakePaymentPort(), row.id, FAR, DEPOSIT_SHOWN);
+    const { amountDueNowCents: dueBefore, ...priceBefore } = written.invoice!;
+    const { amountDueNowCents: dueAfter, ...priceAfter } = (await repo.getReservation(row.id))!.invoice!;
+    expect(dueBefore).toBe(QUOTE);
+    expect(dueAfter).toBe(DEPOSIT);
+    expect(priceAfter).toEqual(priceBefore);
   });
 });

@@ -15,7 +15,6 @@ import { eventIdOfBooked, isBooked } from "../domain/entities.js";
 import type { ReservationId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
-import { bookedFareCents } from "./discount.js";
 import { balanceOwedCents } from "./payment-config.js";
 
 export type BalanceCheckoutStart =
@@ -40,17 +39,15 @@ export async function createBalanceCheckout(
   if (!isBooked(reservation)) return { ok: false, reason: "not_active" };
 
   const event = await repo.getEvent(eventIdOfBooked(reservation)); // allow-listed `booked` above
-  if (!event || event.price === undefined) return { ok: false, reason: "unpriced" };
+  // A booked Muster row always carries the invoice frozen at booking (`write-booking.ts`); one
+  // without it has no price to collect against.
+  const invoice = reservation.invoice;
+  if (!event || event.price === undefined || !invoice) return { ok: false, reason: "unpriced" };
 
-  const config = await repo.getPaymentConfig();
   const payments_ = await repo.listPaymentsForReservation(reservationId);
-  // The composed fare (base + frozen extras, #474) — the bare base undercollects the balance —
-  // less the discount (DEC-194), or a discounted booking paid in full is billed the discount.
-  const owed = balanceOwedCents(
-    bookedFareCents(event.price, reservation),
-    config.taxRateBps,
-    payments_,
-  );
+  // Worked off the invoice frozen at booking (issue #1241), never today's tax-rate setting: a rate
+  // change after the booking must not mint a charge for a customer who paid in full.
+  const owed = balanceOwedCents(invoice, payments_);
   // `<= 0` folds no_balance, already-paid, and full-mode into one predicate.
   if (owed <= 0) return { ok: false, reason: "no_balance" };
 

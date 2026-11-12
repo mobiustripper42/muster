@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { FAKE_SIGNATURE, FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import type { Event, Reservation } from "../domain/entities.js";
+import type { BookingInvoice, Event, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { PaymentSignatureError, type CheckoutCompleted } from "../ports/payment.js";
 import { eventIdForSlot } from "./availability.js";
@@ -630,6 +630,8 @@ async function seedDepositBooking(repo: InMemoryRepository): Promise<void> {
     customerName: "Mary",
     partySize: 6,
     status: "booked",
+    // The balance reads the invoice frozen at booking (issue #1241): $500 at 7.25%, 16125 down.
+    invoice: { ...pendingRow().invoice!, amountDueNowCents: 16125 },
   });
   await repo.savePayment({
     id: asId<"PaymentId">("pay_dep"),
@@ -750,6 +752,76 @@ describe("processBookingWebhook — balance (11.2b)", () => {
     const balances = (await repo.listPaymentsForReservation(RES)).filter((p) => p.kind === "balance");
     expect(balances).toHaveLength(1);
     expect(alert).toHaveBeenCalledOnce();
+  });
+
+  /**
+   * Money F6 at the overpay check (issue #1241): what is owed is worked off the invoice frozen at
+   * booking, so the live rate cannot raise a false alarm or hide a real one. The F6 booking — $499
+   * at 7.25%, 3% fee, no tip: 49900 + 3618 + 1497 = 55015 — $100 down, with the live rate at 8%.
+   * The frozen balance is 45015; re-taxed at 8% it would be 45389.
+   */
+  describe("the overpay check reads the frozen invoice (issue #1241)", () => {
+    const F6: BookingInvoice = {
+      fareCents: 49900,
+      extrasCents: 0,
+      taxCents: 3618,
+      taxRateBps: 725,
+      serviceFeeCents: 1497,
+      serviceFeeBps: 300,
+      gratuityCents: 0,
+      gratuityBps: 0,
+      totalCents: 55015,
+      amountDueNowCents: 10000,
+    };
+
+    async function depositDownAtSevenPointTwoFive(): Promise<InMemoryRepository> {
+      const repo = new InMemoryRepository();
+      await repo.saveEvent(musterEvent({ price: 49900 }));
+      await repo.saveReservation({
+        id: RES,
+        eventId: EVENT,
+        source: "muster",
+        customerName: "Mary",
+        partySize: 6,
+        status: "booked",
+        invoice: F6,
+      });
+      await repo.savePayment({
+        id: asId<"PaymentId">("pay_dep"),
+        reservationId: RES,
+        method: "stripe",
+        kind: "deposit",
+        amountCents: 10000,
+        taxCents: 3618,
+        serviceFeeCents: 1497,
+        currency: "usd",
+        status: "succeeded",
+        createdAt: "2026-07-01T00:00:00.000Z",
+      });
+      await repo.setPaymentConfig({ taxRateBps: 800 }, "2026-07-02T00:00:00.000Z");
+      return repo;
+    }
+
+    it("issue #1241 AC7: a balance payment that over-collects fires the overpay alert, by the frozen excess", async () => {
+      // 200 past the frozen 45015. Off the live 8% it would still read 174 owed, and no alert.
+      const repo = await depositDownAtSevenPointTwoFive();
+      const { deps, alert } = makeDeps(repo);
+
+      await processBookingWebhook(deps, JSON.stringify(balanceCompleted({ amountTotalCents: 45215 })), FAKE_SIGNATURE);
+
+      expect(alert).toHaveBeenCalledOnce();
+      expect(alert.mock.calls[0]![0]).toContain("OVERPAID by 200 cents");
+    });
+
+    it("issue #1241 AC7: an exact balance payment fires no alert, with the live rate changed", async () => {
+      const repo = await depositDownAtSevenPointTwoFive();
+      const { deps, alert } = makeDeps(repo);
+
+      const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted({ amountTotalCents: 45015 })), FAKE_SIGNATURE);
+
+      expect(r).toEqual({ handled: true, outcome: "balance_paid" });
+      expect(alert).not.toHaveBeenCalled();
+    });
   });
 
   it("unknown purpose is loudly flagged and NOT booked (no orphan reservation)", async () => {
@@ -1188,7 +1260,7 @@ describe("processBookingWebhook — charge.dispute.* records the chargeback (iss
     await processBookingWebhook(deps, dispute(), FAKE_SIGNATURE);
 
     const payments = await repo.listPaymentsForReservation(asId<"ReservationId">("resv-1"));
-    expect(balanceOwedCents(50000, 725, payments)).toBe(53625);
+    expect(balanceOwedCents(pendingRow().invoice!, payments)).toBe(53625);
   });
 
   it("an INQUIRY alerts but writes nothing — no money has moved yet", async () => {

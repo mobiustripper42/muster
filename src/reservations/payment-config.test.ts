@@ -4,7 +4,8 @@
  * the balance. Pure functions only; the builders/webhook are covered by their own suites.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Payment, PaymentStatus } from "../domain/entities.js";
+import type { BookingInvoice, Payment, PaymentStatus } from "../domain/entities.js";
+import { flexCarveOutCents } from "./discount.js";
 import {
   balanceOwedCents,
   countsAsPaid,
@@ -193,6 +194,126 @@ describe("balanceOwedCents treats a disputed payment as unpaid (issue #723)", ()
       amountCents: 55015,
       serviceFeeCents: 1497,
     };
-    expect(balanceOwedCents(49900, 725, [disputed])).toBe(53518);
+    const invoice: BookingInvoice = {
+      fareCents: 49900,
+      extrasCents: 0,
+      taxCents: 3618,
+      taxRateBps: 725,
+      serviceFeeCents: 1497,
+      serviceFeeBps: 300,
+      gratuityCents: 0,
+      gratuityBps: 0,
+      totalCents: 55015,
+      amountDueNowCents: 55015,
+    };
+    expect(balanceOwedCents(invoice, [disputed])).toBe(53518);
+  });
+});
+
+/**
+ * The balance reads the invoice frozen at booking and nothing else (issue #1241, money F6). Its
+ * edge cases live here, at the function that owns the rule; the readers that use it are tested for
+ * one accepted and one rejected case each. Every figure below is worked by hand at the invoice's own
+ * rate — there is no live rate left at this layer to change.
+ *
+ * Each first charge is shaped like the one the webhook writes (`booking-webhook.ts` `recordPayment`):
+ * the invoice's tip, fee and insurance ride on it, so what it paid toward fare + tax can be negative
+ * and the balance is the rest of the quote.
+ */
+describe("balanceOwedCents — off the frozen invoice (issue #1241)", () => {
+  const firstCharge = (inv: BookingInvoice): Pick<
+    Payment,
+    "status" | "amountCents" | "gratuityCents" | "serviceFeeCents" | "flexCents"
+  > => ({
+    status: "succeeded",
+    amountCents: inv.amountDueNowCents,
+    gratuityCents: inv.gratuityCents,
+    serviceFeeCents: inv.serviceFeeCents,
+    ...(flexCarveOutCents(inv) > 0 ? { flexCents: flexCarveOutCents(inv) } : {}),
+  });
+
+  it("issue #1241 AC3: a deposit-only booking owes its frozen fare plus its frozen tax, less what the deposit paid toward them", () => {
+    // $499 + 2 × $40 extras = $579 at 7.25%: tax 4198 (4197.75), 20% tip 11580, 3% fee on
+    // fare + tip 2084 → 75762. The $100 deposit carried the tip and the fee, so it paid −3664
+    // toward fare + tax, and 57900 + 4198 + 3664 = 65762 is owed: the quote less the deposit.
+    const inv: BookingInvoice = {
+      fareCents: 49900,
+      extrasCents: 8000,
+      taxCents: 4198,
+      taxRateBps: 725,
+      serviceFeeCents: 2084,
+      serviceFeeBps: 300,
+      gratuityCents: 11580,
+      gratuityBps: 2000,
+      totalCents: 75762,
+      amountDueNowCents: 10000,
+    };
+    expect(balanceOwedCents(inv, [firstCharge(inv)])).toBe(65762);
+  });
+
+  it("issue #1241 AC3: the rate is the one the invoice froze, not a default", () => {
+    // $500 frozen at 8%: tax 4000, tip 10000, fee 1800 → 65800; the $100 deposit leaves 55800.
+    // At the 7.25% default the same booking would owe 55425.
+    const inv: BookingInvoice = {
+      fareCents: 50000,
+      extrasCents: 0,
+      taxCents: 4000,
+      taxRateBps: 800,
+      serviceFeeCents: 1800,
+      serviceFeeBps: 300,
+      gratuityCents: 10000,
+      gratuityBps: 2000,
+      totalCents: 65800,
+      amountDueNowCents: 10000,
+    };
+    expect(balanceOwedCents(inv, [firstCharge(inv)])).toBe(55800);
+  });
+
+  it("issue #1241 AC4: an insured deposit-only booking counts the insurance's tax once — neither twice nor left out", () => {
+    // $499 insured at 7.25%: tax on 52900 is 3835 (3835.25), of which the fare's alone is 3618
+    // (3617.75) — so 217 is the insurance's, not the 218 its own rounding would give. Tip 9980,
+    // fee on 62880 is 1886 → 68601. The deposit carries tip, fee and insurance + its tax (3217),
+    // and 68601 − 10000 = 58601 is owed. Counting the 217 twice reads 58818; leaving it out,
+    // 58384; rounding the insurance's tax on its own, 58602.
+    const inv: BookingInvoice = {
+      fareCents: 49900,
+      extrasCents: 0,
+      taxCents: 3835,
+      taxRateBps: 725,
+      serviceFeeCents: 1886,
+      serviceFeeBps: 300,
+      gratuityCents: 9980,
+      gratuityBps: 2000,
+      flexCents: 3000,
+      totalCents: 68601,
+      amountDueNowCents: 10000,
+    };
+    expect(balanceOwedCents(inv, [firstCharge(inv)])).toBe(58601);
+  });
+
+  // $499 trip, $100 off → $399 at 7.25%: tax 2893, fee 1197, tip 7980 → 51970.
+  const discounted: BookingInvoice = {
+    fareCents: 49900,
+    extrasCents: 0,
+    discountCents: 10000,
+    taxCents: 2893,
+    taxRateBps: 725,
+    serviceFeeCents: 1197,
+    serviceFeeBps: 300,
+    gratuityCents: 7980,
+    gratuityBps: 2000,
+    totalCents: 51970,
+    amountDueNowCents: 51970,
+  };
+
+  it("issue #1241 AC5: a discounted booking paid in full owes nothing", () => {
+    expect(balanceOwedCents(discounted, [firstCharge(discounted)])).toBe(0);
+  });
+
+  it("issue #1241 AC5: a discounted booking owes the rest of its discounted price — not the discount and its tax on top", () => {
+    // The $100 deposit carried the tip and the fee: 51970 − 10000 = 41970. Pricing the fare
+    // before its discount would read 41970 + 10000 + 725.
+    const inv = { ...discounted, amountDueNowCents: 10000 };
+    expect(balanceOwedCents(inv, [firstCharge(inv)])).toBe(41970);
   });
 });

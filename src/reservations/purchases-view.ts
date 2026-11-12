@@ -17,8 +17,8 @@
  */
 
 import type { Event, Payment, Reservation } from "../domain/entities.js";
-import { bookedFareCents, chargedFareCents } from "./discount.js";
-import { balanceDueCents, countsAsPaid, taxCentsFor } from "./payment-config.js";
+import { frozenMoney } from "./booking-invoice.js";
+import { balanceDueCents, countsAsPaid } from "./payment-config.js";
 
 /**
  * The mockup shows three states (Paid / Deposit / Refunded). Real data needs two more:
@@ -77,7 +77,6 @@ export interface PurchasesInput {
   paymentsByReservation: ReadonlyMap<string, Payment[]>;
   offeringNameByEventId?: ReadonlyMap<string, string> | undefined;
   vesselNameById?: ReadonlyMap<string, string> | undefined;
-  taxRateBps: number;
 }
 
 /** Group a flat payment list by reservation — the one pass a list page needs. */
@@ -132,27 +131,13 @@ function stateOf(
 }
 
 /**
- * Fare + tax, and whether it can be trusted. A booked row prices off its Event (as since 12.12a);
- * a row with no Event yet — a phone booking awaiting payment, a checkout in flight, one cancelled
- * before it was paid — carries the invoice frozen when it was written (DEC-164), which is what the
- * customer was quoted and what they will be charged.
+ * Fare + tax, and whether it can be trusted: both read off the invoice frozen when the row was
+ * written (DEC-164) — what the customer was quoted — whether or not the row has an Event yet. No
+ * invoice (a Xola row) reads as no recorded price, every figure 0 (issue #1241).
  */
-function orderTotal(
-  r: Reservation,
-  event: Event | undefined,
-  taxRateBps: number,
-): { fareCents: number; totalCents: number; priceKnown: boolean } {
-  if (!event && r.invoice) {
-    const fareCents = chargedFareCents(r.invoice);
-    return { fareCents, totalCents: fareCents + r.invoice.taxCents, priceKnown: true };
-  }
-  // Less the discount (DEC-194): `Event.price` is the undiscounted fare.
-  const fareCents = bookedFareCents(event?.price ?? 0, r);
-  return {
-    fareCents,
-    totalCents: fareCents + taxCentsFor(fareCents, taxRateBps),
-    priceKnown: typeof event?.price === "number",
-  };
+function orderTotal(r: Reservation): { totalCents: number; priceKnown: boolean } {
+  const { fareCents, taxCents, priceKnown } = frozenMoney(r.invoice);
+  return { totalCents: fareCents + taxCents, priceKnown };
 }
 
 /**
@@ -165,7 +150,7 @@ export function buildPurchaseRows(input: PurchasesInput): PurchaseRow[] {
     if (r.source !== "muster" && r.source !== "admin") continue;
 
     const event = input.eventsById.get(String(r.eventId));
-    const { fareCents, totalCents, priceKnown } = orderTotal(r, event, input.taxRateBps);
+    const { totalCents, priceKnown } = orderTotal(r);
     const payments = input.paymentsByReservation.get(String(r.id)) ?? [];
     // `countsAsPaid` — a partially refunded row is still money the customer paid, shown gross
     // here with `refundedCents` on its own line (#522). The balance reads `tookMoney` instead.
@@ -175,7 +160,7 @@ export function buildPurchaseRows(input: PurchasesInput): PurchaseRow[] {
     // A cancelled row owes nothing (issue #803). `stateOf` below already returns `cancelled`
     // from the reservation, so the label does not move — this only stops the page's due chip,
     // gated on `balanceCents > 0` alone, from reading "$538.18 due" on a cancelled booking.
-    const balanceCents = balanceDueCents(r.status, fareCents, input.taxRateBps, payments);
+    const balanceCents = balanceDueCents(r.status, r.invoice, payments);
 
     rows.push({
       reservationId: String(r.id),

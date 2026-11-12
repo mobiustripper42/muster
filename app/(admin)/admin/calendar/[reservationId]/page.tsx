@@ -236,22 +236,19 @@ export default async function ReservationDetailPage({
   let payments: Payment[];
   let gratuities: Gratuity[];
   let shifts: Shift[];
-  let taxRateBps: number;
   try {
     const repo = getRepo();
-    const [p, g, s, config] = await Promise.all([
+    const [p, g, s] = await Promise.all([
       repo.listPaymentsForReservation(reservation.id),
       repo.listGratuitiesForEvent(event.id),
       repo.listShifts(),
-      repo.getPaymentConfig(),
     ]);
     payments = p;
     gratuities = g;
     shifts = s;
-    taxRateBps = config.taxRateBps;
   } catch (e) {
-    // Money path — payments, gratuities and the tax rate this pane totals from.
-    logSwallowed("admin/reservation", e, "the payments, gratuities, shifts or tax rate did not load");
+    // Money path — the payments and gratuities this pane totals from.
+    logSwallowed("admin/reservation", e, "the payments, gratuities or shifts did not load");
     return (
       <Shell width="6xl">
         <Notice>Couldn’t load this reservation right now. {ADMIN_LOG_HINT}</Notice>
@@ -282,7 +279,6 @@ export default async function ReservationDetailPage({
     vessel: data.vesselById.get(String(event.vesselId)),
     payments,
     gratuities,
-    taxRateBps,
     ...(shift ? { shift: { shift, seats } } : {}),
   });
 

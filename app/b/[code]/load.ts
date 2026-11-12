@@ -31,7 +31,6 @@ export interface LoadedBooking {
   payments: Payment[];
   gratuities: Gratuity[];
   shift: { shift: import("@core/domain/entities.js").Shift; seats: readonly Seat[] } | undefined;
-  taxRateBps: number;
   /** The same contact's OTHER reservations (DEC-122 bearer-token loosening — one link surfaces
    *  the contact's trips), listed and never linked (DEC-198, issue #1213). Empty when the
    *  reservation has no `customerId`. Computed from the already-loaded lists — no extra reads. */
@@ -80,13 +79,12 @@ export async function loadBookingByCode(
     const event = await repo.getEvent(reservation.eventId);
     if (!event) return { kind: "unknown" };
 
-    const [vessel, payments, gratuities, shifts, config, offerings, vessels, blocks, allEvents, allReservations] =
+    const [vessel, payments, gratuities, shifts, offerings, vessels, blocks, allEvents, allReservations] =
       await Promise.all([
         repo.getVessel(event.vesselId),
         repo.listPaymentsForReservation(reservation.id),
         repo.listGratuitiesForEvent(event.id),
         repo.listShifts(),
-        repo.getPaymentConfig(),
         repo.listOfferings(),
         repo.listVessels(),
         repo.listBlocks(),
@@ -154,7 +152,6 @@ export async function loadBookingByCode(
         payments,
         gratuities,
         shift,
-        taxRateBps: config.taxRateBps,
         pastTrips,
       },
     };

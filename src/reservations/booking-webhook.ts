@@ -50,7 +50,7 @@ import {
 import type { CheckoutCompleted, DisputeUpdated, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { hasBalance } from "./booking-invoice.js";
-import { bookedFareCents, flexCarveOutCents } from "./discount.js";
+import { flexCarveOutCents } from "./discount.js";
 import { balanceOwedCents } from "./payment-config.js";
 import type { SoldOutContact } from "./sold-out-notice.js";
 import { confirmPendingRow, type ConfirmResult } from "./write-booking.js";
@@ -1507,7 +1507,8 @@ async function recordBalancePayment(
   // A pending row has no event (§2.8.2); the payment is already recorded above and must not
   // be lost to a throw, so it falls through to the same alert as an unpriced or cancelled one.
   const event = reservation.eventId === null ? undefined : await deps.repo.getEvent(reservation.eventId);
-  if (!isBooked(reservation) || event?.price === undefined) {
+  const invoice = reservation.invoice;
+  if (!isBooked(reservation) || event?.price === undefined || !invoice) {
     await deps.alertPaidButUnbooked(
       `Balance payment recorded for reservation ${reservationId}, but it is cancelled or ` +
         `unpriced - Stripe session ${completed.sessionId}. RECONCILE / REFUND MANUALLY in Stripe.`,
@@ -1517,15 +1518,10 @@ async function recordBalancePayment(
 
   // Overpay guard: a two-session race over-collects. The append log reflects the money that
   // moved; if the derived balance has gone NEGATIVE, flag the excess for a manual refund.
-  const config = await deps.repo.getPaymentConfig();
   const payments = await deps.repo.listPaymentsForReservation(reservationId);
-  // Fare = base + frozen extras (#474): the bare base would trip a false overpay alert on a
-  // genuine extras balance (or mask a real overpay). Less the discount (DEC-194), the same way.
-  const owed = balanceOwedCents(
-    bookedFareCents(event.price, reservation),
-    config.taxRateBps,
-    payments,
-  );
+  // Worked off the invoice frozen at booking (issue #1241): today's tax-rate setting would trip a
+  // false overpay alert on an exact payment, or mask a real one, after a rate change.
+  const owed = balanceOwedCents(invoice, payments);
   if (owed < 0) {
     await deps.alertPaidButUnbooked(
       `Reservation ${reservationId} OVERPAID by ${-owed} cents - a balance was likely paid ` +

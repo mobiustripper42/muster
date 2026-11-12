@@ -3,7 +3,7 @@
  * payment state — especially that "no money arrived" never reads as "deposit taken".
  */
 import { describe, expect, it } from "vitest";
-import type { Event, Payment, Reservation } from "../domain/entities.js";
+import type { BookingInvoice, Event, Payment, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import {
   buildPurchaseRows,
@@ -15,6 +15,20 @@ import {
 } from "./purchases-view.js";
 
 const TAX = 725;
+
+/** What `priceBooking` froze on the $499 trip at 7.25%, no tip and no fee: tax 3618 (3617.75). */
+const FROZEN: BookingInvoice = {
+  fareCents: 49900,
+  extrasCents: 0,
+  taxCents: 3618,
+  taxRateBps: TAX,
+  serviceFeeCents: 0,
+  serviceFeeBps: 0,
+  gratuityCents: 0,
+  gratuityBps: 0,
+  totalCents: 53518,
+  amountDueNowCents: 53518,
+};
 
 const event = (id: string, over: Partial<Event> = {}): Event => ({
   id: asId<"EventId">(id),
@@ -56,7 +70,6 @@ const build = (over: Partial<PurchasesInput> = {}) =>
     reservations: [reservation("r1")],
     eventsById: new Map([["e1", event("e1")]]),
     paymentsByReservation: new Map(),
-    taxRateBps: TAX,
     ...over,
   });
 
@@ -90,12 +103,10 @@ describe("payment state", () => {
     // The webhook writes the row back to `succeeded` on a win, so nothing special happens here.
     // Asserted anyway because it is the behaviour someone will question: the Disputed filter is
     // a worklist that shrinks, and Muster keeps no trace of a won dispute (Stripe does).
-    const fare = 49900;
-    const total = fare + Math.round((fare * TAX) / 10000);
     const rows = build({
-      eventsById: new Map([["e1", event("e1", { price: fare })]]),
+      reservations: [reservation("r1", { invoice: FROZEN })],
       paymentsByReservation: new Map([
-        ["r1", [payment("p1", "r1", { amountCents: total, status: "succeeded" })]],
+        ["r1", [payment("p1", "r1", { amountCents: FROZEN.totalCents, status: "succeeded" })]],
       ]),
     });
     expect(rows[0]!.state).toBe("paid");
@@ -139,6 +150,7 @@ describe("payment state", () => {
 
   it("is `deposit` when something is paid but a balance remains", () => {
     const rows = build({
+      reservations: [reservation("r1", { invoice: FROZEN })],
       paymentsByReservation: new Map([["r1", [payment("p1", "r1")]]]),
     });
     expect(rows[0]!.state).toBe("deposit");
@@ -146,10 +158,9 @@ describe("payment state", () => {
   });
 
   it("is `paid` once the balance is settled", () => {
-    const fare = 49900;
-    const total = fare + Math.round((fare * TAX) / 10000);
     const rows = build({
-      paymentsByReservation: new Map([["r1", [payment("p1", "r1", { amountCents: total })]]]),
+      reservations: [reservation("r1", { invoice: FROZEN })],
+      paymentsByReservation: new Map([["r1", [payment("p1", "r1", { amountCents: FROZEN.totalCents })]]]),
     });
     expect(rows[0]!.state).toBe("paid");
     expect(rows[0]!.balanceCents).toBeLessThanOrEqual(0);
@@ -185,11 +196,12 @@ describe("payment state", () => {
 
 describe("money", () => {
   it("totals fare + frozen extras + tax, and EXCLUDES gratuity (DEC-124)", () => {
+    // 54900 at 7.25% → 3980 (3980.25), frozen on the invoice.
+    const invoice = { ...FROZEN, extrasCents: 5000, taxCents: 3980, totalCents: 58880, amountDueNowCents: 58880 };
     const rows = build({
-      reservations: [reservation("r1", { extrasCents: 5000 })],
+      reservations: [reservation("r1", { extrasCents: 5000, invoice })],
     });
-    const fare = 49900 + 5000;
-    expect(rows[0]!.totalCents).toBe(fare + Math.round((fare * TAX) / 10000));
+    expect(rows[0]!.totalCents).toBe(54900 + 3980);
   });
 
   it("flags an unpriced event instead of showing a confident zero", () => {
@@ -202,6 +214,35 @@ describe("money", () => {
   it("survives a missing event row", () => {
     const rows = build({ eventsById: new Map() });
     expect(rows[0]).toMatchObject({ priceKnown: false, date: undefined });
+  });
+});
+
+/**
+ * Money F6 on `/admin/purchases` (issue #1241): a booked row's total and balance are the ones frozen
+ * on its invoice, so a rate change after booking moves neither. The builder takes no rate any more;
+ * the booking is frozen at 7.25% and read with nothing else to go on — before the fix the row
+ * re-taxed $499 at the live rate. The total is fare + tax (`chargedFareCents` + `taxCents`), never
+ * `invoice.totalCents`, which also holds the fee, the tip and the insurance.
+ */
+describe("a booked row's money is the frozen invoice (issue #1241)", () => {
+  // $499 at 7.25%, 3% fee, no tip: 49900 + 3618 + 1497 = 55015.
+  const F6: BookingInvoice = { ...FROZEN, serviceFeeCents: 1497, serviceFeeBps: 300, totalCents: 55015, amountDueNowCents: 55015 };
+
+  it("issue #1241 AC2: a booking paid in full shows the frozen total and owes nothing", () => {
+    const [row] = build({
+      reservations: [reservation("r1", { invoice: F6 })],
+      paymentsByReservation: new Map([["r1", [payment("p1", "r1", { kind: "full", amountCents: 55015, serviceFeeCents: 1497 })]]]),
+    });
+    expect(row).toMatchObject({ totalCents: 53518, balanceCents: 0, state: "paid", priceKnown: true });
+  });
+
+  it("issue #1241 AC2: a deposit-only booking shows the frozen total and the frozen balance", () => {
+    // The $100 deposit carried the fee: 55015 − 10000 = 45015 owed.
+    const [row] = build({
+      reservations: [reservation("r1", { invoice: { ...F6, amountDueNowCents: 10000 } })],
+      paymentsByReservation: new Map([["r1", [payment("p1", "r1", { amountCents: 10000, serviceFeeCents: 1497 })]]]),
+    });
+    expect(row).toMatchObject({ totalCents: 53518, balanceCents: 45015, state: "deposit" });
   });
 });
 
@@ -245,7 +286,7 @@ describe("filters and search", () => {
   const rows = () =>
     build({
       reservations: [
-        reservation("r1", { phone: "+12165550148", email: "jordan@example.com" }),
+        reservation("r1", { phone: "+12165550148", email: "jordan@example.com", invoice: FROZEN }),
         reservation("r2", { customerName: "Dana Cho", eventId: asId<"EventId">("e2") }),
       ],
       eventsById: new Map([

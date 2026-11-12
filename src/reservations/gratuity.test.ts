@@ -11,7 +11,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { FAKE_SIGNATURE, FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import type { Offering, Vessel } from "../domain/entities.js";
+import type { BookingInvoice, Offering, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { CheckoutCompleted, PaymentEvent } from "../ports/payment.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
@@ -161,11 +161,24 @@ describe("post-trip gratuity is gone (15.18)", () => {
 });
 
 describe("balanceOwedCents nets gratuity out (DEC-124, 12.3)", () => {
+  // Frozen at a 0% rate, so the arithmetic below is the netting alone.
+  const untaxed: BookingInvoice = {
+    fareCents: 50000,
+    extrasCents: 0,
+    taxCents: 0,
+    taxRateBps: 0,
+    serviceFeeCents: 0,
+    serviceFeeBps: 0,
+    gratuityCents: 0,
+    gratuityBps: 0,
+    totalCents: 50000,
+    amountDueNowCents: 20000,
+  };
   it("subtracts the gratuity portion from the paid sum", () => {
     // price 50000, tax 0; a $200 deposit that included $50 gratuity → net paid 15000 → owed 35000
-    expect(balanceOwedCents(50000, 0, [{ status: "succeeded", amountCents: 20000, gratuityCents: 5000 }])).toBe(35000);
+    expect(balanceOwedCents(untaxed, [{ status: "succeeded", amountCents: 20000, gratuityCents: 5000 }])).toBe(35000);
   });
   it("a payment with no gratuity field behaves as before", () => {
-    expect(balanceOwedCents(50000, 0, [{ status: "succeeded", amountCents: 20000 }])).toBe(30000);
+    expect(balanceOwedCents(untaxed, [{ status: "succeeded", amountCents: 20000 }])).toBe(30000);
   });
 });

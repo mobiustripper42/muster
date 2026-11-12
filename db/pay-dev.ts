@@ -25,9 +25,10 @@
  */
 import { existsSync } from "node:fs";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
-import { eventIdOfBooked, isBooked } from "../src/domain/entities.js";
+import { isBooked } from "../src/domain/entities.js";
 import { asId } from "../src/domain/ids.js";
-import { taxCentsFor } from "../src/reservations/payment-config.js";
+import { fareTaxCents } from "../src/reservations/discount.js";
+import { balanceOwedCents } from "../src/reservations/payment-config.js";
 import { parseDollarsToCents } from "../src/reservations/refund-payment.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
@@ -71,30 +72,24 @@ try {
     process.exit(1);
   }
 
-  // `Reservation.eventId` is null until the row confirms (SPEC §2.8.2), so this used to
-  // look up `null` and price the fare at 0 (#904 rule 7).
-  //
-  // `isBooked` FIRST, then the accessor — the order `eventIdOfBooked`'s own docstring
-  // specifies and the other three call sites follow. It is not belt-and-braces: the two
-  // catch different things. A pending row is a normal thing to type at this script by
-  // mistake and deserves the same one-line refusal as a Xola row two checks up; the
-  // accessor's throw is reserved for a `booked` row with no event, which is a write bug.
+  // A pending row is a normal thing to type at this script by mistake and deserves the same
+  // one-line refusal as a Xola row two checks up: it has no booking to pay against yet (SPEC §2.8.2).
   if (!isBooked(reservation)) {
     console.error(`Reservation "${reservationArg}" is ${reservation.status}, not booked — nothing to pay yet.`);
     process.exit(1);
   }
-  const event = await repo.getEvent(eventIdOfBooked(reservation));
-  const config = await repo.getPaymentConfig();
-  const fareCents = (event?.price ?? 0) + (reservation.extrasCents ?? 0);
-  const taxCents = taxCentsFor(fareCents, config.taxRateBps);
+  // The full amount is the frozen invoice's fare + tax (issue #1241), never today's tax-rate
+  // setting: `balanceOwedCents(inv, [])` is the one home for that sum.
+  const invoice = reservation.invoice;
+  const taxCents = invoice ? fareTaxCents(invoice) : 0;
 
   const amountArg = arg("--amount");
   let amountCents: number;
   if (amountArg === undefined) {
-    amountCents = fareCents + taxCents;
+    amountCents = invoice ? balanceOwedCents(invoice, []) : 0;
     if (amountCents <= 0) {
       console.error(
-        `Reservation "${reservationArg}" has no priced event, so there is no full amount to infer. Pass --amount <dollars>.`,
+        `Reservation "${reservationArg}" has no invoice, so there is no full amount to infer. Pass --amount <dollars>.`,
       );
       process.exit(1);
     }

@@ -17,7 +17,8 @@
  */
 
 import { parseWholeNumberSetting } from "../config/whole-number-setting.js";
-import type { PaymentStatus, ReservationStatus } from "../domain/entities.js";
+import type { BookingInvoice, PaymentStatus, ReservationStatus } from "../domain/entities.js";
+import { chargedFareCents, fareTaxCents } from "./discount.js";
 
 export interface PaymentConfig {
   /** The deposit a customer may pay now instead of the whole quote, in cents — one fixed number,
@@ -168,15 +169,14 @@ export const tookMoney = (p: { status: PaymentStatus }): boolean =>
  * `createBalanceCheckout` would then charge. A refund that comes off the balance instead is
  * issue #1222.
  *
- * **`fareCents` is the composed party fare** — `Event.price` base **+** the frozen
- * `Reservation.extrasCents` (#474, DEC-107 amend), NOT the bare base. The base alone
- * undercollects a deposit-mode balance by `extras + tax(extras)`; callers must pass
- * `event.price + (reservation.extrasCents ?? 0)`. Extras are frozen at booking, never
- * recomputed from a live Offering — that would break the "never a config recompute" rule.
+ * **The total is read off the booking's frozen invoice (issue #1241)** — `chargedFareCents(invoice)`
+ * (fare + extras − the fare's share of the discount) plus `fareTaxCents(invoice)` (the tax on that
+ * fare, at the rate frozen on the invoice). Nothing here reads today's tax-rate setting, so a rate
+ * change never moves a booked customer's balance; and the insurance's tax, carved out of the first
+ * payment by `flexCarveOutCents`, lands on the same cent because both read `fareTaxCents`.
  */
 export function balanceOwedCents(
-  fareCents: number,
-  taxRateBps: number,
+  invoice: BookingInvoice,
   // `PaymentStatus`, not `string`. The body branches on status, and with a bare `string`
   // the branch is a DENY-list: any value that isn't `"refunded"` counts as fully paid.
   // The column carries no CHECK constraint (deliberately — DEC-131), so the compiler is
@@ -190,7 +190,7 @@ export function balanceOwedCents(
     flexCents?: number;
   }[],
 ): number {
-  const total = fareCents + taxCentsFor(fareCents, taxRateBps);
+  const total = chargedFareCents(invoice) + fareTaxCents(invoice);
   // Net the GRATUITY, the SERVICE FEE and the INSURANCE out of each amount taken (DEC-124 /
   // DEC-134 / 16.8): the tip is crew money, the fee a one-shot surcharge, insurance a flat
   // untaxed $30 — none is part of fare+tax, so counting any as "paid toward balance" would
@@ -230,10 +230,9 @@ export function balanceOwedCents(
  */
 export function balanceDueCents(
   status: ReservationStatus,
-  fareCents: number,
-  taxRateBps: number,
-  payments: Parameters<typeof balanceOwedCents>[2],
+  invoice: BookingInvoice | undefined,
+  payments: Parameters<typeof balanceOwedCents>[1],
 ): number {
-  if (status !== "booked") return 0;
-  return balanceOwedCents(fareCents, taxRateBps, payments);
+  if (status !== "booked" || !invoice) return 0;
+  return balanceOwedCents(invoice, payments);
 }

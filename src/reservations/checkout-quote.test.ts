@@ -17,7 +17,7 @@ import type { Event, Offering, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { guestPricing } from "./availability-screen.js";
 import { priceBooking } from "./booking-invoice.js";
-import { checkoutQuote } from "./checkout-quote.js";
+import { checkoutQuote, dueDayLabel } from "./checkout-quote.js";
 import { chargeTotals } from "./discount.js";
 import { PAYMENT_CONFIG_DEFAULTS, feeCentsFor, taxCentsFor, type PaymentConfig } from "./payment-config.js";
 import { GRATUITY_DEFAULT_BPS, gratuityCentsFor, gratuityKindsFor, gratuityTiersFor } from "./pricing.js";
@@ -170,5 +170,18 @@ describe("checkoutQuote — the deposit and the day the balance is due (issue #1
   it("AC14: the day is the vessel-local one, not the UTC one", () => {
     // 22:30 EDT on Oct 12 is 02:30Z on Oct 13.
     expect(quoteAt("2026-10-01T12:00:00.000Z", "22:30").balanceDueOn).toBe("Mon, Oct 12");
+  });
+});
+
+/**
+ * `dueDayLabel` (issue #1252) — the one home for the balance due day's format, read from a frozen
+ * due instant. The vessel-timezone edge is tested here and nowhere else; the manage view only
+ * checks that it names the day.
+ */
+describe("dueDayLabel — the day a frozen balance due instant names (issue #1252)", () => {
+  it("issue #1252 AC1: the day is the vessel-local one on either side of local midnight, not the UTC one", () => {
+    // 02:30Z on Oct 13 is 22:30 EDT on Mon, Oct 12; 04:30Z on Oct 13 is 00:30 EDT on Tue, Oct 13.
+    expect(dueDayLabel("2026-10-13T02:30:00.000Z")).toBe("Mon, Oct 12");
+    expect(dueDayLabel("2026-10-13T04:30:00.000Z")).toBe("Tue, Oct 13");
   });
 });

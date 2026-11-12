@@ -18,6 +18,8 @@ import {
   type ReservationDetailView,
 } from "./calendar-detail.js";
 import { formatClock } from "./availability-screen.js";
+import { dueDayLabel } from "./checkout-quote.js";
+import { vesselClockOf, vesselDateOf } from "../config/tenant.js";
 
 export type TripPhase = "upcoming" | "completed";
 
@@ -40,6 +42,10 @@ export interface ManageView {
   timing: TripTiming;
   /** True once the fare is settled (no balance) — gates the receipt's "Paid in full". */
   paidInFull: boolean;
+  /** The balance row's label: the day the saved card is charged, read from the booking's frozen
+   *  `balanceDueAt` (never recomputed from the setting), "Balance due" once that date has passed,
+   *  else "due before your trip" (issue #1252). */
+  balanceLabel: string;
 }
 
 /** "HH:MM" → minutes since midnight, or null on a malformed clock. */
@@ -110,5 +116,20 @@ export function buildManageView(input: ManageViewInput): ManageView {
     // common case on the operator-cancel path (#797): a full refund leaves exactly this state.
     paidInFull:
       detail.money.priceKnown && detail.money.paidCents > 0 && detail.money.balanceCents <= 0,
+    balanceLabel: balanceLabelOf(input.reservation.balanceDueAt, input.now),
   };
+}
+
+/** The balance row's label. A due date still ahead names the day the card is charged; one that has
+ *  passed (the charge failed, an admin stopped the auto-cancel, or the trip started owing) reads
+ *  "Balance due" — nothing more, by the operator's ruling, since "is charged"
+ *  would be false. The due instant is compared in the vessel's own date and clock, `now`'s frame,
+ *  and counts as passed at that instant. */
+function balanceLabelOf(balanceDueAt: string | null | undefined, now: { date: string; time: string }): string {
+  if (!balanceDueAt) return "Balance · due before your trip";
+  const due = new Date(balanceDueAt);
+  const dueDate = vesselDateOf(due);
+  const dueClock = vesselClockOf(due);
+  const passed = dueDate < now.date || (dueDate === now.date && dueClock <= now.time);
+  return passed ? "Balance due" : `Balance · charged to your card on ${dueDayLabel(balanceDueAt)}`;
 }

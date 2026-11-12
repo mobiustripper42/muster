@@ -630,6 +630,84 @@ describe("cancelByCustomer", () => {
   });
 });
 
+// ── only the $100 deposit paid (issue #1252) ───────────────────────────────────
+
+/**
+ * A deposit booking with nothing but its $100 paid (DEC-201): the terms apply to what was paid, so
+ * the uninsured cancel keeps the $50 of the $100 and the insured one keeps the $30 insurance. The
+ * deposit row is shaped like the webhook's (`booking-webhook.ts` `recordPayment`): the invoice's
+ * tax, tip, fee and insurance carve-outs ride on the $100 row, so a refund base that netted any of
+ * them out would leave nothing.
+ */
+describe("only the $100 deposit paid (issue #1252)", () => {
+  const DEPOSIT = 10000;
+
+  const depositInvoice = (invoice: BookingInvoice): BookingInvoice => ({ ...invoice, amountDueNowCents: DEPOSIT });
+  const depositPaid = (over: Partial<Payment> = {}): Payment =>
+    payment({ id: asId<"PaymentId">("pay-deposit"), kind: "deposit", amountCents: DEPOSIT, stripePaymentIntentId: "pi_deposit", ...over });
+  const insuredDepositPaid = (): Payment =>
+    depositPaid({ taxCents: 4240, serviceFeeCents: 1890, flexCents: 3240 });
+
+  /** The balance due 30 days before departure, frozen when the deposit was paid. */
+  const dueAtOf = (slot: { date: string; time: string }) =>
+    new Date(departureOf(slot).getTime() - 30 * 24 * HOUR).toISOString();
+  const uninsured = (slot: { date: string; time: string }): Partial<Reservation> => ({
+    invoice: depositInvoice(UNINSURED_INVOICE),
+    balanceDueAt: dueAtOf(slot),
+  });
+  const insured = (slot: { date: string; time: string }): Partial<Reservation> => ({
+    invoice: depositInvoice(INSURED_INVOICE),
+    balanceDueAt: dueAtOf(slot),
+  });
+
+  const quote = (slot: { date: string; time: string }, over: Partial<Reservation>, paid: Payment) =>
+    customerCancelQuote({ reservation: reservation(slot, over), event: event(slot), payments: [paid], now: new Date(NOW) });
+
+  it("issue #1252 AC4: an uninsured booking 14+ days out quotes $50 back, basis fee, $50 kept", () => {
+    expect(quote(FAR, uninsured(FAR), depositPaid())).toEqual({
+      refundCents: 5000,
+      expectedRefundedCents: 0,
+      basis: "fee",
+      keptCents: 5000,
+    });
+  });
+
+  it("issue #1252 AC4: confirming the uninsured cancel refunds $50", async () => {
+    const repo = await seeded({ reservation: uninsured(FAR), payments: [depositPaid()] });
+    const fake = new FakePaymentPort();
+
+    const outcome = await cancelByCustomer(deps(repo, fake), RESV, { quotedCents: 5000, expectedRefundedCents: 0 });
+
+    expect(outcome).toEqual({ ok: true, refund: { kind: "issued", cents: 5000 } });
+    expect(fake.refunds).toEqual([expect.objectContaining({ paymentIntentId: "pi_deposit", amountCents: 5000 })]);
+  });
+
+  it("issue #1252 AC5: an insured booking 72+ hours out quotes $70 back, basis insurance, $30 kept", () => {
+    // 5 days out: inside 14 days, so only the insurance makes this refundable.
+    expect(quote(NEAR, insured(NEAR), insuredDepositPaid())).toEqual({
+      refundCents: 7000,
+      expectedRefundedCents: 0,
+      basis: "insurance",
+      keptCents: 3000,
+    });
+  });
+
+  it("issue #1252 AC5: confirming the insured cancel refunds $70", async () => {
+    const repo = await seeded({ slot: NEAR, reservation: insured(NEAR), payments: [insuredDepositPaid()] });
+    const fake = new FakePaymentPort();
+
+    const outcome = await cancelByCustomer(deps(repo, fake), RESV, { quotedCents: 7000, expectedRefundedCents: 0 });
+
+    expect(outcome).toEqual({ ok: true, refund: { kind: "issued", cents: 7000 } });
+    expect(fake.refunds).toEqual([expect.objectContaining({ paymentIntentId: "pi_deposit", amountCents: 7000 })]);
+  });
+
+  it("issue #1252 AC7: an uninsured booking under 14 days out, its auto-cancel stopped, has no quote", () => {
+    expect(quote(FAR, uninsured(FAR), depositPaid())).not.toBeNull(); // the same booking, 14+ days out, has one
+    expect(quote(NEAR, uninsured(NEAR), depositPaid())).toBeNull();
+  });
+});
+
 // ── cancelByCustomer telling the customer (issue #1212) ────────────────────────
 
 describe("cancelByCustomer — telling the customer", () => {

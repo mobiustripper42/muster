@@ -57,8 +57,8 @@ export interface ReservationDetailInput {
 }
 
 export interface DetailMoney {
-  /** `Event.price` base + frozen `extrasCents` − the discount — the taxable, tip-free party
-   *  fare, i.e. what tax was actually charged on (DEC-194). */
+  /** `chargedFareCents(invoice)`: frozen fare + extras − the discount — the taxable, tip-free party
+   *  fare, i.e. what tax was actually charged on (DEC-194, issue #1241). */
   fareCents: number;
   /** The operator's dollars off the FARE (16.5, DEC-194), 0 when none. `fareCents + discountCents`
    *  is the fare before it — what the pane shows on the Fare line, with this beneath it. Any part
@@ -94,7 +94,7 @@ export interface DetailMoney {
    * flag the pane offers a balance link to a customer whose bank is clawing the money back.
    */
   disputed: boolean;
-  /** `Event.price` absent ⇒ the fare is unknown and the money block can't be trusted. */
+  /** No invoice frozen on the row (a Xola row) ⇒ no recorded price; every figure is 0. */
   priceKnown: boolean;
 }
 

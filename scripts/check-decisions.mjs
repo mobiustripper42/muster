@@ -289,6 +289,10 @@ export function validateSchemaRecord(meta, body, bytes, schema = JSON.parse(read
   return errs
 }
 
+// What counts as live: a chain must end at one. A draft is live too — the replacement for a built
+// decision is usually not built yet.
+const LIVE = new Set(['active', 'draft'])
+
 /**
  * SUPERSESSION IS A PAIR, AND ONLY ONE HALF WAS ENFORCED.
  *
@@ -335,9 +339,13 @@ export function supersessionProblems(rewritten, seenIds) {
       fail(d.path, 'status is `superseded` but no `superseded_by` — name the record that replaced it, or use `withdrawn` if nothing did')
     }
     if (!d.superseded_by) continue
-    // `superseded_by` must land on a record that exists and is still the live one. Pointing at
-    // a record that is itself superseded is a chain a reader has to walk, and pointing at
-    // nothing is the dangling citation the whole gate exists to stop.
+    // `superseded_by` must land on a record that exists, and the chain it starts must end at a
+    // live one. Chains are allowed: superseding a built decision (DEC-J020) leaves the old record
+    // `superseded`, so the next change of mind supersedes a record that already superseded one,
+    // and DEC-J005 (itself superseded by DEC-J020) is where reading across a short chain was first
+    // accepted (DEC-J031). The rule stays per link — each record's own link is checked when the
+    // loop reaches it, so a bad end is reported once, on the record whose file needs editing.
+    // Pointing at nothing is the dangling citation the whole gate exists to stop.
     const target = rewritten.get(d.superseded_by)
     if (!target) {
       if (!seenIds.has(d.superseded_by)) {
@@ -345,9 +353,9 @@ export function supersessionProblems(rewritten, seenIds) {
       } else {
         fail(d.path, `superseded_by ${d.superseded_by}, which has not been rewritten and so carries no status`)
       }
-    } else if (target.status !== 'active' && target.status !== 'draft') {
-      // A draft is a live record too: the replacement for a built decision is usually not built yet.
-      fail(d.path, `superseded_by ${d.superseded_by}, whose status is ${target.status} — point at the live record`)
+    } else if (!LIVE.has(target.status) && target.status !== 'superseded') {
+      // `withdrawn` means nothing replaced it, so a reader following the chain lands nowhere.
+      fail(d.path, `superseded_by ${d.superseded_by}, whose status is ${target.status} — a chain must end at an active or draft record`)
     } else if (!(target.supersedes ?? []).includes(id)) {
       /**
        * Reported on the SUCCESSOR's path, not the retired record's, because that is the file
@@ -356,6 +364,32 @@ export function supersessionProblems(rewritten, seenIds) {
        */
       fail(target.path, `${d.superseded_by} does not list ${id} in \`supersedes\`, but ${id} names it as its successor`)
     }
+  }
+
+  /**
+   * A loop of `superseded_by` links has no live end. Reported once, on the lowest id in the loop,
+   * in link order — one message per record would say the same thing as many times as the loop is
+   * long. A one-record loop is the self-pointer above, so those ids are skipped, and a live record
+   * ends the walk: that is where a chain is meant to stop.
+   */
+  const done = new Set()
+  for (const start of [...rewritten.keys()].sort()) {
+    const path = []
+    let id = start
+    while (
+      rewritten.has(id) && !selfPointing.has(id) && !LIVE.has(rewritten.get(id).status) &&
+      !done.has(id) && !path.includes(id)
+    ) {
+      path.push(id)
+      id = rewritten.get(id).superseded_by
+    }
+    if (path.includes(id)) {
+      const loop = path.slice(path.indexOf(id))
+      const low = loop.indexOf([...loop].sort()[0])
+      const ordered = [...loop.slice(low), ...loop.slice(0, low)]
+      fail(rewritten.get(ordered[0]).path, `superseded_by loops: ${[...ordered, ordered[0]].join(' → ')}`)
+    }
+    for (const p of path) done.add(p)
   }
 
   // The other direction: A claims it replaced B, and nobody ever told B.

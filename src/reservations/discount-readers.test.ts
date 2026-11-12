@@ -86,7 +86,6 @@ describe("a discounted booking paid in full owes nothing", () => {
       event,
       payments: [paidInFull],
       gratuities: [],
-      taxRateBps: TAX_BPS,
     });
     expect(v.money.balanceCents).toBe(0);
     expect(v.money.fareCents).toBe(39900);
@@ -98,7 +97,6 @@ describe("a discounted booking paid in full owes nothing", () => {
       reservations: [booked],
       eventsById: new Map([[String(EVENT_ID), event]]),
       paymentsByReservation: new Map([[String(RESV_ID), [paidInFull]]]),
-      taxRateBps: TAX_BPS,
     });
     expect(row?.balanceCents).toBe(0);
   });
@@ -131,7 +129,7 @@ describe("an insured booking whose discount went past the fare (16.8)", () => {
   const paid: Payment = { ...paidInFull, amountCents: 2205, taxCents: 145, gratuityCents: 0, serviceFeeCents: 60, flexCents: 2145 };
 
   it("the pane shows the fare's share of the discount, the insurance charged, and the tax on it", () => {
-    const v = buildReservationDetail({ reservation: insured, event, payments: [paid], gratuities: [], taxRateBps: TAX_BPS });
+    const v = buildReservationDetail({ reservation: insured, event, payments: [paid], gratuities: [] });
     expect(v.money.fareCents).toBe(0);
     expect(v.money.discountCents).toBe(49900);
     expect(v.money.flexCents).toBe(2000);
@@ -146,13 +144,12 @@ describe("an insured booking whose discount went past the fare (16.8)", () => {
       reservations: [insured],
       eventsById: new Map([[String(EVENT_ID), event]]),
       paymentsByReservation: new Map([[String(RESV_ID), [paid]]]),
-      taxRateBps: TAX_BPS,
     });
     expect(row?.balanceCents).toBe(0);
   });
 
   it("an uninsured booking reads no insurance", () => {
-    const v = buildReservationDetail({ reservation: booked, event, payments: [paidInFull], gratuities: [], taxRateBps: TAX_BPS });
+    const v = buildReservationDetail({ reservation: booked, event, payments: [paidInFull], gratuities: [] });
     expect(v.money.flexCents).toBe(0);
     expect(v.money.insured).toBe(false);
   });

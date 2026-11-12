@@ -84,7 +84,7 @@ Statuses are `open` unless a row says otherwise. IDs are each report's own; refe
 | F3 | S1 | The reconciler is not built; `docs/PROJECT_PLAN.md` marks it shipped | Feb 1 | open — confirmed real (operator, 2026-11-03) |
 | F4 | S2 | A failed confirmation send keeps the claim; the customer is booked, charged and never told | Feb 1 | open |
 | F5 | S2 | A failed self-service refund leaves no work item; the operator email is best-effort | Feb 1 | open |
-| F6 | S3 | Booked-row readers recompute tax and balance from the live tax rate (latent S1) | Feb 1 | open |
+| F6 | S3 | Booked-row readers recompute tax and balance from the live tax rate (latent S1) | Feb 1 | fixed — issue #1241: the five readers read the tax and balance frozen on the booking's invoice |
 | F7 | S3 | `/book/success` tells a race loser they were refunded and texted before either happens | Feb 1 | open |
 | F8 | S3 | Two concurrent self-cancel presses report a failed refund to both parties | — | check — likely fixed by pull request #1214; since issue #1228 the guard is in `cancelBookingAndRelease` |
 | F9 | S3 | "Release the boat" after a self-cancel writes a second, misattributed `cancelled` row | — | fixed — pull request #1229 removed the button (issue #1228) |

@@ -13,7 +13,7 @@
 import type { BookingInvoice, Event, Offering, Vessel } from "../domain/entities.js";
 import type { VesselId } from "../domain/ids.js";
 import { insideBalanceWindow, resolveBasePrice, slotIdentity } from "./availability.js";
-import { applyDiscount, flexChargedCents } from "./discount.js";
+import { applyDiscount, chargedFareCents, fareDiscountCents, flexChargedCents } from "./discount.js";
 import { dueNowCents, type PaymentConfig } from "./payment-config.js";
 import { composeFare, effectiveIncludedGuests } from "./pricing.js";
 import { FLEX_INSURANCE_CENTS } from "./refund-terms.js";
@@ -62,6 +62,29 @@ export function hasBalance(invoice: Pick<BookingInvoice, "amountDueNowCents" | "
  *  comp that discounted it to $0 still has it, at `chargedCents: 0`. */
 export function insuranceOf(invoice: BookingInvoice | undefined): { chargedCents: number } | null {
   return invoice && hasFlex(invoice) ? { chargedCents: flexChargedCents(invoice) } : null;
+}
+
+/**
+ * A booking's money as frozen on its invoice (issue #1241): the fare charged, its discount, the
+ * insurance and the whole tax (the insurance's included). The one no-invoice rule for the pane, the
+ * manage page and the purchases list — with none, every figure is 0 and the price is not known.
+ */
+export function frozenMoney(inv: BookingInvoice | undefined): {
+  fareCents: number;
+  discountCents: number;
+  insured: boolean;
+  flexCents: number;
+  taxCents: number;
+  priceKnown: boolean;
+} {
+  return {
+    fareCents: inv ? chargedFareCents(inv) : 0,
+    discountCents: inv ? fareDiscountCents(inv) : 0,
+    insured: hasFlex(inv),
+    flexCents: inv ? flexChargedCents(inv) : 0,
+    taxCents: inv?.taxCents ?? 0,
+    priceKnown: inv !== undefined,
+  };
 }
 
 export function priceBooking(input: BookingInvoiceInput): BookingInvoice {

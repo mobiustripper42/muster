@@ -21,6 +21,7 @@ import { existsSync } from "node:fs";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { addDays, vesselDateOf, zonedWallClockToInstant } from "../src/config/tenant.js";
 import { asId } from "../src/domain/ids.js";
+import { seedInvoice } from "../src/reservations/seed-reservation.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 if (existsSync(".env.local")) {
@@ -77,6 +78,9 @@ try {
   }
   const waiver = (await repo.getCurrentWaiverTemplate(nowIso))!;
 
+  // Priced, so the two bookings below carry a frozen invoice for it and read a fare, not "no
+  // recorded price" (issue #1241).
+  const priceCents = 49900;
   const eventId = asId<"EventId">("evt-seed-reminder-7d");
   await repo.saveEvent({
     id: eventId,
@@ -86,6 +90,7 @@ try {
     capacity: vessel.coiMaxPax,
     status: "scheduled",
     source: "muster",
+    price: priceCents,
   });
 
   const amy = asId<"ReservationId">("resv-seed-reminder-amy");
@@ -99,6 +104,7 @@ try {
     ...(process.env.SEED_REMINDER_EMAIL ? { email: process.env.SEED_REMINDER_EMAIL } : {}),
     status: "booked",
     source: "muster",
+    invoice: seedInvoice(priceCents),
   });
   await repo.saveReservation({
     id: bea,
@@ -108,6 +114,7 @@ try {
     phone: "+12165550143",
     status: "booked",
     source: "muster",
+    invoice: seedInvoice(priceCents),
   });
 
   const signed = (id: string, name: string, reservationId: typeof amy) => ({

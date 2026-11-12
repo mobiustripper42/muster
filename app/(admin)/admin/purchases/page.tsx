@@ -117,23 +117,20 @@ export default async function AdminPurchases({
   let events: Event[];
   let payments: Payment[];
   let vessels: Vessel[];
-  let taxRateBps: number;
   try {
     const repo = getRepo();
-    const [r, e, p, v, config] = await Promise.all([
+    const [r, e, p, v] = await Promise.all([
       repo.listAllReservations(),
       repo.listEvents(),
       repo.listAllPayments(),
       repo.listVessels(),
-      repo.getPaymentConfig(),
     ]);
     reservations = r;
     events = e;
     payments = p;
     vessels = v;
-    taxRateBps = config.taxRateBps;
   } catch (e) {
-    logSwallowed("admin/purchases", e, "the order list, payments and tax rate did not load");
+    logSwallowed("admin/purchases", e, "the order list or payments did not load");
     return (
       <Shell width="3xl">
         <Notice>Couldn’t reach the order list right now. {ADMIN_LOG_HINT}</Notice>
@@ -149,7 +146,6 @@ export default async function AdminPurchases({
     eventsById: new Map(events.map((e) => [String(e.id), e])),
     paymentsByReservation: groupPaymentsByReservation(payments),
     vesselNameById: new Map(vessels.map((v) => [String(v.id), v.name])),
-    taxRateBps,
   });
   const counts = stateCounts(allRows);
   const rows = searchPurchases(filterByState(allRows, state), query);

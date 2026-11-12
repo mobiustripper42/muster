@@ -15,7 +15,6 @@ import { asId } from "../domain/ids.js";
 import { hasFlex, priceBooking } from "./booking-invoice.js";
 import {
   applyDiscount,
-  bookedFareCents,
   chargedFareCents,
   chargeTotals,
   flexCarveOutCents,
@@ -163,10 +162,6 @@ describe("invoice readers keep insurance off the fare", () => {
   it("chargedFareCents takes only the fare's share of the discount", () => {
     expect(chargedFareCents(inv)).toBe(0);
     expect(chargedFareCents({ ...inv, discountCents: 10000 })).toBe(40000);
-  });
-
-  it("bookedFareCents takes only the fare's share of the discount", () => {
-    expect(bookedFareCents(45000, { extrasCents: 5000, invoice: { ...inv, taxCents: 0, taxRateBps: 0, serviceFeeCents: 0, serviceFeeBps: 0, gratuityCents: 0, gratuityBps: 0, totalCents: 2000, amountDueNowCents: 2000 } })).toBe(0);
   });
 
   it("flexChargedCents is the insurance less the discount's spill onto it", () => {

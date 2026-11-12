@@ -12,6 +12,20 @@ import {
   type ManageViewInput,
 } from "./manage-view.js";
 
+/** What `priceBooking` froze on the $549 trip at 7.25%, no tip and no fee: tax 3980 (3980.25). */
+const FROZEN: BookingInvoice = {
+  fareCents: 54900,
+  extrasCents: 0,
+  taxCents: 3980,
+  taxRateBps: 725,
+  serviceFeeCents: 0,
+  serviceFeeBps: 0,
+  gratuityCents: 0,
+  gratuityBps: 0,
+  totalCents: 58880,
+  amountDueNowCents: 58880,
+};
+
 const RES: Reservation = {
   id: asId<"ReservationId">("resv-1"),
   eventId: asId<"EventId">("evt-1"),
@@ -19,6 +33,7 @@ const RES: Reservation = {
   customerName: "Jordan Ellis",
   partySize: 10,
   status: "booked",
+  invoice: FROZEN,
 } as Reservation;
 
 const EVENT: Event = {
@@ -49,7 +64,6 @@ function input(over: Partial<ManageViewInput> = {}): ManageViewInput {
     vessel: VESSEL,
     payments: [],
     gratuities: [],
-    taxRateBps: 725,
     now: { date: "2026-07-10", time: "09:00" },
     ...over,
   };
@@ -147,6 +161,35 @@ describe("buildManageView", () => {
 });
 
 /**
+ * Money F6 on the guest's own page (issue #1241): `/b/<code>` reads the tax and balance frozen on
+ * the booking, so a rate change after booking moves neither. The view takes no rate any more; the
+ * booking is frozen at 7.25% and read with nothing else to go on.
+ */
+describe("buildManageView — the frozen tax and balance (issue #1241)", () => {
+  // $549 at 7.25%, 3% fee, no tip: 54900 + 3980 + 1647 = 60527.
+  const F6: BookingInvoice = { ...FROZEN, serviceFeeCents: 1647, serviceFeeBps: 300, totalCents: 60527, amountDueNowCents: 60527 };
+  const charge = (amountCents: number) =>
+    ({ id: asId<"PaymentId">("p1"), status: "succeeded", kind: "full", amountCents, serviceFeeCents: 1647 }) as Payment;
+
+  it("issue #1241 AC1: a booking paid in full shows the frozen tax and reads paid in full", () => {
+    const v = buildManageView(input({ reservation: { ...RES, invoice: F6 }, payments: [charge(60527)] }));
+    expect(v.detail.money.taxCents).toBe(3980);
+    expect(v.detail.money.balanceCents).toBe(0);
+    expect(v.paidInFull).toBe(true);
+  });
+
+  it("issue #1241 AC1: a deposit-only booking shows the frozen balance and is not paid in full", () => {
+    // The $100 deposit carried the fee: 60527 − 10000 = 50527 owed.
+    const v = buildManageView(
+      input({ reservation: { ...RES, invoice: { ...F6, amountDueNowCents: 10000 } }, payments: [charge(10000)] }),
+    );
+    expect(v.detail.money.taxCents).toBe(3980);
+    expect(v.detail.money.balanceCents).toBe(50527);
+    expect(v.paidInFull).toBe(false);
+  });
+});
+
+/**
  * The balance row's label (issue #1252): the day the saved card is charged, read from the due date
  * frozen on the booking — never recomputed from the balance-due setting. The vessel-timezone edge
  * of that day is `dueDayLabel`'s (`checkout-quote.test.ts`) and is not re-tested here.
@@ -189,7 +232,6 @@ describe("buildManageView — the balance row's label (issue #1252)", () => {
       reservation: { ...RES, invoice: INVOICE, ...over },
       event: NOV_11,
       payments: [DEPOSIT_PAID],
-      taxRateBps: 800,
       now: { date: "2026-10-01", time: "09:00" },
     });
 

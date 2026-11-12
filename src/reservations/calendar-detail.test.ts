@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type {
+  BookingInvoice,
   Event,
   Gratuity,
   Offering,
@@ -29,6 +30,20 @@ const VESSEL_ID = asId<"VesselId">("vessel-brew-4");
 const ROLE = asId<"RoleTypeId">("captain");
 
 const TAX_BPS = 725;
+
+/** What `priceBooking` froze on the $499 trip at 7.25%, no tip and no fee: tax 3618 (3617.75). */
+const FROZEN: BookingInvoice = {
+  fareCents: 49900,
+  extrasCents: 0,
+  taxCents: 3618,
+  taxRateBps: TAX_BPS,
+  serviceFeeCents: 0,
+  serviceFeeBps: 0,
+  gratuityCents: 0,
+  gratuityBps: 0,
+  totalCents: 53518,
+  amountDueNowCents: 53518,
+};
 
 const event = (over: Partial<Event> = {}): Event => ({
   id: EVENT_ID,
@@ -112,18 +127,19 @@ const build = (over: Partial<ReservationDetailInput> = {}) =>
     vessel: vessel(),
     payments: [],
     gratuities: [],
-    taxRateBps: TAX_BPS,
     ...over,
   });
 
 describe("money", () => {
   it("composes the fare as event base + FROZEN extras, not the bare base (#474)", () => {
-    const v = build({ reservation: reservation({ extrasCents: 5000 }) });
+    // 54900 at 7.25% → 3980 (3980.25).
+    const invoice = { ...FROZEN, extrasCents: 5000, taxCents: 3980, totalCents: 58880, amountDueNowCents: 58880 };
+    const v = build({ reservation: reservation({ extrasCents: 5000, invoice }) });
     expect(v.money.fareCents).toBe(54900);
   });
 
   it("taxes the composed fare, tip-free", () => {
-    const v = build({ gratuities: [gratuity()] });
+    const v = build({ reservation: reservation({ invoice: FROZEN }), gratuities: [gratuity()] });
     // 49900 * 725bps = 3617.75 → 3618
     expect(v.money.taxCents).toBe(3618);
     expect(v.money.gratuityCents).toBe(7485);
@@ -132,6 +148,7 @@ describe("money", () => {
   it("derives the balance through balanceOwedCents, netting the tip out of what was paid", () => {
     // Deposit charge bundled the tip: 12485 gross, of which 7485 is crew money.
     const v = build({
+      reservation: reservation({ invoice: FROZEN }),
       payments: [payment({ amountCents: 12485, gratuityCents: 7485 })],
       gratuities: [gratuity()],
     });
@@ -144,7 +161,7 @@ describe("money", () => {
     // a live trip and meaningless once the trip is cancelled. The guest's own page told them they
     // owed $575.32 before a cruise that had been cancelled and refunded.
     const v = build({
-      reservation: reservation({ status: "cancelled" }),
+      reservation: reservation({ status: "cancelled", invoice: FROZEN }),
       payments: [payment({ amountCents: 12485, refundedCents: 12485, status: "refunded" })],
     });
     expect(v.money.balanceCents).toBe(0);
@@ -154,7 +171,7 @@ describe("money", () => {
     // Not only the refunded case: a deposit booking cancelled before any refund is issued has a
     // real arithmetic shortfall and still owes nothing, because nobody is going on a trip.
     const v = build({
-      reservation: reservation({ status: "cancelled" }),
+      reservation: reservation({ status: "cancelled", invoice: FROZEN }),
       payments: [payment({ amountCents: 12485 })],
     });
     expect(v.money.balanceCents).toBe(0);
@@ -178,7 +195,8 @@ describe("money", () => {
   });
 
   it("flags an unpriced event so the pane can withhold the money block", () => {
-    const priced = build();
+    // Priced is a frozen invoice now (issue #1241); a row with none is the unpriced one.
+    const priced = build({ reservation: reservation({ invoice: FROZEN }) });
     const { price: _dropped, ...unpricedEvent } = event();
     const unpriced = build({ event: unpricedEvent });
     expect(priced.money.priceKnown).toBe(true);
@@ -187,10 +205,57 @@ describe("money", () => {
   });
 
   it("keeps gratuity out of fare and out of the balance (DEC-124)", () => {
-    const without = build();
-    const withTip = build({ gratuities: [gratuity()] });
+    const without = build({ reservation: reservation({ invoice: FROZEN }) });
+    const withTip = build({ reservation: reservation({ invoice: FROZEN }), gratuities: [gratuity()] });
     expect(withTip.money.fareCents).toBe(without.money.fareCents);
     expect(withTip.money.balanceCents).toBe(without.money.balanceCents);
+  });
+});
+
+/**
+ * Money F6 (issue #1241): a booked trip reads the tax and balance frozen on its invoice, so a rate
+ * change after booking moves neither. The builder takes no rate any more, so the case is a booking
+ * frozen at 7.25% read with nothing else to go on: before the fix the pane re-taxed $499 at the live
+ * 8% — $39.92 and a $3.74 balance on a booking paid in full. The balance's own edge cases are
+ * `balanceOwedCents`' (`payment-config.test.ts`); this checks only that the pane reads it.
+ */
+describe("a booked trip's money is the frozen invoice (issue #1241)", () => {
+  // $499 at 7.25%, 3% fee, no tip: 49900 + 3618 + 1497 = 55015.
+  const F6: BookingInvoice = {
+    ...FROZEN,
+    serviceFeeCents: 1497,
+    serviceFeeBps: 300,
+    totalCents: 55015,
+    amountDueNowCents: 55015,
+  };
+  const paidInFull = payment({ kind: "full", amountCents: 55015, serviceFeeCents: 1497 });
+
+  it("issue #1241 AC1: a booking paid in full shows the frozen tax and owes nothing", () => {
+    const v = build({ reservation: reservation({ invoice: F6 }), payments: [paidInFull] });
+    expect(v.money.fareCents).toBe(49900);
+    expect(v.money.taxCents).toBe(3618);
+    expect(v.money.balanceCents).toBe(0);
+    expect(v.money.priceKnown).toBe(true);
+  });
+
+  it("issue #1241 AC1: a deposit-only booking shows the frozen tax and the frozen balance", () => {
+    // The $100 deposit carried the fee: 55015 − 10000 = 45015 owed.
+    const v = build({
+      reservation: reservation({ invoice: { ...F6, amountDueNowCents: 10000 } }),
+      payments: [payment({ amountCents: 10000, serviceFeeCents: 1497 })],
+    });
+    expect(v.money.taxCents).toBe(3618);
+    expect(v.money.balanceCents).toBe(45015);
+  });
+
+  it("issue #1241 AC8: a booked Xola row, with no invoice, shows no recorded price and owes nothing", () => {
+    // A Xola event carries no price (`entities.ts`), and Xola owns its own money (DEC-105).
+    const { price: _none, ...xolaEvent } = event({ source: "xola" });
+    const v = build({ reservation: reservation({ source: "xola" }), event: xolaEvent });
+    expect(v.money.priceKnown).toBe(false);
+    expect(v.money.fareCents).toBe(0);
+    expect(v.money.taxCents).toBe(0);
+    expect(v.money.balanceCents).toBe(0);
   });
 });
 

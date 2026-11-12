@@ -21,8 +21,6 @@ import { formatClock, formatShortDay } from "@core/reservations/availability-scr
 import { buildManageView } from "@core/reservations/manage-view.js";
 import { customerCancelQuote, manageHref, type CustomerCancelQuote } from "@core/reservations/customer-cancel.js";
 import { cancellationTerms, dollars } from "@core/reservations/refund-terms.js";
-import { hasFlex } from "@core/reservations/booking-invoice.js";
-import { flexChargedCents } from "@core/reservations/discount.js";
 import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { Badge } from "../../../components/ui/badge";
@@ -132,7 +130,6 @@ export default async function ManagePage({
     vessel: booking.vessel,
     payments: booking.payments,
     gratuities: booking.gratuities,
-    taxRateBps: booking.taxRateBps,
     ...(booking.shift ? { shift: booking.shift } : {}),
     now: { date: vesselDateOf(now), time: vesselClockOf(now) },
   });
@@ -145,7 +142,7 @@ export default async function ManagePage({
     .filter((p) => p.receiptUrl !== undefined)
     .map((p) => ({ id: String(p.id), url: p.receiptUrl!, amountCents: p.amountCents }));
   const taxAndFees = m.taxCents + m.serviceFeeCents;
-  const insured = hasFlex(booking.reservation.invoice);
+  const insured = m.insured;
   const cancelled = detail.status === "cancelled";
   // Cancel is offered only when the terms refund something (16.9); otherwise the request form stays.
   const cancelQuote = cancelled
@@ -283,7 +280,7 @@ export default async function ManagePage({
                 {/* Cancellation insurance (16.8): what was charged for it, off the frozen invoice —
                     so a comp that took it to $0 still shows the booking has it. */}
                 {insured && (
-                  <Row label="Cancellation insurance" value={formatCents(flexChargedCents(booking.reservation.invoice!))} mono />
+                  <Row label="Cancellation insurance" value={formatCents(m.flexCents)} mono />
                 )}
                 {view.paidInFull ? (
                   <Row label="Paid in full" value={formatCents(m.paidCents)} mono strong />

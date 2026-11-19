@@ -467,6 +467,30 @@ describe("chargeDueBalances", () => {
     expect(await w.balanceRows()).toHaveLength(1);
   });
 
+  it("AC7: a charge that succeeded at Stripe but threw before its row was written is recorded by the next run, with no new charge and no error", async () => {
+    const w = await world();
+    // The confirm succeeds at Stripe; the row write after it fails once, so the claim is given back.
+    vi.spyOn(w.repo, "savePayment").mockRejectedValueOnce(new Error("connection lost after the charge"));
+    expect(await w.run(DUE)).toEqual({ ...NONE, errors: 1 });
+    expect(await w.balanceRows()).toEqual([]);
+    const intentId = (await w.row()).balancePaymentIntentId!;
+
+    // Stripe refuses to change the amount of an intent that has succeeded (`stripe-payment.ts`'s
+    // update does not catch it). The fake refuses only when told to; this is that.
+    w.pay.updateAmountError = new Error(
+      "This PaymentIntent's amount could not be updated because it has a status of succeeded.",
+    );
+    const counts = await w.run(later(DUE, 5));
+
+    const rows = await w.balanceRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: `pay_${intentId}`, kind: "balance", amountCents: OWED });
+    // Nothing new charged: no second intent, and no confirm under any key but attempt 0's.
+    expect(w.pay.intents).toHaveLength(1);
+    expect(new Set(w.keys())).toEqual(new Set([`balance_${RES}_0`]));
+    expect(counts).toMatchObject({ errors: 0, declined: 0, needsApproval: 0 });
+  });
+
   it("AC8: after missing a retry, the job makes one charge for the latest attempt due, not the missed one", async () => {
     const w = await world();
     w.pay.confirmOffSessionOutcomes = [{ declined: "card_declined" }, { declined: "card_declined" }];

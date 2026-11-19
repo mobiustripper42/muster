@@ -102,6 +102,28 @@ export async function ensureBalanceIntent(
   return created;
 }
 
+/**
+ * Has the booking's balance intent already succeeded at Stripe? If so, make sure its `Payment` row
+ * exists (written once, by `recordBalancePayment`) and say `true`: the caller must then neither update
+ * nor confirm the intent, because Stripe lets an intent succeed once and refuses to change one that
+ * has ("A PaymentIntent with a `succeeded` status means that the corresponding payment flow is
+ * complete", docs.stripe.com/payments/paymentintents/lifecycle). This is the case of a charge that
+ * went through and threw before its row was written, found again by the next job run or the next press
+ * on the manage page. `false` when there is no balance intent, or it has not succeeded (an outage
+ * reads as not succeeded too, and the update that follows then throws as before).
+ */
+async function recordIfBalanceIntentSucceeded(deps: BalanceDeps, reservation: Reservation): Promise<boolean> {
+  const intentId = reservation.balancePaymentIntentId;
+  if (intentId === undefined) return false;
+  const charge = await deps.payments.getSucceededPaymentIntent(intentId);
+  if (!charge) return false;
+  // Not re-recorded: a second look must not re-run `recordBalancePayment`'s alerts.
+  if (!(await deps.repo.getPayment(paymentIdFor(intentId)))) {
+    await recordBalancePayment(deps, charge, reservation.id);
+  }
+  return true;
+}
+
 type Counts = { charged: number; declined: number; needsApproval: number; errors: number };
 
 /**
@@ -169,6 +191,12 @@ async function chargeOne(
 
   if (!(await deps.repo.claimBalanceAttempt({ reservationId: reservation.id, attempt, at: now }))) return;
   try {
+    // A previous run's charge that went through but was not recorded: record it, charge nothing. Not
+    // counted as `charged` — this run charged nothing.
+    if (await recordIfBalanceIntentSucceeded(deps, reservation)) {
+      await deps.repo.finishBalanceAttempt({ reservationId: reservation.id, attempt, outcome: "succeeded" });
+      return;
+    }
     const { paymentIntentId } = await ensureBalanceIntent(deps, reservation, payable.owedCents);
     const result = await deps.payments.confirmOffSession({
       paymentIntentId,
@@ -217,6 +245,12 @@ export async function startBalancePayment(
   if (!reservation) return { ok: false, reason: "not_active" };
   const payable = balancePayable(reservation, await deps.repo.listPaymentsForReservation(reservationId));
   if (!payable.ok) return payable;
+  // An intent that already succeeded but was never recorded: record it, then judge again — the
+  // balance is paid, so the press is refused rather than handed an intent Stripe will not change.
+  if (await recordIfBalanceIntentSucceeded(deps, reservation)) {
+    const after = balancePayable(reservation, await deps.repo.listPaymentsForReservation(reservationId));
+    if (!after.ok) return after;
+  }
   const { clientSecret } = await ensureBalanceIntent(deps, reservation, payable.owedCents);
   return { ok: true, clientSecret, amountCents: payable.owedCents };
 }

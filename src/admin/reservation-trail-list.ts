@@ -111,6 +111,9 @@ export const TRAIL_TYPE_LABEL: Record<TrailEventType, string> = {
   slot_released: "Slot released",
   imported: "Imported from Xola",
   gratuity_added: "Tip added",
+
+  // ── Retired: no longer emitted, but old rows are still in the table ──────
+  balance_link_created: "Balance link created",
 };
 
 /** Who acted. `engine` is Muster itself — a sweep, a lapse, the residual-race auto-refund — and

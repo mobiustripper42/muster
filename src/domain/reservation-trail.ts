@@ -210,8 +210,19 @@ export const DERIVED_TRAIL_TYPES = [
 ] as const;
 export type DerivedTrailType = (typeof DERIVED_TRAIL_TYPES)[number];
 
+/**
+ * Kinds nothing emits any more, whose rows are still in the table and must still render a label.
+ * Not on `EMITTED_TRAIL_TYPES`, so the write path (`appendTrailEvent`, typed `EmittedTrailType`)
+ * refuses them and the seed has nothing to seed. `TRAIL_TYPE_LABEL` is total over them.
+ */
+export const RETIRED_TRAIL_TYPES = [
+  /** The admin's Stripe Checkout balance link, removed in issue #1254. */
+  "balance_link_created",
+] as const;
+export type RetiredTrailType = (typeof RETIRED_TRAIL_TYPES)[number];
+
 /** Everything a reader can see. The read model's vocabulary; NOT the table's. */
-export type TrailEventType = EmittedTrailType | DerivedTrailType;
+export type TrailEventType = EmittedTrailType | DerivedTrailType | RetiredTrailType;
 
 /**
  * Who acted. `engine` covers anything no person triggered — a lapse, a sweep, the

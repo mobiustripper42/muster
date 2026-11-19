@@ -159,6 +159,8 @@ export async function cancelByCustomer(
       {
         repo: deps.repo,
         now: deps.now,
+        // Issue #1254: cancels the booking's balance intent so it can no longer be paid.
+        payments: deps.payments,
         ...(deps.relayFormNotices ? { relayFormNotices: deps.relayFormNotices } : {}),
       },
       reservationId,

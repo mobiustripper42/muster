@@ -15,6 +15,7 @@ import type {
   Admin,
   Ask,
   AuthSubjectKind,
+  BalanceChargeAttempt,
   Block,
   BookingCode,
   CalendarFeed,
@@ -465,6 +466,37 @@ export interface Repository {
    * (`coalesce`), on any status: it is a fact about the provider, not one of the customer's answers.
    */
   saveStripeCustomerId(reservationId: ReservationId, customerId: string): Promise<void>;
+
+  // ── The scheduled balance charge (issue #1254) ─────────────────────────────────────
+  /** Booked reservations with `balanceDueAt <= now` and `now < balanceReleaseAt`, ordered by
+   *  `balanceDueAt` then `id`. */
+  listBalancesDue(now: string): Promise<Reservation[]>;
+  /** Claim one attempt before charging it; true only for the caller whose insert landed.
+   *  Throws for a reservation that does not exist.
+   *
+   *  With `staleBefore` (DEC-202), an unfinished claim (no outcome) whose `attemptedAt` is strictly
+   *  before it is taken over: its `attemptedAt` is reset to `at` and exactly one caller gets true.
+   *  Absent, a claimed attempt is never reclaimed. A finished claim is never reclaimed. */
+  claimBalanceAttempt(input: {
+    reservationId: ReservationId;
+    attempt: number;
+    at: string;
+    staleBefore?: string;
+  }): Promise<boolean>;
+  /** Record a claimed attempt's outcome. */
+  finishBalanceAttempt(input: {
+    reservationId: ReservationId;
+    attempt: number;
+    outcome: "succeeded" | "declined" | "needs_approval";
+    declineCode?: string;
+  }): Promise<void>;
+  /** Give a claim back (the charge threw), so the next tick re-sends it. */
+  releaseBalanceAttempt(input: { reservationId: ReservationId; attempt: number }): Promise<void>;
+  /** Every attempt on a booking, ordered by `attempt`. */
+  listBalanceAttempts(reservationId: ReservationId): Promise<BalanceChargeAttempt[]>;
+  /** Store the booking's balance intent (a second call overwrites), appending it once to
+   *  `paymentIntentIds`. The only writer of `balancePaymentIntentId`. */
+  saveBalancePaymentIntentId(reservationId: ReservationId, intentId: string): Promise<void>;
 
   /**
    * **Claim the right to send this customer their booking confirmation** (15.3, issue #971).

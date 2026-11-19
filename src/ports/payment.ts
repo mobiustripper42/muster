@@ -122,6 +122,9 @@ export interface CreatePaymentIntentInput {
    * only methods that can be charged again.
    */
   setupFutureUsage?: "off_session";
+  /** Offer cards only (`payment_method_types: ["card"]`) without saving the card (issue #1254) — the
+   *  balance intent. A deposit gets cards-only from `setupFutureUsage`; this is the same without it. */
+  cardsOnly?: true;
 }
 
 /**
@@ -452,6 +455,25 @@ export interface PaymentPort {
     phone?: string;
     metadata: Record<string, string>;
   }): Promise<{ customerId: string }>;
+  /**
+   * Confirm an existing intent against the saved card, off-session — the scheduled balance charge
+   * (issue #1254). The idempotency key is per attempt (`balance_<reservation id>_<n>`), so a re-send
+   * after a network failure gets the first answer back instead of a second charge.
+   *
+   * `declined` is the card's refusal (with the provider's decline code); `needs_approval` is the
+   * bank asking the customer to approve, which no later off-session attempt can satisfy. A failure
+   * that is neither THROWS.
+   */
+  confirmOffSession(input: {
+    paymentIntentId: string;
+    customerId: string;
+    paymentMethodId: string;
+    idempotencyKey: string;
+  }): Promise<
+    | { outcome: "succeeded"; charge: PaymentSucceeded }
+    | { outcome: "declined"; declineCode?: string }
+    | { outcome: "needs_approval" }
+  >;
 }
 
 /**

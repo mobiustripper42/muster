@@ -14,7 +14,7 @@
     "db:new-migration": "tsx db/new-migration.ts",
     "db:admin": "tsx db/admin.ts",
     "db:crew": "tsx db/crew.ts",
-    "db:balance": "tsx db/balance-dev.ts",
+    "db:balance-due": "tsx db/balance-due-dev.ts",
     "db:pay": "tsx db/pay-dev.ts",
     "db:xola:report": "tsx db/xola-report.ts",
     "db:xola:report:email": "tsx db/xola-report-email.ts",

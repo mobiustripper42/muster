@@ -22,6 +22,7 @@ import type {
   Customer,
   Ask,
   AuthSubjectKind,
+  BalanceChargeAttempt,
   Block,
   BookingCode,
   Credential,
@@ -97,8 +98,10 @@ import type {
 } from "../messaging/entities.js";
 import type { ThreadId } from "../domain/ids.js";
 import {
+  BALANCE_RETRY_DAYS_KEY,
   DEPOSIT_CENTS_KEY,
   PAYMENT_CONFIG_DEFAULTS,
+  parseBalanceRetryDays,
   parseDepositCents,
   type PaymentConfig,
 } from "../reservations/payment-config.js";
@@ -362,6 +365,8 @@ const toReservation = (r: any): Reservation => ({
   ...opt("balanceReleaseAt", r.balance_release_at),
   ...opt("stripeCustomerId", r.stripe_customer_id),
   ...opt("stripePaymentMethodId", r.stripe_payment_method_id),
+  // The booking's one balance PaymentIntent (issue #1254).
+  ...opt("balancePaymentIntentId", r.balance_payment_intent_id),
 });
 
 /**
@@ -372,8 +377,9 @@ const toReservation = (r: any): Reservation => ({
  * load-bearing: the pending-write insert and the flip both refer to it as `$1`.
  *
  * **Not here, by design:** `checkout_attempts` (15.9), and `stripe_customer_id` and
- * `stripe_payment_method_id` (issue #1250). The customer is written once by `recordCheckoutAttempt`
- * and the saved card by the confirm flip, so no whole-row upsert of a stale copy can clear either.
+ * `stripe_payment_method_id` (issue #1250), and `balance_payment_intent_id` (issue #1254). The customer
+ * is written once by `recordCheckoutAttempt`, the saved card by the confirm flip and the balance intent
+ * by `saveBalancePaymentIntentId`, so no whole-row upsert of a stale copy can clear any of them.
  * The balance dates ARE here: they are frozen with the invoice and re-frozen with it.
  */
 const RESERVATION_COLUMNS = [
@@ -1359,6 +1365,9 @@ export class PostgresRepository implements Repository {
         "payment.balance_release_days",
         PAYMENT_CONFIG_DEFAULTS.balanceReleaseDaysBeforeEvent,
       ),
+      // Stored as the raw comma list and parsed on read, like the deposit: a list that does not
+      // parse reads as the default and is logged (issue #1254).
+      balanceRetryDaysAfterDue: parseBalanceRetryDays(kv.get(BALANCE_RETRY_DAYS_KEY)),
     };
   }
   async setPaymentConfig(patch: Partial<PaymentConfig>, at: string): Promise<void> {
@@ -1368,6 +1377,7 @@ export class PostgresRepository implements Repository {
     if (patch.serviceFeeBps !== undefined) entries.push(["payment.service_fee_bps", String(patch.serviceFeeBps)]);
     if (patch.balanceDueDaysBeforeEvent !== undefined) entries.push(["payment.balance_due_days", String(patch.balanceDueDaysBeforeEvent)]);
     if (patch.balanceReleaseDaysBeforeEvent !== undefined) entries.push(["payment.balance_release_days", String(patch.balanceReleaseDaysBeforeEvent)]);
+    if (patch.balanceRetryDaysAfterDue !== undefined) entries.push([BALANCE_RETRY_DAYS_KEY, patch.balanceRetryDaysAfterDue.join(",")]);
     for (const [key, value] of entries) {
       await this.#pool.query(
         `insert into app_settings(key, value, updated_at) values ($1,$2,$3)
@@ -1955,6 +1965,95 @@ export class PostgresRepository implements Repository {
     await this.#pool.query(
       `update reservations set stripe_customer_id = coalesce(stripe_customer_id, $2) where id = $1`,
       [reservationId, customerId],
+    );
+  }
+
+  // ── The scheduled balance charge (issue #1254, migration 20261119132310) ────────────────────
+  async listBalancesDue(now: string): Promise<Reservation[]> {
+    // Due has come and release has not. The dates are ISO-8601 UTC text (house style), compared as
+    // instants so a stored value's precision cannot change the answer. Owing, disputes and the saved
+    // card are the job's checks, not the query's.
+    const { rows } = await this.#pool.query(
+      `select * from reservations
+        where status = 'booked'
+          and balance_due_at is not null
+          and balance_release_at is not null
+          and balance_due_at::timestamptz <= $1::timestamptz
+          and $1::timestamptz < balance_release_at::timestamptz
+        order by balance_due_at::timestamptz, id`,
+      [now],
+    );
+    return rows.map(toReservation);
+  }
+  async claimBalanceAttempt(input: {
+    reservationId: ReservationId;
+    attempt: number;
+    at: string;
+    staleBefore?: string;
+  }): Promise<boolean> {
+    // The claim is the primary key: of two ticks inserting the same attempt, one gets the row and
+    // `returning` tells it so; the other gets nothing and must not charge. A reservation that does
+    // not exist violates the foreign key and throws.
+    //
+    // DEC-202: with `staleBefore`, a conflicting row that is unfinished and claimed strictly before it
+    // is taken over by the same statement — the update resets `attempted_at`, so of two reclaimers the
+    // second re-evaluates the `where` against the reset row and gets nothing. A null `staleBefore`
+    // compares to null, so the `where` never holds and a claimed attempt stays claimed.
+    const { rowCount } = await this.#pool.query(
+      `insert into balance_charge_attempts (reservation_id, attempt, attempted_at)
+       values ($1,$2,$3)
+       on conflict (reservation_id, attempt) do update
+         set attempted_at = excluded.attempted_at
+         where balance_charge_attempts.outcome is null
+           and balance_charge_attempts.attempted_at::timestamptz < $4::timestamptz
+       returning reservation_id`,
+      [input.reservationId, input.attempt, input.at, input.staleBefore ?? null],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+  async finishBalanceAttempt(input: {
+    reservationId: ReservationId;
+    attempt: number;
+    outcome: "succeeded" | "declined" | "needs_approval";
+    declineCode?: string;
+  }): Promise<void> {
+    await this.#pool.query(
+      `update balance_charge_attempts set outcome = $3, decline_code = $4
+        where reservation_id = $1 and attempt = $2`,
+      [input.reservationId, input.attempt, input.outcome, input.declineCode ?? null],
+    );
+  }
+  async releaseBalanceAttempt(input: { reservationId: ReservationId; attempt: number }): Promise<void> {
+    await this.#pool.query(
+      "delete from balance_charge_attempts where reservation_id = $1 and attempt = $2",
+      [input.reservationId, input.attempt],
+    );
+  }
+  async listBalanceAttempts(reservationId: ReservationId): Promise<BalanceChargeAttempt[]> {
+    const { rows } = await this.#pool.query(
+      "select * from balance_charge_attempts where reservation_id = $1 order by attempt",
+      [reservationId],
+    );
+    return rows.map((r) => ({
+      reservationId: asId<"ReservationId">(r.reservation_id),
+      attempt: r.attempt,
+      attemptedAt: r.attempted_at,
+      ...opt("outcome", r.outcome),
+      ...opt("declineCode", r.decline_code),
+    }));
+  }
+  async saveBalancePaymentIntentId(reservationId: ReservationId, intentId: string): Promise<void> {
+    // Overwrites (a second call replaces the first); the id joins `payment_intent_ids` once, so a
+    // decline's trail row finds the booking and a cancel retires the intent with the rest.
+    await this.#pool.query(
+      `update reservations
+          set balance_payment_intent_id = $2::text,
+              payment_intent_ids = case
+                when $2::text = any(coalesce(payment_intent_ids, '{}'::text[])) then payment_intent_ids
+                else array_append(coalesce(payment_intent_ids, '{}'::text[]), $2::text)
+              end
+        where id = $1`,
+      [reservationId, intentId],
     );
   }
 

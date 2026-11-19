@@ -491,6 +491,69 @@ describe("chargeDueBalances", () => {
     expect(counts).toMatchObject({ errors: 0, declined: 0, needsApproval: 0 });
   });
 
+  // DEC-202: a run that died between claiming and finishing — no throw, so no release — leaves an
+  // unfinished claim. A later run takes it over once it is older than an hour, under its own key.
+  /** A claim on attempt 0 at the due date, as a run that then died would leave it. */
+  const deadRunClaim = (w: Awaited<ReturnType<typeof world>>) =>
+    w.repo.claimBalanceAttempt({ reservationId: RES, attempt: 0, at: DUE, staleBefore: later(DUE, -60) });
+
+  it("AC7: an unfinished claim is not re-sent by a run within the hour", async () => {
+    const w = await world();
+    expect(await deadRunClaim(w)).toBe(true);
+
+    expect(await w.run(later(DUE, 59))).toEqual(NONE);
+    // Exactly an hour on is not older than the hour.
+    expect(await w.run(later(DUE, 60))).toEqual(NONE);
+
+    expect(w.keys()).toEqual([]);
+    expect(await w.balanceRows()).toEqual([]);
+  });
+
+  it("AC7: an unfinished claim older than an hour is re-sent under its own key, and the success is recorded", async () => {
+    const w = await world();
+    expect(await deadRunClaim(w)).toBe(true);
+
+    expect(await w.run(later(DUE, 61))).toEqual({ ...NONE, charged: 1 });
+
+    expect(w.keys()).toEqual([`balance_${RES}_0`]);
+    const intentId = (await w.row()).balancePaymentIntentId!;
+    const rows = await w.balanceRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: `pay_${intentId}`, kind: "balance", amountCents: OWED });
+    expect(await w.repo.listBalanceAttempts(RES)).toMatchObject([{ attempt: 0, outcome: "succeeded" }]);
+    // Taken over once: the next run makes nothing.
+    expect(await w.run(later(DUE, 62))).toEqual(NONE);
+    expect(w.keys()).toEqual([`balance_${RES}_0`]);
+  });
+
+  it("AC7: a reclaimed attempt whose intent already succeeded at Stripe is recorded, with no confirm sent", async () => {
+    const w = await world();
+    // The dead run got as far as the charge: the intent made and confirmed at Stripe, nothing written.
+    expect(await deadRunClaim(w)).toBe(true);
+    const { paymentIntentId } = await ensureBalanceIntent(w.deps, await w.row(), OWED);
+    await w.pay.confirmOffSession({
+      paymentIntentId,
+      customerId: CUS,
+      paymentMethodId: PM,
+      idempotencyKey: `balance_${RES}_0`,
+    });
+    const sentBefore = w.pay.confirmOffSessionCalls.length;
+    // Stripe refuses to change a succeeded intent's amount.
+    w.pay.updateAmountError = new Error(
+      "This PaymentIntent's amount could not be updated because it has a status of succeeded.",
+    );
+
+    const counts = await w.run(later(DUE, 61));
+
+    const rows = await w.balanceRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: `pay_${paymentIntentId}`, kind: "balance", amountCents: OWED });
+    expect(w.pay.confirmOffSessionCalls).toHaveLength(sentBefore);
+    expect(w.pay.intents).toHaveLength(1);
+    expect(counts).toMatchObject({ errors: 0, declined: 0, needsApproval: 0 });
+    expect(await w.repo.listBalanceAttempts(RES)).toMatchObject([{ attempt: 0, outcome: "succeeded" }]);
+  });
+
   it("AC8: after missing a retry, the job makes one charge for the latest attempt due, not the missed one", async () => {
     const w = await world();
     w.pay.confirmOffSessionOutcomes = [{ declined: "card_declined" }, { declined: "card_declined" }];

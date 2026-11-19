@@ -1101,6 +1101,82 @@ export function runRepositoryContract(
         await repo.saveReservation({ ...withoutIt, customerName: "Renamed" });
         expect((await repo.getReservation(rid("r1")))!.balancePaymentIntentId).toBe("pi_bal");
       });
+
+      // DEC-202: a claim whose run died before finishing is taken over once it is older than an hour.
+      // The adapter is handed `staleBefore` (the core's `now` minus the reclaim age) and reclaims only
+      // an unfinished row claimed strictly before it.
+      describe("reclaiming an unfinished attempt (DEC-202)", () => {
+        /** `NOW` minus one hour: what the core passes as `staleBefore` for a run at `NOW`. */
+        const STALE_BEFORE = "2026-06-01T11:00:00.000Z";
+        const OLD = "2026-06-01T10:30:00.000Z";
+
+        it("AC7: an unfinished claim not older than staleBefore is not reclaimed", async () => {
+          await repo.saveReservation(booked("r1", { balanceDueAt: NOW }));
+          const fresh = "2026-06-01T11:30:00.000Z";
+          await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: fresh, staleBefore: fresh });
+          // Exactly at staleBefore is not before it.
+          await repo.claimBalanceAttempt({
+            reservationId: rid("r1"),
+            attempt: 1,
+            at: STALE_BEFORE,
+            staleBefore: STALE_BEFORE,
+          });
+
+          expect(
+            await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: NOW, staleBefore: STALE_BEFORE }),
+          ).toBe(false);
+          expect(
+            await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 1, at: NOW, staleBefore: STALE_BEFORE }),
+          ).toBe(false);
+          expect(await repo.listBalanceAttempts(rid("r1"))).toEqual([
+            { reservationId: rid("r1"), attempt: 0, attemptedAt: fresh },
+            { reservationId: rid("r1"), attempt: 1, attemptedAt: STALE_BEFORE },
+          ]);
+        });
+
+        it("AC7: an unfinished claim older than staleBefore is reclaimed exactly once, its attempted_at reset", async () => {
+          await repo.saveReservation(booked("r1", { balanceDueAt: NOW }));
+          await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: OLD, staleBefore: OLD });
+
+          const reclaim = () =>
+            repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: NOW, staleBefore: STALE_BEFORE });
+          // Two reclaimers at the same moment: one winner.
+          const both = await Promise.all([reclaim(), reclaim()]);
+          expect([...both].sort()).toEqual([false, true]);
+          // The reset row is fresh now, so a third reclaimer at the same moment loses too.
+          expect(await reclaim()).toBe(false);
+
+          expect(await repo.listBalanceAttempts(rid("r1"))).toEqual([
+            { reservationId: rid("r1"), attempt: 0, attemptedAt: NOW },
+          ]);
+        });
+
+        it("AC7: a finished claim is never reclaimed, whatever its outcome and however old", async () => {
+          await repo.saveReservation(booked("r1", { balanceDueAt: NOW }));
+          for (const attempt of [0, 1, 2]) {
+            await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt, at: OLD, staleBefore: OLD });
+          }
+          await repo.finishBalanceAttempt({ reservationId: rid("r1"), attempt: 0, outcome: "succeeded" });
+          await repo.finishBalanceAttempt({
+            reservationId: rid("r1"),
+            attempt: 1,
+            outcome: "declined",
+            declineCode: "card_declined",
+          });
+          await repo.finishBalanceAttempt({ reservationId: rid("r1"), attempt: 2, outcome: "needs_approval" });
+
+          for (const attempt of [0, 1, 2]) {
+            expect(
+              await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt, at: NOW, staleBefore: NOW }),
+            ).toBe(false);
+          }
+          expect(await repo.listBalanceAttempts(rid("r1"))).toEqual([
+            { reservationId: rid("r1"), attempt: 0, attemptedAt: OLD, outcome: "succeeded" },
+            { reservationId: rid("r1"), attempt: 1, attemptedAt: OLD, outcome: "declined", declineCode: "card_declined" },
+            { reservationId: rid("r1"), attempt: 2, attemptedAt: OLD, outcome: "needs_approval" },
+          ]);
+        });
+      });
     });
 
     // ── checkout_attempts — the count the screen actually claims to show (15.9, issue #977) ──

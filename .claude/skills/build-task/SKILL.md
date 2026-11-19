@@ -18,10 +18,9 @@ stopping only where information turns out to be missing.
 Abort with a one-line reason if any of these fail:
 
 - **Testable.** The line between the two loops, whatever the points. At least one acceptance
-  criterion is something the `Proof` slot can check — behavior, data, or on-screen wording and
-  order. A task that is only layout, spacing or styling
-  has nothing for `@test-writer` to assert: use the normal loop, with `@ui-reviewer` and a
-  screenshot at the hand-back.
+  criterion is something the `Proof` slot can check — behavior or data. A task that is only
+  layout, spacing, styling or wording has nothing for `@test-writer` to assert: use the normal
+  loop, with `@ui-reviewer` and a screenshot at the hand-back.
 - **Branch.** You are on `task/X.Y-*` or `task/<issue>-*`, not `main`.
 - **Proof slot.** `.claude/CLAUDE-context.md` § Workflow Mechanisms names a real `Proof` and
   `Proof command`. If it says `none`, there is nothing to write tests in — use the normal loop.
@@ -82,11 +81,17 @@ both agents, and comes back as the same item next round.
   with your recommendation. Write each answer as a `[you]` line.
 
 **A reuse match** goes into Reuses as a `[code]` line with the existing path — a Screen match onto that
-element's line in Screen, as its component. Then the spec stops asking for the copy: the
+element's line in Screen, as its component. Then the spec stops asking for the duplicate: the
 criterion that restated it is reworded to point at it, its "New or changed signatures" entry is
 removed, and "Files touched" gains the existing file if reuse means exporting from it. When
 reusing it would change behaviour — the existing rule differs from the spec's — sort it as a
 `[you]` item above, with your recommendation. A match you reject is one `[Lead]` line saying why.
+
+**A criterion that quotes or names wording**: its words move into Wording unchanged, and the
+criterion is restated as the behaviour behind them — a `[Lead]` line when that behaviour is
+evident from the criterion or the code, a `[you]` item above when it is not, and dropped, leaving
+only the Wording line, when there is no behaviour behind the words. It changes what the criterion
+checks, so the Rounds rule below applies.
 
 **Something described twice with no shared home** gets one: a `[Lead]` line under Interfaces' "New
 or changed signatures" naming the CSS class, component, function or constant that holds it, marked
@@ -100,8 +105,10 @@ recommendation.
 thing, it is deleted: a `[code]` line citing the criterion or Removes entry that takes the
 behaviour away. When the behaviour survives under what replaces it, it is retargeted: a `[code]`
 line naming the replacement. When the spec does not say whether the behaviour survives, sort it as
-a `[you]` item above, with your recommendation. A removal changes what that test checks, not what
-a criterion does, so it earns no second round on its own.
+a `[you]` item above, with your recommendation. A test that asserts a copy key's text is deleted
+even when the screen survives; one that only reads the key to locate a control is retargeted to the
+new key. A removal changes what that test checks, not what a criterion does, so it earns no second
+round on its own.
 
 Keep every `[code]` and `[Lead]` line, word for word, for the pull request body (Step 6).
 
@@ -111,7 +118,7 @@ states — and name the changed lines in its prompt. A reuse match counts only w
 what a criterion does (the `[you]` case above); rewording a criterion to point at existing code,
 or adding a Reuses path, does not. Naming a shared home, and rewording the places to point at it,
 does not either. **If round 2 changes behaviour again, stop and ask** — the spec needs rework, not
-a third read. An edit that only clarifies wording does not earn
+a third read. An edit that only clarifies a criterion's phrasing does not earn
 another round; `@test-writer` can still stop in Step 2 and return a question.
 
 **Coming back to the spec later counts against the same rule.** A question from Step 2 is sorted
@@ -269,3 +276,7 @@ compared against. `settled` is the operator's audit of the calls made without th
 request body and not the printed receipt because in Haul the block ran long and hand-backs
 summarised it, and a summary of a call made without the operator is not an audit of it. The
 hand-back links to that section instead of restating it.
+
+`/kill-this` printed the sample block last, before this receipt. The hand-back prints the receipt
+first, and then repeats the `**Sample:**` block, unsummarised, with its two questions and "Answer
+with `/sample`", so it is the last thing the operator reads.

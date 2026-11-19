@@ -72,6 +72,7 @@ Two things the gate cannot check, which is why they are here:
 | `/its-alive` | Session start | Open the per-session file, read context, recommend a task |
 | `/build-task` | A task that changes behaviour, spec walked | `@test-writer` readback and failing tests, `@implementer` to green, the Lead verifies, then `/kill-this`. Running it approves the spec |
 | `/kill-this` | **Per task** | Build check, commit, open a pull request, append `## Task <N>`. Run once per task |
+| `/sample` | After a hand-back, optional | Answer the sample of 2 tests and 1 function the hand-back prints; marks and a discussion go in the session file. Never gates a merge |
 | `/save-this` | Between tasks, before `/clear` | Write the next task, open PRs, standing rules, parking lot and carry-over into the session file's Next Steps |
 | `/its-dead` | Session end (once) | Stamp `ended:`, tally points, close the session file |
 | `/start-phase` | Phase start | Materialize the phase as Issues with `phase:N`, `points:X` |

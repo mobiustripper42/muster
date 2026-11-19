@@ -7,13 +7,14 @@ This file is installed byte-identical in every project, so it describes the rost
 repo's progress through it. What ships is what appears here: a file in `.claude/skills/` with no
 entry is an unclassified file, which is the state this workflow keeps finding defects in.
 
-## Skills — nine
+## Skills — ten
 
 | Skill | When | What |
 |-------|------|------|
 | `/its-alive` | Session start | Open the per-session file on the orphan `sessions` branch, read context, run the drift and permission-policy checks, recommend a task |
 | `/build-task` | A task that changes behaviour, spec walked | Writes the walked spec into the issue, then readback by `@test-writer`, then failing tests, then `@implementer` until they pass; the Lead locks the tests by committing them first, runs the proof itself, then `/kill-this`. Running it approves the spec. The spec template, `task-spec.md`, ships in the skill's folder |
 | `/kill-this` | Per task | Build check, commit, `@code-review`, open the PR with `closes #<issue>`, append a `## Task <N>` block. Step 3.5 reads Blast-Radius Triggers and runs `/security-review` when the diff hits one |
+| `/sample` | After a hand-back, optional | Answer the hand-back's script-picked sample of 2 tests and 1 function: marks each through `sample.mjs`, discusses every waste or can't-tell mark against the code, records the marks and a `**Discussion:**` bullet in the task's block, and pushes the `sessions` branch. Never gates a merge (DEC-J032) |
 | `/save-this` | Between tasks, before `/clear` | Replace the session file's Next Steps with the next task, open PRs, standing rules (word for word), the parking lot (nothing dropped unless closed) and a carry-over for the next task; push the `sessions` branch. The cleared context reads it back at the spec step |
 | `/its-dead` | Session end, once | Stamp `ended:`, tally points, display wall clock, close the session file. No time math, no version bump |
 | `/start-phase` | Phase start | Materialize the phase as GitHub Issues with `phase:N` and `points:X` labels |

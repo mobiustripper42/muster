@@ -61,11 +61,11 @@ If there is nothing to commit, surface that and stop here — no PR for no code.
 - **On `main` (solo flow, unprotected main):** `git push origin main`. Skip Steps 3+4 — no PR. Go to Step 5.
 - **On a `task/*`, `claude/<slug>`, or feature branch:** `git push -u origin $BRANCH`. Continue.
 
-Capture `SUBJECT=$(git log -1 --format=%s)` for the PR title.
+Build the PR title from the issue the PR closes, never from a commit: `SUBJECT=$(gh issue view <N> --json title -q .title)`, as it stands (`Phase X.Y — <title>`). A commit subject is as long as whoever wrote the last commit made it; the issue title is short and fixed before any code exists. No issue, the first commit's subject on the branch.
 
 ## Step 3 — Code review, in the background
 
-**Every branch diff in this skill is against `origin/main`, fetched first** — `git fetch origin main`, once, here, and three-dot, so it starts at the branch point. Local `main` can sit behind it, and a diff against a stale `main` carries other people's merged work into the checks without saying so (observed in Haul). Where a project's trunk is not `main` (Step 4), read that name for `main` throughout.
+**Every branch diff in this skill is against `origin/main`, fetched first** — `git fetch origin main`, once, here, and three-dot, so it starts at the branch point. Local `main` can sit behind it, and a diff against a stale `main` carries other people's merged work into the checks without saying so (observed in Haul). Where a project's trunk is not `main` (Step 4), read that name for `main` throughout. **The one exception is Step 5's sample,** which compares against the base named there.
 
 Do Step 3.4's screen check and Step 3.5's trigger check **first**: each is a property of the diff and needs no review to answer. Then start every review this PR gets **in one message, each as a background agent** (`run_in_background: true`):
 
@@ -183,6 +183,8 @@ Each hand step is three things, and a step missing any of them is not a step:
 2. **The exact action** — the control by its visible label, and the viewport if it matters. "Check the drawer works" is not an action; "at 375px, tap the ☰ button in the header" is.
 3. **What you should see** — stated so that *not* seeing it is unambiguous. Where the change fixes a reported symptom, say what it did **before**, so the reviewer can tell a fix from a coincidence.
 
+**Words are checked here, never by a test.** One hand step reads each user-facing text the task adds or changes where it appears — the screen, the email — against the approved words: each line of the spec's `## Wording` section, or, for a task with no such section, the wording its approved plan names. A Wording section that says "None" needs no step.
+
 Close with **`Reset:`** — what to undo afterwards, or `none`. A reviewer who won't touch prod data because they can't tell what's reversible has been given no test plan at all.
 
 **Open the hand section with `#### Setup`, and make it literal.** Everything below is drawn from a test plan that worked — one the operator had to ask for, which is why it is written down here instead of depending on someone thinking of it.
@@ -223,6 +225,14 @@ Capture `PR_NUMBER` and `PR_URL`.
 
 The session file lives on the orphan `sessions` branch at `.sessions-worktree/sessions/<file>.md`. Read it first.
 
+**Resolve the sample's base once:** on a stacked branch (Step 4.2 wrote the `Stacked on PR` line), `origin/<the parent's branch>`, after `git fetch origin <the parent's branch>`; on any other task branch, `origin/main`; on `main`, `HEAD~1`. Then run the picker, after Step 2's commit and any review fix, and keep its output as `SAMPLE`:
+
+```
+node .claude/skills/sample/sample.mjs pick --base <base>
+```
+
+It picks 2 tests and 1 function from the lines this branch changed, and prints the `**Sample:**` block alone. It never fails the ship: a base it cannot resolve prints a `**Sample:** none — …` line, and that goes in the block as it is.
+
 Compose the task block:
 
 ```
@@ -237,6 +247,7 @@ Compose the task block:
 **Blocked:** <only if blocked>
 **Branch:** <BRANCH>
 **Opened at:** <ISO 8601 timestamp>
+<SAMPLE, exactly as the script printed it>
 ```
 
 Use the **Edit** tool on `$SESSION_FILE` (the worktree path) to:
@@ -268,6 +279,18 @@ Next: keep working in this session (cut another branch + `/kill-this` again), or
 ```
 
 If `EXISTING_PR_STATE` was `OPEN` and Step 4.2 was skipped, surface the existing PR URL and note that the task block now references the pre-existing PR.
+
+**Then print `SAMPLE` verbatim, and last.** Nothing after it, whichever skill called `/kill-this`: a caller that adds a receipt or a hand-back prints it before this block, or repeats the block unsummarised after. Under it, print the two questions once, not on each line, and how to answer:
+
+```
+<SAMPLE>
+
+A test: If this test fails, what's broken for a member?
+A function: What is this handling that I never asked for?
+Answering is optional. Answer with `/sample 1 real, 2 can't tell, 3 waste`.
+```
+
+The lines are `path:line`, for the operator to paste into an editor. A `**Sample:** none` block prints as it is, without the questions.
 
 ## Notes
 

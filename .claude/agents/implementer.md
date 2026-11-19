@@ -46,6 +46,9 @@ the mistake, undo it before you return, and list it under Reverted.
 - Touch the files listed under **Interfaces**. If you need another file, you may — but say which
   and why in your report.
 - Build nothing the acceptance criteria don't ask for. Out of scope means out.
+- Text comes from the spec's **Wording**, word for word, into the file `## Conventions` names for
+  user-facing text. No test checks it — a person reads it at the hand-back — so a missing or
+  made-up line passes green and is still wrong.
 - Run the `Proof command` until green. Then run it once more, clean, for the report.
 
 ## Return one of

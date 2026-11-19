@@ -14,6 +14,9 @@ SESSION
                    running it approves the spec.
   /kill-this       per task. build + commit + PR + @code-review.
                    run it once per task, not once per session.
+  /sample          optional, after a hand-back. answer the sample of
+                   2 tests + 1 function it printed. marks go in the
+                   session file. never gates a merge.
   /save-this       between tasks, before /clear. writes next task,
                    standing rules, parking lot and carry-over to
                    the session file; the cleared context reads it.

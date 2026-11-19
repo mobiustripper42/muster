@@ -223,7 +223,7 @@ try {
   const dana = await bookPaid(addDays(today, 45), "12:30", "Dana Whitcomb", "216-555-1252", { deposit: true });
   if (dana) {
     console.log(
-      `            /b/${dana.code}   Payment: "Paid so far" $100.00, then "Balance · charged to your card on <day>"; ` +
+      `            /b/${dana.code}   Payment: "Paid so far" $100.00, then "Balance · charged to your card on <day>" with a "Pay balance · $" button under it; ` +
         `Manage → "✕ Cancel booking", the confirm reads paid − $50`,
     );
   }
@@ -251,7 +251,7 @@ try {
     console.log(`  refunded  ${addDays(today, 21)} 13:30  Wren Calloway — ${JSON.stringify(outcome)}`);
     console.log(
       `            /b/${wren.code}   Payment reads "Paid in full", then "Refunded −$200.00", no "Balance · due before your trip"; ` +
-        `the admin pane's Owes reads "Settled" with no "Create balance link"; /admin/purchases reads Refunded with no "… due"`,
+        `the manage page shows no "Pay balance" button and the admin pane's Owes reads "Settled"; /admin/purchases reads Refunded with no "… due"`,
     );
   }
 } finally {

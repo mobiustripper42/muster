@@ -3,6 +3,7 @@
  * operator's confirm screen prefills from.
  */
 import { describe, expect, it } from "vitest";
+import { FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { Payment, Reservation } from "../domain/entities.js";
@@ -416,6 +417,43 @@ describe("cancelReservation", () => {
 
     expect(result).toEqual({ ok: true, alreadyCancelled: true });
     expect(relayed).toEqual([]);
+  });
+});
+
+describe("cancelReservation — a booked booking's balance intent (issue #1254)", () => {
+  // The correction found after the build: `retireOpenIntents` ran only from the phone-booking path,
+  // so cancelling a BOOKED booking left its balance intent live, and a card form the customer opened
+  // before the cancel could still be paid — charging a cancelled booking.
+  const mint = (pay: FakePaymentPort, key: string) =>
+    pay.createPaymentIntent({ amountCents: 40000, currency: "usd", idempotencyKey: key, metadata: {} });
+
+  it("issue #1254 correction: cancelling a booked booking cancels its balance intent at Stripe, so it can no longer be paid", async () => {
+    const pay = new FakePaymentPort();
+    const deposit = await mint(pay, "deposit");
+    const repo = await seeded({ paymentIntentIds: [deposit.paymentIntentId] });
+    const balance = await mint(pay, "balance");
+    await repo.saveBalancePaymentIntentId(RESV, balance.paymentIntentId);
+    expect(pay.liveAmountCents.has(balance.paymentIntentId)).toBe(true);
+
+    const result = await cancelReservation({ ...deps(repo), payments: pay }, RESV, "customer");
+
+    expect(result).toMatchObject({ ok: true, alreadyCancelled: false });
+    expect(pay.cancelled.map((c) => c.paymentIntentId)).toContain(balance.paymentIntentId);
+    expect(pay.liveAmountCents.has(balance.paymentIntentId)).toBe(false);
+    // Only the balance intent ([Lead] ruling): the deposit's intent already succeeded.
+    expect(pay.cancelled.map((c) => c.paymentIntentId)).not.toContain(deposit.paymentIntentId);
+  });
+
+  it("issue #1254 correction: a booked booking with no balance intent cancels no intent", async () => {
+    const pay = new FakePaymentPort();
+    // As a real booked booking has: the deposit's intent, already paid, and no balance intent.
+    const deposit = await mint(pay, "deposit");
+    const repo = await seeded({ paymentIntentIds: [deposit.paymentIntentId] });
+
+    const result = await cancelReservation({ ...deps(repo), payments: pay }, RESV, "customer");
+
+    expect(result).toMatchObject({ ok: true, alreadyCancelled: false });
+    expect(pay.cancelled).toEqual([]);
   });
 });
 

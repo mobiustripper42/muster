@@ -14,6 +14,7 @@ import type {
   Admin,
   Ask,
   AuthSubjectKind,
+  BalanceChargeAttempt,
   Block,
   BookingCode,
   Credential,
@@ -75,6 +76,7 @@ import type { MessageId, ParticipantId, ThreadId } from "../domain/ids.js";
 import type { ShiftChangeRow } from "../ports/repository.js";
 import {
   PAYMENT_CONFIG_DEFAULTS,
+  parseBalanceRetryDays,
   parseDepositCents,
   type PaymentConfig,
 } from "../reservations/payment-config.js";
@@ -552,7 +554,15 @@ export class InMemoryRepository implements Repository {
     // The deposit reads through the same parse Postgres applies to its stored text, so a value that
     // is not whole cents falls to the default and is logged in both adapters (issue #1250).
     const stored = this.#paymentConfig.depositCents;
-    return { ...config, depositCents: parseDepositCents(stored === undefined ? undefined : String(stored)) };
+    // The retry days likewise: Postgres stores the comma list as text and parses it on read, so this
+    // double renders what it holds the same way and a list that does not parse reads as the default
+    // and is logged in both adapters (issue #1254).
+    const retry = this.#paymentConfig.balanceRetryDaysAfterDue;
+    return {
+      ...config,
+      depositCents: parseDepositCents(stored === undefined ? undefined : String(stored)),
+      balanceRetryDaysAfterDue: parseBalanceRetryDays(retry === undefined ? undefined : retry.join(",")),
+    };
   }
   async setPaymentConfig(patch: Partial<PaymentConfig>, _at: string): Promise<void> {
     this.#paymentConfig = { ...this.#paymentConfig, ...patch };
@@ -640,7 +650,8 @@ export class InMemoryRepository implements Repository {
     // The provider customer and the saved card have the same owners in Postgres: they are not in
     // `RESERVATION_COLUMNS`, so a whole-row write neither sets nor clears them (issue #1250) —
     // `recordCheckoutAttempt` sets the customer once, the confirm flip sets the card.
-    const { stripeCustomerId: _c, stripePaymentMethodId: _p, ...incoming } = reservation;
+    // The balance intent likewise (issue #1254): only `saveBalancePaymentIntentId` writes it.
+    const { stripeCustomerId: _c, stripePaymentMethodId: _p, balancePaymentIntentId: _b, ...incoming } = reservation;
     this.#reservations.set(
       reservation.id,
       clone({
@@ -649,6 +660,9 @@ export class InMemoryRepository implements Repository {
         ...(stored?.stripeCustomerId !== undefined ? { stripeCustomerId: stored.stripeCustomerId } : {}),
         ...(stored?.stripePaymentMethodId !== undefined
           ? { stripePaymentMethodId: stored.stripePaymentMethodId }
+          : {}),
+        ...(stored?.balancePaymentIntentId !== undefined
+          ? { balancePaymentIntentId: stored.balancePaymentIntentId }
           : {}),
       }),
     );
@@ -929,6 +943,79 @@ export class InMemoryRepository implements Repository {
     const row = this.#reservations.get(reservationId);
     if (!row || row.stripeCustomerId !== undefined) return;
     this.#reservations.set(reservationId, clone({ ...row, stripeCustomerId: customerId }));
+  }
+
+  // ── The scheduled balance charge (issue #1254) ─────────────────────────────────────────────
+  #balanceAttempts = new Map<string, BalanceChargeAttempt>();
+  #balanceAttemptKey(reservationId: ReservationId, attempt: number): string {
+    return `${reservationId}:${attempt}`;
+  }
+
+  async listBalancesDue(now: string): Promise<Reservation[]> {
+    const at = Date.parse(now);
+    return [...this.#reservations.values()]
+      .filter(
+        (r) =>
+          r.status === "booked" &&
+          r.balanceDueAt !== undefined &&
+          r.balanceReleaseAt !== undefined &&
+          Date.parse(r.balanceDueAt) <= at &&
+          at < Date.parse(r.balanceReleaseAt),
+      )
+      .sort((a, b) => Date.parse(a.balanceDueAt!) - Date.parse(b.balanceDueAt!) || a.id.localeCompare(b.id))
+      .map(clone);
+  }
+  async claimBalanceAttempt(input: { reservationId: ReservationId; attempt: number; at: string }): Promise<boolean> {
+    // The attempt table's foreign key lives only in Postgres (parity audit S3-13), so this double
+    // refuses a booking that does not exist itself.
+    if (!this.#reservations.has(input.reservationId)) {
+      throw new Error(`claimBalanceAttempt: reservation ${input.reservationId} does not exist`);
+    }
+    const key = this.#balanceAttemptKey(input.reservationId, input.attempt);
+    if (this.#balanceAttempts.has(key)) return false;
+    this.#balanceAttempts.set(key, {
+      reservationId: input.reservationId,
+      attempt: input.attempt,
+      attemptedAt: input.at,
+    });
+    return true;
+  }
+  async finishBalanceAttempt(input: {
+    reservationId: ReservationId;
+    attempt: number;
+    outcome: "succeeded" | "declined" | "needs_approval";
+    declineCode?: string;
+  }): Promise<void> {
+    const key = this.#balanceAttemptKey(input.reservationId, input.attempt);
+    const row = this.#balanceAttempts.get(key);
+    if (!row) return;
+    this.#balanceAttempts.set(key, {
+      ...row,
+      outcome: input.outcome,
+      ...(input.declineCode !== undefined ? { declineCode: input.declineCode } : {}),
+    });
+  }
+  async releaseBalanceAttempt(input: { reservationId: ReservationId; attempt: number }): Promise<void> {
+    this.#balanceAttempts.delete(this.#balanceAttemptKey(input.reservationId, input.attempt));
+  }
+  async listBalanceAttempts(reservationId: ReservationId): Promise<BalanceChargeAttempt[]> {
+    return [...this.#balanceAttempts.values()]
+      .filter((a) => a.reservationId === reservationId)
+      .sort((a, b) => a.attempt - b.attempt)
+      .map(clone);
+  }
+  async saveBalancePaymentIntentId(reservationId: ReservationId, intentId: string): Promise<void> {
+    const row = this.#reservations.get(reservationId);
+    if (!row) return;
+    const ids = row.paymentIntentIds ?? [];
+    this.#reservations.set(
+      reservationId,
+      clone({
+        ...row,
+        balancePaymentIntentId: intentId,
+        paymentIntentIds: ids.includes(intentId) ? ids : [...ids, intentId],
+      }),
+    );
   }
 
   async claimConfirmationSend(reservationId: ReservationId, atIso: string): Promise<boolean> {

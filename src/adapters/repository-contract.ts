@@ -995,6 +995,114 @@ export function runRepositoryContract(
       expect((await repo.getReservation(rid("pend-1")))!.stripeCustomerId).toBe("cus_first");
     });
 
+    // ── The scheduled balance charge (issue #1254) ──────────────────────────────
+    // The job's reads and claims, on both adapters: the attempt table's foreign key lives only in
+    // Postgres, so the double has to refuse a missing booking itself (parity audit S3-13).
+    describe("the scheduled balance charge (issue #1254)", () => {
+      const RELEASE = "2026-06-10T12:00:00.000Z";
+      const booked = (id: string, over: Partial<Reservation> = {}): Reservation =>
+        reservation({
+          id: rid(id),
+          eventId: asId<"EventId">(`evt-${id}`),
+          source: "muster",
+          status: "booked",
+          balanceReleaseAt: RELEASE,
+          ...over,
+        });
+
+      it("AC1: listBalancesDue returns booked rows whose due date has come and whose release has not, by due date then id", async () => {
+        await repo.saveReservation(booked("due-late", { balanceDueAt: "2026-06-01T10:00:00.000Z" }));
+        await repo.saveReservation(booked("due-now", { balanceDueAt: NOW }));
+        await repo.saveReservation(booked("due-b", { balanceDueAt: "2026-05-30T09:00:00.000Z" }));
+        await repo.saveReservation(booked("due-a", { balanceDueAt: "2026-05-30T09:00:00.000Z" }));
+        await repo.saveReservation(booked("future", { balanceDueAt: "2026-06-01T12:00:01.000Z" }));
+        await repo.saveReservation(
+          booked("released", { balanceDueAt: "2026-05-20T12:00:00.000Z", balanceReleaseAt: NOW }),
+        );
+        await repo.saveReservation(
+          booked("cancelled", { balanceDueAt: "2026-05-30T09:00:00.000Z", status: "cancelled" }),
+        );
+        await repo.saveReservation(
+          booked("pending", { balanceDueAt: "2026-05-30T09:00:00.000Z", status: "pending", eventId: null }),
+        );
+        const { balanceReleaseAt: _r, ...noBalance } = booked("paid-whole");
+        await repo.saveReservation(noBalance);
+
+        const due = await repo.listBalancesDue(NOW);
+        expect(due.map((r) => String(r.id))).toEqual(["due-a", "due-b", "due-late", "due-now"]);
+      });
+
+      it("AC7: claimBalanceAttempt is true once per attempt, and a second claim of it is false", async () => {
+        await repo.saveReservation(booked("r1", { balanceDueAt: NOW }));
+        expect(await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: NOW })).toBe(true);
+        expect(await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: NOW })).toBe(false);
+        expect(await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 1, at: NOW })).toBe(true);
+        expect(await repo.listBalanceAttempts(rid("r1"))).toEqual([
+          { reservationId: rid("r1"), attempt: 0, attemptedAt: NOW },
+          { reservationId: rid("r1"), attempt: 1, attemptedAt: NOW },
+        ]);
+      });
+
+      it("AC7: finishBalanceAttempt records the outcome; releaseBalanceAttempt gives the claim back", async () => {
+        await repo.saveReservation(booked("r1", { balanceDueAt: NOW }));
+        await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 1, at: NOW });
+        await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: NOW });
+        await repo.finishBalanceAttempt({
+          reservationId: rid("r1"),
+          attempt: 0,
+          outcome: "declined",
+          declineCode: "card_declined",
+        });
+        await repo.finishBalanceAttempt({ reservationId: rid("r1"), attempt: 1, outcome: "needs_approval" });
+        await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 2, at: NOW });
+        await repo.releaseBalanceAttempt({ reservationId: rid("r1"), attempt: 2 });
+
+        // Ordered by attempt, whatever order they were claimed in.
+        expect(await repo.listBalanceAttempts(rid("r1"))).toEqual([
+          { reservationId: rid("r1"), attempt: 0, attemptedAt: NOW, outcome: "declined", declineCode: "card_declined" },
+          { reservationId: rid("r1"), attempt: 1, attemptedAt: NOW, outcome: "needs_approval" },
+        ]);
+        expect(await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 2, at: NOW })).toBe(true);
+      });
+
+      it("AC7: a claim for a reservation that does not exist is refused", async () => {
+        await expect(
+          repo.claimBalanceAttempt({ reservationId: rid("ghost"), attempt: 0, at: NOW }),
+        ).rejects.toThrow();
+      });
+
+      it("AC1: saveBalancePaymentIntentId stores the balance intent and appends it to the row's intents once", async () => {
+        await repo.saveReservation(booked("r1", { balanceDueAt: NOW, paymentIntentIds: ["pi_dep"] }));
+        await repo.saveBalancePaymentIntentId(rid("r1"), "pi_bal");
+        await repo.saveBalancePaymentIntentId(rid("r1"), "pi_bal");
+
+        const got = (await repo.getReservation(rid("r1")))!;
+        expect(got.balancePaymentIntentId).toBe("pi_bal");
+        expect(got.paymentIntentIds).toEqual(["pi_dep", "pi_bal"]);
+        expect(String((await repo.getReservationByPaymentIntentId("pi_bal"))!.id)).toBe("r1");
+      });
+
+      it("AC1: a second saveBalancePaymentIntentId overwrites the first", async () => {
+        await repo.saveReservation(booked("r1", { balanceDueAt: NOW, paymentIntentIds: ["pi_dep"] }));
+        await repo.saveBalancePaymentIntentId(rid("r1"), "pi_bal");
+        await repo.saveBalancePaymentIntentId(rid("r1"), "pi_bal_2");
+
+        const got = (await repo.getReservation(rid("r1")))!;
+        expect(got.balancePaymentIntentId).toBe("pi_bal_2");
+        expect(got.paymentIntentIds).toEqual(["pi_dep", "pi_bal", "pi_bal_2"]);
+      });
+
+      it("AC1: a whole-row save neither sets nor clears the balance intent", async () => {
+        await repo.saveReservation(booked("r1", { balanceDueAt: NOW, balancePaymentIntentId: "pi_forged" }));
+        expect((await repo.getReservation(rid("r1")))!.balancePaymentIntentId).toBeUndefined();
+
+        await repo.saveBalancePaymentIntentId(rid("r1"), "pi_bal");
+        const { balancePaymentIntentId: _b, ...withoutIt } = (await repo.getReservation(rid("r1")))!;
+        await repo.saveReservation({ ...withoutIt, customerName: "Renamed" });
+        expect((await repo.getReservation(rid("r1")))!.balancePaymentIntentId).toBe("pi_bal");
+      });
+    });
+
     // ── checkout_attempts — the count the screen actually claims to show (15.9, issue #977) ──
     // `/admin/abandonment` has always said "Card form counts payment attempts" while deriving that
     // number from `paymentIntentIds.length`. 15.8 made the two disagree: a retry that reuses its
@@ -2210,6 +2318,7 @@ export function runRepositoryContract(
         serviceFeeBps: 300,
         balanceDueDaysBeforeEvent: 30,
         balanceReleaseDaysBeforeEvent: 21,
+        balanceRetryDaysAfterDue: [3, 6],
       });
       await repo.setPaymentConfig({ depositCents: 15000, taxRateBps: 800 }, "2026-07-12T00:00:00.000Z");
       const cfg = await repo.getPaymentConfig();
@@ -2254,6 +2363,28 @@ export function runRepositoryContract(
         const err = vi.spyOn(console, "error").mockImplementation(() => {});
         expect((await repo.getPaymentConfig()).depositCents).toBe(15000);
         expect(err).not.toHaveBeenCalled();
+      });
+    });
+
+    // The balance retry days (issue #1254). Their parse's edge cases are `parseBalanceRetryDays`'s
+    // (`payment-config.test.ts`); here, one stored list either side proves both adapters read through it.
+    describe("payment config — the balance retry days (issue #1254)", () => {
+      const AT = "2026-07-12T00:00:00.000Z";
+      afterEach(() => vi.restoreAllMocks());
+
+      it("AC4: no row reads as [3, 6]; a stored list round-trips without a log line", async () => {
+        expect((await repo.getPaymentConfig()).balanceRetryDaysAfterDue).toEqual([3, 6]);
+        await repo.setPaymentConfig({ balanceRetryDaysAfterDue: [2, 5] }, AT);
+        const err = vi.spyOn(console, "error").mockImplementation(() => {});
+        expect((await repo.getPaymentConfig()).balanceRetryDaysAfterDue).toEqual([2, 5]);
+        expect(err).not.toHaveBeenCalled();
+      });
+
+      it("AC4: a stored list that does not parse reads as [3, 6] and is logged", async () => {
+        await repo.setPaymentConfig({ balanceRetryDaysAfterDue: [0] }, AT);
+        const err = vi.spyOn(console, "error").mockImplementation(() => {});
+        expect((await repo.getPaymentConfig()).balanceRetryDaysAfterDue).toEqual([3, 6]);
+        expect(err).toHaveBeenCalledOnce();
       });
     });
 

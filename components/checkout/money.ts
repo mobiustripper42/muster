@@ -34,20 +34,26 @@ export interface ElementsOptions {
   paymentMethodTypes?: string[];
 }
 
+/** Which payment the form takes: the whole quote, the deposit (saves the card), or the balance. */
+export type ElementsMode = "full" | "deposit" | "balance";
+
 /**
  * The one home for the payment form's options (issue #1250). With the deposit chosen the form saves
- * the card for the balance and offers cards only; pay in full keeps the methods it shows today.
+ * the card for the balance and offers cards only; pay in full keeps the methods it shows today. The
+ * balance (issue #1254) offers cards only and saves nothing — the card is being charged now, matching
+ * the intent `ensureBalanceIntent` creates (`cardsOnly`, no `setupFutureUsage`).
  *
  * Stripe's deferred Elements docs: `setupFutureUsage` "should match the setup_future_usage provided on
  * the Intent used when confirming payment" — so the form is remounted on the choice, not
  * `elements.update`d, to change the saving or the method types.
  */
-export function elementsOptions(dueNowCents: number, payDeposit: boolean): ElementsOptions {
+export function elementsOptions(amountCents: number, mode: ElementsMode): ElementsOptions {
   return {
     mode: "payment",
-    amount: dueNowCents,
+    amount: amountCents,
     currency: "usd",
-    ...(payDeposit ? { setupFutureUsage: "off_session" as const, paymentMethodTypes: ["card"] } : {}),
+    ...(mode === "deposit" ? { setupFutureUsage: "off_session" as const, paymentMethodTypes: ["card"] } : {}),
+    ...(mode === "balance" ? { paymentMethodTypes: ["card"] } : {}),
   };
 }
 

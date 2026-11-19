@@ -14,12 +14,16 @@
 
 import {
   buildReservationDetail,
+  formatCents,
   type ReservationDetailInput,
   type ReservationDetailView,
 } from "./calendar-detail.js";
 import { formatClock } from "./availability-screen.js";
 import { dueDayLabel } from "./checkout-quote.js";
 import { vesselClockOf, vesselDateOf } from "../config/tenant.js";
+import type { CanonicalPhone } from "../customers/identity.js";
+import { balancePayable } from "./balance-charge.js";
+import { atContactPhone } from "./contact-phone.js";
 
 export type TripPhase = "upcoming" | "completed";
 
@@ -46,6 +50,20 @@ export interface ManageView {
    *  `balanceDueAt` (never recomputed from the setting), "Balance due" once that date has passed,
    *  else "due before your trip" (issue #1252). */
   balanceLabel: string;
+  /** The `Pay balance · $552.94` button while the booking can take a balance payment
+   *  (`balancePayable`), else null — so a balance the job already collected shows no button (issue
+   *  #1254). The form's `Pay $552.94` reads `amountCents`. */
+  payBalance: { label: string; amountCents: number } | null;
+}
+
+/** The manage page's refusal line for a balance press it cannot take (issue #1254): a balance that is
+ *  already paid says so; a cancelled, unpriced or disputed booking sends the customer to the phone. */
+export function balanceRefusalMessage(
+  reason: "not_active" | "no_balance" | "disputed",
+  contactPhone: CanonicalPhone | null,
+): string {
+  if (reason === "no_balance") return "Your balance is already paid.";
+  return `This booking can’t take a payment right now — call us${atContactPhone(contactPhone)}.`;
 }
 
 /** "HH:MM" → minutes since midnight, or null on a malformed clock. */
@@ -117,7 +135,16 @@ export function buildManageView(input: ManageViewInput): ManageView {
     paidInFull:
       detail.money.priceKnown && detail.money.paidCents > 0 && detail.money.balanceCents <= 0,
     balanceLabel: balanceLabelOf(input.reservation.balanceDueAt, input.now),
+    payBalance: payBalanceOf(input),
   };
+}
+
+/** The `Pay balance` button, from the one rule of whether a balance can be paid. */
+function payBalanceOf(input: ManageViewInput): ManageView["payBalance"] {
+  const payable = balancePayable(input.reservation, input.payments);
+  return payable.ok
+    ? { label: `Pay balance · ${formatCents(payable.owedCents)}`, amountCents: payable.owedCents }
+    : null;
 }
 
 /** The balance row's label. A due date still ahead names the day the card is charged; one that has

@@ -106,6 +106,8 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   },
   // Reminders (Phase 18.7): the send record's one reference is an inline foreign key.
   waiver_reminders: { kind: "fk", refs: ["reservation_id"] },
+  // The scheduled balance charge (issue #1254): the attempt record's one reference is an inline foreign key.
+  balance_charge_attempts: { kind: "fk", refs: ["reservation_id"] },
   recovery_throttle: {
     kind: "exempt",
     reason:

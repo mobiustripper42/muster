@@ -172,7 +172,7 @@ export function CheckoutForm(props: CheckoutFormProps) {
       key={payDeposit ? "deposit" : "full"}
       // DEFERRED mode: no PaymentIntent at mount. The initial amount is fine to freeze here — tip
       // changes go through elements.update({ amount }) in the bridge.
-      options={elementsOptions(dueNowCents, payDeposit)}
+      options={elementsOptions(dueNowCents, payDeposit ? "deposit" : "full")}
     >
       <StripeBridge amountCents={dueNowCents}>{inner}</StripeBridge>
     </Elements>

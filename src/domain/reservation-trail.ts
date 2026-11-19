@@ -79,9 +79,6 @@ export const EMITTED_TRAIL_TYPES = [
   /** Money with no booking to hang it on — keyed by `paymentIntentId`, not by a
    *  reservation. Three shapes in `booking-webhook.ts`; see issue #1051. */
   "charge_unmatched",
-  /** A live, ungated operator money action. The customer's side of the balance
-   *  path is derived from `payments`; this half is not recorded anywhere. */
-  "balance_link_created",
 
   // ── Money out (issue #1050) ─────────────────────────────────────────────────
   /**
@@ -251,7 +248,7 @@ export interface TrailEventMetadata {
   date?: string;
   time?: string;
   guestCount?: number;
-  /** `charge_unmatched` / `balance_link_created`: the provider handle this is about, when it
+  /** `charge_unmatched`: the provider handle this is about, when it
    *  is not a PaymentIntent id. A hosted session id, or a charge key with no intent behind
    *  it — which is precisely the `charge_unmatched` shape that leaves the row keyless. */
   chargeRef?: string;

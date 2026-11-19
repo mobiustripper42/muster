@@ -287,7 +287,7 @@ describe("the payment link's choice reads as the checkout's", () => {
  */
 describe("elementsOptions", () => {
   it("AC9: with the deposit chosen the form saves the card for later and offers cards only", () => {
-    expect(elementsOptions(10000, true)).toEqual({
+    expect(elementsOptions(10000, "deposit")).toEqual({
       mode: "payment",
       amount: 10000,
       currency: "usd",
@@ -297,6 +297,17 @@ describe("elementsOptions", () => {
   });
 
   it("AC15: with pay in full the form saves nothing and keeps the methods it shows today", () => {
-    expect(elementsOptions(65294, false)).toEqual({ mode: "payment", amount: 65294, currency: "usd" });
+    expect(elementsOptions(65294, "full")).toEqual({ mode: "payment", amount: 65294, currency: "usd" });
+  });
+
+  // Issue #1254: the balance form confirms the intent `ensureBalanceIntent` creates — cards only, and
+  // nothing saved, because the card is being charged now and Stripe requires the form to match.
+  it("issue #1254 AC11: the balance form offers cards only and saves nothing", () => {
+    expect(elementsOptions(55294, "balance")).toEqual({
+      mode: "payment",
+      amount: 55294,
+      currency: "usd",
+      paymentMethodTypes: ["card"],
+    });
   });
 });

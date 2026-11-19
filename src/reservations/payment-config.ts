@@ -17,6 +17,7 @@
  */
 
 import { parseWholeNumberSetting } from "../config/whole-number-setting.js";
+import { logSwallowed } from "../log.js";
 import type { BookingInvoice, PaymentStatus, ReservationStatus } from "../domain/entities.js";
 import { chargedFareCents, fareTaxCents } from "./discount.js";
 
@@ -34,6 +35,10 @@ export interface PaymentConfig {
   balanceDueDaysBeforeEvent: number;
   /** How many days before the departure an unpaid balance releases the seats. */
   balanceReleaseDaysBeforeEvent: number;
+  /** Days after the due date a declined balance charge is retried — 3 and 6 by default (issue #1254,
+   *  `docs/SPEC.md §2.8.4d`). Stored as `payment.balance_retry_days`, a comma list, and read through
+   *  `parseBalanceRetryDays` by both adapters. Live: it applies to every attempt not yet made. */
+  balanceRetryDaysAfterDue: readonly number[];
 }
 
 /**
@@ -48,7 +53,36 @@ export const PAYMENT_CONFIG_DEFAULTS: PaymentConfig = {
   serviceFeeBps: 300, // 3% of everything but tax (operator-adjustable), untaxed (DEC-196)
   balanceDueDaysBeforeEvent: 30,
   balanceReleaseDaysBeforeEvent: 21,
+  balanceRetryDaysAfterDue: [3, 6],
 };
+
+/** The `app_settings` key for the balance retry days. */
+export const BALANCE_RETRY_DAYS_KEY = "payment.balance_retry_days";
+
+/**
+ * Parse the stored retry days (issue #1254): a comma list of whole days, each at least 1. Absent ⇒
+ * the default, silently. Each entry is trimmed; the result is sorted ascending and deduplicated, so
+ * `"6,3"` reads `[3, 6]` and `"3,3"` reads `[3]`. Any bad entry — `"0"`, `"-1"`, `"3.5"`, `"x"`, an
+ * empty entry, or an empty string — ⇒ the whole list falls back to the default **and a log line**,
+ * as `parseWholeNumberSetting` does for the other settings.
+ *
+ * `normalizeCheckInConfig`'s list rule is not reused: it reads an empty list as "off", and this
+ * setting has no "off" — a balance that is never retried is `"1"` with a release date, not a blank.
+ */
+export function parseBalanceRetryDays(raw: string | null | undefined): number[] {
+  if (raw === null || raw === undefined) return [...PAYMENT_CONFIG_DEFAULTS.balanceRetryDaysAfterDue];
+  const entries = raw.split(",");
+  const days = entries.every((e) => /^\s*\d+\s*$/.test(e) && Number(e.trim()) >= 1)
+    ? [...new Set(entries.map((e) => Number(e.trim())))].sort((a, b) => a - b)
+    : null;
+  if (days !== null) return days;
+  logSwallowed(
+    `settings:${BALANCE_RETRY_DAYS_KEY}`,
+    new Error(`${BALANCE_RETRY_DAYS_KEY} is ${JSON.stringify(raw)}, not a comma list of whole days`),
+    "the balance retries read as the default — declined charges are retried on the default days, not the ones the operator set",
+  );
+  return [...PAYMENT_CONFIG_DEFAULTS.balanceRetryDaysAfterDue];
+}
 
 /** The `app_settings` key for the deposit. */
 export const DEPOSIT_CENTS_KEY = "payment.deposit_cents";
@@ -166,7 +200,7 @@ export const tookMoney = (p: { status: PaymentStatus }): boolean =>
  * the way still owes nothing. Each row counts at its gross amount, whatever its refund status
  * (`tookMoney`), and `refundedCents` is not read. This replaces the tip-first netting the
  * balance used since #522, under which a refund past the tip and fee re-opened a balance that
- * `createBalanceCheckout` would then charge. A refund that comes off the balance instead is
+ * the balance charge would then collect. A refund that comes off the balance instead is
  * issue #1222.
  *
  * **The total is read off the booking's frozen invoice (issue #1241)** — `chargedFareCents(invoice)`
@@ -217,8 +251,8 @@ export function balanceOwedCents(
  *
  * **Deliberately a separate function rather than a `status` parameter on `balanceOwedCents`.**
  * The two non-presentation callers already refuse a cancelled reservation before they reach the
- * arithmetic — `createBalanceCheckout` returns `not_active` (`create-balance-checkout.ts`), and
- * the balance webhook early-returns on "cancelled or unpriced" (`booking-webhook.ts`). So folding
+ * arithmetic — `balancePayable` returns `not_active` (`balance-charge.ts`), and
+ * `recordBalancePayment` flags a "cancelled or unpriced" booking (`balance-charge.ts`). So folding
  * the status in there would be dead code, not a fix.
  *
  * The reason to keep them apart is the one that survives that: `balanceOwedCents` answers "what

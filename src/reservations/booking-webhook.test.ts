@@ -609,8 +609,23 @@ describe("processBookingWebhook", () => {
   });
 });
 
-// ── 11.2b — balance payments (purpose="balance") ─────────────────────────────
+// ── 11.2b — balance payments ─────────────────────────────────────────────────
+// Since issue #1254 a balance is paid on the booking's one balance PaymentIntent, and the webhook
+// finds it by our stored id (`balancePaymentIntentId`), not by a hosted session's metadata.
 const RES = asId<"ReservationId">("resv-bal");
+const BAL_PI = "pi_bal";
+
+/** A `payment_intent.succeeded` for the booking's stored balance intent (issue #1254). */
+const balanceSucceeded = (amountReceivedCents = 37500, pi = BAL_PI): string =>
+  JSON.stringify({
+    type: "payment_succeeded",
+    data: {
+      paymentIntentId: pi,
+      amountReceivedCents,
+      currency: "usd",
+      metadata: { reservation_id: "resv-bal", purpose: "balance" },
+    },
+  });
 
 const balanceCompleted = (over: Partial<CheckoutCompleted> = {}): CheckoutCompleted => ({
   sessionId: "cs_bal_1",
@@ -650,16 +665,17 @@ describe("processBookingWebhook — balance (11.2b)", () => {
   it("records a Payment{kind:'balance'} against the existing reservation — no second reservation, no alert", async () => {
     const repo = new InMemoryRepository();
     await seedDepositBooking(repo);
+    await repo.saveBalancePaymentIntentId(RES, BAL_PI);
     const { deps, alert } = makeDeps(repo);
 
-    const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, balanceSucceeded(), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "balance_paid" });
 
     const payments = await repo.listPaymentsForReservation(RES);
     expect(payments.map((p) => p.kind).sort()).toEqual(["balance", "deposit"]);
     const bal = payments.find((p) => p.kind === "balance")!;
     expect(bal).toMatchObject({ amountCents: 37500, taxCents: 0, status: "succeeded" });
-    // did NOT run the booking path (no new reservation off the balance session id)
+    // did NOT run the booking path (no new reservation off the balance intent)
     expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
     expect(alert).not.toHaveBeenCalled();
   });
@@ -667,66 +683,61 @@ describe("processBookingWebhook — balance (11.2b)", () => {
   it("is idempotent — a re-delivered balance session writes one balance payment", async () => {
     const repo = new InMemoryRepository();
     await seedDepositBooking(repo);
+    await repo.saveBalancePaymentIntentId(RES, BAL_PI);
     const { deps } = makeDeps(repo);
-    await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
-    await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, balanceSucceeded(), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, balanceSucceeded(), FAKE_SIGNATURE);
     const balances = (await repo.listPaymentsForReservation(RES)).filter((p) => p.kind === "balance");
     expect(balances).toHaveLength(1);
   });
 
   it("OVERPAY (two balance sessions raced): records the money + loudly flags a manual refund", async () => {
+    // Retargeted to the intent (issue #1254): one balance intent cannot be paid twice, so the
+    // over-collection left is an intent that succeeds for more than is now owed — the fare lowered
+    // after its amount was set. $500 → $470 at 7.25% leaves 34283 owed against the 37500 taken.
     const repo = new InMemoryRepository();
     await seedDepositBooking(repo);
+    await repo.saveBalancePaymentIntentId(RES, BAL_PI);
+    const res = (await repo.getReservation(RES))!;
+    await repo.saveReservation({
+      ...res,
+      invoice: { ...res.invoice!, fareCents: 47000, taxCents: 3408, totalCents: 50408 },
+    });
     const { deps, alert } = makeDeps(repo);
-    // First balance pays the real 37500 → paid in full.
-    await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
-    // A second balance session (different id) also completes → overpay.
-    const r = await processBookingWebhook(
-      deps,
-      JSON.stringify(balanceCompleted({ sessionId: "cs_bal_2" })),
-      FAKE_SIGNATURE,
-    );
+
+    const r = await processBookingWebhook(deps, balanceSucceeded(37500), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "balance_paid" });
+    expect((await repo.listPaymentsForReservation(RES)).filter((p) => p.kind === "balance")).toHaveLength(1);
     expect(alert).toHaveBeenCalledOnce();
     expect(alert.mock.calls[0]![0]).toContain("OVERPAID");
   });
 
   /**
-   * The MISSING and CANCELLED legs are different, and conflating them cost a ledger row.
+   * The CANCELLED and UNPRICED legs record the money and flag it, and conflating them with a
+   * missing row once cost a ledger row.
    *
    * `payments.reservation_id`'s FK requires the reservation ROW to exist — nothing about its
    * status. `cancelled` is a legitimate `ReservationStatus`, so a cancelled-but-present
    * reservation has always satisfied it. #613's first cut reordered the whole three-way guard
    * (missing / cancelled / unpriced) and skipped the write for all three, which silently dropped
-   * the ledger row for money that genuinely moved.
+   * the ledger row for money that genuinely moved. Caught by `@code-review`, which reproduced it
+   * against real Postgres. Hence a case per leg.
    *
-   * It shipped green because the test below is titled for "missing/cancelled" and seeds only
-   * MISSING. Caught by `@code-review`, which reproduced it against real Postgres. Hence a case
-   * per leg now, rather than one test whose title covers a case it never builds.
+   * The MISSING leg went with issue #1254: with no row, nothing marks the intent as a balance, so
+   * it falls to the pending-row path like any unknown intent.
    */
-  it("a balance against a MISSING reservation is not recorded — there is no row to reference", async () => {
-    const repo = new InMemoryRepository(); // no reservation seeded
-    const { deps, alert } = makeDeps(repo);
-    const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
-    expect(r).toEqual({ handled: true, outcome: "balance_paid" });
-    // No payment row — nothing to reference. Admins are paged instead, which is the only
-    // outcome that was ever reachable in production.
-    expect(await repo.listPaymentsForReservation(RES)).toHaveLength(0);
-    expect(alert).toHaveBeenCalledOnce();
-    expect(alert.mock.calls[0]![0]).toContain("RECONCILE");
-  });
-
   it("a balance against a CANCELLED reservation IS recorded, then flagged", async () => {
     // The row exists, so the FK is satisfied and the money must be on the ledger. A payment
     // nobody can reconcile is still a payment; a ledger that quietly omits it is worse than one
     // that shows it flagged.
     const repo = new InMemoryRepository();
     await seedDepositBooking(repo);
+    await repo.saveBalancePaymentIntentId(RES, BAL_PI);
     const res = await repo.getReservation(RES);
     await repo.saveReservation({ ...res!, status: "cancelled" });
     const { deps, alert } = makeDeps(repo);
 
-    const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, balanceSucceeded(), FAKE_SIGNATURE);
 
     expect(r).toEqual({ handled: true, outcome: "balance_paid" });
     const balances = (await repo.listPaymentsForReservation(RES)).filter((p) => p.kind === "balance");
@@ -740,13 +751,14 @@ describe("processBookingWebhook — balance (11.2b)", () => {
     // recorded. Only the price is missing, which makes it unreconcilable, not unrecordable.
     const repo = new InMemoryRepository();
     await seedDepositBooking(repo);
+    await repo.saveBalancePaymentIntentId(RES, BAL_PI);
     const res = await repo.getReservation(RES);
     const ev = await repo.getEvent(res!.eventId!); // seeded booked, so its event is set
     const { price: _dropped, ...unpriced } = ev!;
     await repo.saveEvent(unpriced);
     const { deps, alert } = makeDeps(repo);
 
-    const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, balanceSucceeded(), FAKE_SIGNATURE);
 
     expect(r).toEqual({ handled: true, outcome: "balance_paid" });
     const balances = (await repo.listPaymentsForReservation(RES)).filter((p) => p.kind === "balance");
@@ -799,6 +811,7 @@ describe("processBookingWebhook — balance (11.2b)", () => {
         createdAt: "2026-07-01T00:00:00.000Z",
       });
       await repo.setPaymentConfig({ taxRateBps: 800 }, "2026-07-02T00:00:00.000Z");
+      await repo.saveBalancePaymentIntentId(RES, BAL_PI);
       return repo;
     }
 
@@ -807,7 +820,7 @@ describe("processBookingWebhook — balance (11.2b)", () => {
       const repo = await depositDownAtSevenPointTwoFive();
       const { deps, alert } = makeDeps(repo);
 
-      await processBookingWebhook(deps, JSON.stringify(balanceCompleted({ amountTotalCents: 45215 })), FAKE_SIGNATURE);
+      await processBookingWebhook(deps, balanceSucceeded(45215), FAKE_SIGNATURE);
 
       expect(alert).toHaveBeenCalledOnce();
       expect(alert.mock.calls[0]![0]).toContain("OVERPAID by 200 cents");
@@ -817,7 +830,7 @@ describe("processBookingWebhook — balance (11.2b)", () => {
       const repo = await depositDownAtSevenPointTwoFive();
       const { deps, alert } = makeDeps(repo);
 
-      const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted({ amountTotalCents: 45015 })), FAKE_SIGNATURE);
+      const r = await processBookingWebhook(deps, balanceSucceeded(45015), FAKE_SIGNATURE);
 
       expect(r).toEqual({ handled: true, outcome: "balance_paid" });
       expect(alert).not.toHaveBeenCalled();
@@ -835,6 +848,50 @@ describe("processBookingWebhook — balance (11.2b)", () => {
     expect(r).toEqual({ handled: true, outcome: "ignored" });
     expect(alert).toHaveBeenCalledOnce();
     expect(await repo.listAllReservations()).toHaveLength(0);
+  });
+
+  // Issue #1254: the hosted balance link is gone, so a completed Checkout session that says it is a
+  // balance is money nothing in Muster asked for — flagged like any other unknown purpose, and
+  // never recorded against the booking it names.
+  it("issue #1254 AC13: a checkout.session.completed with purpose balance is flagged as an unknown purpose", async () => {
+    const repo = new InMemoryRepository();
+    await seedDepositBooking(repo);
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
+
+    expect(r).toEqual({ handled: true, outcome: "ignored" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toContain(`unknown purpose="balance"`);
+    expect((await repo.listPaymentsForReservation(RES)).map((p) => p.kind)).toEqual(["deposit"]);
+  });
+
+  // Issue #1254: the balance intent is on the row's `paymentIntentIds` (so a decline's trail row and
+  // a cancel find it), and a redelivered deposit success must not retire it as a sibling.
+  it("issue #1254 AC3: a redelivered deposit success does not cancel the booking's balance intent", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo, { invoice: { ...pendingRow().invoice!, amountDueNowCents: 16125 } });
+    // Real manning, or the confirm forms a shift with no seats and logs it (#582).
+    await repo.saveVessel({
+      id: V,
+      name: "Brew",
+      coiMaxPax: 12,
+      manning: [{ roleTypeId: asId<"RoleTypeId">("role-captain"), count: 1 }],
+    });
+    const pay = new FakePaymentPort();
+    const { deps } = makeDeps(repo, pay);
+    expect(await processBookingWebhook(deps, bookingPi(PI, 16125), FAKE_SIGNATURE)).toEqual({
+      handled: true,
+      outcome: "booked",
+    });
+    await repo.saveBalancePaymentIntentId(PEND, BAL_PI);
+    // Sanity: the balance intent IS on the row, so the deposit's sibling sweep can reach it.
+    expect((await repo.getReservation(PEND))!.paymentIntentIds).toContain(BAL_PI);
+
+    const again = await processBookingWebhook(deps, bookingPi(PI, 16125), FAKE_SIGNATURE);
+
+    expect(again).toEqual({ handled: true, outcome: "already" });
+    expect(pay.cancelled.map((c) => c.paymentIntentId)).not.toContain(BAL_PI);
   });
 });
 

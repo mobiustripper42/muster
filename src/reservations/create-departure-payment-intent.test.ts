@@ -417,7 +417,7 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     // here pages every admin with REFUND MANUALLY on every routine balance payment.
     //
     // Caught by `@code-review`, which also disproved my claim that the balance path was dormant:
-    // `createBalanceLink` is wired to a button on the reservation pane.
+    // the hosted balance link was then a button on the reservation pane (retired in 19.6).
     const repo = await seededRepo();
     const { deps, alert } = makeDeps(repo);
     const r = await processBookingWebhook(deps, piEvent("pi_unknown_1", 49900, {}), FAKE_SIGNATURE);

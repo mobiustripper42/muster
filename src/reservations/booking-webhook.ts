@@ -2,12 +2,13 @@
  * Process a Stripe payment webhook (Phase 11.2, DEC-107; event union 12.5, DEC-134).
  *
  * Two event types drive it (`parseEvent`):
- *  - **`checkout.session.completed`** (hosted Checkout) — dispatches on `metadata.purpose`
- *    (11.2b): `"balance"` → record a `Payment{kind:'balance'}` against the already-claimed
- *    reservation (no re-booking); absent/`"booking"` → the charge→booking spine. Any OTHER
- *    purpose is loudly flagged, never silently booked — including `"gratuity"`, whose branch
- *    went with post-trip tipping in 15.18.
- *  - **`payment_intent.succeeded`** (inline Elements, 12.5) — the SAME booking spine, keyed
+ *  - **`checkout.session.completed`** (hosted Checkout) — dispatches on `metadata.purpose`:
+ *    absent/`"booking"` → the charge→booking spine. Any OTHER purpose is loudly flagged, never
+ *    silently booked — including `"gratuity"`, whose branch went with post-trip tipping in 15.18,
+ *    and `"balance"`, whose hosted link went with issue #1254.
+ *  - **`payment_intent.succeeded`** (inline Elements, 12.5) — a booking's BALANCE intent is
+ *    recorded against the booking (`recordBalancePayment`, found by our stored
+ *    `balancePaymentIntentId`, issue #1254); any other is the SAME booking spine, keyed
  *    on the PaymentIntent id. **The booking charge sends no metadata (15.6)**, so the PENDING ROW
  *    is what tells our payments apart: checkout writes it before calling Stripe, so an intent that
  *    is ours resolves to a row and one that is not resolves to nothing and books nothing. The
@@ -26,7 +27,8 @@
  *  - `unbookable` — no Payment row, and whether a reservation exists depends on the shape.
  *    `not_pending` and `unusable_row` both resolved to a real row; the hosted-session and
  *    flag-off branches never had one. Only the second pair is money Muster cannot place.
- *  - a balance whose reservation is **missing** — no row, and here it genuinely is impossible.
+ *  - a balance whose reservation is **missing** — no row, and here it genuinely is impossible
+ *    (`recordBalancePayment`, `balance-charge.ts`).
  *  - a balance whose reservation is **cancelled or unpriced** — the row EXISTS, so the FK is
  *    satisfied and the payment IS recorded, then flagged. Unreconcilable is not unrecordable.
  *  - an **OVERPAID** balance — recorded, then flagged.
@@ -40,18 +42,18 @@ import { formShifts, type FormResult } from "../builder/form-shifts.js";
 import { confirmBookingFromIntent } from "./confirm-booking.js";
 import { logFormAudit } from "../oracle/audit-log.js";
 import { logSwallowed } from "../log.js";
-import { eventIdOfBooked, isBooked } from "../domain/entities.js";
+import { eventIdOfBooked } from "../domain/entities.js";
 import type { BookingInvoice, Payment, Reservation } from "../domain/entities.js";
 import {
   asId,
   type PaymentId,
   type ReservationId,
 } from "../domain/ids.js";
-import type { CheckoutCompleted, DisputeUpdated, PaymentPort } from "../ports/payment.js";
+import type { DisputeUpdated, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
+import { recordBalancePayment } from "./balance-charge.js";
 import { hasBalance } from "./booking-invoice.js";
 import { flexCarveOutCents } from "./discount.js";
-import { balanceOwedCents } from "./payment-config.js";
 import type { SoldOutContact } from "./sold-out-notice.js";
 import { confirmPendingRow, type ConfirmResult } from "./write-booking.js";
 import { recordTrail } from "./trail.js";
@@ -297,6 +299,13 @@ async function routeVerifiedEvent(
   // both, because Stripe re-delivers events processed elsewhere and a second path that books its
   // own way books the same sale twice. The DEC-134 metadata guard travels with it.
   if (event.type === "payment_succeeded") {
+    // A booking's BALANCE intent is ours by the id we stored (issue #1254), not by Stripe metadata
+    // (§2.8.5), and it must never reach the pending-row confirm: that is a deposit's path.
+    const row = await deps.repo.getReservationByPaymentIntentId(event.data.paymentIntentId);
+    if (row?.balancePaymentIntentId === event.data.paymentIntentId) {
+      await recordBalancePayment(deps, event.data, row.id);
+      return { handled: true, outcome: "balance_paid" };
+    }
     return confirmBookingFromIntent(deps, event.data, { via: "webhook" });
   }
 
@@ -319,7 +328,7 @@ async function routeVerifiedEvent(
   if (event.type === "payment_failed") {
     // One lookup, on a path that did none. A decline against one of our bookings belongs on THAT
     // booking's trail, and the intent id is the only handle either way: an intent that is not
-    // ours (the bare PaymentIntent under a hosted balance session) resolves to nothing and the
+    // ours (a bare PaymentIntent under a hosted Checkout session) resolves to nothing and the
     // row carries the second key alone.
     const row = await deps.repo.getReservationByPaymentIntentId(event.data.paymentIntentId);
     // **Keyed on the STRIPE EVENT, unlike every other derived id in this file, and it has to
@@ -398,10 +407,10 @@ async function routeVerifiedEvent(
     return { handled: false };
   }
   const completed = event.data;
-  // Dispatch on purpose (11.2b). A balance payment records against the existing reservation;
-  // it must NEVER reach the booking path (no eventId → an orphan reservation).
+  // Dispatch on purpose (11.2b). The hosted balance link is gone (issue #1254): a balance is paid on
+  // the booking's one intent, so a completed session that says it is a balance is money nothing in
+  // Muster asked for, and is flagged here like any other unknown purpose.
   const purpose = completed.metadata.purpose;
-  if (purpose === "balance") return recordBalancePayment(deps, completed);
   if (purpose !== undefined && purpose !== "booking") {
     await deps.alertPaidButUnbooked(
       `Stripe checkout with unknown purpose="${purpose}" - session ${completed.sessionId}. ` +
@@ -600,7 +609,9 @@ async function retireSiblingIntents(
   row: Reservation,
   paid: string | undefined,
 ): Promise<void> {
-  const others = (row.paymentIntentIds ?? []).filter((id) => id !== paid);
+  // The balance intent is on the row's ids too (issue #1254), and is not this sale's sibling: it is
+  // the NEXT payment's, so a redelivered deposit success must never cancel it.
+  const others = (row.paymentIntentIds ?? []).filter((id) => id !== paid && id !== row.balancePaymentIntentId);
   for (const id of others) {
     const retired = await deps.payments
       .cancelPaymentIntent(id, "duplicate")
@@ -1452,81 +1463,4 @@ async function recordDispute(
             `${dispute.state === "lost" ? ". This is final." : ". RESPOND IN STRIPE."}`,
   );
   return { handled: true, outcome: "dispute_recorded" };
-}
-
-/**
- * Record an on-demand BALANCE payment (11.2b) against an already-claimed reservation. No
- * booking write (the boat was won at deposit, DEC-109), no confirmation emit. The Payment
- * id is deterministic from the balance session id, so a re-delivery is idempotent.
- *
- * Overpay guard: a two-session race (two balance checkouts, both paid) over-collects. The
- * append log must reflect the money that moved, so we record then — if the derived balance
- * has gone NEGATIVE — loudly flag the excess for a MANUAL refund (DEC-107 posture).
- */
-async function recordBalancePayment(
-  deps: WebhookDeps,
-  completed: CheckoutCompleted,
-): Promise<WebhookResult> {
-  const reservationId = asId<"ReservationId">(completed.metadata.reservationId ?? "");
-  const payment: Payment = {
-    id: asId<"PaymentId">(`pay_${completed.sessionId}`),
-    reservationId,
-    method: "stripe",
-    kind: "balance",
-    amountCents: completed.amountTotalCents,
-    taxCents: 0, // the balance carries no tax — it was collected in full with the deposit
-    currency: completed.currency,
-    stripeCheckoutSessionId: completed.sessionId,
-    ...(completed.paymentIntentId ? { stripePaymentIntentId: completed.paymentIntentId } : {}),
-    status: "succeeded",
-    createdAt: deps.now(),
-  };
-  // **Only the MISSING case may skip the write (#613, review).** The first cut of this fix
-  // reordered the whole three-way guard — missing / cancelled / unpriced — and that was wrong:
-  // the FK requires the reservation ROW to exist, nothing more. `cancelled` is a legitimate
-  // `ReservationStatus`, so a cancelled-but-present reservation has always satisfied it and the
-  // pre-#613 code recorded that payment successfully before alerting. Reordering all three legs
-  // silently dropped the ledger row for money that had genuinely moved — the exact defect class
-  // this issue exists to remove, reintroduced one branch over.
-  const reservation = await deps.repo.getReservation(reservationId);
-  if (!reservation) {
-    // No row to reference. Recording is impossible, not merely undesirable — the insert would
-    // violate the FK, throw, and take this alert with it, which is the original #613 failure.
-    await deps.alertPaidButUnbooked(
-      `Balance payment could NOT be recorded - reservation ${reservationId} does not exist. ` +
-        `Stripe session ${completed.sessionId}. RECONCILE / REFUND MANUALLY in Stripe.`,
-    );
-    return { handled: true, outcome: "balance_paid" };
-  }
-
-  // The reservation exists, so the FK is satisfied whatever its status: record the money that
-  // moved, THEN reconcile. An unreconcilable payment is still a payment, and a ledger that
-  // quietly omits it is worse than one that shows it flagged.
-  await deps.repo.savePayment(payment);
-
-  // A pending row has no event (§2.8.2); the payment is already recorded above and must not
-  // be lost to a throw, so it falls through to the same alert as an unpriced or cancelled one.
-  const event = reservation.eventId === null ? undefined : await deps.repo.getEvent(reservation.eventId);
-  const invoice = reservation.invoice;
-  if (!isBooked(reservation) || event?.price === undefined || !invoice) {
-    await deps.alertPaidButUnbooked(
-      `Balance payment recorded for reservation ${reservationId}, but it is cancelled or ` +
-        `unpriced - Stripe session ${completed.sessionId}. RECONCILE / REFUND MANUALLY in Stripe.`,
-    );
-    return { handled: true, outcome: "balance_paid" };
-  }
-
-  // Overpay guard: a two-session race over-collects. The append log reflects the money that
-  // moved; if the derived balance has gone NEGATIVE, flag the excess for a manual refund.
-  const payments = await deps.repo.listPaymentsForReservation(reservationId);
-  // Worked off the invoice frozen at booking (issue #1241): today's tax-rate setting would trip a
-  // false overpay alert on an exact payment, or mask a real one, after a rate change.
-  const owed = balanceOwedCents(invoice, payments);
-  if (owed < 0) {
-    await deps.alertPaidButUnbooked(
-      `Reservation ${reservationId} OVERPAID by ${-owed} cents - a balance was likely paid ` +
-        `twice (two checkout sessions raced). REFUND the excess MANUALLY in Stripe.`,
-    );
-  }
-  return { handled: true, outcome: "balance_paid" };
 }

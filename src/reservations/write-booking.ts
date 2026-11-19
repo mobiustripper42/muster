@@ -78,6 +78,10 @@ export async function confirmPendingRow(
 ): Promise<ConfirmResult> {
   const row = await repo.getReservationByPaymentIntentId(paymentIntentId);
   if (!row) return { outcome: "unconfirmable", reason: "no_row" };
+  // A booking's balance intent is on its row too (issue #1254), and is not a deposit to confirm: the
+  // success page's `?payment_intent=` could otherwise write a booking payment for it. Not ours to
+  // book, so it reads as no row.
+  if (row.balancePaymentIntentId === paymentIntentId) return { outcome: "unconfirmable", reason: "no_row" };
   // Already flipped — a redelivered webhook, or the success page after the webhook. The intent
   // id on the booked row is the idempotency key now that the reservation id is not derived.
   if (row.status === "booked") return { outcome: "already", reservation: row };

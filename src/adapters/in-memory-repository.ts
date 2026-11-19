@@ -965,14 +965,31 @@ export class InMemoryRepository implements Repository {
       .sort((a, b) => Date.parse(a.balanceDueAt!) - Date.parse(b.balanceDueAt!) || a.id.localeCompare(b.id))
       .map(clone);
   }
-  async claimBalanceAttempt(input: { reservationId: ReservationId; attempt: number; at: string }): Promise<boolean> {
+  async claimBalanceAttempt(input: {
+    reservationId: ReservationId;
+    attempt: number;
+    at: string;
+    staleBefore?: string;
+  }): Promise<boolean> {
     // The attempt table's foreign key lives only in Postgres (parity audit S3-13), so this double
     // refuses a booking that does not exist itself.
     if (!this.#reservations.has(input.reservationId)) {
       throw new Error(`claimBalanceAttempt: reservation ${input.reservationId} does not exist`);
     }
     const key = this.#balanceAttemptKey(input.reservationId, input.attempt);
-    if (this.#balanceAttempts.has(key)) return false;
+    const existing = this.#balanceAttempts.get(key);
+    if (existing) {
+      // DEC-202: an unfinished claim strictly older than `staleBefore` is taken over, its clock reset.
+      if (
+        input.staleBefore === undefined ||
+        existing.outcome !== undefined ||
+        !(Date.parse(existing.attemptedAt) < Date.parse(input.staleBefore))
+      ) {
+        return false;
+      }
+      this.#balanceAttempts.set(key, { ...existing, attemptedAt: input.at });
+      return true;
+    }
     this.#balanceAttempts.set(key, {
       reservationId: input.reservationId,
       attempt: input.attempt,

@@ -34,6 +34,12 @@ import { runWaiverReminders } from "../../../lib/waiver-reminders";
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/**
+ * The longest a tick may run, in seconds (DEC-202). The balance job reclaims an attempt claimed more
+ * than an hour ago on the strength of this: no run lives that long, so an old unfinished claim has no
+ * live owner. Keep it well under `RECLAIM_AFTER_MS` in `src/reservations/balance-charge.ts`.
+ */
+export const maxDuration = 300;
 
 export async function GET(req: Request) {
   // Vercel sends `Authorization: Bearer <CRON_SECRET>` on cron invocations; a

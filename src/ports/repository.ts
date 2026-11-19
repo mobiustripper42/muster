@@ -472,8 +472,17 @@ export interface Repository {
    *  `balanceDueAt` then `id`. */
   listBalancesDue(now: string): Promise<Reservation[]>;
   /** Claim one attempt before charging it; true only for the caller whose insert landed.
-   *  Throws for a reservation that does not exist. */
-  claimBalanceAttempt(input: { reservationId: ReservationId; attempt: number; at: string }): Promise<boolean>;
+   *  Throws for a reservation that does not exist.
+   *
+   *  With `staleBefore` (DEC-202), an unfinished claim (no outcome) whose `attemptedAt` is strictly
+   *  before it is taken over: its `attemptedAt` is reset to `at` and exactly one caller gets true.
+   *  Absent, a claimed attempt is never reclaimed. A finished claim is never reclaimed. */
+  claimBalanceAttempt(input: {
+    reservationId: ReservationId;
+    attempt: number;
+    at: string;
+    staleBefore?: string;
+  }): Promise<boolean>;
   /** Record a claimed attempt's outcome. */
   finishBalanceAttempt(input: {
     reservationId: ReservationId;

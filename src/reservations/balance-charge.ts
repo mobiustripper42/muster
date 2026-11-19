@@ -31,6 +31,13 @@ type Refusal = "not_active" | "no_balance" | "disputed";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * How old an unfinished claim must be before a later run takes it over (DEC-202). It sits above the
+ * tick route's pinned `maxDuration` (`app/api/cron/tick/route.ts`), so a claim this old has no live
+ * owner. Raising that duration to this age breaks the reasoning.
+ */
+const RECLAIM_AFTER_MS = 60 * 60 * 1000;
+
+/**
  * When the balance is tried: attempt 0 at `dueAt`, then each retry day after it, every time on or
  * after `releaseAt` dropped. An attempt's number is its position in this list, so the due date is 0.
  *
@@ -185,11 +192,23 @@ async function chargeOne(
   });
   if (attempt < 0) return;
 
-  // No later attempt once the bank has asked the customer to approve; none already made.
+  // No later attempt once the bank has asked the customer to approve; none already made. The current
+  // attempt's own unfinished row is not "made": it goes on to the claim, which reclaims it only when
+  // it is older than the reclaim age (DEC-202).
   const made = await deps.repo.listBalanceAttempts(reservation.id);
-  if (made.some((a) => a.outcome === "needs_approval" || a.attempt >= attempt)) return;
+  if (
+    made.some(
+      (a) =>
+        a.outcome === "needs_approval" ||
+        a.attempt > attempt ||
+        (a.attempt === attempt && a.outcome !== undefined),
+    )
+  ) {
+    return;
+  }
 
-  if (!(await deps.repo.claimBalanceAttempt({ reservationId: reservation.id, attempt, at: now }))) return;
+  const staleBefore = new Date(Date.parse(now) - RECLAIM_AFTER_MS).toISOString();
+  if (!(await deps.repo.claimBalanceAttempt({ reservationId: reservation.id, attempt, at: now, staleBefore }))) return;
   try {
     // A previous run's charge that went through but was not recorded: record it, charge nothing. Not
     // counted as `charged` — this run charged nothing.

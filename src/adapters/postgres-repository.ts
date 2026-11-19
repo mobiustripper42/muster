@@ -1985,16 +1985,29 @@ export class PostgresRepository implements Repository {
     );
     return rows.map(toReservation);
   }
-  async claimBalanceAttempt(input: { reservationId: ReservationId; attempt: number; at: string }): Promise<boolean> {
+  async claimBalanceAttempt(input: {
+    reservationId: ReservationId;
+    attempt: number;
+    at: string;
+    staleBefore?: string;
+  }): Promise<boolean> {
     // The claim is the primary key: of two ticks inserting the same attempt, one gets the row and
     // `returning` tells it so; the other gets nothing and must not charge. A reservation that does
     // not exist violates the foreign key and throws.
+    //
+    // DEC-202: with `staleBefore`, a conflicting row that is unfinished and claimed strictly before it
+    // is taken over by the same statement — the update resets `attempted_at`, so of two reclaimers the
+    // second re-evaluates the `where` against the reset row and gets nothing. A null `staleBefore`
+    // compares to null, so the `where` never holds and a claimed attempt stays claimed.
     const { rowCount } = await this.#pool.query(
       `insert into balance_charge_attempts (reservation_id, attempt, attempted_at)
        values ($1,$2,$3)
-       on conflict do nothing
+       on conflict (reservation_id, attempt) do update
+         set attempted_at = excluded.attempted_at
+         where balance_charge_attempts.outcome is null
+           and balance_charge_attempts.attempted_at::timestamptz < $4::timestamptz
        returning reservation_id`,
-      [input.reservationId, input.attempt, input.at],
+      [input.reservationId, input.attempt, input.at, input.staleBefore ?? null],
     );
     return (rowCount ?? 0) > 0;
   }

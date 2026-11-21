@@ -71,7 +71,7 @@ Lower value, still open:
 
 ## Ledger
 
-Statuses are `open` unless a row says otherwise. IDs are each report's own; refer across audits as "money F5" or "crewing S2-7".
+Statuses are `open` unless a row says otherwise. A "same finding as" or "overlaps" note on an untriaged row is an import-time lead, not a verdict: triage confirms it, sets one row to `duplicate of …`, and buckets the pair once, at the higher of the two severities. IDs are each report's own; refer across audits as "money F5" or "crewing S2-7".
 
 **When** is the deadline a finding has to be fixed by, set when it is triaged: `Feb 1` (before the Reservations release), `May 1` (before guests and crew are on the water), `after release`, or `—` (not triaged, or nothing left to fix). It stays when the finding is filed, so a phase plan can pick up every `Feb 1` row that is not `fixed`. The crewing and payroll tables are `after release` as a block until issue #1230 triages them (operator, 2026-11-07).
 
@@ -418,11 +418,11 @@ Refer to these as "operator OR-1". The report cites money and capability-URL fin
 | OR-16 | S3 | Nothing serialises a block against a claim; a block saved mid-claim and the booking both succeed | — | open |
 | OR-17 | S3 | A Hold stops only its exact departure time; another offering's overlapping trip on the same boat still sells | — | open |
 | OR-18 | S3 | Block counts count one boat-departure once per offering, so "Departures blocked" and the Blocked chip over-count | — | open |
-| OR-19 | S3 | The calendar's "All" chip counts departed slots, which the spec says should be counted nowhere | — | open |
+| OR-19 | S3 | The calendar's "All" chip counts departed slots, which the spec says should be counted nowhere | — | open — same finding as plan S4-29 |
 | OR-20 | S3 | The block conflict badge is plain text, sums the fare rather than what was paid, and its comment is stale | — | open |
 | OR-21 | S3 | The operator can cancel a paid trip after it has sailed, refunding it and texting the customer | — | open |
 | OR-22 | S3 | When the customer pays mid-cancel, the operator is told "Try again in a moment" instead of that the customer just paid | — | open |
-| OR-23 | S3 | "The boat is free again and the crew have been told" prints whether or not either happened | — | open — overlaps silent S2-6 |
+| OR-23 | S3 | "The boat is free again and the crew have been told" prints whether or not either happened | — | open — same finding as silent S2-6 |
 | OR-24 | S3 | A comp that failed to confirm says "Reload in a moment" but nothing retries it; the only way out is cancel and rebook | — | open |
 | OR-25 | S3 | The pane's "Payment link sent" note says nothing about an email that never went when no email channel is configured | — | open |
 | OR-26 | S4 | A paid booking's cancel leaves an open balance-link Checkout session payable (live only with deposits on) | — | open |
@@ -450,12 +450,12 @@ Refer to these as "paired PS-1". The report cites findings already in this ledge
 | PS-9 | S3 | Stripe refunds, then a local write throws, and the result is reported as "nothing moved" | — | open — overlaps silent S2-1 |
 | PS-10 | S3 | A comp's $0 `pending` row is written, then the confirm fails before the flip, leaving a stuck row | — | open |
 | PS-11 | S3 | Sweeping a silent ask can charge the −3 twice | — | open |
-| PS-12 | S3 | A "Yes" is stamped `accepted` before the seat claim, so a failed claim uses up the answer | — | open |
-| PS-13 | S3 | A bail logs the penalty and leaves the person on the seat | — | open |
+| PS-12 | S3 | A "Yes" is stamped `accepted` before the seat claim, so a failed claim uses up the answer | — | open — same finding as silent S2-16 |
+| PS-13 | S3 | A bail logs the penalty and leaves the person on the seat | — | open — same finding as silent S2-18 |
 | PS-14 | S3 | An At-Risk alert is marked sent before the SMS goes out | — | open — overlaps silent S3-1 |
-| PS-15 | S3 | A re-form uses up crew transitions before anyone is told | — | open |
+| PS-15 | S3 | A re-form uses up crew transitions before anyone is told | — | open — same finding as silent S2-15 |
 | PS-16 | S3 | A self-claim succeeds while telling the crew member it failed | — | open |
-| PS-17 | S3 | A remove or bail that fails at the refresh reports `raced`, and nobody is told | — | open |
+| PS-17 | S3 | A remove or bail that fails at the refresh reports `raced`, and nobody is told | — | open — same finding as silent S2-13 |
 | PS-18 | S3 | A waiver-reminder window is claimed before the sends, so a crash leaves nobody reminded | — | open |
 | PS-19 | S3 | A crew DM is started with three writes and no transaction | — | open |
 | PS-20 | S3 | Rotating a calendar feed saves the new token, then hands it over in a cookie that can be lost | — | open |
@@ -467,7 +467,7 @@ Refer to these as "paired PS-1". The report cites findings already in this ledge
 | PS-26 | S4 | The in-memory `bookPendingIfHullFree` writes the Event before the refusal check, unlike Postgres, so tests can pass on unreachable state | — | open — same finding as db S3-1 |
 | PS-27 | S4 | `setPaymentConfig` and `setCheckInConfig` upsert one key at a time with no transaction | — | open |
 | PS-28 | S4 | `void repo.touchCalendarFeedPoll(...)` may never run on serverless; `after()` would guarantee it | — | open |
-| PS-29 | S4 | A sign-in code is stored, then the email send fails silently, blocking a re-request for 60 seconds | — | open |
+| PS-29 | S4 | A sign-in code is stored, then the email send fails silently, blocking a re-request for 60 seconds | — | open — overlaps silent S3-19 |
 | PS-30 | S4 | The login code is consumed before the session cookie is set, so a cookie failure spends the code | — | open |
 | PS-31 | S4 | An escalation nudge is sent, then `nudged` is logged; a lost log defeats the one-nudge cap | — | open |
 | PS-32 | S4 | A `catch { rollback; throw }` whose rollback throws masks the original error | — | open |

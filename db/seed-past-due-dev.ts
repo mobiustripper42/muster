@@ -20,9 +20,10 @@
  *   npm run db:seed:reservation && npm run db:seed:past-due
  *   npm run db:seed:past-due -- --force   # bypass the local-DB guard
  *
- * For a balance due today instead, `npm run db:balance-due -- <booking code>`. Re-running is safe: a
- * slot already held refuses as `busy`, which is printed and skipped, so no second attempt row is
- * written.
+ * For a balance due today instead, `npm run db:balance-due -- <booking code>`. Re-running the same day
+ * is safe: a slot already held refuses as `busy`, which is printed and skipped, so no second attempt
+ * row is written. The slot moves with the clock, so a re-run on a later day books a second one —
+ * reseed `db:seed:reservation` first.
  */
 import { existsSync } from "node:fs";
 import { FakePaymentPort } from "../src/adapters/fake-payment.js";

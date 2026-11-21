@@ -364,8 +364,10 @@ export default async function AdminPurchases({
                       </div>
                     </td>
                     <td className="px-3 py-2 text-xs text-muted">
-                      {r.date ? formatShortDay(r.date) : <span className="text-muted">—</span>}
-                      {r.time && <span className="ml-1.5">{r.time}</span>}
+                      <span className="whitespace-nowrap">
+                        {r.date ? formatShortDay(r.date) : <span className="text-muted">—</span>}
+                        {r.time && <span className="ml-1.5">{r.time}</span>}
+                      </span>
                       <div className="text-[11px] text-muted">
                         {r.vesselName ? `${r.vesselName} · ` : ""}
                         {r.guestCount} guest{r.guestCount === 1 ? "" : "s"}

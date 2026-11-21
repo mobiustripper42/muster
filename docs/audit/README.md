@@ -21,7 +21,7 @@ The reports are snapshots. Each one describes the code at the commit it audited 
 
 Counts are per finding, as the ledger lists them. The capability-URL report's own summary counts 1 / 4 / 12 / 5. Pull request #1220 holds the same capability-URL report, opened by mistake — close it unmerged.
 
-Earlier audits in this folder keep their own status and are not in the ledger: `docs/audit/2026-07-25/README.md` (doc consistency, sharded), `docs/audit/2026-08-07-cutover-phase-a.md` (cutover phase A), `docs/audit/2026-08-29-spec-2.8-conformance.md` (§2.8 and §2.10 conformance, with its own citation ratchet, `npm run check:audit`).
+Earlier audits in this folder keep their own status and are not in the ledger: `docs/audit/2026-07-25/README.md` (doc consistency, sharded) and `docs/audit/2026-08-07-cutover-phase-a.md` (cutover phase A). The §2.8 conformance audit, `docs/audit/2026-08-29-spec-2.8-conformance.md`, keeps its own citation ratchet (`npm run check:audit`), but what it left open is in the ledger since issue #1230.
 
 ## To do
 
@@ -74,6 +74,8 @@ Lower value, still open:
 Statuses are `open` unless a row says otherwise. A "same finding as" or "overlaps" note on an untriaged row is an import-time lead, not a verdict: triage confirms it, sets one row to `duplicate of …`, and buckets the pair once, at the higher of the two severities. IDs are each report's own; refer across audits as "money F5" or "crewing S2-7".
 
 **When** is the deadline a finding has to be fixed by, set when it is triaged: `Feb 1` (before the Reservations release), `May 1` (before guests and crew are on the water), `after release`, or `—` (not triaged, or nothing left to fix). It stays when the finding is filed, so a phase plan can pick up every `Feb 1` row that is not `fixed`. The crewing and payroll tables are `after release` as a block until issue #1230 triages them (operator, 2026-11-07).
+
+**The triage rule (issue #1230, operator, 2026-11-20):** `Feb 1` is anything on the reservations side that can lose money — money taken with no booking, a refund missed or wrong, a wrong charge or tax. `May 1` is anything guests or crew hit on the water, crew pay included. `after release` is the rest.
 
 ### Money — `docs/audit/2026-11-02-money-spec-2.8.md`
 
@@ -474,3 +476,21 @@ Refer to these as "paired PS-1". The report cites findings already in this ledge
 | PS-33 | S4 | When a hold is released, the trail row is its only record, and a lost trail write loses it | — | open |
 | PS-34 | S4 | The recovery trail row says `sent` whatever the channels did, because the send result is discarded | — | open — overlaps silent S3-16 |
 | PS-35 | S4 | The fake `refund` dedupes on the key alone, so a same-key, different-amount refund Stripe would reject passes in tests | — | open |
+
+### §2.8 conformance — `docs/audit/2026-08-29-spec-2.8-conformance.md`
+
+Refer to these as "conformance C15". IDs are the report's criterion numbers. The report has no severities, so these were set when the rows were added; a duplicate takes its other row's.
+
+Added by issue #1230, after re-checking each of the 14 criteria short of `BUILT`, and defect #825, against `main` at `6182e1c`. These were closed by then and have no row: criteria 1, 2, 6, 9, 11, 22, 23, defect #825, and 24 (task 14.3). Criterion 20's trip-time half is closed too; what it has left is C20 below. Criteria 3, 8, 10, 13, 14, 16, 17, 18 and 21 were `BUILT` in the report.
+
+| ID | Sev | Finding | When | Status |
+|---|---|---|---|---|
+| C4 | S1 | A booked rival still blocks its hull by trip time (`src/reservations/write-booking.ts:140`, `src/reservations/hull-busy.ts:93`); pending rivals are measured by hold minutes now | Feb 1 | duplicate of money F1 |
+| C5 | S4 | `docs/SPEC.md:1633` says the step-3 refusals run holding the hull lock; the grid, season, departed and cutoff checks run before it (`src/reservations/claim.ts:316-354`) | — | open — check whether the block and closure checks are inside the lock; if they are, this is spec wording |
+| C7 | S4 | No test asserts that an abandoned checkout sends nothing; the Event, customer and booking-code halves are tested | — | open — test gap |
+| C12 | S1 | A superseded payment that succeeds late resolves to its row and is never refunded | Feb 1 | duplicate of money F2 |
+| C15 | S1 | The reconciler is not built | Feb 1 | duplicate of money F3 |
+| C19 | S4 | A succeeded payment that matches no row (`no_row`) sends no alert (`src/reservations/booking-webhook.ts:812-827`) | Feb 1 | duplicate of money F20 |
+| C19b | S4 | No test reads the amount out of an unmatched-charge alert | — | open — test gap |
+| C19e | S4 | No test calls `alertMoneyProblem` with text messaging unconfigured | — | open — test gap |
+| C20 | S4 | No test edits the schedule mid-checkout, and the hold-minutes test asserts the row's value, not what it occupies | — | open — test gap |

@@ -128,10 +128,11 @@ function HiddenFields({ params }: { params: URLSearchParams }) {
 
 /** The Owed column: the amount over when it is due, or over `past due` in the bad tone. The amount
  *  alone when the booking has no due date (an unpaid row); blank when nothing is owed. */
-function OwedCell({ owed }: { owed: PurchaseOwed }) {
+function OwedCell({ owed, labelled = false }: { owed: PurchaseOwed; labelled?: boolean }) {
   return (
     <>
-      {formatCents(owed.cents)}
+      {/* `labelled` is the phone-width copy under Total, where no column header names the figure. */}
+      {labelled ? `owed ${formatCents(owed.cents)}` : formatCents(owed.cents)}
       {owed.dueAt &&
         (owed.pastDue ? (
           <div className="text-[11px] font-normal text-bad">
@@ -332,8 +333,10 @@ export default async function AdminPurchases({
                   <th className="px-3 py-2 font-semibold">Customer</th>
                   <th className="px-3 py-2 font-semibold">Trip</th>
                   <th className="px-3 py-2 text-right font-semibold">Total</th>
-                  <th className="px-3 py-2 text-right font-semibold">Owed</th>
-                  <th className="px-3 py-2 font-semibold">Payment</th>
+                  {/* Below `sm`, Owed rides under Total and the badge in the Customer cell: five
+                      columns ran past a 375px screen with nothing to say the table scrolls. */}
+                  <th className="hidden px-3 py-2 text-right font-semibold sm:table-cell">Owed</th>
+                  <th className="hidden px-3 py-2 font-semibold sm:table-cell">Payment</th>
                 </tr>
               </thead>
               {groups.map((g) => (
@@ -362,6 +365,11 @@ export default async function AdminPurchases({
                       <div className="text-[11px] text-muted">
                         {displayContact(r.phone, r.email)}
                       </div>
+                      {/* The phone-width copy of the Payment column's badge. No test id: the
+                          column's badge carries it, so a count of badges is one per row. */}
+                      <div className="mt-1 sm:hidden">
+                        <Badge tone={BADGE[r.state]}>{BADGE_TEXT[r.state] ?? r.state}</Badge>
+                      </div>
                     </td>
                     <td className="px-3 py-2 text-xs text-muted">
                       <span className="whitespace-nowrap">
@@ -379,11 +387,20 @@ export default async function AdminPurchases({
                       ) : (
                         <span className="text-muted">—</span>
                       )}
+                      {/* The phone-width copy of the Owed column. No test id, as the badge copy. */}
+                      {r.owed && (
+                        <div className="mt-1 text-[11px] sm:hidden">
+                          <OwedCell owed={r.owed} labelled />
+                        </div>
+                      )}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono" data-testid={`owed-${r.reservationId}`}>
+                    <td
+                      className="hidden px-3 py-2 text-right font-mono sm:table-cell"
+                      data-testid={`owed-${r.reservationId}`}
+                    >
                       {r.owed && <OwedCell owed={r.owed} />}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="hidden px-3 py-2 sm:table-cell">
                       <Badge data-testid={`row-state-${r.reservationId}`} tone={BADGE[r.state]}>
                         {BADGE_TEXT[r.state] ?? r.state}
                       </Badge>

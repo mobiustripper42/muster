@@ -588,6 +588,7 @@ describe("a refund never raises the balance (issue #841)", () => {
       reservations: [reservation({ invoice: PAID_IN_FULL })],
       eventsById: new Map([[String(EVENT), musterEvent({ price: FARE })]]),
       paymentsByReservation: new Map([[String(RES), [refunded200()]]]),
+      now: "2026-06-01T12:00:00.000Z",
     });
     expect(row!.balanceCents).toBe(0);
     expect(row!.state).toBe("refunded");

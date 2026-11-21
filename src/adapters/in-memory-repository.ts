@@ -1021,6 +1021,15 @@ export class InMemoryRepository implements Repository {
       .sort((a, b) => a.attempt - b.attempt)
       .map(clone);
   }
+  async listAllBalanceAttempts(): Promise<BalanceChargeAttempt[]> {
+    return [...this.#balanceAttempts.values()]
+      .sort((a, b) =>
+        a.reservationId === b.reservationId
+          ? a.attempt - b.attempt
+          : String(a.reservationId).localeCompare(String(b.reservationId)),
+      )
+      .map(clone);
+  }
   async saveBalancePaymentIntentId(reservationId: ReservationId, intentId: string): Promise<void> {
     const row = this.#reservations.get(reservationId);
     if (!row) return;

@@ -6,11 +6,6 @@
 /** View ↔ Edit mode (DEC-083). */
 export type Mode = "view" | "edit";
 
-/** The resolved date-window kind — drives the active filter chip + scope label. */
-export type Scope =
-  | "today"
-  | "next7"
-  | "weekend"
-  | "next8to15"
-  | "days30"
-  | "range";
+/** The resolved date-window kind — drives the active filter chip + scope label. One home,
+ *  `src/admin/date-window.ts` (issue #1142); `past` and `all` are Purchases-only. */
+export type { Scope } from "@core/admin/date-window.js";

@@ -2075,10 +2075,11 @@ to say they are sorting it out. A stopped booking is never released by Muster; i
 past-due list, marked stopped, until an admin cancels it or the balance is paid. Stopping it does not
 stop the retries already scheduled.
 
-**The past-due list.** The admin purchases list gains the past-due balances: what is owed, the due
-date, the last failure and its reason, and the release date or `Auto-cancel stopped`. §2.10.6's
-**Awaiting payment** was named so that deposit balances could join it. The screen — its filter, its
-order and its wording — is specced in its own task, not here.
+**The past-due list.** The admin purchases list gains every balance due, past-due ones flagged: an
+**Owed** column with what is owed, the due date, and for a past-due balance the last failure and its
+reason, and a **Balance due** chip that selects them across the whole set, not the date window. The
+release date and `Auto-cancel stopped` are not on it: the automatic release is deferred, so the
+column goes with it. §2.10.6's **Awaiting payment** was named so that deposit balances could join it.
 
 **Cancelling a booking that has a deposit.** 2.8.4c applies unchanged; "everything paid" is what has
 been paid. An uninsured customer cancelling 14 days or more out with only the deposit paid gets $50

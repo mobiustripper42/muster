@@ -1,13 +1,21 @@
-import type { Event, Payment, Reservation, Vessel } from "@core/domain/entities.js";
+import type { BalanceChargeAttempt, Event, Payment, Reservation, Vessel } from "@core/domain/entities.js";
+import type { TrailEvent } from "@core/domain/reservation-trail.js";
+import { resolveWindow } from "@core/admin/date-window.js";
 import {
+  bookedAtByReservation,
   buildPurchaseRows,
-  filterByState,
   groupPaymentsByReservation,
-  searchPurchases,
-  stateCounts,
+  listPurchases,
+  purchasesHref,
+  purchasesParams,
   type PaymentState,
+  type PurchaseOwed,
+  type StateFilter,
+  type PurchasesSearch,
 } from "@core/reservations/purchases-view.js";
 import { formatCents } from "@core/reservations/calendar-detail.js";
+import { formatShortDay } from "@core/reservations/availability-screen.js";
+import { dueDayLabel } from "@core/reservations/checkout-quote.js";
 import { canonicalizePhone, formatPhoneForDisplay } from "@core/customers/identity.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Badge, type Tone } from "../../../../components/ui/badge";
@@ -15,6 +23,8 @@ import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
+import { WindowChips } from "../../../../components/admin/window-chips";
+import type { Scope } from "../../../../components/admin/shifts-view-types";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
@@ -34,17 +44,28 @@ import { chipLook } from "../../../../components/ui/choice";
  * Muster-side only: Xola owns its own money (DEC-105), so `xola` reservations never appear.
  * Read-only — refund is #472, message is #119. Search and filters are plain GET, so the page
  * stays server-rendered with no client JS.
+ *
+ * **The All Shifts of reservations (issue #1142).** A date window with the same preset chips
+ * (`resolveWindow`, shared with All Shifts), rows grouped under day headings, a second sort by when
+ * it was bought, and an Owed column — the morning check on balances. The composition lives in
+ * `listPurchases`; every href goes through `purchasesHref`, so changing one control keeps the rest.
  */
 
 export const dynamic = "force-dynamic";
 
-type Search = { q?: string; state?: string };
+type Search = PurchasesSearch;
 
-const STATES: { key: PaymentState | "all"; label: string }[] = [
+/** The window chips, in order. `past` and `all` are this page's own. */
+const PRESETS: readonly Scope[] = ["today", "weekend", "next7", "next8to15", "days30", "past", "all"];
+
+const STATES: { key: StateFilter; label: string }[] = [
   { key: "all", label: "All" },
   // Phone bookings holding a boat until the customer pays the link (issue #1082 part C, SPEC
   // §2.10.6). Second, after All: it is the operator's chase list, the one they work daily.
   { key: "awaiting", label: "Awaiting payment" },
+  // Every deposit balance still to be charged, whatever the booking's state and wherever its trip
+  // falls — the morning worklist (issue #1142). Not a payment state: see `listPurchases`.
+  { key: "balance_due", label: "Balance due" },
   { key: "unpaid", label: "Unpaid" },
   { key: "deposit", label: "Deposit" },
   { key: "paid", label: "Paid" },
@@ -94,14 +115,40 @@ function displayContact(phone: string | undefined, email: string | undefined): s
   return email ?? "no contact";
 }
 
-/** "2026-08-12" → "Wed, Aug 12". */
-function formatDay(date: string): string {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+/** A querystring's pairs as hidden inputs — what a GET form carries to keep the other controls. */
+function HiddenFields({ params }: { params: URLSearchParams }) {
+  return (
+    <>
+      {[...params].map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
+    </>
+  );
+}
+
+/** The Owed column: the amount over when it is due, or over `past due` in the bad tone. The amount
+ *  alone when the booking has no due date (an unpaid row); blank when nothing is owed. */
+function OwedCell({ owed }: { owed: PurchaseOwed }) {
+  return (
+    <>
+      {formatCents(owed.cents)}
+      {owed.dueAt &&
+        (owed.pastDue ? (
+          <div className="text-[11px] font-normal text-bad">
+            past due{owed.lastFailure ? ` · ${owed.lastFailure}` : ""}
+          </div>
+        ) : (
+          <div className="text-[11px] font-normal text-muted">due {dueDayLabel(owed.dueAt)}</div>
+        ))}
+    </>
+  );
+}
+
+/** The day heading: `Wednesday, Oct 21 · 4 bookings · $2,611.76 · $552.94 still owed`. */
+function groupHeading(g: { label: string; count: number; totalCents: number; owedCents: number }): string {
+  const parts = [g.label, `${g.count} booking${g.count === 1 ? "" : "s"}`, formatCents(g.totalCents)];
+  if (g.owedCents > 0) parts.push(`${formatCents(g.owedCents)} still owed`);
+  return parts.join(" · ");
 }
 
 export default async function AdminPurchases({
@@ -117,18 +164,24 @@ export default async function AdminPurchases({
   let events: Event[];
   let payments: Payment[];
   let vessels: Vessel[];
+  let attempts: BalanceChargeAttempt[];
+  let trail: TrailEvent[];
   try {
     const repo = getRepo();
-    const [r, e, p, v] = await Promise.all([
+    const [r, e, p, v, a, t] = await Promise.all([
       repo.listAllReservations(),
       repo.listEvents(),
       repo.listAllPayments(),
       repo.listVessels(),
+      repo.listAllBalanceAttempts(),
+      repo.listTrailEvents(),
     ]);
     reservations = r;
     events = e;
     payments = p;
     vessels = v;
+    attempts = a;
+    trail = t;
   } catch (e) {
     logSwallowed("admin/purchases", e, "the order list or payments did not load");
     return (
@@ -139,27 +192,32 @@ export default async function AdminPurchases({
   }
 
   const query = (sp.q ?? "").trim();
-  const state = (STATES.find((s) => s.key === sp.state)?.key ?? "all") as PaymentState | "all";
+  const state = STATES.find((x) => x.key === sp.state)?.key ?? "all";
+  const sort = sp.sort === "purchase" ? "purchase" : "trip";
+  const now = new Date();
+  const window = resolveWindow(sp, now, { allowPast: true, allowAll: true });
 
+  const attemptsByReservation = new Map<string, BalanceChargeAttempt[]>();
+  for (const a of attempts) {
+    const k = String(a.reservationId);
+    (attemptsByReservation.get(k) ?? attemptsByReservation.set(k, []).get(k)!).push(a);
+  }
   const allRows = buildPurchaseRows({
     reservations,
     eventsById: new Map(events.map((e) => [String(e.id), e])),
     paymentsByReservation: groupPaymentsByReservation(payments),
     vesselNameById: new Map(vessels.map((v) => [String(v.id), v.name])),
+    bookedAtByReservation: bookedAtByReservation(trail),
+    attemptsByReservation,
+    now: now.toISOString(),
   });
-  const counts = stateCounts(allRows);
-  const rows = searchPurchases(filterByState(allRows, state), query);
+  const { counts, groups, windowEmpty } = listPurchases(allRows, { q: query, state, window, sort });
 
-  /** Preserve the other axis on every chip (state ↔ query). */
-  const hrefWith = (o: { state?: string; q?: string }): string => {
-    const params = new URLSearchParams();
-    const s = o.state ?? state;
-    const q = o.q ?? query;
-    if (s !== "all") params.set("state", s);
-    if (q) params.set("q", q);
-    const qs = params.toString();
-    return qs ? `/admin/purchases?${qs}` : "/admin/purchases";
-  };
+  // What the controls carry. The raw window params ride along, so an explicit `preset=next7` stays
+  // in the URL and the bare default carries none; `state` and `sort` are the validated ones.
+  const current: PurchasesSearch = { q: query, state, preset: sp.preset, from: sp.from, to: sp.to, sort };
+  const href = (change: Partial<PurchasesSearch>) => purchasesHref(current, change);
+  const sortChip = (active: boolean) => `pressable ${chipLook(active, "dense")}`;
 
   return (
     <Shell width="3xl">
@@ -168,6 +226,24 @@ export default async function AdminPurchases({
         <p className="text-xs text-muted">Bookings / Purchases</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Purchases</h1>
       </header>
+
+      <Card className="mt-3 flex flex-col gap-2">
+        <WindowChips
+          kind={window.kind}
+          from={window.from}
+          to={window.to}
+          presets={PRESETS}
+          hrefFor={(preset) => href({ preset })}
+          // No window key: a carried preset would beat the range the form submits.
+          hidden={
+            <HiddenFields
+              params={purchasesParams({ ...current, preset: undefined, from: undefined, to: undefined })}
+            />
+          }
+          submitLabel="Apply"
+          open={window.kind === "range"}
+        />
+      </Card>
 
       <form method="get" className="mt-3 flex flex-wrap items-center gap-2">
         <Input
@@ -179,14 +255,14 @@ export default async function AdminPurchases({
           density="dense"
           className="min-w-[220px] flex-1"
         />
-        {/* Keep the active state filter when searching. */}
-        {state !== "all" && <input type="hidden" name="state" value={state} />}
+        {/* Keep the window, state and sort when searching. */}
+        <HiddenFields params={purchasesParams(current, { q: undefined })} />
         <GetFormSubmit className="btn-primary btn-sm">
           Search
         </GetFormSubmit>
         {query && (
           <AppLink
-            href={hrefWith({ q: "" })}
+            href={href({ q: "" })}
             className="btn-secondary btn-sm"
           >
             Clear
@@ -194,21 +270,41 @@ export default async function AdminPurchases({
         )}
       </form>
 
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {STATES.map((s) => {
-          const active = state === s.key;
-          return (
-            <AppLink
-              key={s.key}
-              href={hrefWith({ state: s.key })}
-              aria-current={active ? "page" : undefined}
-              data-testid={`state-${s.key}`}
-              className={`pressable ${chipLook(active, "dense")}`}
-            >
-              {s.label} {counts[s.key]}
-            </AppLink>
-          );
-        })}
+      <div className="mt-2 flex flex-wrap items-start justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          {STATES.map((s) => {
+            const active = state === s.key;
+            return (
+              <AppLink
+                key={s.key}
+                href={href({ state: s.key })}
+                aria-current={active ? "page" : undefined}
+                data-testid={`state-${s.key}`}
+                className={`pressable ${chipLook(active, "dense")}`}
+              >
+                {s.label} {counts[s.key]}
+              </AppLink>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <AppLink
+            href={href({ sort: "trip" })}
+            aria-current={sort === "trip" ? "page" : undefined}
+            data-testid="sort-trip"
+            className={sortChip(sort === "trip")}
+          >
+            By trip
+          </AppLink>
+          <AppLink
+            href={href({ sort: "purchase" })}
+            aria-current={sort === "purchase" ? "page" : undefined}
+            data-testid="sort-purchase"
+            className={sortChip(sort === "purchase")}
+          >
+            By purchase
+          </AppLink>
+        </div>
       </div>
 
       {allRows.length === 0 && (
@@ -218,14 +314,16 @@ export default async function AdminPurchases({
         </Notice>
       )}
 
-      {allRows.length > 0 && rows.length === 0 && (
+      {windowEmpty && <Notice>Nothing sails in this window. Try a wider one.</Notice>}
+
+      {allRows.length > 0 && !windowEmpty && groups.length === 0 && (
         <Notice>
           No order matches{query ? ` “${query}”` : ""} in this filter. Try All, or a partial name
           or phone.
         </Notice>
       )}
 
-      {rows.length > 0 && (
+      {groups.length > 0 && (
         <Card pad="none" className="mt-2 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -234,11 +332,22 @@ export default async function AdminPurchases({
                   <th className="px-3 py-2 font-semibold">Customer</th>
                   <th className="px-3 py-2 font-semibold">Trip</th>
                   <th className="px-3 py-2 text-right font-semibold">Total</th>
+                  <th className="px-3 py-2 text-right font-semibold">Owed</th>
                   <th className="px-3 py-2 font-semibold">Payment</th>
                 </tr>
               </thead>
-              <tbody>
-                {rows.map((r) => (
+              {groups.map((g) => (
+              <tbody key={g.key}>
+                <tr className="border-b border-line bg-bg">
+                  <th
+                    colSpan={5}
+                    scope="colgroup"
+                    className="px-3 py-1.5 text-left text-xs font-semibold text-ink"
+                  >
+                    {groupHeading(g)}
+                  </th>
+                </tr>
+                {g.rows.map((r) => (
                   <tr key={r.reservationId} className="border-b border-line last:border-b-0">
                     <td className="px-3 py-2">
                       {/* One reservation, two ways in — the detail is the calendar's pane. */}
@@ -255,7 +364,7 @@ export default async function AdminPurchases({
                       </div>
                     </td>
                     <td className="px-3 py-2 text-xs text-muted">
-                      {r.date ? formatDay(r.date) : <span className="text-muted">—</span>}
+                      {r.date ? formatShortDay(r.date) : <span className="text-muted">—</span>}
                       {r.time && <span className="ml-1.5">{r.time}</span>}
                       <div className="text-[11px] text-muted">
                         {r.vesselName ? `${r.vesselName} · ` : ""}
@@ -268,13 +377,9 @@ export default async function AdminPurchases({
                       ) : (
                         <span className="text-muted">—</span>
                       )}
-                      {/* Only when PART of it is paid — on an unpaid order the balance equals
-                          the total and the badge already says so, so this would be noise. */}
-                      {r.priceKnown && r.paidCents > 0 && r.balanceCents > 0 && (
-                        <div className="text-[11px] font-normal text-muted">
-                          {formatCents(r.balanceCents)} due
-                        </div>
-                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono" data-testid={`owed-${r.reservationId}`}>
+                      {r.owed && <OwedCell owed={r.owed} />}
                     </td>
                     <td className="px-3 py-2">
                       <Badge data-testid={`row-state-${r.reservationId}`} tone={BADGE[r.state]}>
@@ -284,6 +389,7 @@ export default async function AdminPurchases({
                   </tr>
                 ))}
               </tbody>
+              ))}
             </table>
           </div>
         </Card>

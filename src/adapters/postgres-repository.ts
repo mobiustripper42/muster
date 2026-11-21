@@ -489,6 +489,14 @@ function pendingOverlapSql(): string {
      limit 1`;
 }
 
+const toBalanceAttempt = (r: any): BalanceChargeAttempt => ({
+  reservationId: asId<"ReservationId">(r.reservation_id),
+  attempt: r.attempt,
+  attemptedAt: r.attempted_at,
+  ...opt("outcome", r.outcome),
+  ...opt("declineCode", r.decline_code),
+});
+
 const toPayment = (r: any): Payment => ({
   id: asId<"PaymentId">(r.id),
   reservationId: asId<"ReservationId">(r.reservation_id),
@@ -2034,13 +2042,13 @@ export class PostgresRepository implements Repository {
       "select * from balance_charge_attempts where reservation_id = $1 order by attempt",
       [reservationId],
     );
-    return rows.map((r) => ({
-      reservationId: asId<"ReservationId">(r.reservation_id),
-      attempt: r.attempt,
-      attemptedAt: r.attempted_at,
-      ...opt("outcome", r.outcome),
-      ...opt("declineCode", r.decline_code),
-    }));
+    return rows.map(toBalanceAttempt);
+  }
+  async listAllBalanceAttempts(): Promise<BalanceChargeAttempt[]> {
+    const { rows } = await this.#pool.query(
+      "select * from balance_charge_attempts order by reservation_id, attempt",
+    );
+    return rows.map(toBalanceAttempt);
   }
   async saveBalancePaymentIntentId(reservationId: ReservationId, intentId: string): Promise<void> {
     // Overwrites (a second call replaces the first); the id joins `payment_intent_ids` once, so a

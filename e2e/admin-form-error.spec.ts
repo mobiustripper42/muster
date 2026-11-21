@@ -526,8 +526,8 @@ test.describe("a refused edit on the per-row surfaces (#780)", () => {
  * The calendar's money pane refuses on its OWN params (#780).
  *
  * Every other surface in this file gates its draft read on `?err=`. This one never sets `err`:
- * it refuses with `cancelErr`, `refundErr` or `balanceErr`, because three independent actions
- * share one pane and a single code could not say which of them spoke. A draft gated on `?err=`
+ * it refuses with `cancelErr` or `refundErr`, because independent actions share one pane and a
+ * single code could not say which of them spoke. A draft gated on `?err=`
  * would therefore be written on every refusal here and read on none — the fix would look done,
  * the tests would be green if they only checked the cookie, and the box would still come back
  * holding the prefill.

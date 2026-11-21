@@ -16,7 +16,10 @@
  * stored status would drift the moment a payment or refund landed.
  */
 
-import type { Event, Payment, Reservation } from "../domain/entities.js";
+import { fmtDayHeader, windowParams, type Scope } from "../admin/date-window.js";
+import { vesselDateOf } from "../config/tenant.js";
+import type { BalanceChargeAttempt, Event, Payment, Reservation } from "../domain/entities.js";
+import type { TrailEvent } from "../domain/reservation-trail.js";
 import { frozenMoney } from "./booking-invoice.js";
 import { balanceDueCents, countsAsPaid } from "./payment-config.js";
 
@@ -48,6 +51,10 @@ export type PaymentState =
   | "deposit"
   | "unpaid";
 
+/** A state chip: a payment state, `all`, or `balance_due` — which is not a state, because a balance
+ *  due is a fact across several of them (issue #1142). */
+export type StateFilter = PaymentState | "all" | "balance_due";
+
 export interface PurchaseRow {
   reservationId: string;
   customerName: string;
@@ -69,6 +76,24 @@ export interface PurchaseRow {
   state: PaymentState;
   /** `false` ⇒ the event carries no price, so the money columns can't be trusted. */
   priceKnown: boolean;
+  /** When it was bought: the booking's `booked` trail row, else `reservedAt`, else absent. */
+  purchasedAt?: string | undefined;
+  /**
+   * Every dollar not yet received on a booking we expect to be paid — a deposit's balance, or a
+   * booked row with no payment (issue #1142). Absent when it owes nothing: paid in full, cancelled,
+   * disputed, an awaiting phone booking, a web checkout in flight.
+   */
+  owed?: PurchaseOwed | undefined;
+}
+
+export interface PurchaseOwed {
+  cents: number;
+  /** The booking's `balanceDueAt`, when it has one. */
+  dueAt?: string | undefined;
+  /** `dueAt <= now` — the instant the charge run picks the booking up. False with no `dueAt`. */
+  pastDue: boolean;
+  /** The latest failed balance attempt: `card_declined`, `declined`, `needs approval`. */
+  lastFailure?: string | undefined;
 }
 
 export interface PurchasesInput {
@@ -77,6 +102,12 @@ export interface PurchasesInput {
   paymentsByReservation: ReadonlyMap<string, Payment[]>;
   offeringNameByEventId?: ReadonlyMap<string, string> | undefined;
   vesselNameById?: ReadonlyMap<string, string> | undefined;
+  /** Reservation id → when its `booked` trail row landed (`bookedAtByReservation`). */
+  bookedAtByReservation?: ReadonlyMap<string, string> | undefined;
+  /** Reservation id → its balance charge attempts. */
+  attemptsByReservation?: ReadonlyMap<string, BalanceChargeAttempt[]> | undefined;
+  /** The list's clock, an ISO instant — `owed.pastDue` is judged against it. */
+  now: string;
 }
 
 /** Group a flat payment list by reservation — the one pass a list page needs. */
@@ -140,6 +171,51 @@ function orderTotal(r: Reservation): { totalCents: number; priceKnown: boolean }
   return { totalCents: fareCents + taxCents, priceKnown };
 }
 
+/** The latest failed balance attempt, worded as the Owed cell reads it. A claim in flight (no
+ *  outcome) and a success are skipped. */
+function lastFailureOf(attempts: readonly BalanceChargeAttempt[]): string | undefined {
+  let latest: BalanceChargeAttempt | undefined;
+  for (const a of attempts) {
+    if (a.outcome !== "declined" && a.outcome !== "needs_approval") continue;
+    if (!latest || a.attempt > latest.attempt) latest = a;
+  }
+  if (!latest) return undefined;
+  if (latest.outcome === "needs_approval") return "needs approval";
+  return latest.declineCode ?? "declined";
+}
+
+/** What the booking still owes, or none (see `PurchaseRow.owed`). */
+function owedOf(
+  r: Reservation,
+  state: PaymentState,
+  balanceCents: number,
+  attempts: readonly BalanceChargeAttempt[],
+  now: string,
+): PurchaseOwed | undefined {
+  // `balanceCents` is already 0 off `booked`; a dispute is the Disputed chip's worklist.
+  if (state === "disputed" || balanceCents <= 0) return undefined;
+  const dueAt = r.balanceDueAt;
+  const lastFailure = lastFailureOf(attempts);
+  return {
+    cents: balanceCents,
+    ...(dueAt ? { dueAt } : {}),
+    pastDue: dueAt !== undefined && Date.parse(dueAt) <= Date.parse(now),
+    ...(lastFailure ? { lastFailure } : {}),
+  };
+}
+
+/** Reservation id → the earliest `booked` trail row's `timestamp`. */
+export function bookedAtByReservation(events: readonly TrailEvent[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const e of events) {
+    if (e.type !== "booked" || !e.reservationId) continue;
+    const id = String(e.reservationId);
+    const had = out.get(id);
+    if (had === undefined || Date.parse(e.timestamp) < Date.parse(had)) out.set(id, e.timestamp);
+  }
+  return out;
+}
+
 /**
  * Build one row per reservation. Muster's own sales and the operator's phone bookings (`admin`,
  * until paid — then they are `muster`); Xola owns its own money (DEC-105).
@@ -161,6 +237,9 @@ export function buildPurchaseRows(input: PurchasesInput): PurchaseRow[] {
     // from the reservation, so the label does not move — this only stops the page's due chip,
     // gated on `balanceCents > 0` alone, from reading "$538.18 due" on a cancelled booking.
     const balanceCents = balanceDueCents(r.status, r.invoice, payments);
+    const state = stateOf(r, balanceCents, paidCents, refundedCents, hasDispute(payments));
+    const purchasedAt = input.bookedAtByReservation?.get(String(r.id)) ?? r.reservedAt;
+    const owed = owedOf(r, state, balanceCents, input.attemptsByReservation?.get(String(r.id)) ?? [], input.now);
 
     rows.push({
       reservationId: String(r.id),
@@ -178,24 +257,29 @@ export function buildPurchaseRows(input: PurchasesInput): PurchaseRow[] {
       paidCents,
       balanceCents,
       refundedCents,
-      state: stateOf(r, balanceCents, paidCents, refundedCents, hasDispute(payments)),
+      state,
       priceKnown,
+      ...(purchasedAt ? { purchasedAt } : {}),
+      ...(owed ? { owed } : {}),
     });
   }
-
-  // Newest departure first — an operator looking for "the booking someone just called about"
-  // is far more often looking at an upcoming or recent trip than at the oldest one.
-  return rows.sort((a, b) =>
-    `${b.date ?? ""} ${b.time ?? ""}`.localeCompare(`${a.date ?? ""} ${a.time ?? ""}`),
-  );
+  // Unsorted: the page sorts (`sortPurchases`), because the order is the operator's choice.
+  return rows;
 }
 
-/** Filter by payment state. `"all"` passes everything. */
+/** Does this row owe a dated balance — the Balance due chip's rule? An unpaid or awaiting row
+ *  owes money but has no due date, so it is not a balance due. */
+const hasBalanceDue = (r: PurchaseRow): boolean => r.owed?.dueAt !== undefined;
+
+/** Filter by payment state. `"all"` passes everything; `balance_due` is a chip, not a state — it
+ *  selects every row owing a dated balance whatever its state. */
 export function filterByState(
   rows: readonly PurchaseRow[],
-  state: PaymentState | "all",
+  state: StateFilter,
 ): PurchaseRow[] {
-  return state === "all" ? [...rows] : rows.filter((r) => r.state === state);
+  if (state === "all") return [...rows];
+  if (state === "balance_due") return rows.filter(hasBalanceDue);
+  return rows.filter((r) => r.state === state);
 }
 
 /** A phone match needs at least this many digits. Without a floor, a query like "r2" or a
@@ -225,9 +309,12 @@ export function searchPurchases(rows: readonly PurchaseRow[], query: string): Pu
 }
 
 /** Counts per state for the filter chips — computed once, from the unfiltered set. */
-export function stateCounts(rows: readonly PurchaseRow[]): Record<PaymentState | "all", number> {
-  const counts: Record<PaymentState | "all", number> = {
+export function stateCounts(
+  rows: readonly PurchaseRow[],
+): Record<StateFilter, number> {
+  const counts: Record<StateFilter, number> = {
     all: rows.length,
+    balance_due: 0,
     awaiting: 0,
     pending: 0,
     cancelled: 0,
@@ -237,6 +324,144 @@ export function stateCounts(rows: readonly PurchaseRow[]): Record<PaymentState |
     deposit: 0,
     unpaid: 0,
   };
-  for (const r of rows) counts[r.state]++;
+  for (const r of rows) {
+    counts[r.state]++;
+    if (hasBalanceDue(r)) counts.balance_due++;
+  }
   return counts;
+}
+
+export type PurchasesSort = "trip" | "purchase";
+
+/** `trip`: soonest trip first (date, then time), undated last. `purchase`: newest bought first,
+ *  a row with no `purchasedAt` last. Stable, so ties keep the order they came in. */
+export function sortPurchases(rows: readonly PurchaseRow[], sort: PurchasesSort): PurchaseRow[] {
+  if (sort === "purchase") {
+    const at = (r: PurchaseRow) => (r.purchasedAt ? Date.parse(r.purchasedAt) : Number.NEGATIVE_INFINITY);
+    return [...rows].sort((a, b) => {
+      const [x, y] = [at(a), at(b)];
+      if (x === y) return 0;
+      return y > x ? 1 : -1;
+    });
+  }
+  return [...rows].sort((a, b) => {
+    if (a.date === undefined || b.date === undefined) {
+      return (a.date === undefined ? 1 : 0) - (b.date === undefined ? 1 : 0);
+    }
+    return `${a.date} ${a.time ?? ""}`.localeCompare(`${b.date} ${b.time ?? ""}`);
+  });
+}
+
+/** Rows whose trip date is inside `[from, to]`, both ends included; an undated row (a Xola-era
+ *  row with no event and no slot) only under `all`. */
+export function windowPurchases(
+  rows: readonly PurchaseRow[],
+  window: { from: string; to: string; kind: Scope },
+): PurchaseRow[] {
+  if (window.kind === "all") return [...rows];
+  return rows.filter((r) => r.date !== undefined && r.date >= window.from && r.date <= window.to);
+}
+
+const UNDATED = "undated";
+
+/** The day a row groups under: the trip day, or the vessel-local day bought. */
+function groupKeyOf(r: PurchaseRow, sort: PurchasesSort): string {
+  if (sort === "trip") return r.date ?? UNDATED;
+  return r.purchasedAt ? vesselDateOf(new Date(r.purchasedAt)) : UNDATED;
+}
+
+/**
+ * One group per day — the trip day under `trip`, the day bought under `purchase` — in the order
+ * the first row of each appears in the (sorted) input, `undated` always last. `count` and
+ * `totalCents` take every row listed under the heading, cancelled and refunded included;
+ * `owedCents` is the sum of the Owed column under it.
+ */
+export function groupPurchases(
+  rows: readonly PurchaseRow[],
+  sort: PurchasesSort,
+): { key: string; label: string; count: number; totalCents: number; owedCents: number; rows: PurchaseRow[] }[] {
+  const byKey = new Map<string, PurchaseRow[]>();
+  for (const r of rows) {
+    const key = groupKeyOf(r, sort);
+    (byKey.get(key) ?? byKey.set(key, []).get(key)!).push(r);
+  }
+  const groups = [...byKey.entries()].map(([key, members]) => ({
+    key,
+    label: key === UNDATED ? "No date" : fmtDayHeader(key),
+    count: members.length,
+    totalCents: members.reduce((sum, r) => sum + (r.priceKnown ? r.totalCents : 0), 0),
+    owedCents: members.reduce((sum, r) => sum + (r.owed?.cents ?? 0), 0),
+    rows: members,
+  }));
+  return [...groups.filter((g) => g.key !== UNDATED), ...groups.filter((g) => g.key === UNDATED)];
+}
+
+/** The page's search params, as the carried-param functions read them. */
+export type PurchasesSearch = {
+  q?: string | undefined;
+  state?: string | undefined;
+  preset?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  sort?: string | undefined;
+};
+
+/**
+ * The carried params: `current` with `change` applied, defaults dropped (`state=all`, `sort=trip`,
+ * an empty `q`, the bare default window — an explicit `preset=next7` stays). A `change` naming any
+ * of `preset`, `from`, `to` replaces the whole window, never merges key by key. Every chip href
+ * goes through this, and both forms' hidden fields are this minus the keys the form submits.
+ */
+export function purchasesParams(
+  current: PurchasesSearch,
+  change: Partial<PurchasesSearch> = {},
+): URLSearchParams {
+  const pick = <K extends "q" | "state" | "sort">(k: K) => (k in change ? change[k] : current[k]);
+  const windowChanged = "preset" in change || "from" in change || "to" in change;
+  const window = windowChanged ? change : current;
+
+  const p = windowParams(window, { allowPast: true, allowAll: true });
+  const q = pick("q");
+  if (q) p.set("q", q);
+  const state = pick("state");
+  if (state && state !== "all") p.set("state", state);
+  const sort = pick("sort");
+  if (sort && sort !== "trip") p.set("sort", sort);
+  return p;
+}
+
+/** `/admin/purchases` plus `?` and the params when any. */
+export function purchasesHref(current: PurchasesSearch, change?: Partial<PurchasesSearch>): string {
+  const qs = purchasesParams(current, change).toString();
+  return qs ? `/admin/purchases?${qs}` : "/admin/purchases";
+}
+
+/**
+ * The list's composition. Every chip counts the window, except Balance due, which counts the whole
+ * set — it is a worklist and must not hide a balance because its trip is 31 days out. The rows
+ * shown are the whole set under `balance_due`, else the window; then state, search, sort, group.
+ * Search narrows what is shown, never a count.
+ */
+export function listPurchases(
+  rows: readonly PurchaseRow[],
+  opts: {
+    q: string;
+    state: StateFilter;
+    window: { from: string; to: string; kind: Scope };
+    sort: PurchasesSort;
+  },
+): {
+  counts: Record<StateFilter, number>;
+  groups: ReturnType<typeof groupPurchases>;
+  windowEmpty: boolean;
+} {
+  const windowed = windowPurchases(rows, opts.window);
+  const counts = { ...stateCounts(windowed), balance_due: filterByState(rows, "balance_due").length };
+  const base = opts.state === "balance_due" ? rows : windowed;
+  const shown = searchPurchases(filterByState(base, opts.state), opts.q);
+  return {
+    counts,
+    groups: groupPurchases(sortPurchases(shown, opts.sort), opts.sort),
+    windowEmpty: opts.state !== "balance_due" && windowed.length === 0 && rows.length > 0,
+  };
 }

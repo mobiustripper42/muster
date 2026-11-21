@@ -79,9 +79,6 @@ export const EMITTED_TRAIL_TYPES = [
   /** Money with no booking to hang it on — keyed by `paymentIntentId`, not by a
    *  reservation. Three shapes in `booking-webhook.ts`; see issue #1051. */
   "charge_unmatched",
-  /** A live, ungated operator money action. The customer's side of the balance
-   *  path is derived from `payments`; this half is not recorded anywhere. */
-  "balance_link_created",
 
   // ── Money out (issue #1050) ─────────────────────────────────────────────────
   /**
@@ -213,8 +210,19 @@ export const DERIVED_TRAIL_TYPES = [
 ] as const;
 export type DerivedTrailType = (typeof DERIVED_TRAIL_TYPES)[number];
 
+/**
+ * Kinds nothing emits any more, whose rows are still in the table and must still render a label.
+ * Not on `EMITTED_TRAIL_TYPES`, so the write path (`appendTrailEvent`, typed `EmittedTrailType`)
+ * refuses them and the seed has nothing to seed. `TRAIL_TYPE_LABEL` is total over them.
+ */
+export const RETIRED_TRAIL_TYPES = [
+  /** The admin's Stripe Checkout balance link, removed in issue #1254. */
+  "balance_link_created",
+] as const;
+export type RetiredTrailType = (typeof RETIRED_TRAIL_TYPES)[number];
+
 /** Everything a reader can see. The read model's vocabulary; NOT the table's. */
-export type TrailEventType = EmittedTrailType | DerivedTrailType;
+export type TrailEventType = EmittedTrailType | DerivedTrailType | RetiredTrailType;
 
 /**
  * Who acted. `engine` covers anything no person triggered — a lapse, a sweep, the
@@ -251,7 +259,7 @@ export interface TrailEventMetadata {
   date?: string;
   time?: string;
   guestCount?: number;
-  /** `charge_unmatched` / `balance_link_created`: the provider handle this is about, when it
+  /** `charge_unmatched`: the provider handle this is about, when it
    *  is not a PaymentIntent id. A hosted session id, or a charge key with no intent behind
    *  it — which is precisely the `charge_unmatched` shape that leaves the row keyless. */
   chargeRef?: string;

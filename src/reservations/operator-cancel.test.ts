@@ -766,3 +766,17 @@ describe("cancelByOperator — an unpaid phone booking", () => {
     expect((await trail(repo)).filter((r) => r.type.startsWith("cancel_notice"))).toEqual([]);
   });
 });
+
+describe("cancelByOperator — a booked booking's balance intent (issue #1254)", () => {
+  it("issue #1254 correction: the operator's cancel cancels the booking's balance intent, so it can no longer be paid", async () => {
+    const repo = await seeded();
+    const fake = new FakePaymentPort();
+    const balance = await fake.createPaymentIntent({ amountCents: 40000, currency: "usd", idempotencyKey: "balance", metadata: {} });
+    await repo.saveBalancePaymentIntentId(RESV, balance.paymentIntentId);
+
+    const result = await cancelByOperator(deps(repo, fake), input());
+
+    expect(result.params.cancelled).toBe("operator");
+    expect(fake.cancelled.map((c) => c.paymentIntentId)).toContain(balance.paymentIntentId);
+  });
+});

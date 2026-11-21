@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { asId } from "@core/domain/ids.js";
-import { createBalanceCheckout } from "@core/reservations/create-balance-checkout.js";
 import { payLinkState } from "@core/reservations/pay-by-link.js";
 import { recordTrail } from "@core/reservations/trail.js";
 import { cancelUnpaidPhoneBooking, type CancelledBy } from "@core/reservations/cancel-reservation.js";
@@ -24,25 +23,7 @@ import { readSubject } from "../../../../lib/auth";
 import { clearFormDraft, stashFormDraft } from "../../../../lib/form-draft";
 import { getRepo } from "../../../../lib/repo";
 import { logSwallowed } from "../../../../lib/swallowed";
-import { appBaseUrl } from "../../../../lib/base-url";
 
-/**
- * Mint a BALANCE LINK for a deposit booking (11.2b, DEC-107) — the operator door for a
- * service that shipped tested and callable but with no caller outside `db:balance`.
- *
- * The operator sends the link; the CUSTOMER pays. Muster writes nothing here — the
- * `Payment{kind:'balance'}` lands via the Stripe webhook (`metadata.purpose="balance"`), so a
- * minted-but-unpaid link is inert and re-minting is free. That is why this can be a plain
- * button with no confirmation: it charges nobody and changes no state.
- *
- * The URL comes back on the query string rather than being stored: the link is **re-minted per
- * request against the CURRENT balance** (`createBalanceCheckout` derives the amount through
- * `balanceOwedCents`), so persisting one would be persisting a number that goes stale the moment
- * a payment lands. Query-string round-trip keeps the page server-rendered with no client JS.
- *
- * Deliberately NOT emailed/texted to the customer: customer messaging needs the second sender
- * number (#119) so a customer can never reach the crew line. Operator copies and sends.
- */
 /** Back to a reservation's detail, preserving the grid's day/filter. */
 function detailHref(
   reservationId: string,
@@ -81,69 +62,6 @@ function readContext(formData: FormData): {
     filter,
     back: (extra) => detailHref(reservationId, date, filter, view, extra),
   };
-}
-
-export async function createBalanceLink(formData: FormData): Promise<void> {
-  const subject = await readSubject();
-  if (!subject || subject.kind !== "admin") redirect("/admin");
-
-  const { reservationId, back } = readContext(formData);
-
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secretKey || !webhookSecret) redirect(back({ balanceErr: "stripe_not_configured" }));
-
-  const base = appBaseUrl();
-
-  let result: Awaited<ReturnType<typeof createBalanceCheckout>>;
-  try {
-    result = await createBalanceCheckout(
-      getRepo(),
-      new StripePaymentPort(secretKey, webhookSecret),
-      asId<"ReservationId">(reservationId),
-      { successUrl: `${base}/book/success`, cancelUrl: `${base}/book/cancel` },
-    );
-  } catch (e) {
-    // Stripe unreachable / key rejected — say so rather than showing a dead button.
-    // Money path. "stripe_unreachable" is a guess about the cause: a rejected key,
-    // an expired one, and a genuine network failure all land here identically, and
-    // only the first two are actionable.
-    logSwallowed("admin/reservation:createBalanceLink", e, "the balance checkout session was not created");
-    redirect(back({ balanceErr: "stripe_unreachable" }));
-  }
-
-  if (!result.ok) redirect(back({ balanceErr: result.reason }));
-
-  // ── The trail: an operator minted a payable link (issue #1051) ──────────────
-  //
-  // The only ungated live operator money action in the product, and the docstring above is what
-  // makes it worth recording rather than what excuses it: "it charges nobody and changes no
-  // state" is true of the press and false of the result — a URL now exists that will take this
-  // customer's money, at an amount derived at this instant. The customer's half lands in
-  // `payments` when they pay; this half has never been written down anywhere, so the trail is the
-  // only record of the press.
-  //
-  // **Before the redirect, which throws.** `redirect()` unwinds by exception, so an emit placed
-  // after it never runs — the defect `@code-review` found in `reissueBookingLink` on issue #1052,
-  // where the single worst outcome recorded nothing.
-  //
-  // Only on success: the failure returns above mean no link exists, so nothing happened and
-  // nothing is owed. A random id, because an operator press has no redelivery and two links are
-  // two separately payable URLs, not one fact seen twice.
-  await recordTrail(
-    { repo: getRepo(), now: () => new Date().toISOString() },
-    {
-      id: asId<"TrailEventId">(`balance_link_created:${randomUUID()}`),
-      reservationId: asId<"ReservationId">(reservationId),
-      actorKind: "admin",
-      actorId: subject.id,
-      type: "balance_link_created",
-      // The amount the link will collect, and the session that collects it. Not the URL: it is a
-      // bearer capability for a charge, and the trail is read on an operator screen.
-      metadata: { actualCents: result.amountCents, chargeRef: result.sessionId },
-    },
-  );
-  redirect(back({ balanceUrl: result.url }));
 }
 
 /** The payment port when this deploy has Stripe keys, else none — for the best-effort intent
@@ -474,7 +392,7 @@ export async function resendConfirmation(formData: FormData): Promise<void> {
   // just happened, in writing. Security review.
   if (!isBooked(reservation)) redirect(back({ resendErr: "cancelled" }));
 
-  // Wrapped like every other core call in this file (`createBalanceCheckout`, `cancelReservation`,
+  // Wrapped like every other core call in this file (`cancelReservation`,
   // `refundReservation`). `resendReservationLink` builds its own channels and calls `getRepo()`
   // again, and unlike `sendReservationConfirmation` — which wraps its whole body because the
   // webhook cannot tolerate a throw — it deliberately does not swallow. So a pool hiccup here

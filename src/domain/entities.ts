@@ -808,6 +808,19 @@ export interface Reservation {
   stripeCustomerId?: string;
   /** The card the paid deposit used, read off the succeeded intent by the confirm flip. */
   stripePaymentMethodId?: string;
+  /** The booking's one balance PaymentIntent (issue #1254). Written only by
+   *  `saveBalancePaymentIntentId`, never by a whole-row save. */
+  balancePaymentIntentId?: string;
+}
+
+/** One scheduled balance charge attempt (issue #1254) — `balance_charge_attempts`. */
+export interface BalanceChargeAttempt {
+  reservationId: ReservationId;
+  /** Its position in `balanceAttemptTimes`' output: 0 the due date, then each retry. */
+  attempt: number;
+  attemptedAt: string;
+  outcome?: "succeeded" | "declined" | "needs_approval";
+  declineCode?: string;
 }
 
 /**

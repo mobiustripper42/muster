@@ -494,13 +494,7 @@ const CITATIONS = [
   ['docs/SPEC.md', 2092, 'A balance payment never creates or confirms a reservation.'],
   // Depth 1 — the dispatch returns nine lines before the booking path.
   ['src/reservations/booking-webhook.ts', 174, 'it must NEVER reach the booking path'],
-  ['src/reservations/booking-webhook.ts', 176, 'if (purpose === "balance") return recordBalancePayment(deps, completed);'],
   ['src/reservations/booking-webhook.ts', 185, 'return processBookingCharge(deps, {'],
-  // Depth 2 — the function it lands in writes one Payment and nothing else.
-  ['src/reservations/booking-webhook.ts', 812, 'async function recordBalancePayment('],
-  ['src/reservations/booking-webhook.ts', 840, 'violate the FK, throw, and take this alert with it'],
-  ['src/reservations/booking-webhook.ts', 851, 'await deps.repo.savePayment(payment);'],
-  ['src/reservations/booking-webhook.ts', 881, 'return { handled: true, outcome: "balance_paid" };'],
   // …and the two calls that WOULD book, both above :570 and both inside processBookingCharge.
   ['src/reservations/booking-webhook.ts', 382, 'const result: SlotBookingResult = await writeSlotBooking('],
   ['src/reservations/booking-webhook.ts', 482, 'await deps.sendConfirmation(result.reservation);'],
@@ -512,20 +506,7 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.test.ts', 379, 'listReservationsForEvent(EVENT)).toHaveLength(1)'],
   ['src/reservations/confirm-booking.test.ts', 169, 'does NOT book the metadata-less intent behind a hosted balance checkout'],
   ['src/reservations/confirm-booking.test.ts', 188, 'listAllReservations()).toHaveLength(0)'],
-  // Dormant at TWO layers. The pane hides the button — this is the one the operator meets, and
-  // the one an earlier draft of this section missed (code review).
-  ['app/(admin)/admin/calendar/[reservationId]/actions.ts', 82, 'export async function createBalanceLink(formData: FormData): Promise<void> {'],
-  ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 506, 'Shown only when money is actually owed'],
-  ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 528, 'money.balanceCents > 0 &&'],
-  ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 551, '<form action={createBalanceLink}>'],
-  // …and the server refuses, covering the stale tab and the re-post.
-  ['src/reservations/create-balance-checkout.ts', 52, 'folds no_balance, already-paid, and full-mode into one predicate'],
-  ['src/reservations/create-balance-checkout.ts', 53, 'if (owed <= 0) return { ok: false, reason: "no_balance" };'],
-  // The "courtesy" comment belongs to the DISPUTED guard, not to no_balance — pinned so the
-  // distinction cannot quietly re-collapse.
-  ['src/reservations/create-balance-checkout.ts', 60, "The pane's button is a courtesy"],
-  ['src/reservations/create-balance-checkout.ts', 63, 'p.status === "disputed" || p.status === "dispute_lost"'],
-  ['src/reservations/create-balance-checkout.test.ts', 167, 'no_balance once paid in full'],
+  // issue #1254: the hosted balance link, its pane button and `create-balance-checkout.ts` are gone, and so are the pins into them.
   ['src/reservations/payment-config.test.ts', 66, 'full mode charges fare + tax + fee in one go'],
 
   // ── Criterion 22's evidence (§Criterion 22) ──

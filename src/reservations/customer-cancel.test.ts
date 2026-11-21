@@ -628,6 +628,17 @@ describe("cancelByCustomer", () => {
     expect((await repo.getEvent(eventIdOf(FAR)))?.status).toBe("cancelled");
     expect(relayed).toHaveLength(1);
   });
+
+  it("issue #1254 correction: the customer's cancel cancels the booking's balance intent, so it can no longer be paid", async () => {
+    const repo = await seeded();
+    const fake = new FakePaymentPort();
+    const balance = await fake.createPaymentIntent({ amountCents: 40000, currency: "usd", idempotencyKey: "balance", metadata: {} });
+    await repo.saveBalancePaymentIntentId(RESV, balance.paymentIntentId);
+
+    expect((await cancelByCustomer(deps(repo, fake), RESV, posted())).ok).toBe(true);
+
+    expect(fake.cancelled.map((c) => c.paymentIntentId)).toContain(balance.paymentIntentId);
+  });
 });
 
 // ── only the $100 deposit paid (issue #1252) ───────────────────────────────────

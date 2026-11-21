@@ -3,14 +3,23 @@
  * payment state — especially that "no money arrived" never reads as "deposit taken".
  */
 import { describe, expect, it } from "vitest";
-import type { BookingInvoice, Event, Payment, Reservation } from "../domain/entities.js";
+import type { BalanceChargeAttempt, BookingInvoice, Event, Payment, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
+import type { TrailEvent } from "../domain/reservation-trail.js";
 import {
+  bookedAtByReservation,
   buildPurchaseRows,
   filterByState,
   groupPaymentsByReservation,
+  groupPurchases,
+  listPurchases,
+  purchasesHref,
+  purchasesParams,
   searchPurchases,
+  sortPurchases,
   stateCounts,
+  windowPurchases,
+  type PurchaseRow,
   type PurchasesInput,
 } from "./purchases-view.js";
 
@@ -65,11 +74,15 @@ const payment = (id: string, resv: string, over: Partial<Payment> = {}): Payment
   ...over,
 });
 
+/** Wednesday 2026-10-21, noon EDT — the list's clock. */
+const NOW = "2026-10-21T16:00:00.000Z";
+
 const build = (over: Partial<PurchasesInput> = {}) =>
   buildPurchaseRows({
     reservations: [reservation("r1")],
     eventsById: new Map([["e1", event("e1")]]),
     paymentsByReservation: new Map(),
+    now: NOW,
     ...over,
   });
 
@@ -254,18 +267,21 @@ describe("scope", () => {
     expect(rows.map((r) => r.reservationId)).toEqual(["r1"]);
   });
 
-  it("sorts newest departure first", () => {
+  // Retargeted (issue #1142): `buildPurchaseRows` no longer sorts, and the order it guarded is
+  // reversed — `sortPurchases` by trip puts the soonest departure first. Renamed with it, since the
+  // old name would now describe the opposite of what the test asserts.
+  it("sorts soonest departure first (sortPurchases by trip; was newest departure first)", () => {
     const rows = build({
       reservations: [
-        reservation("old", { eventId: asId<"EventId">("e-old") }),
         reservation("new", { eventId: asId<"EventId">("e-new") }),
+        reservation("old", { eventId: asId<"EventId">("e-old") }),
       ],
       eventsById: new Map([
         ["e-old", event("e-old", { date: "2026-06-01" })],
         ["e-new", event("e-new", { date: "2026-09-01" })],
       ]),
     });
-    expect(rows.map((r) => r.reservationId)).toEqual(["new", "old"]);
+    expect(sortPurchases(rows, "trip").map((r) => r.reservationId)).toEqual(["old", "new"]);
   });
 });
 
@@ -388,5 +404,443 @@ describe("an operator's phone booking (issue #1082 part C)", () => {
     const rows = build({ reservations: [phone("p1"), phone("p2"), reservation("r1")] });
     expect(stateCounts(rows)).toMatchObject({ all: 3, awaiting: 2, unpaid: 1 });
     expect(filterByState(rows, "awaiting").map((r) => r.reservationId).sort()).toEqual(["p1", "p2"]);
+  });
+});
+
+// ── issue #1142: windows, grouping, sorting and the Owed column ─────────────────────────────
+
+/** A list row built directly, for the functions that take rows rather than reservations. */
+const prow = (id: string, over: Partial<PurchaseRow> = {}): PurchaseRow => ({
+  reservationId: id,
+  customerName: `Guest ${id}`,
+  guestCount: 2,
+  totalCents: 10000,
+  paidCents: 10000,
+  balanceCents: 0,
+  refundedCents: 0,
+  state: "paid",
+  priceKnown: true,
+  ...over,
+});
+
+const ids = (rows: readonly PurchaseRow[]) => rows.map((r) => r.reservationId);
+
+/** The next 7 days from Wednesday 2026-10-21, as `resolveWindow` answers it. */
+const WEEK = { from: "2026-10-21", to: "2026-10-27", kind: "next7" } as const;
+const ALL = { from: "", to: "", kind: "all" } as const;
+
+const trail = (id: string, type: TrailEvent["type"], timestamp: string, reservationId?: string): TrailEvent => ({
+  id: asId<"TrailEventId">(id),
+  ...(reservationId ? { reservationId: asId<"ReservationId">(reservationId) } : {}),
+  actorKind: "customer",
+  type,
+  timestamp,
+  metadata: {},
+});
+
+const attempt = (resv: string, n: number, over: Partial<BalanceChargeAttempt> = {}): BalanceChargeAttempt => ({
+  reservationId: asId<"ReservationId">(resv),
+  attempt: n,
+  attemptedAt: NOW,
+  ...over,
+});
+
+describe("issue #1142 — the window", () => {
+  const rows = () => [
+    prow("before", { date: "2026-10-20" }),
+    prow("first", { date: "2026-10-21" }),
+    prow("last", { date: "2026-10-27" }),
+    prow("after", { date: "2026-10-28" }),
+    prow("undated"),
+  ];
+
+  it("AC3: a row stays iff its trip date is inside [from, to], both ends included", () => {
+    expect(ids(windowPurchases(rows(), WEEK)).sort()).toEqual(["first", "last"]);
+  });
+
+  it("AC3: a row with no date stays only under all", () => {
+    expect(ids(windowPurchases(rows(), ALL)).sort()).toEqual(["after", "before", "first", "last", "undated"]);
+    const past = { from: "2026-09-21", to: "2026-10-20", kind: "past" } as const;
+    expect(ids(windowPurchases(rows(), past))).toEqual(["before"]);
+  });
+});
+
+describe("issue #1142 — when it was bought", () => {
+  it("AC4: bookedAtByReservation maps each booking to its earliest booked row", () => {
+    const got = bookedAtByReservation([
+      trail("t1", "booked", "2026-10-03T10:00:00.000Z", "r1"),
+      trail("t2", "booked", "2026-10-02T09:00:00.000Z", "r1"),
+      trail("t3", "cancelled", "2026-10-01T08:00:00.000Z", "r2"),
+      trail("t4", "booked", "2026-10-04T08:00:00.000Z", "r3"),
+      // A fact with no booking to name is not a purchase.
+      trail("t5", "booked", "2026-10-01T07:00:00.000Z"),
+    ]);
+    expect(Object.fromEntries(got)).toEqual({
+      r1: "2026-10-02T09:00:00.000Z",
+      r3: "2026-10-04T08:00:00.000Z",
+    });
+  });
+
+  it("AC4: purchasedAt is the booked row's timestamp, else reservedAt, else absent", () => {
+    const rows = build({
+      reservations: [
+        reservation("booked", { reservedAt: "2026-10-01T10:00:00.000Z" }),
+        reservation("reserved", { reservedAt: "2026-10-05T10:00:00.000Z" }),
+        reservation("neither"),
+      ],
+      bookedAtByReservation: new Map([["booked", "2026-10-02T11:00:00.000Z"]]),
+    });
+    const at = Object.fromEntries(rows.map((r) => [r.reservationId, r.purchasedAt]));
+    expect(at).toEqual({
+      booked: "2026-10-02T11:00:00.000Z",
+      reserved: "2026-10-05T10:00:00.000Z",
+      neither: undefined,
+    });
+  });
+});
+
+describe("issue #1142 — sorting", () => {
+  it("AC4: by trip, soonest first by date then time, and a row with no date last", () => {
+    const rows = [
+      prow("undated"),
+      prow("thu-am", { date: "2026-10-22", time: "09:00" }),
+      prow("wed-pm", { date: "2026-10-21", time: "15:30" }),
+      prow("wed-am", { date: "2026-10-21", time: "11:00" }),
+    ];
+    expect(ids(sortPurchases(rows, "trip"))).toEqual(["wed-am", "wed-pm", "thu-am", "undated"]);
+  });
+
+  it("AC4: by purchase, newest bought first, and a row with no purchasedAt last", () => {
+    const rows = [
+      prow("never"),
+      prow("older", { purchasedAt: "2026-10-01T10:00:00.000Z" }),
+      prow("newer", { purchasedAt: "2026-10-05T10:00:00.000Z" }),
+    ];
+    expect(ids(sortPurchases(rows, "purchase"))).toEqual(["newer", "older", "never"]);
+  });
+});
+
+describe("issue #1142 — grouping by day", () => {
+  it("AC5: by trip, one group per trip day, labelled by the day alone, rows in their sorted order", () => {
+    const groups = groupPurchases(
+      [
+        prow("wed-am", { date: "2026-10-21", time: "11:00" }),
+        prow("wed-pm", { date: "2026-10-21", time: "15:30" }),
+        prow("thu", { date: "2026-10-22", time: "09:00" }),
+      ],
+      "trip",
+    );
+    expect(groups.map((g) => ({ key: g.key, label: g.label, rows: ids(g.rows), count: g.count }))).toEqual([
+      { key: "2026-10-21", label: "Wednesday, Oct 21", rows: ["wed-am", "wed-pm"], count: 2 },
+      { key: "2026-10-22", label: "Thursday, Oct 22", rows: ["thu"], count: 1 },
+    ]);
+  });
+
+  it("AC5: a group's total is its priced rows' totals and its owed is the sum of their owed", () => {
+    const [g] = groupPurchases(
+      [
+        prow("deposit", { date: "2026-10-21", totalCents: 53518, owed: { cents: 43518, pastDue: false, dueAt: NOW } }),
+        prow("unpaid", { date: "2026-10-21", totalCents: 47083, owed: { cents: 47083, pastDue: false } }),
+        prow("paid", { date: "2026-10-21", totalCents: 20000 }),
+        prow("unpriced", { date: "2026-10-21", totalCents: 999, priceKnown: false }),
+      ],
+      "trip",
+    );
+    expect(g).toMatchObject({ count: 4, totalCents: 53518 + 47083 + 20000, owedCents: 43518 + 47083 });
+  });
+
+  it("AC5: count and total take cancelled and refunded rows too — the heading sums what it lists", () => {
+    const [g] = groupPurchases(
+      [
+        prow("cancelled", { date: "2026-10-21", state: "cancelled", totalCents: 30000 }),
+        prow("refunded", { date: "2026-10-21", state: "refunded", totalCents: 12000 }),
+      ],
+      "trip",
+    );
+    expect(g).toMatchObject({ count: 2, totalCents: 42000, owedCents: 0 });
+  });
+
+  it("AC5: a row with no date groups under undated, labelled No date, always last", () => {
+    const groups = groupPurchases(
+      [prow("no-date"), prow("wed", { date: "2026-10-21" }), prow("also-no-date")],
+      "trip",
+    );
+    expect(groups.map((g) => ({ key: g.key, label: g.label, rows: ids(g.rows) }))).toEqual([
+      { key: "2026-10-21", label: "Wednesday, Oct 21", rows: ["wed"] },
+      { key: "undated", label: "No date", rows: ["no-date", "also-no-date"] },
+    ]);
+  });
+
+  it("AC5: by purchase, groups are the vessel-local day bought, newest first as sorted", () => {
+    const groups = groupPurchases(
+      [
+        // 22:30 EDT on the 21st: the 22nd in UTC, the 21st on the vessel's calendar.
+        prow("late-wed", { date: "2026-11-02", purchasedAt: "2026-10-22T02:30:00.000Z" }),
+        prow("wed", { date: "2026-12-01", purchasedAt: "2026-10-21T14:00:00.000Z" }),
+        prow("mon", { date: "2026-10-30", purchasedAt: "2026-10-19T15:00:00.000Z" }),
+        prow("never", { date: "2026-10-23" }),
+      ],
+      "purchase",
+    );
+    expect(groups.map((g) => ({ key: g.key, label: g.label, rows: ids(g.rows) }))).toEqual([
+      { key: "2026-10-21", label: "Wednesday, Oct 21", rows: ["late-wed", "wed"] },
+      { key: "2026-10-19", label: "Monday, Oct 19", rows: ["mon"] },
+      { key: "undated", label: "No date", rows: ["never"] },
+    ]);
+  });
+});
+
+describe("issue #1142 — what a booking still owes", () => {
+  const DUE_LATER = "2026-10-26T13:00:00.000Z";
+  const DUE_BEFORE = "2026-10-20T13:00:00.000Z";
+  const deposit = (over: Partial<Reservation> = {}) =>
+    reservation("r1", { invoice: { ...FROZEN, amountDueNowCents: 10000 }, balanceDueAt: DUE_LATER, ...over });
+  const depositPaid = new Map([["r1", [payment("p1", "r1")]]]);
+
+  it("AC6: a deposit booking owes its balance, due on its balanceDueAt", () => {
+    const [row] = build({ reservations: [deposit()], paymentsByReservation: depositPaid });
+    expect(row!.owed).toEqual({ cents: 43518, dueAt: DUE_LATER, pastDue: false });
+  });
+
+  it("AC6: a booked row with no payment owes its whole total, with no due date, and still reads unpaid", () => {
+    const [row] = build({ reservations: [reservation("r1", { invoice: FROZEN })] });
+    expect(row!.owed).toEqual({ cents: 53518, pastDue: false });
+    expect(row!.state).toBe("unpaid");
+  });
+
+  it("AC6: past due once its due date is before now", () => {
+    const [row] = build({ reservations: [deposit({ balanceDueAt: DUE_BEFORE })], paymentsByReservation: depositPaid });
+    expect(row!.owed).toMatchObject({ dueAt: DUE_BEFORE, pastDue: true });
+  });
+
+  it("AC6: past due at the instant it falls due — the charge run's own <=", () => {
+    const [row] = build({ reservations: [deposit({ balanceDueAt: NOW })], paymentsByReservation: depositPaid });
+    expect(row!.owed).toMatchObject({ dueAt: NOW, pastDue: true });
+  });
+
+  it("AC6: a partly refunded deposit booking with its balance still to charge owes it, and reads refunded", () => {
+    const [row] = build({
+      reservations: [deposit()],
+      paymentsByReservation: new Map([["r1", [payment("p1", "r1", { refundedCents: 2000 })]]]),
+    });
+    expect(row!.state).toBe("refunded");
+    expect(row!.owed).toMatchObject({ dueAt: DUE_LATER, pastDue: false });
+    expect(row!.owed!.cents).toBe(row!.balanceCents);
+    expect(row!.owed!.cents).toBeGreaterThan(0);
+  });
+
+  it("AC6: a row that owes nothing carries no owed", () => {
+    const paidInFull = build({
+      reservations: [reservation("r1", { invoice: FROZEN })],
+      paymentsByReservation: new Map([["r1", [payment("p1", "r1", { kind: "full", amountCents: FROZEN.totalCents })]]]),
+    });
+    // A paid balance keeps its due date on the booking, and owes nothing.
+    const balancePaid = build({
+      reservations: [deposit({ balanceDueAt: DUE_BEFORE })],
+      paymentsByReservation: new Map([
+        ["r1", [payment("p1", "r1"), payment("p2", "r1", { kind: "balance", amountCents: 43518 })]],
+      ]),
+    });
+    const cancelled = build({
+      reservations: [deposit({ status: "cancelled" })],
+      paymentsByReservation: depositPaid,
+    });
+    const slot = { eventId: null, date: "2026-10-23", time: "15:30", vesselId: asId<"VesselId">("v1") };
+    const awaiting = build({
+      reservations: [reservation("r1", { ...slot, source: "admin", status: "pending", invoice: FROZEN })],
+      eventsById: new Map(),
+    });
+    const webPending = build({
+      reservations: [reservation("r1", { ...slot, source: "muster", status: "pending", invoice: FROZEN })],
+      eventsById: new Map(),
+    });
+    expect(balancePaid[0]!.state).toBe("paid");
+    for (const [row] of [paidInFull, balancePaid, cancelled, awaiting, webPending]) {
+      expect(row!.owed).toBeUndefined();
+    }
+  });
+
+  it("AC6: a disputed row carries no owed, though money is missing", () => {
+    const [row] = build({
+      reservations: [deposit()],
+      paymentsByReservation: new Map([["r1", [payment("p1", "r1", { status: "disputed" })]]]),
+    });
+    expect(row!.state).toBe("disputed");
+    expect(row!.balanceCents).toBeGreaterThan(0);
+    expect(row!.owed).toBeUndefined();
+  });
+
+  it("AC6: lastFailure is absent when no attempt has failed", () => {
+    const none = build({ reservations: [deposit({ balanceDueAt: DUE_BEFORE })], paymentsByReservation: depositPaid });
+    const inFlight = build({
+      reservations: [deposit({ balanceDueAt: DUE_BEFORE })],
+      paymentsByReservation: depositPaid,
+      attemptsByReservation: new Map([["r1", [attempt("r1", 0)]]]),
+    });
+    for (const [row] of [none, inFlight]) {
+      expect(row!.owed).toMatchObject({ pastDue: true });
+      expect(row!.owed?.lastFailure).toBeUndefined();
+    }
+  });
+
+  it.each([
+    {
+      name: "a decline reads its code alone",
+      attempts: [attempt("r1", 0, { outcome: "declined", declineCode: "card_declined" })],
+      want: "card_declined",
+    },
+    {
+      name: "a decline with no code reads declined",
+      attempts: [attempt("r1", 0, { outcome: "declined" })],
+      want: "declined",
+    },
+    {
+      name: "needs_approval reads needs approval",
+      attempts: [attempt("r1", 0, { outcome: "needs_approval" })],
+      want: "needs approval",
+    },
+    {
+      name: "the highest failed attempt wins, whatever the list order",
+      attempts: [
+        attempt("r1", 1, { outcome: "needs_approval" }),
+        attempt("r1", 0, { outcome: "declined", declineCode: "card_declined" }),
+      ],
+      want: "needs approval",
+    },
+    {
+      name: "a claim in flight or a success above a failure is skipped",
+      attempts: [
+        attempt("r1", 0, { outcome: "declined", declineCode: "insufficient_funds" }),
+        attempt("r1", 1, { outcome: "succeeded" }),
+        attempt("r1", 2),
+      ],
+      want: "insufficient_funds",
+    },
+  ])("AC6: lastFailure — $name", ({ attempts, want }) => {
+    const [row] = build({
+      reservations: [deposit({ balanceDueAt: DUE_BEFORE })],
+      paymentsByReservation: depositPaid,
+      attemptsByReservation: new Map([["r1", attempts]]),
+    });
+    expect(row!.owed).toMatchObject({ pastDue: true, lastFailure: want });
+  });
+});
+
+describe("issue #1142 — the Balance due chip", () => {
+  it("AC7: filterByState balance_due selects rows owing a dated balance, whatever their state", () => {
+    const rows = [
+      prow("deposit", { state: "deposit", owed: { cents: 100, dueAt: NOW, pastDue: true } }),
+      prow("refunded", { state: "refunded", owed: { cents: 100, dueAt: NOW, pastDue: true } }),
+      prow("unpaid", { state: "unpaid", owed: { cents: 100, pastDue: false } }),
+      prow("paid"),
+    ];
+    expect(ids(filterByState(rows, "balance_due")).sort()).toEqual(["deposit", "refunded"]);
+    expect(stateCounts(rows)).toMatchObject({ balance_due: 2, all: 4 });
+  });
+
+  describe("listPurchases", () => {
+    const set = () => [
+      prow("paid-wed", { customerName: "Ann Paid", date: "2026-10-21" }),
+      prow("unpaid-thu", { customerName: "Ben Unpaid", date: "2026-10-22", state: "unpaid", owed: { cents: 100, pastDue: false } }),
+      prow("deposit-fri", {
+        customerName: "Cat Deposit",
+        date: "2026-10-23",
+        state: "deposit",
+        owed: { cents: 200, dueAt: "2026-10-22T13:00:00.000Z", pastDue: false },
+      }),
+      // 31 days out, outside any default window: the worklist must not hide it.
+      prow("refunded-far", {
+        customerName: "Dee Faraway",
+        date: "2026-11-21",
+        state: "refunded",
+        owed: { cents: 300, dueAt: "2026-10-20T13:00:00.000Z", pastDue: true },
+      }),
+      prow("paid-far", { customerName: "Eve Later", date: "2026-11-25" }),
+    ];
+    const shown = (r: ReturnType<typeof listPurchases>) => r.groups.flatMap((g) => ids(g.rows));
+
+    it("AC7: every chip counts the window, except Balance due, which counts the whole set", () => {
+      const { counts } = listPurchases(set(), { q: "", state: "all", window: WEEK, sort: "trip" });
+      expect(counts).toMatchObject({ all: 3, paid: 1, unpaid: 1, deposit: 1, refunded: 0, balance_due: 2 });
+    });
+
+    it("AC7: Balance due shows dated balances from the whole set, not the window", () => {
+      const r = listPurchases(set(), { q: "", state: "balance_due", window: WEEK, sort: "trip" });
+      expect(shown(r)).toEqual(["deposit-fri", "refunded-far"]);
+    });
+
+    it("AC7: any other chip shows the window, then the state, sorted and grouped", () => {
+      const all = listPurchases(set(), { q: "", state: "all", window: WEEK, sort: "trip" });
+      expect(shown(all)).toEqual(["paid-wed", "unpaid-thu", "deposit-fri"]);
+      expect(all.groups.map((g) => g.key)).toEqual(["2026-10-21", "2026-10-22", "2026-10-23"]);
+      const paid = listPurchases(set(), { q: "", state: "paid", window: WEEK, sort: "trip" });
+      expect(shown(paid)).toEqual(["paid-wed"]);
+    });
+
+    it("AC7: search narrows the Balance due list but no chip's count", () => {
+      const r = listPurchases(set(), { q: "faraway", state: "balance_due", window: WEEK, sort: "trip" });
+      expect(shown(r)).toEqual(["refunded-far"]);
+      expect(r.counts).toMatchObject({ all: 3, balance_due: 2 });
+    });
+
+    it("AC7: windowEmpty when the window holds no row and the set does", () => {
+      const quiet = { from: "2026-10-28", to: "2026-11-04", kind: "next8to15" } as const;
+      const r = listPurchases(set(), { q: "", state: "all", window: quiet, sort: "trip" });
+      expect(r.windowEmpty).toBe(true);
+      expect(r.groups).toEqual([]);
+    });
+
+    it("AC7: windowEmpty never under Balance due, nor for an empty set, nor when only search empties it", () => {
+      const quiet = { from: "2026-10-28", to: "2026-11-04", kind: "next8to15" } as const;
+      expect(listPurchases(set(), { q: "", state: "balance_due", window: quiet, sort: "trip" }).windowEmpty).toBe(false);
+      expect(listPurchases([], { q: "", state: "all", window: WEEK, sort: "trip" }).windowEmpty).toBe(false);
+      expect(listPurchases(set(), { q: "nobody", state: "all", window: WEEK, sort: "trip" }).windowEmpty).toBe(false);
+    });
+  });
+});
+
+describe("issue #1142 — the carried params", () => {
+  const params = (p: URLSearchParams) => Object.fromEntries(p);
+  const current = { q: "dana", state: "unpaid", preset: "days30", sort: "purchase" };
+
+  it.each([
+    { change: { q: "marcus" }, want: { q: "marcus", state: "unpaid", preset: "days30", sort: "purchase" } },
+    { change: { state: "paid" }, want: { q: "dana", state: "paid", preset: "days30", sort: "purchase" } },
+    { change: { preset: "today" }, want: { q: "dana", state: "unpaid", preset: "today", sort: "purchase" } },
+    { change: { sort: "trip" }, want: { q: "dana", state: "unpaid", preset: "days30" } },
+  ])("AC8: changing $change keeps the other three", ({ change, want }) => {
+    expect(params(purchasesParams(current, change))).toEqual(want);
+  });
+
+  it("AC8: defaults are dropped — state=all, sort=trip, an empty q, and the bare default window", () => {
+    expect(params(purchasesParams({ q: "", state: "all", sort: "trip" }))).toEqual({});
+    expect(params(purchasesParams(current, { q: "", state: "all" }))).toEqual({ preset: "days30", sort: "purchase" });
+  });
+
+  it("AC8: an explicit preset=next7 stays in the URL", () => {
+    expect(params(purchasesParams({ preset: "next7" }))).toEqual({ preset: "next7" });
+  });
+
+  it("AC8: past and all are carried; an unknown preset is not", () => {
+    expect(params(purchasesParams({ preset: "past" }))).toEqual({ preset: "past" });
+    expect(params(purchasesParams({ preset: "all", q: "x" }))).toEqual({ preset: "all", q: "x" });
+    expect(params(purchasesParams({ preset: "bogus", q: "x" }))).toEqual({ q: "x" });
+  });
+
+  it("AC8: a change naming preset, from or to replaces the whole window, never merges", () => {
+    const range = { state: "paid", from: "2026-10-01", to: "2026-10-05" };
+    expect(params(purchasesParams(range, { preset: "today" }))).toEqual({ state: "paid", preset: "today" });
+    expect(params(purchasesParams({ state: "paid", preset: "days30" }, { from: "2026-10-01", to: "2026-10-05" }))).toEqual(
+      { state: "paid", from: "2026-10-01", to: "2026-10-05" },
+    );
+    expect(params(purchasesParams(range, { from: "2026-10-03" }))).toEqual({ state: "paid", from: "2026-10-03" });
+  });
+
+  it("AC8: purchasesHref is /admin/purchases, plus ? and the params when any", () => {
+    expect(purchasesHref({})).toBe("/admin/purchases");
+    expect(purchasesHref({ state: "all", sort: "trip" })).toBe("/admin/purchases");
+    const url = new URL(purchasesHref(current, { state: "paid" }), "http://muster.test");
+    expect(url.pathname).toBe("/admin/purchases");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ q: "dana", state: "paid", preset: "days30", sort: "purchase" });
   });
 });

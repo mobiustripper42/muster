@@ -26,7 +26,7 @@ test.describe("admin /admin/purchases", () => {
 
   test("lists Muster orders with derived state; nothing paid reads UNPAID", async ({ page }) => {
     await signInAsAdmin(page, "eric");
-    await page.goto("/admin/purchases");
+    await page.goto("/admin/purchases?preset=all");
 
     // Marcus books twice on the same phone (the repeat-guest fixture), Dana once — those two are
     // named because the rows below assert their formatting, not because they are the whole list.
@@ -57,7 +57,7 @@ test.describe("admin /admin/purchases", () => {
 
   test("filter chips carry counts and narrow the list", async ({ page }) => {
     await signInAsAdmin(page, "eric");
-    await page.goto("/admin/purchases");
+    await page.goto("/admin/purchases?preset=all");
 
     await expect(page.getByTestId("state-all")).toContainText(String(ORDERS));
     await expect(page.getByTestId("state-unpaid")).toContainText(String(ORDERS));
@@ -65,7 +65,8 @@ test.describe("admin /admin/purchases", () => {
 
     // A filter with no members says so rather than rendering an empty table.
     await page.getByTestId("state-paid").click();
-    await page.waitForURL(/state=paid/);
+    // The chip carries the window (issue #1142 AC8), so the list it opens is still every date.
+    await page.waitForURL((u) => u.searchParams.get("state") === "paid" && u.searchParams.get("preset") === "all");
     await expect(page.getByText(/No order matches/)).toBeVisible();
 
     // Back to All restores the list.
@@ -78,23 +79,23 @@ test.describe("admin /admin/purchases", () => {
   }) => {
     await signInAsAdmin(page, "eric");
 
-    await page.goto("/admin/purchases?q=Cho");
+    await page.goto("/admin/purchases?q=Cho&preset=all");
     await expect(page.getByRole("link", { name: "Dana Cho" })).toHaveCount(1);
     await expect(page.getByRole("link", { name: "Marcus Webb" })).toHaveCount(0);
 
     // Marcus's seeded phone is "216-555-0148"; punctuation shouldn't matter.
-    await page.goto("/admin/purchases?q=(216)+555-0148");
+    await page.goto("/admin/purchases?q=(216)+555-0148&preset=all");
     await expect(page.getByRole("link", { name: "Marcus Webb" })).toHaveCount(2);
     await expect(page.getByRole("link", { name: "Dana Cho" })).toHaveCount(0);
 
     // Search + state compose (both seeded orders are unpaid).
-    await page.goto("/admin/purchases?q=Cho&state=unpaid");
+    await page.goto("/admin/purchases?q=Cho&state=unpaid&preset=all");
     await expect(page.getByRole("link", { name: "Dana Cho" })).toHaveCount(1);
   });
 
   test("a row opens the calendar's detail pane — no second detail surface", async ({ page }) => {
     await signInAsAdmin(page, "eric");
-    await page.goto("/admin/purchases?q=Cho");
+    await page.goto("/admin/purchases?q=Cho&preset=all");
     await page.getByRole("link", { name: "Dana Cho" }).click();
 
     await page.waitForURL(/\/admin\/calendar\/resv-demo/);
@@ -115,7 +116,7 @@ test.describe("admin /admin/purchases", () => {
     await page.getByTestId("book-phone").click();
     await page.waitForURL(/\/admin\/calendar\/resv-/);
 
-    await page.goto("/admin/purchases");
+    await page.goto("/admin/purchases?preset=all");
     await expect(page.getByTestId("state-awaiting")).toHaveText("Awaiting payment 1");
     await page.getByTestId("state-awaiting").click();
     const row = page.getByRole("row").filter({ hasText: "Phone Caller" });

@@ -40,7 +40,7 @@ import { confirmCompedRow } from "./write-booking.js";
  * our payments apart instead is the pending row: the checkout writes it BEFORE calling Stripe,
  * so an intent that is ours resolves to a row, and one that is not resolves to nothing.
  *
- * The bare PaymentIntent under a hosted balance session therefore lands on `unconfirmable` /
+ * A bare PaymentIntent under a hosted Checkout session therefore lands on `unconfirmable` /
  * `no_row` rather than being filtered out up here, and still books nothing.
  */
 export async function confirmBookingFromIntent(

@@ -5,7 +5,8 @@ import { processBookingWebhook } from "@core/reservations/booking-webhook.js";
 
 /**
  * Stripe payment webhook (DEC-107, 11.2; event union 12.5, DEC-134) — the charge→booking
- * spine. Handles `checkout.session.completed` (hosted: balance + post-gratuity) AND
+ * spine. Handles `checkout.session.completed` (hosted; a `balance` or `gratuity` purpose is flagged
+ * as unknown since issue #1254, the balance being paid on its own intent) AND
  * `payment_intent.payment_failed` (declines — acked and ignored, 14.8) AND
  * `payment_intent.succeeded` (inline Elements bookings — the Stripe dashboard endpoint must
  * subscribe to BOTH event types).

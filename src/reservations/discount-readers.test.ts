@@ -6,11 +6,9 @@
  * as owing the discount plus its tax, and the pane offers a balance link to collect it.
  */
 import { describe, expect, it } from "vitest";
-import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { BookingInvoice, Event, Payment, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { buildReservationDetail, buildUnpaidBookingDetail } from "./calendar-detail.js";
-import { createBalanceCheckout } from "./create-balance-checkout.js";
 import { chargedFareCents } from "./discount.js";
 import { payLinkMoney } from "./pay-by-link.js";
 import { PAYMENT_CONFIG_DEFAULTS } from "./payment-config.js";
@@ -97,18 +95,9 @@ describe("a discounted booking paid in full owes nothing", () => {
       reservations: [booked],
       eventsById: new Map([[String(EVENT_ID), event]]),
       paymentsByReservation: new Map([[String(RESV_ID), [paidInFull]]]),
+      now: "2026-06-01T12:00:00.000Z",
     });
     expect(row?.balanceCents).toBe(0);
-  });
-
-  it("and no balance link can be minted for it", async () => {
-    const repo = new InMemoryRepository();
-    await repo.saveEvent(event);
-    await repo.saveReservation(booked);
-    await repo.savePayment(paidInFull);
-    await repo.setPaymentConfig({ taxRateBps: TAX_BPS }, "2026-07-01T12:00:00Z");
-    const res = await createBalanceCheckout(repo, {} as never, RESV_ID, { successUrl: "", cancelUrl: "" });
-    expect(res).toEqual({ ok: false, reason: "no_balance" });
   });
 });
 
@@ -144,6 +133,7 @@ describe("an insured booking whose discount went past the fare (16.8)", () => {
       reservations: [insured],
       eventsById: new Map([[String(EVENT_ID), event]]),
       paymentsByReservation: new Map([[String(RESV_ID), [paid]]]),
+      now: "2026-06-01T12:00:00.000Z",
     });
     expect(row?.balanceCents).toBe(0);
   });

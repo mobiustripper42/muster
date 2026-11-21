@@ -1,11 +1,12 @@
 import { AppLink } from "../ui/app-link";
 import { CrewSelect } from "./crew-select";
-import { GetFormSubmit } from "../ui/get-form-submit";
 import type { Mode, Scope } from "./shifts-view-types";
-import { Field } from "../ui/field";
-import { Input } from "../ui/input";
 import { Card } from "../ui/card";
 import { chipLook } from "../ui/choice";
+import { WindowChips } from "./window-chips";
+
+/** The presets All Shifts shows; `past` and `all` are Purchases-only. */
+const SHIFT_PRESETS: readonly Scope[] = ["today", "weekend", "next7", "next8to15", "days30"];
 
 /** Date-range + crew filter — preset links, a no-JS date GET form, and a no-JS
  * crew dropdown (DEC-026 pattern). The active chip reflects the RESOLVED scope
@@ -48,7 +49,7 @@ export function Filter({
   // The chip face, dark when on (issue #484): a link cannot be a <Chip>, so it wears its look.
   const chip = (active: boolean) => `pressable ${chipLook(active, "dense")}`;
   const edit = mode === "edit";
-  const href = (preset?: string) => {
+  const href = (preset?: Scope) => {
     const p = new URLSearchParams();
     if (preset) p.set("preset", preset);
     if (edit) p.set("mode", "edit");
@@ -90,60 +91,25 @@ export function Filter({
   const moreOpen = kind === "range" || !!crew || showCancelled || showSplitOnly;
   return (
     <Card className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <AppLink href={href("today")} className={chip(kind === "today")}>
-          Today
-        </AppLink>
-        <AppLink href={href("weekend")} className={chip(kind === "weekend")}>
-          Weekend
-        </AppLink>
-        <AppLink href={href("next7")} className={chip(kind === "next7")}>
-          Week
-        </AppLink>
-        <AppLink href={href("next8to15")} className={chip(kind === "next8to15")}>
-          2 Weeks out
-        </AppLink>
-        <AppLink href={href("days30")} className={chip(kind === "days30")}>
-          30 Days
-        </AppLink>
-      </div>
-
-      {/* Custom date range + crew filter, tucked behind a no-JS <details> toggle
-          (DEC-026 — native disclosure, no client JS). Open by default when one of
-          them is actually active so an in-effect filter is never hidden. */}
-      <details open={moreOpen} className="flex flex-col gap-2">
-        <summary className="btn-quiet select-none text-xs">
-          More filters
-        </summary>
-
-        <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
-          {edit && <input type="hidden" name="mode" value="edit" />}
-          {sel && <input type="hidden" name="sel" value={sel} />}
-          {/* Keep the crew filter + Show-cancelled across an explicit date submit. */}
-          {crew && <input type="hidden" name="crew" value={crew} />}
-          {showCancelled && <input type="hidden" name="cancelled" value="1" />}
-          {showSplitOnly && <input type="hidden" name="split" value="1" />}
-          <Field label="From" htmlFor="filter-from">
-            <Input
-              id="filter-from"
-              type="date"
-              name="from"
-              defaultValue={from}
-              density="dense"
-            />
-          </Field>
-          <Field label="To" htmlFor="filter-to">
-            <Input
-              id="filter-to"
-              type="date"
-              name="to"
-              defaultValue={to}
-              density="dense"
-            />
-          </Field>
-          <GetFormSubmit className="btn-secondary btn-sm">Show</GetFormSubmit>
-        </form>
-
+      <WindowChips
+        kind={kind}
+        from={from}
+        to={to}
+        presets={SHIFT_PRESETS}
+        hrefFor={href}
+        hidden={
+          <>
+            {edit && <input type="hidden" name="mode" value="edit" />}
+            {sel && <input type="hidden" name="sel" value={sel} />}
+            {/* Keep the crew filter + Show-cancelled across an explicit date submit. */}
+            {crew && <input type="hidden" name="crew" value={crew} />}
+            {showCancelled && <input type="hidden" name="cancelled" value="1" />}
+            {showSplitOnly && <input type="hidden" name="split" value="1" />}
+          </>
+        }
+        submitLabel="Show"
+        open={moreOpen}
+      >
         {/* Crew filter (#330, DEC-042 amendment) — narrow the board to one crew
             member's shifts. A no-JS GET form (DEC-026): the window hidden inputs
             preserve the active preset/range so the pick stays in the window you're
@@ -189,7 +155,7 @@ export function Filter({
             <span aria-hidden="true">{showSplitOnly ? "☑" : "☐"}</span> Split candidates
           </AppLink>
         </div>
-      </details>
+      </WindowChips>
     </Card>
   );
 }

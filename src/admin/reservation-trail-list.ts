@@ -80,7 +80,6 @@ export const TRAIL_TYPE_LABEL: Record<TrailEventType, string> = {
   payment_failed: "Card declined",
   payment_superseded: "Old payment link retired",
   charge_unmatched: "Charge with no booking",
-  balance_link_created: "Balance link created",
 
   // ── Money out ────────────────────────────────────────────────────────────
   refund_issued_by_operator: "Refund issued by operator",
@@ -112,6 +111,9 @@ export const TRAIL_TYPE_LABEL: Record<TrailEventType, string> = {
   slot_released: "Slot released",
   imported: "Imported from Xola",
   gratuity_added: "Tip added",
+
+  // ── Retired: no longer emitted, but old rows are still in the table ──────
+  balance_link_created: "Balance link created",
 };
 
 /** Who acted. `engine` is Muster itself — a sweep, a lapse, the residual-race auto-refund — and

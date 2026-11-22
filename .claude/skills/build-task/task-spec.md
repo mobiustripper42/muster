@@ -26,7 +26,7 @@ before the next goes out. Any word of approval is "Approved" — "next", "okay",
 the issue whole, at /build-task Step 0, and the agents read the full lists there; the walk is a
 conversation, not one document.
 The operator approves the walk by running /build-task. Its Step 0 writes the spec into the issue,
-then refuses to start while any section is blank or Open questions has anything in it. "None" is an answer; blank is not.
+unless /save-this already has (that is saving it, not approving it), then refuses to start while any section is blank or Open questions has anything in it. "None" is an answer; blank is not.
 
 Every line in the sections below carries its source:
   [you]  — the operator said it

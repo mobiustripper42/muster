@@ -15,13 +15,21 @@ stopping only where information turns out to be missing.
 
 ## Step 0 — Gate
 
+**First, the session file's Next Steps,** unless this conversation has read them since the last
+`/save-this`: find the open session file the way `/kill-this` Step 0 does (none open: abort, the
+operator runs `/its-alive`; several: ask, as it does), read its Next Steps, restore its parking
+lot, and obey its standing rules from here on. Run in a fresh context on an issue whose spec is
+already written, this skill is the first thing that context does, and skipping the file is how a
+Haul run missed a standing rule about its branch and cut the wrong one.
+
 Abort with a one-line reason if any of these fail:
 
 - **Testable.** The line between the two loops, whatever the points. At least one acceptance
   criterion is something the `Proof` slot can check — behavior or data. A task that is only
   layout, spacing, styling or wording has nothing for `@test-writer` to assert: use the normal
   loop, with `@ui-reviewer` and a screenshot at the hand-back.
-- **Branch.** You are on `task/X.Y-*` or `task/<issue>-*`, not `main`.
+- **Branch.** You are on `task/X.Y-*` or `task/<issue>-*`, not `main`, and on the branch any
+  standing rule names for this task.
 - **Proof slot.** `.claude/CLAUDE-context.md` § Workflow Mechanisms names a real `Proof` and
   `Proof command`. If it says `none`, there is nothing to write tests in — use the normal loop.
 - **Spec.** Decide by the issue body, not by memory of the conversation. If the body already has
@@ -159,7 +167,9 @@ Check, in order:
    test's name or body is an edit, and that is a stub report, not a test — unless Interfaces'
    Removes line lists it, and the edit is the deletion or retarget that line names. A retargeted
    test keeps its own name, with no criterion id, and is exempt from the naming rule and from
-   check 2: it guards behaviour that already exists, so it may pass against the stubs.
+   check 2: it guards behaviour that already exists, so it may pass against the stubs. A name the
+   retarget would make false is renamed by `@test-writer`, reported as `renamed from <old name>`;
+   check the new name is true, and write the rename into the Removes line as a `[Lead]` line.
 2. **Fails for the right reason.** Run the `Proof command` yourself, against the stubs. Each test
    must fail on its own assertion — a wrong value, a missing row, a call that didn't throw — not on
    a missing file or function, a typo, a bad import path, or broken setup. The one exception is a

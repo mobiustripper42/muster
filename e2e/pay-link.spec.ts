@@ -103,11 +103,14 @@ async function copiedLink(page: Page): Promise<string> {
  * The booking as the confirm leaves it once paid — written straight to the test DB, because the
  * e2e has no Stripe to pay through (the confirm itself is `pay-by-link.test.ts`): turned `muster`
  * and booked, its Event materialized, and the `booked` history row naming the operator as seller.
+ * `paymentIntentIds`, when given, are the intents the card was charged on, written to the row as the
+ * confirm leaves them (issue #1266); left out, the row's own are kept.
  */
-async function markPaid(reservationId: string): Promise<void> {
+async function markPaid(reservationId: string, paid: { paymentIntentIds?: string[] } = {}): Promise<void> {
   const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
   try {
-    const r = (await repo.getReservation(reservationId as never))!;
+    const stored = (await repo.getReservation(reservationId as never))!;
+    const r = paid.paymentIntentIds ? { ...stored, paymentIntentIds: paid.paymentIntentIds } : stored;
     const eventId = `evt-e2e-paid-${reservationId}` as never;
     await repo.saveEvent({
       id: eventId,
@@ -128,6 +131,18 @@ async function markPaid(reservationId: string): Promise<void> {
       timestamp: new Date().toISOString(),
       metadata: { via: "webhook" },
     });
+  } finally {
+    await repo.close();
+  }
+}
+
+/** The booking cancelled, written straight to the test DB — the e2e has no Stripe to refund a paid
+ *  booking through (issue #1266), and the card the link shows reads only the row. */
+async function markCancelled(reservationId: string): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const r = (await repo.getReservation(reservationId as never))!;
+    await repo.saveReservation({ ...r, status: "cancelled" });
   } finally {
     await repo.close();
   }
@@ -324,6 +339,30 @@ test.describe("the payment link", () => {
     await expect(state).toContainText("we sent to (216) 555-…99.");
     await expect(state.getByRole("link", { name: "Lost it? Find your booking" })).toHaveAttribute("href", "/b/find");
     await expect(customer.locator('a[href^="/b/"]:not([href="/b/find"])')).toHaveCount(0);
+    await expect(customer.getByTestId("pay-now")).toHaveCount(0);
+  });
+
+  test("AC4: paid by link and then cancelled, the Cancelled card says any refund goes back to the card — never that nothing was charged", async ({ page, browser, baseURL }) => {
+    await bookByPhone(page);
+    const path = await copiedLink(page);
+    const reservationId = decodeURIComponent(page.url().split("?")[0]!.split("/admin/calendar/")[1]!);
+    // Paid by link, as the confirm leaves it (the intent stays on the row), then cancelled.
+    await markPaid(reservationId, { paymentIntentIds: [`pi_e2e_${reservationId}`] });
+    await markCancelled(reservationId);
+
+    const customer = await asCustomer(browser, page, baseURL, path);
+    const card = customer.getByTestId("pay-state");
+    await expect(card.getByRole("heading", { name: "Booking cancelled", level: 1 })).toBeVisible();
+    await expect(card).toContainText(
+      `Your ${shortTime(OPEN_TIME)} PM trip on ${formatShortDay(BOOKED.date)} has been cancelled.`,
+    );
+    await expect(card).toContainText(
+      "Any refund due goes back to your card. It follows your booking’s cancellation terms. Refunds take a few days to show on a statement.",
+    );
+    await expect(card).not.toContainText("Nothing was charged");
+    await expect(card).not.toContainText("never charged");
+    await expect(card).toContainText("Changed your mind? You’re welcome to book again any time.");
+    await expect(card.getByRole("link", { name: "Book a trip →" })).toHaveAttribute("href", "/book");
     await expect(customer.getByTestId("pay-now")).toHaveCount(0);
   });
 

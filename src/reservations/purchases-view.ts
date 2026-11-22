@@ -20,7 +20,7 @@ import { fmtDayHeader, windowParams, type Scope } from "../admin/date-window.js"
 import { vesselDateOf } from "../config/tenant.js";
 import type { BalanceChargeAttempt, Event, Payment, Reservation } from "../domain/entities.js";
 import type { TrailEvent } from "../domain/reservation-trail.js";
-import { frozenMoney } from "./booking-invoice.js";
+import { fareAndTaxCents } from "./discount.js";
 import { balanceDueCents, countsAsPaid } from "./payment-config.js";
 
 /**
@@ -167,8 +167,7 @@ function stateOf(
  * invoice (a Xola row) reads as no recorded price, every figure 0 (issue #1241).
  */
 function orderTotal(r: Reservation): { totalCents: number; priceKnown: boolean } {
-  const { fareCents, taxCents, priceKnown } = frozenMoney(r.invoice);
-  return { totalCents: fareCents + taxCents, priceKnown };
+  return { totalCents: r.invoice ? fareAndTaxCents(r.invoice) : 0, priceKnown: r.invoice !== undefined };
 }
 
 /** The latest failed balance attempt, worded as the Owed cell reads it. A claim in flight (no

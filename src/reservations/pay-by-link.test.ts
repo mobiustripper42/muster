@@ -15,8 +15,9 @@ import type { WebhookDeps } from "./booking-webhook.js";
 import { cancelReservation, cancelUnpaidPhoneBooking } from "./cancel-reservation.js";
 import { confirmBookingFromIntent } from "./confirm-booking.js";
 import { bookForCustomer } from "./operator-booking.js";
-import { maskedPhone, payLinkMoney, payLinkState, startPayByLink } from "./pay-by-link.js";
+import { cancelledWasCharged, maskedPhone, payLinkMoney, payLinkState, startPayByLink } from "./pay-by-link.js";
 import { PAYMENT_CONFIG_DEFAULTS, type PaymentConfig } from "./payment-config.js";
+import { confirmCompedRow } from "./write-booking.js";
 
 const BOAT = asId<"VesselId">("v-boat");
 const OFF = asId<"OfferingId">("off-1");
@@ -220,6 +221,49 @@ describe("payLinkState — what the /p page shows", () => {
     const { row } = await phoneBooked();
     const stuck = { ...row, invoice: { ...row.invoice!, totalCents: 0, amountDueNowCents: 0 } };
     expect(payLinkState(stuck).kind).toBe("missing");
+  });
+});
+
+/**
+ * Which Cancelled card the link shows (issue #1266): the paid one only when a card was charged. A
+ * phone booking stays `admin` until paid (DEC-163), and a comp turns `muster` with no intent on it
+ * (`confirmCompedRow`), so the rule reads both the source and the intents.
+ */
+describe("cancelledWasCharged — which Cancelled card /p shows (issue #1266)", () => {
+  it("AC3: a phone booking cancelled before it was paid was never charged — even with an intent minted on it", async () => {
+    // The customer opened the link (an intent attached), then the booking was cancelled unpaid.
+    const { repo, row } = await phoneBooked();
+    await start(repo, new FakePaymentPort(), row.id);
+    await cancelUnpaidPhoneBooking({ repo, now }, row.id, "operator");
+    const cancelled = (await repo.getReservation(row.id))!;
+    expect(cancelled).toMatchObject({ source: "admin", status: "cancelled", paymentIntentIds: ["pi_fake_1"] });
+
+    expect(cancelledWasCharged(cancelled)).toBe(false);
+  });
+
+  it("AC4: a booking paid by link, then cancelled, was charged", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    await start(repo, payments, row.id);
+    pay(payments, "pi_fake_1", row.invoice!.amountDueNowCents);
+    await confirmBookingFromIntent(webhookDeps(repo, payments).deps, (await payments.getSucceededPaymentIntent("pi_fake_1"))!);
+    const paid = (await repo.getReservation(row.id))!;
+    expect(paid).toMatchObject({ source: "muster", status: "booked", paymentIntentIds: ["pi_fake_1"] });
+
+    expect(cancelledWasCharged({ ...paid, status: "cancelled" })).toBe(true);
+  });
+
+  it("AC4b: a comp, confirmed with no intent and then cancelled, was never charged — intents empty or absent", async () => {
+    const { row: plain } = await phoneBooked();
+    const fare = plain.invoice!.fareCents + plain.invoice!.extrasCents;
+    const { repo, row } = await phoneBooked(undefined, { discountCents: fare });
+    expect(row.invoice!.amountDueNowCents).toBe(0);
+    expect(await confirmCompedRow(repo, row.id, now)).toMatchObject({ outcome: "booked" });
+    const { paymentIntentIds: _ids, ...comped } = (await repo.getReservation(row.id))!;
+    expect(comped).toMatchObject({ source: "muster", status: "booked" });
+
+    expect(cancelledWasCharged({ ...comped, status: "cancelled" })).toBe(false);
+    expect(cancelledWasCharged({ ...comped, status: "cancelled", paymentIntentIds: [] })).toBe(false);
   });
 });
 

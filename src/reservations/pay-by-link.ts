@@ -44,6 +44,12 @@ export function payLinkState(r: Reservation | null): PayLinkState {
   return { kind: "missing" };
 }
 
+/** Did this cancelled booking take a card payment? Decides which Cancelled card `/p` shows
+ *  (issue #1266). */
+export function cancelledWasCharged(r: Reservation): boolean {
+  return r.source !== "admin" && (r.paymentIntentIds ?? []).length > 0;
+}
+
 /**
  * The checkout's money shape, read off the invoice frozen when the operator booked — never
  * re-priced. The price is the operator's; the split (what is charged now, what is left, the balance

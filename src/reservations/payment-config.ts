@@ -19,7 +19,11 @@
 import { parseWholeNumberSetting } from "../config/whole-number-setting.js";
 import { logSwallowed } from "../log.js";
 import type { BookingInvoice, PaymentStatus, ReservationStatus } from "../domain/entities.js";
-import { chargedFareCents, fareTaxCents } from "./discount.js";
+import { fareAndTaxCents } from "./discount.js";
+
+// Moved to the leaf `rates.ts` so `discount.ts` need not import this file (issue #1266); re-exported
+// so every caller keeps its import.
+export { feeCentsFor, taxCentsFor } from "./rates.js";
 
 export interface PaymentConfig {
   /** The deposit a customer may pay now instead of the whole quote, in cents — one fixed number,
@@ -116,18 +120,7 @@ export function depositOffered(
 export function dueNowCents(totalCents: number, depositCents: number | null): number {
   return depositCents === null || totalCents <= depositCents ? totalCents : depositCents;
 }
-/** Tax on a taxable amount, integer cents (round half-up). Pure — used by the charge builder. */
-export function taxCentsFor(taxableCents: number, taxRateBps: number): number {
-  return Math.round((taxableCents * taxRateBps) / 10000);
-}
 
-/** Service fee on its base, integer cents (round half-up). The base is everything charged except
- *  tax — fare + extras + insurance + tip (operator 2026-10-09, DEC-196, which reverses DEC-134's
- *  fare-only base). Composed in one place, `chargeTotals`; frozen on the invoice, never recomputed
- *  from live config. */
-export function feeCentsFor(baseCents: number, serviceFeeBps: number): number {
-  return Math.round((baseCents * serviceFeeBps) / 10000);
-}
 
 /**
  * Is this payment still live money, or has it been handed back in full?
@@ -224,7 +217,7 @@ export function balanceOwedCents(
     flexCents?: number;
   }[],
 ): number {
-  const total = chargedFareCents(invoice) + fareTaxCents(invoice);
+  const total = fareAndTaxCents(invoice);
   // Net the GRATUITY, the SERVICE FEE and the INSURANCE out of each amount taken (DEC-124 /
   // DEC-134 / 16.8): the tip is crew money, the fee a one-shot surcharge, insurance a flat
   // untaxed $30 — none is part of fare+tax, so counting any as "paid toward balance" would

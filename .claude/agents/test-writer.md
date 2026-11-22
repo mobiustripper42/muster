@@ -133,9 +133,11 @@ What to report:
    test that asserts a copy key's text is deleted, never retargeted to the new key's text, unless it
    checks a choice between lines (What a test asserts); one that
    only reads the key to locate a control is retargeted to the new key. List
-   every such file under Files. A retargeted test keeps its name and needs no criterion id, and
-   item 5 does not apply to it: it guards behaviour that already exists, so it may pass against
-   the stubs. Report it under Against the stubs as `retargeted: <replacement>`. An existing test
+   every such file under Files. A retargeted test keeps its name, unless the retarget makes the name
+   false (`a closed week opens nothing`, now checking that it opens): then rename it. A retargeted
+   test needs no criterion id, and item 5 does not apply to it: it guards behaviour that already exists, so it may pass against
+   the stubs. Report it under Against the stubs as `retargeted: <replacement>`, adding
+   `, renamed from <old name>` when renamed. An existing test
    that uses something removed and is not listed under Removes is a question, not an edit: stop
    and return it.
 9. Put new tests in a new file, in an existing test file Interfaces' Files touched names, or in
@@ -204,7 +206,7 @@ Return:
 | AC1 | <test names> |
 
 ### Against the stubs
-- <test name> — fails: <the assertion that failed> | passes: guards <what>, partner <failing test> | retargeted: <replacement>
+- <test name> — fails: <the assertion that failed> | passes: guards <what>, partner <failing test> | retargeted: <replacement>[, renamed from <old name>]
 
 ### Proof output
 <the run against the stubs>

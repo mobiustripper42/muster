@@ -121,7 +121,6 @@ export function dueNowCents(totalCents: number, depositCents: number | null): nu
   return depositCents === null || totalCents <= depositCents ? totalCents : depositCents;
 }
 
-
 /**
  * Is this payment still live money, or has it been handed back in full?
  *

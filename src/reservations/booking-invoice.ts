@@ -66,8 +66,9 @@ export function insuranceOf(invoice: BookingInvoice | undefined): { chargedCents
 
 /**
  * A booking's money as frozen on its invoice (issue #1241): the fare charged, its discount, the
- * insurance and the whole tax (the insurance's included). The one no-invoice rule for the pane, the
- * manage page and the purchases list — with none, every figure is 0 and the price is not known.
+ * insurance and the whole tax (the insurance's included). The no-invoice rule for the pane and the
+ * manage page — with none, every figure is 0 and the price is not known. The purchases list's
+ * Total applies the same rule to `fareAndTaxCents` (issue #1266), since its tax excludes the insurance's.
  */
 export function frozenMoney(inv: BookingInvoice | undefined): {
   fareCents: number;

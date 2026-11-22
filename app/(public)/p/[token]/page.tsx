@@ -232,7 +232,8 @@ function CancelBooking({
 /**
  * Cancelled, by the customer here or by the operator: the "You're booked!" card from `/book/success`,
  * same shape and sizes, in a plain band with ✕ — ending a trip isn't a celebration and isn't an
- * error either (operator, 2026-09-29). The same card whenever the link is opened after.
+ * error either (operator, 2026-09-29). The same card whenever the link is opened after. Its body
+ * has two branches, a card charged and one never charged, and `cancelledWasCharged` picks between them (issue #1266).
  */
 function Cancelled({ reservation: r }: { reservation: Reservation }) {
   const when = r.date && r.time ? `Your ${formatClock(r.time)} trip on ${formatShortDay(r.date)}` : "Your trip";

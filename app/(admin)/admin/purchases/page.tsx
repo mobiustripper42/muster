@@ -230,15 +230,17 @@ export default async function AdminPurchases({
 
       <Card className="mt-3 flex flex-col gap-2">
         <WindowChips
-          kind={window.kind}
+          // Balance due ignores the window, so no preset chip is lit there; `kind` only lights a chip.
+          kind={state === "balance_due" ? "range" : window.kind}
           from={window.from}
           to={window.to}
           presets={PRESETS}
           hrefFor={(preset) => href({ preset })}
-          // No window key: a carried preset would beat the range the form submits.
+          // No window key: a carried preset would beat the range the form submits. Passed as a window
+          // change, so a submitted range leaves Balance due as a window chip does.
           hidden={
             <HiddenFields
-              params={purchasesParams({ ...current, preset: undefined, from: undefined, to: undefined })}
+              params={purchasesParams(current, { preset: undefined, from: undefined, to: undefined })}
             />
           }
           submitLabel="Apply"

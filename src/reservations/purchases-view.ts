@@ -430,7 +430,9 @@ export function purchasesParams(
   const p = windowParams(window, { allowPast: true, allowAll: true });
   const q = pick("q");
   if (q) p.set("q", q);
-  const state = pick("state");
+  // Balance due ignores the window, so picking one from it goes back to All in that window: the pick
+  // would otherwise change nothing on screen (operator, 2026-11-21). A change naming the state wins.
+  const state = windowChanged && !("state" in change) && current.state === "balance_due" ? "all" : pick("state");
   if (state && state !== "all") p.set("state", state);
   const sort = pick("sort");
   if (sort && sort !== "trip") p.set("sort", sort);

@@ -836,6 +836,19 @@ describe("issue #1142 — the carried params", () => {
     expect(params(purchasesParams(range, { from: "2026-10-03" }))).toEqual({ state: "paid", from: "2026-10-03" });
   });
 
+  it("AC7: picking a window from Balance due goes back to All in that window, keeping search and sort", () => {
+    const balanceDue = { q: "dana", state: "balance_due", preset: "next7", sort: "purchase" };
+    expect(params(purchasesParams(balanceDue, { preset: "days30" }))).toEqual({ q: "dana", preset: "days30", sort: "purchase" });
+    // The From/To form's hidden fields: the window keys are cleared, so Balance due goes too.
+    expect(params(purchasesParams(balanceDue, { preset: undefined, from: undefined, to: undefined }))).toEqual({
+      q: "dana",
+      sort: "purchase",
+    });
+    // A change that names the state itself still wins, and another chip's state survives a window pick.
+    expect(params(purchasesParams(balanceDue, { preset: "days30", state: "balance_due" }))).toMatchObject({ state: "balance_due" });
+    expect(params(purchasesParams(current, { preset: "today" }))).toMatchObject({ state: "unpaid" });
+  });
+
   it("AC8: purchasesHref is /admin/purchases, plus ? and the params when any", () => {
     expect(purchasesHref({})).toBe("/admin/purchases");
     expect(purchasesHref({ state: "all", sort: "trip" })).toBe("/admin/purchases");

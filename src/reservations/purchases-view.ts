@@ -370,6 +370,13 @@ function groupKeyOf(r: PurchaseRow, sort: PurchasesSort): string {
   return r.purchasedAt ? vesselDateOf(new Date(r.purchasedAt)) : UNDATED;
 }
 
+/** A group's heading day. Under `purchase` it says so, since each row's Trip column shows a different
+ *  day (operator, 2026-11-21). */
+function groupLabelOf(key: string, sort: PurchasesSort): string {
+  if (sort === "purchase") return key === UNDATED ? "No purchase date" : `Bought ${fmtDayHeader(key)}`;
+  return key === UNDATED ? "No date" : fmtDayHeader(key);
+}
+
 /**
  * One group per day — the trip day under `trip`, the day bought under `purchase` — in the order
  * the first row of each appears in the (sorted) input, `undated` always last. `count` and
@@ -387,7 +394,7 @@ export function groupPurchases(
   }
   const groups = [...byKey.entries()].map(([key, members]) => ({
     key,
-    label: key === UNDATED ? "No date" : fmtDayHeader(key),
+    label: groupLabelOf(key, sort),
     count: members.length,
     totalCents: members.reduce((sum, r) => sum + (r.priceKnown ? r.totalCents : 0), 0),
     owedCents: members.reduce((sum, r) => sum + (r.owed?.cents ?? 0), 0),

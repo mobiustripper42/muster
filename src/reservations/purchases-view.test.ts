@@ -571,7 +571,7 @@ describe("issue #1142 — grouping by day", () => {
     ]);
   });
 
-  it("AC5: by purchase, groups are the vessel-local day bought, newest first as sorted", () => {
+  it("AC5: by purchase, groups are the vessel-local day bought, newest first as sorted, labelled Bought", () => {
     const groups = groupPurchases(
       [
         // 22:30 EDT on the 21st: the 22nd in UTC, the 21st on the vessel's calendar.
@@ -583,9 +583,9 @@ describe("issue #1142 — grouping by day", () => {
       "purchase",
     );
     expect(groups.map((g) => ({ key: g.key, label: g.label, rows: ids(g.rows) }))).toEqual([
-      { key: "2026-10-21", label: "Wednesday, Oct 21", rows: ["late-wed", "wed"] },
-      { key: "2026-10-19", label: "Monday, Oct 19", rows: ["mon"] },
-      { key: "undated", label: "No date", rows: ["never"] },
+      { key: "2026-10-21", label: "Bought Wednesday, Oct 21", rows: ["late-wed", "wed"] },
+      { key: "2026-10-19", label: "Bought Monday, Oct 19", rows: ["mon"] },
+      { key: "undated", label: "No purchase date", rows: ["never"] },
     ]);
   });
 });

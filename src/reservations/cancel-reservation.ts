@@ -98,8 +98,9 @@ export interface CancelDeps {
   /**
    * Stripe, when this deploy has it — so cancelling an operator's unpaid phone booking also retires
    * the payment its link started (issue #1082 part C). Carried here, not only on the phone-booking
-   * entry, so `cancelReservation`'s delegation keeps the guarantee (`@code-review`). Absent ⇒ no
-   * intent is cancelled; nothing else in a cancel needs it.
+   * entry, so `cancelReservation`'s delegation keeps the guarantee (`@code-review`). Also cancels a
+   * booked booking's balance intent (issue #1254). Absent ⇒ no intent is cancelled; nothing else in
+   * a cancel needs it.
    */
   payments?: PaymentPort | undefined;
   /**
@@ -217,6 +218,32 @@ async function retireOpenIntents(
 }
 
 /**
+ * Cancel a cancelled BOOKED booking's balance intent at Stripe (issue #1254), so a card form opened
+ * before the cancel can no longer be paid. **Only that intent, and not `retireOpenIntents`:** that
+ * would also try the deposit's intent (already paid) and write a `payment_superseded` row saying the
+ * booking was cancelled before it was paid, which is false for a booked booking.
+ *
+ * Re-read after the cancel so an intent minted between the caller's read and the write is included.
+ * Never throws: the booking is already cancelled. A refusal is ordinary — the intent already
+ * succeeded, in which case `recordBalancePayment` still records it and alerts — so it is logged and
+ * changes nothing.
+ */
+async function cancelBalanceIntent(
+  deps: { repo: Repository; payments: PaymentPort },
+  reservationId: ReservationId,
+): Promise<void> {
+  const row = await deps.repo.getReservation(reservationId).catch((e: unknown) => {
+    logSwallowed("reservations:cancelBalanceIntent", e, `could not re-read ${reservationId} to cancel its balance intent`);
+    return null;
+  });
+  const id = row?.balancePaymentIntentId;
+  if (id === undefined) return;
+  await deps.payments.cancelPaymentIntent(id, "abandoned").catch((e: unknown) => {
+    logSwallowed("reservations:cancelBalanceIntent", e, `could not cancel balance intent ${id} on cancelled ${reservationId}`);
+  });
+}
+
+/**
  * `by` is REQUIRED, not optional (#724). Every caller already knows the answer — the admin
  * confirm asks it to pick a refund policy — and an optional parameter is how a surface ends up
  * recording nothing while looking correct. It is written once and never rewritten; see
@@ -259,6 +286,9 @@ export async function cancelReservation(
   const written = await deps.repo.cancelBookingAndRelease(reservationId, eventId, by, deps.now());
   if (!written.cancelled) return { ok: true, alreadyCancelled: true };
   const freedEventId: EventId | undefined = written.released ? eventId : undefined;
+
+  // Issue #1254: a balance card form opened before this cancel must not be payable after it.
+  if (deps.payments) await cancelBalanceIntent({ repo: deps.repo, payments: deps.payments }, reservationId);
 
   // Re-form so the shift collapses and its crew are told. Best-effort by the same contract the
   // booking webhook uses: the cancellation is COMMITTED by this point, so a channel hiccup or

@@ -9,7 +9,6 @@ import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { RefundAmountSync } from "../../../../../components/admin/refund-amount-sync";
 import {
   cancelBooking,
-  createBalanceLink,
   refundBooking,
   reissueBookingLink,
   resendConfirmation,
@@ -93,28 +92,6 @@ export interface PaneActionState {
    * DEC-160's 2026-08-25 amendment.
    */
   restoredFromRefusal: boolean;
-}
-
-/** Operator-facing copy for a refused balance link. Says what happened, not a reason code. */
-function balanceErrorMessage(reason: string): string {
-  switch (reason) {
-    case "no_balance":
-      return "Nothing is owed on this booking — the balance is already settled.";
-    case "not_active":
-      return "This booking is cancelled, so there’s no balance to collect.";
-    case "unpriced":
-      return "This departure has no recorded price, so a balance can’t be computed.";
-    case "reservation_missing":
-      return "Balances are Muster-side only — this reservation is owned by Xola.";
-    case "disputed":
-      return "There’s a chargeback on this booking. The balance reads as owed because the bank pulled the money back — billing again would make it two disputes, not one. Resolve it in Stripe first.";
-    case "stripe_not_configured":
-      return "Stripe isn’t configured on this deployment, so no link can be minted.";
-    case "stripe_unreachable":
-      return "Couldn’t reach Stripe just now. Try again in a moment.";
-    default:
-      return "Couldn’t create a balance link.";
-  }
 }
 
 /**
@@ -414,7 +391,6 @@ function metaLine(v: ReservationDetailView): string {
 
 export function ReservationDetailPane({
   v,
-  balance,
   actions,
   unpaid,
   waivers,
@@ -425,8 +401,6 @@ export function ReservationDetailPane({
   /** The render right after a comp was booked (16.5): `1` confirmed, `error` written but not
    *  confirmed. Absent otherwise. */
   comped?: string | undefined;
-  /** Balance-link state from the query string (11.2b) — the minted URL, or why not. */
-  balance?: { url?: string | undefined; err?: string | undefined; date: string; filter: string; view: string } | undefined;
   /** Cancel / refund / resend state (#616) for a Muster booking. Absent ⇒ no such actions. */
   actions?: PaneActionState | undefined;
   /** An unpaid phone booking's state (16.1): the just-booked notice and its cancel. */
@@ -488,8 +462,6 @@ export function ReservationDetailPane({
       <PaneCard title="Money">
         <MoneyRows v={v} />
       </PaneCard>
-
-      {balance ? <BalanceLink v={v} balance={balance} /> : null}
 
       {actions && <PaneActions v={v} actions={actions} />}
       {unpaid && <PhoneBookingActions reservationId={v.reservationId} cancelled={cancelled} state={unpaid} />}
@@ -597,8 +569,8 @@ function MoneyRows({ v }: { v: ReservationDetailView }) {
         {/* **Say the word "chargeback" (issue #723).** Without this the dispute is arithmetically
             invisible on the surface an operator actually lands on from a bank or customer call:
             Paid drops, Owes rises, and it looks exactly like a deposit booking that hasn't
-            settled. That misreading has an expensive next step — collect the balance — which is
-            why the balance button is hidden and this line takes its place. Detail (reason,
+            settled. That misreading has an expensive next step — billing the balance again —
+            which is why this line says so. Detail (reason,
             deadline, evidence) lives in Stripe. */}
         {money.disputed && (
           <Row label="Chargeback">
@@ -712,72 +684,6 @@ function ServiceFeeRow({ cents, bps }: { cents: number; bps?: number | undefined
 function tipLabel(g: ReservationDetailView["gratuityRows"][number]): string {
   if (g.kind !== "pre") return "Tip after the trip";
   return g.bps === undefined ? "Tip at checkout" : `Tip at checkout · ${pct(g.bps)}`;
-}
-
-/**
- * The balance link (11.2b, DEC-107). Shown only when money is actually owed — a "collect balance"
- * button on a settled booking is a trap. The operator sends the link; the customer pays; the
- * webhook writes the payment. Nothing is charged or written here, so re-minting is free and needs
- * no confirmation.
- *
- * **Two more states must hide it (#616, #723):**
- *
- * - CANCELLED. `createBalanceCheckout` refuses it (`not_active`); a button whose only outcome is
- *   an error is a dead end on the common path.
- * - DISPUTED (issue #723). A chargeback sets no `refundedCents` and the balance goes through
- *   `tookMoney`, which excludes the disputed row, so the balance jumps back to the full amount.
- *   `createBalanceCheckout` refuses it server-side too (`reason: "disputed"`).
- *
- * A refund is not a state that hides it: a refund lowers the price and the amount paid together,
- * so it never raises the balance (issue #841), and a real deposit balance stays collectable after
- * a goodwill refund.
- *
- * `status === "booked"` also keeps it off an unpaid phone booking, whose payment link is 16.1a's.
- */
-function BalanceLink({
-  v,
-  balance,
-}: {
-  v: ReservationDetailView;
-  balance: { url?: string | undefined; err?: string | undefined; date: string; filter: string; view: string };
-}) {
-  const money = v.money;
-  const offered =
-    money.priceKnown &&
-    money.balanceCents > 0 &&
-    v.status === "booked" &&
-    !money.disputed;
-  if (!offered) return null;
-  if (balance.url) {
-    return (
-      <div>
-        <p className="mb-1.5 text-xs text-muted">
-          Balance link for {formatCents(money.balanceCents)} — send it to the customer. It expires
-          with the Stripe session; mint a fresh one any time.
-        </p>
-        <div className="flex items-center gap-2">
-          <Well
-            as="span"
-            className="min-w-0 flex-1 select-all truncate font-mono text-[11px] text-muted"
-            data-testid="balance-link"
-          >
-            {balance.url}
-          </Well>
-          <CopyButton value={balance.url} label="Copy link" />
-        </div>
-      </div>
-    );
-  }
-  return (
-    <form action={createBalanceLink}>
-      <input type="hidden" name="reservationId" value={v.reservationId} />
-      <input type="hidden" name="date" value={balance.date} />
-      <input type="hidden" name="filter" value={balance.filter} />
-      <input type="hidden" name="view" value={balance.view} />
-      <SubmitButton className="btn-primary min-h-[44px] w-full">Create balance link</SubmitButton>
-      {balance.err && <p className="mt-1.5 text-xs text-bad">{balanceErrorMessage(balance.err)}</p>}
-    </form>
-  );
 }
 
 /**
@@ -1110,11 +1016,7 @@ function PaneActions({
             >
               {actions.manageUrl}
             </Well>
-            {/* "Copy manage link", not "Copy link" — the balance block above already has a
-                "Copy link" button, and two controls with the same accessible name in one pane
-                carrying DIFFERENT URLs (a Stripe checkout vs a capability token) is a real
-                ambiguity, for a screen reader and for anyone scanning. The e2e caught it as a
-                strict-mode violation; it would have reached the operator as a wrong paste. */}
+            {/* "Copy manage link", not "Copy link": the label names the capability token it copies. */}
             <CopyButton value={actions.manageUrl} label="Copy manage link" />
           </div>
         </div>

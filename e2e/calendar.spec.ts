@@ -162,37 +162,6 @@ test.describe("admin /admin/calendar", () => {
     await expect(pane).toContainText("$470.83");
   });
 
-  /**
-   * The balance link (11.2b, DEC-107) — the operator door for a service that shipped tested
-   * with no caller. The seeded booking has no payments, so the whole fare is outstanding and
-   * the action offers itself. The Stripe MINT itself isn't exercised here (it needs a live
-   * Stripe session); this drives the two states the action redirects back into, which is
-   * where the UI logic actually lives.
-   */
-  test("balance link: offered when money is owed, hidden once settled", async ({ page }) => {
-    await signInAsAdmin(page, "eric");
-    await page.goto(`/admin/calendar/${encodeURIComponent(demoReservationId(BOOKED.date, BOOKED.time))}?date=${BOOKED.date}`);
-
-    const pane = page.getByTestId("reservation-detail");
-    await expect(pane).toContainText("$588.80"); // balance due
-    await expect(pane.getByRole("button", { name: "Create balance link" })).toBeVisible();
-
-    // The minted link renders with a copy affordance, and the button gives way to it.
-    await page.goto(
-      `/admin/calendar/${encodeURIComponent(demoReservationId(BOOKED.date, BOOKED.time))}?date=${BOOKED.date}&balanceUrl=https%3A%2F%2Fcheckout.stripe.com%2Fc%2Fpay%2Ftest123`,
-    );
-    await expect(pane.getByTestId("balance-link")).toContainText("checkout.stripe.com/c/pay/test123");
-    await expect(pane.getByRole("button", { name: "Copy link" })).toBeVisible();
-    await expect(pane.getByRole("button", { name: "Create balance link" })).toHaveCount(0);
-
-    // A refusal explains itself in operator language, not a reason code.
-    await page.goto(
-      `/admin/calendar/${encodeURIComponent(demoReservationId(BOOKED.date, BOOKED.time))}?date=${BOOKED.date}&balanceErr=stripe_not_configured`,
-    );
-    await expect(pane).toContainText("Stripe isn’t configured");
-    await expect(pane).not.toContainText("stripe_not_configured");
-  });
-
   test("an unknown reservation 404s rather than rendering an empty pane", async ({ page }) => {
     await signInAsAdmin(page, "eric");
     const res = await page.goto("/admin/calendar/resv-does-not-exist");
@@ -591,9 +560,6 @@ test.describe("admin reservation actions (#616)", () => {
     // A cancelled booking owes nothing, and says why rather than "Settled".
     await expect(pane.getByTestId("money-owes")).toHaveText("Not owed — cancelled");
     await expect(page.getByTestId("action-done")).toContainText("The boat is free again");
-    // The balance link must be GONE. `createBalanceCheckout` refuses a cancelled booking
-    // (`not_active`), so leaving the button up is a control whose only outcome is an error.
-    await expect(pane.getByRole("button", { name: "Create balance link" })).toHaveCount(0);
     // Cancelling twice is not offered.
     await expect(pane.getByTestId("cancel-start")).toHaveCount(0);
 

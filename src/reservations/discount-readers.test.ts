@@ -95,6 +95,7 @@ describe("a discounted booking paid in full owes nothing", () => {
       reservations: [booked],
       eventsById: new Map([[String(EVENT_ID), event]]),
       paymentsByReservation: new Map([[String(RESV_ID), [paidInFull]]]),
+      now: "2026-06-01T12:00:00.000Z",
     });
     expect(row?.balanceCents).toBe(0);
   });
@@ -132,6 +133,7 @@ describe("an insured booking whose discount went past the fare (16.8)", () => {
       reservations: [insured],
       eventsById: new Map([[String(EVENT_ID), event]]),
       paymentsByReservation: new Map([[String(RESV_ID), [paid]]]),
+      now: "2026-06-01T12:00:00.000Z",
     });
     expect(row?.balanceCents).toBe(0);
   });

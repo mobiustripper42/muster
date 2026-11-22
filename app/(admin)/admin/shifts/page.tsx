@@ -1,6 +1,6 @@
 import { AppLink } from "../../../../components/ui/app-link";
 import { deriveAllShifts, type AllShiftsRow } from "@core/admin/all-shifts.js";
-import { TENANT_TIMEZONE } from "@core/config/tenant.js";
+import { fmtDayHeader, resolveWindow, windowParams } from "@core/admin/date-window.js";
 import {
   ShiftCockpit,
   type CockpitSearch,
@@ -12,7 +12,7 @@ import { Filter } from "../../../../components/admin/shifts-filter";
 import { ShiftRow, canonicalIdOf } from "../../../../components/admin/shift-row";
 import { RevealSelectedRow } from "../../../../components/admin/reveal-selected-row";
 import { MasterDetail } from "../../../../components/admin/master-detail";
-import type { Mode, Scope } from "../../../../components/admin/shifts-view-types";
+import type { Mode } from "../../../../components/admin/shifts-view-types";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
@@ -84,48 +84,6 @@ type Search = CockpitSearch & {
   split?: string;
 };
 
-const isDate = (s?: string): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
-
-/** Today on the vessel's calendar (DEC-032), as an ISO date string. */
-function todayLocal(now: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: TENANT_TIMEZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-}
-
-/** Date math on the vessel-local calendar — noon-UTC anchor dodges DST edges. */
-function addDays(date: string, n: number): string {
-  const d = new Date(date + "T12:00:00Z");
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-/** Day of week (0=Sun) of an ISO date — UTC read is the calendar day verbatim. */
-function dowOf(date: string): number {
-  return new Date(date + "T12:00:00Z").getUTCDay();
-}
-
-function fmtDate(iso: string): string {
-  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-/** Day-section header: full weekday so a weekend reads at a glance (#122). */
-function fmtDayHeader(iso: string): string {
-  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
 /** Group rows into day buckets (chronological) — the operator scans a real
  * weekend day-by-day, not as one flat stack (#122). **Within a day the core's
  * order is preserved** (`deriveAllShifts` sorts date → earliest departure), so a
@@ -145,111 +103,13 @@ function groupByDay(
     .map(([date, rows]) => ({ date, rows }));
 }
 
-/** Resolve the date window from the filter params — defaulting to TODAY, clamped
- * to a sane horizon so "everything" can't render an unbounded wall (DEC-042). */
-function resolveWindow(
-  sp: Search,
-  now: Date,
-): { from: string; to: string; scope: string; kind: Scope } {
-  const today = todayLocal(now);
-  const minFrom = addDays(today, -30);
-  const maxTo = addDays(today, 45);
-
-  let from: string;
-  let to: string;
-  let kind: Scope;
-  if (sp.preset === "today") {
-    from = today;
-    to = today;
-    kind = "today";
-  } else if (sp.preset === "weekend") {
-    // The current weekend's Sat–Sun: on a Sunday that's yesterday→today; any
-    // other day, the coming Saturday and the day after.
-    const dow = dowOf(today);
-    const sat = dow === 0 ? addDays(today, -1) : addDays(today, (6 - dow) % 7);
-    from = sat;
-    to = addDays(sat, 1);
-    kind = "weekend";
-  } else if (sp.preset === "next7") {
-    // Explicit "Week" pick — the 7-day week. Same window as the bare default; the
-    // explicit preset just records the selection in the URL (bookmarkable, and it
-    // rides the crew form so a crew pick stays on the week).
-    from = today;
-    to = addDays(today, 6);
-    kind = "next7";
-  } else if (sp.preset === "next8to15") {
-    // The bucket AFTER "next 7": days 8–15 from today (today+7 .. today+14), the
-    // planning gap between "this week" and a full fortnight. Non-overlapping with
-    // next7 by construction (starts the day next7 ends + 1).
-    from = addDays(today, 7);
-    to = addDays(today, 14);
-    kind = "next8to15";
-  } else if (sp.preset === "days30") {
-    from = today;
-    to = addDays(today, 29);
-    kind = "days30";
-  } else if (isDate(sp.from) || isDate(sp.to)) {
-    from = isDate(sp.from) ? sp.from : today;
-    to = isDate(sp.to) ? sp.to : from;
-    kind = "range";
-  } else {
-    // Default: the next 7 days — the operator's "what's coming up" (8.2a, #205).
-    // The day-only default (DEC-042) was too narrow for real pilot use — the
-    // operator needs upcoming visibility, not just today. The crew filter (#330)
-    // does NOT change the window — it respects whatever's shown (operator's call:
-    // "what you see is what you filter"). To see all of one crew member's upcoming,
-    // pick a wider preset (30 Days) or a From/To range.
-    from = today;
-    to = addDays(today, 6);
-    kind = "next7";
-  }
-  // Clamp to the horizon, then re-guard ordering. The scope LABEL is built after
-  // so the header never disagrees with the actual (clamped) window.
-  if (from < minFrom) from = minFrom;
-  if (to > maxTo) to = maxTo;
-  if (to < from) to = from;
-
-  const scope =
-    kind === "weekend"
-      ? "this weekend"
-      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-      : kind === "next7"
-        ? "the next 7 days"
-        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-        : kind === "next8to15"
-          ? "2 weeks out"
-          // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-          : kind === "days30"
-            ? "the next 30 days"
-            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-            : kind === "today"
-              ? "today"
-              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-              : from === to
-                ? fmtDate(from)
-                : `${fmtDate(from)} – ${fmtDate(to)}`;
-  return { from, to, scope, kind };
-}
-
 /** The filter half of the querystring (preset OR range) — no mode/sel/feedback.
  * Both the mode toggle and the split action's return URL rebuild the window from
  * this, so a Split or a View↔Edit flip never drops the operator's chosen days.
  * This is also the `ctx` the cockpit's action forms carry (DEC-085) — the action
  * appends `sel` + its feedback code itself, so neither belongs here. */
 function filterParams(sp: Search): URLSearchParams {
-  const p = new URLSearchParams();
-  if (
-    sp.preset === "today" ||
-    sp.preset === "weekend" ||
-    sp.preset === "next7" ||
-    sp.preset === "next8to15" ||
-    sp.preset === "days30"
-  )
-    p.set("preset", sp.preset);
-  else {
-    if (isDate(sp.from)) p.set("from", sp.from);
-    if (isDate(sp.to)) p.set("to", sp.to);
-  }
+  const p = windowParams(sp);
   // Crew filter (#330) rides the preserved param set so mode/preset/split
   // navigation and the open cockpit pane never drop the selected crew member.
   if (sp.crew) p.set("crew", sp.crew);

@@ -1071,6 +1071,28 @@ export function runRepositoryContract(
         ).rejects.toThrow();
       });
 
+      // The purchases list's Owed column reads every booking's last failure in one pass (issue #1142).
+      it("issue #1142 AC6: listAllBalanceAttempts returns every attempt, ordered by reservation then attempt", async () => {
+        await repo.saveReservation(booked("r-a", { balanceDueAt: NOW }));
+        await repo.saveReservation(booked("r-b", { balanceDueAt: NOW }));
+        await repo.claimBalanceAttempt({ reservationId: rid("r-b"), attempt: 1, at: NOW });
+        await repo.claimBalanceAttempt({ reservationId: rid("r-a"), attempt: 0, at: NOW });
+        await repo.claimBalanceAttempt({ reservationId: rid("r-b"), attempt: 0, at: NOW });
+        await repo.finishBalanceAttempt({
+          reservationId: rid("r-b"),
+          attempt: 0,
+          outcome: "declined",
+          declineCode: "card_declined",
+        });
+        await repo.finishBalanceAttempt({ reservationId: rid("r-b"), attempt: 1, outcome: "needs_approval" });
+
+        expect(await repo.listAllBalanceAttempts()).toEqual([
+          { reservationId: rid("r-a"), attempt: 0, attemptedAt: NOW },
+          { reservationId: rid("r-b"), attempt: 0, attemptedAt: NOW, outcome: "declined", declineCode: "card_declined" },
+          { reservationId: rid("r-b"), attempt: 1, attemptedAt: NOW, outcome: "needs_approval" },
+        ]);
+      });
+
       it("AC1: saveBalancePaymentIntentId stores the balance intent and appends it to the row's intents once", async () => {
         await repo.saveReservation(booked("r1", { balanceDueAt: NOW, paymentIntentIds: ["pi_dep"] }));
         await repo.saveBalancePaymentIntentId(rid("r1"), "pi_bal");

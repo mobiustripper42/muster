@@ -494,6 +494,10 @@ export interface Repository {
   releaseBalanceAttempt(input: { reservationId: ReservationId; attempt: number }): Promise<void>;
   /** Every attempt on a booking, ordered by `attempt`. */
   listBalanceAttempts(reservationId: ReservationId): Promise<BalanceChargeAttempt[]>;
+  /** Every attempt row, grouped by reservation and ordered by attempt within each — the purchases
+   *  list's rollup (issue #1142), the `listAllPayments` shape. The order across reservations follows
+   *  each adapter's collation, and no caller depends on it. */
+  listAllBalanceAttempts(): Promise<BalanceChargeAttempt[]>;
   /** Store the booking's balance intent (a second call overwrites), appending it once to
    *  `paymentIntentIds`. The only writer of `balancePaymentIntentId`. */
   saveBalancePaymentIntentId(reservationId: ReservationId, intentId: string): Promise<void>;

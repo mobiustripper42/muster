@@ -236,7 +236,7 @@ Refer to these as "silent S2-1". The report also cites about twenty findings alr
 
 | ID | Sev | Finding | When | Status |
 |---|---|---|---|---|
-| S1-1 | S1 | A self-cancel that commits, loses its acknowledgement and fails its re-read tells the customer "Nothing changed", and the refund is never sent | — | open |
+| S1-1 | S1 | A self-cancel that commits, loses its acknowledgement and fails its re-read tells the customer "Nothing changed", and the refund is never sent | Feb 1 | duplicate of paired PS-1 |
 | S2-1 | S2 | After an operator refund moved money then hit a database error, the screen says "Nothing moved" and a second press refunds again | — | open |
 | S2-2 | S2 | A pay-link payment on a cancelled phone booking writes no payment, trail or refund row, and the customer is told "You're booked!" | — | open |
 | S2-3 | S2 | The sold-out-while-paying office alert says "the customer has been told" whether or not anyone told them | — | open |
@@ -313,7 +313,7 @@ Refer to these as "plan S2-1". The report numbers its S4 findings as table rows 
 | S3-2 | S3 | The "REFUND MANUALLY" alert names no amount, and the promised tests for unconfigured SMS and a throwing alert are missing | — | open |
 | S3-3 | S3 | An operator edit to the offering mid-checkout can make a declined-card retry refuse as sold out, or hold a second boat | — | open |
 | S3-4 | S3 | The operator write accepts off-season and off-grid slots, but no screen can reach such a slot | — | open |
-| S3-5 | S3 | An unpaid phone booking cannot be discounted after it is written, contrary to §2.10.6 | — | open |
+| S3-5 | S3 | An unpaid phone booking cannot be discounted after it is written, contrary to §2.10.6 | after release | duplicate of operator OR-4 |
 | S3-6 | S3 | The Stripe round-trip test runs only by hand, not in CI | — | open |
 | S3-7 | S3 | Disputes are recorded and texted, but with no customer name, deadline, date or evidence upload | — | open |
 | S3-8 | S3 | The per-booking cancel misses the reason in the notice, the full-refund default and rebook-or-credit, beyond money F10 | — | open |
@@ -402,10 +402,10 @@ Refer to these as "operator OR-1". The report cites money and capability-URL fin
 
 | ID | Sev | Finding | When | Status |
 |---|---|---|---|---|
-| OR-1 | S1 | A payment started while the operator cancels survives the cancel; the customer is charged for a cancelled trip, refundable only in Stripe | — | open |
-| OR-2 | S2 | A block saved over an unpaid phone booking hides it from the calendar, reports no conflict, and the customer can still pay onto the blocked boat | — | open |
-| OR-3 | S2 | The payment link books and charges a trip that has already sailed | — | open |
-| OR-4 | S2 | An existing unpaid booking cannot be discounted; the discount box is only on the booking form, so DEC-194 is not built | — | open — same finding as plan S3-5 |
+| OR-1 | S1 | A payment started while the operator cancels survives the cancel; the customer is charged for a cancelled trip, refundable only in Stripe | Feb 1 | open — real work, re-checked on `main` at `6182e1c`. Proposed fix (not in the codebase): after `recordCheckoutAttempt` (`src/reservations/create-departure-payment-intent.ts:545`), re-read the status; if the row is no longer `pending`, cancel the intent and refuse instead of returning the secret |
+| OR-2 | S2 | A block saved over an unpaid phone booking hides it from the calendar, reports no conflict, and the customer can still pay onto the blocked boat | Feb 1 | open — real work. Wanted (operator, 2026-11-21): saving a block or hold warns about an unpaid or pending booking under it, and the pay link refuses a blocked slot |
+| OR-3 | S2 | The payment link books and charges a trip that has already sailed | Feb 1 | open — real work. Wanted (operator, 2026-11-21): the pay link expires once the trip starts |
+| OR-4 | S2 | An existing unpaid booking cannot be discounted; the discount box is only on the booking form, so DEC-194 is not built | after release | open — real work; rare. Check how often it would come up before building (operator, 2026-11-22). Until then: cancel and rebook. plan S3-5 is the same finding |
 | OR-5 | S2 | A dispute raises an SMS and a ledger mark but no admin alert with Stripe's deadline or the customer, and no evidence attach | — | open — overlaps plan S3-7 and silent S3-3 |
 | OR-6 | S2 (S4 if "starts from the calendar click" governs) | "The season, the schedule grid — passes" is unreachable because no screen offers an off-grid or out-of-season slot | — | open — same finding as plan S3-4 |
 | OR-7 | S3 | The `booked` trail row for a phone sale carries no operator id; a comp or an unreached link records no admin at all | — | open |
@@ -441,7 +441,7 @@ Refer to these as "paired PS-1". The report cites findings already in this ledge
 
 | ID | Sev | Finding | When | Status |
 |---|---|---|---|---|
-| PS-1 | S1 | The customer's cancel commits, then the refund never runs, and nothing records that the refund is owed | — | open — overlaps silent S1-1 |
+| PS-1 | S1 | The customer's cancel commits, then the refund never runs, and nothing records that the refund is owed | Feb 1 | open — real work; silent S1-1 is the same defect (re-checked on `main` at `6182e1c`, issue #1230). Proposed fix (not in the codebase): write the owed refund in the cancelling transaction, and resume the refund from it on a retry or a sweep (`docs/audit/2026-11-14-paired-saves.md:53`) |
 | PS-2 | S2 | A residual-race loser that was refunded stays `pending` and can later be booked as if it had paid | — | open |
 | PS-3 | S2 | The operator's cancel-and-refund can crash after the cancel, leaving no refund and no customer notice | — | open |
 | PS-4 | S2 | A comp flips to booked, then the confirmation claim throws; the operator is told it is not booked | — | open |

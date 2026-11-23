@@ -11,7 +11,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { FAKE_SIGNATURE, FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import type { Offering, Vessel } from "../domain/entities.js";
+import type { BookingInvoice, Offering, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { CheckoutCompleted, PaymentEvent } from "../ports/payment.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
@@ -38,7 +38,7 @@ async function seededRepo(): Promise<InMemoryRepository> {
   const repo = new InMemoryRepository();
   await repo.saveOffering(offering());
   await repo.saveVessel(vessel());
-  await repo.setPaymentConfig({ depositMode: "full", taxRateBps: 0 }, NOW);
+  await repo.setPaymentConfig({ taxRateBps: 0 }, NOW);
   return repo;
 }
 
@@ -101,21 +101,6 @@ describe("gratuity is required, no decline (DEC-124)", () => {
     expect(row!.invoice).toMatchObject({ gratuityCents: 12475, gratuityBps: 2500 });
   });
 
-  it("deposit mode: the tip is charged in FULL; only the fare is deposit-split", async () => {
-    const repo = await seededRepo();
-    await repo.setPaymentConfig({ depositMode: "deposit", depositPercent: 25, taxRateBps: 0 }, NOW);
-    const pay = new FakePaymentPort();
-    await createDeparturePaymentIntent(repo, pay, req(2000), now); // fare 49900, 20% tip
-    // deposit 25% of 49900 = 12475 (fare only); service fee 3% of fare + tip (DEC-196) = 1796
-    // charged in full; gratuity 9980 charged in full, NOT split → 12475 + 1796 + 9980 = 24251.
-    // (The old hosted builder hardcoded the fee to 0 and asserted 22455 — a total Muster never
-    // charged, #793.)
-    expect(pay.intents[0]!.amountCents).toBe(24251);
-    const [row] = await repo.listAllReservations();
-    expect(row!.invoice!.gratuityCents).toBe(9980);
-    // Deposit is now DERIVED, not a metadata key: charged less than the whole quote.
-    expect(row!.invoice!.amountDueNowCents).toBeLessThan(row!.invoice!.totalCents);
-  });
 });
 
 describe("pre-gratuity is recorded on booking (DEC-124)", () => {
@@ -176,11 +161,24 @@ describe("post-trip gratuity is gone (15.18)", () => {
 });
 
 describe("balanceOwedCents nets gratuity out (DEC-124, 12.3)", () => {
+  // Frozen at a 0% rate, so the arithmetic below is the netting alone.
+  const untaxed: BookingInvoice = {
+    fareCents: 50000,
+    extrasCents: 0,
+    taxCents: 0,
+    taxRateBps: 0,
+    serviceFeeCents: 0,
+    serviceFeeBps: 0,
+    gratuityCents: 0,
+    gratuityBps: 0,
+    totalCents: 50000,
+    amountDueNowCents: 20000,
+  };
   it("subtracts the gratuity portion from the paid sum", () => {
     // price 50000, tax 0; a $200 deposit that included $50 gratuity → net paid 15000 → owed 35000
-    expect(balanceOwedCents(50000, 0, [{ status: "succeeded", amountCents: 20000, gratuityCents: 5000 }])).toBe(35000);
+    expect(balanceOwedCents(untaxed, [{ status: "succeeded", amountCents: 20000, gratuityCents: 5000 }])).toBe(35000);
   });
   it("a payment with no gratuity field behaves as before", () => {
-    expect(balanceOwedCents(50000, 0, [{ status: "succeeded", amountCents: 20000 }])).toBe(30000);
+    expect(balanceOwedCents(untaxed, [{ status: "succeeded", amountCents: 20000 }])).toBe(30000);
   });
 });

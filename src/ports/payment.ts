@@ -110,6 +110,21 @@ export interface CreatePaymentIntentInput {
    * an absent key — and so the hosted session paths, which do carry metadata, keep their shape.
    */
   metadata: Record<string, string>;
+  /**
+   * The provider customer to attach the intent (and the card it takes) to (issue #1250). Present
+   * only on a deposit attempt, together with `setupFutureUsage`; a pay-in-full intent carries
+   * neither, even when the row holds a customer from an earlier deposit attempt.
+   */
+  customerId?: string;
+  /**
+   * Ask the provider to keep the card for a later charge while the customer is away (issue #1250):
+   * the balance. Passed as the intent's top-level `setup_future_usage`, so the payment form offers
+   * only methods that can be charged again.
+   */
+  setupFutureUsage?: "off_session";
+  /** Offer cards only (`payment_method_types: ["card"]`) without saving the card (issue #1254) — the
+   *  balance intent. A deposit gets cards-only from `setupFutureUsage`; this is the same without it. */
+  cardsOnly?: true;
 }
 
 /**
@@ -146,6 +161,9 @@ export interface PaymentSucceeded {
   amountReceivedCents: number;
   currency: string;
   metadata: Record<string, string>;
+  /** The payment method the intent was paid with — the card a deposit saved (issue #1250). Absent
+   *  when the provider names none. */
+  paymentMethodId?: string;
 }
 
 /**
@@ -425,6 +443,37 @@ export interface PaymentPort {
    * outage rather than ours.
    */
   listWebhookEndpoints(): Promise<readonly WebhookEndpointInfo[]>;
+  /**
+   * Create a provider customer to save a deposit's card against (issue #1250). The idempotency key
+   * (`customer_<reservationId>`) makes a repeat return the same customer, so a retry that lost the
+   * answer cannot leave a second one behind.
+   */
+  createCustomer(input: {
+    idempotencyKey: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    metadata: Record<string, string>;
+  }): Promise<{ customerId: string }>;
+  /**
+   * Confirm an existing intent against the saved card, off-session — the scheduled balance charge
+   * (issue #1254). The idempotency key is per attempt (`balance_<reservation id>_<n>`), so a re-send
+   * after a network failure gets the first answer back instead of a second charge.
+   *
+   * `declined` is the card's refusal (with the provider's decline code); `needs_approval` is the
+   * bank asking the customer to approve, which no later off-session attempt can satisfy. A failure
+   * that is neither THROWS.
+   */
+  confirmOffSession(input: {
+    paymentIntentId: string;
+    customerId: string;
+    paymentMethodId: string;
+    idempotencyKey: string;
+  }): Promise<
+    | { outcome: "succeeded"; charge: PaymentSucceeded }
+    | { outcome: "declined"; declineCode?: string }
+    | { outcome: "needs_approval" }
+  >;
 }
 
 /**

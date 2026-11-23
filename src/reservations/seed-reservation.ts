@@ -44,11 +44,12 @@
  * a month. It is not zero.
  */
 import { createHash } from "node:crypto";
-import type { Event, Location, Offering, Reservation } from "../domain/entities.js";
+import type { BookingInvoice, Event, Location, Offering, Reservation } from "../domain/entities.js";
 import { mintBookingCode } from "./booking-code.js";
 import { asId } from "../domain/ids.js";
 import { addDays } from "../config/tenant.js";
 import { eventIdForSlot } from "./availability.js";
+import { PAYMENT_CONFIG_DEFAULTS, taxCentsFor } from "./payment-config.js";
 
 export interface ReservationDemoBooking {
   date: string;
@@ -219,6 +220,31 @@ export interface SeededReservationWorld {
   reservations: Reservation[];
 }
 
+/**
+ * The invoice a seeded booked Muster row carries (issue #1241): `priceCents` is the whole fare, taxed
+ * at the default rate, with no fee, tip, insurance or discount — so the row reads the figures it
+ * always has. Written out here rather than priced by `priceBooking`: a seed's `priceCents` already
+ * includes its extra guests, which `priceBooking` would add a second time. The one home for it —
+ * `seed-gratuity.ts` and `db/seed-reminders-dev.ts` use it too, so no seed leaves a Muster row that
+ * reads "no recorded price".
+ */
+export function seedInvoice(priceCents: number): BookingInvoice {
+  const taxRateBps = PAYMENT_CONFIG_DEFAULTS.taxRateBps;
+  const taxCents = taxCentsFor(priceCents, taxRateBps);
+  return {
+    fareCents: priceCents,
+    extrasCents: 0,
+    taxCents,
+    taxRateBps,
+    serviceFeeCents: 0,
+    serviceFeeBps: 0,
+    gratuityCents: 0,
+    gratuityBps: 0,
+    totalCents: priceCents + taxCents,
+    amountDueNowCents: priceCents + taxCents,
+  };
+}
+
 /** Build the demo world. `createdAt` and `demo` are injected to keep the builder clock-free. */
 export function buildSeededReservationWorld(
   createdAt: string,
@@ -290,6 +316,7 @@ export function buildSeededReservationWorld(
       partySize: b.partySize,
       phone: b.phone,
       status: "booked",
+      invoice: seedInvoice(b.priceCents),
       updatedAt: createdAt,
     });
   }

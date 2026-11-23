@@ -6,17 +6,21 @@
  * "Reservation Demo Cruise" on Brew 3 (cap 12, included = cap), base $499, $50/extra guest,
  * owned a seven-day window late in NEXT month, departures 13:30/15:30/17:30, 13:30 on its third
  * day booked (Marcus Webb). Dates derived, never typed — see `e2e/reservation-demo.ts` (#646).
- * Payment config rides the defaults: FULL payment (issue #617 — the default was `deposit` at 25%
- * while nothing collected the balance), tax 7.25%, service fee 3% (DEC-134), tip tiers 15/20/25
- * with 20% preselected (DEC-124).
+ * Payment config rides the defaults: a $100 deposit offered on a departure outside the 30-day
+ * balance window, the whole quote inside it (issue #1250), tax 7.25%, service fee 3% (DEC-134), tip
+ * tiers 15/20/25 with 20% preselected (DEC-124).
  *
  * Money pins for 2 guests at 15:30 (fare $499.00, no extras):
- *   tax $36.18 · tip20 $99.80 · fee $17.96 (3% of fare + tip, DEC-196) → total $652.94, and
- *   due-now is the SAME $652.94 because nothing is deferred · tip15 $74.85 → fee $17.22 → total
- *   $627.25.
+ *   tax $36.18 · tip20 $99.80 · fee $17.96 (3% of fare + tip, DEC-196) → total $652.94; inside the
+ *   balance window due-now is the SAME $652.94, outside it the deposit leaves $552.94 · tip15
+ *   $74.85 → fee $17.22 → total $627.25.
  *
- * **This spec inherits the default deliberately.** Pinning it to an explicit `deposit` override
- * would have kept these numbers stable and hidden the flip from the suite entirely — which is
+ * **The specs that pin due-now to the total use a departure inside the window**
+ * (`INSIDE_BALANCE_WINDOW`), and the deposit specs one outside it (`OUTSIDE_BALANCE_WINDOW`): the
+ * seeded week moves with today, so pointing either at it would make the answer depend on the date.
+ *
+ * **This spec inherits the default deliberately.** Pinning it to an explicit override would have
+ * kept these numbers stable and hidden a flip of the default from the suite entirely — which is
  * exactly how #617's default survived a year of green runs.
  *
  * The e2e deliberately stops SHORT of `stripe.confirmPayment` — there is no Stripe network
@@ -34,7 +38,18 @@ import {
   fillHydrated,
   plantVesselBlock,
 } from "./fixtures.js";
-import { BOOKED, DEMO, OPEN_TIME, formatShortDay } from "./reservation-demo.js";
+import {
+  BALANCE_DUE_ON,
+  BOOKED,
+  DEMO,
+  INSIDE_BALANCE_WINDOW,
+  OPEN_TIME,
+  OUTSIDE_BALANCE_WINDOW,
+  extendSeasonThrough,
+  formatShortDay,
+  payBar,
+  termsBox,
+} from "./reservation-demo.js";
 
 /** The stepper's landing value on `/book` — the offering's smallest boat (#715). Read off the
  *  fixture, because "2" was a constant that stopped being the default. */
@@ -47,6 +62,18 @@ const INCLUDED = 10;
 
 const CHECKOUT =
   `/book/checkout?offering=offering-reservation-demo&date=${BOOKED.date}&time=${OPEN_TIME}&guests=2`;
+
+/**
+ * The same trip and party on a day INSIDE the balance window (issue #1250): the whole quote is due
+ * now and no payment choice is shown. The specs that assert due-now equals the total point here, so
+ * they do not turn on which side of the window the seeded week falls this month.
+ */
+const INSIDE_CHECKOUT =
+  `/book/checkout?offering=offering-reservation-demo&date=${INSIDE_BALANCE_WINDOW}&time=${OPEN_TIME}&guests=2`;
+
+/** The same trip and party on a day OUTSIDE the balance window (issue #1250): a deposit is offered. */
+const OUTSIDE_CHECKOUT =
+  `/book/checkout?offering=offering-reservation-demo&date=${OUTSIDE_BALANCE_WINDOW}&time=${OPEN_TIME}&guests=2`;
 
 /**
  * A stand-in for Stripe.js whose payment never settles (issue #1082 part A). The e2e has no Stripe
@@ -85,13 +112,14 @@ test.describe("public /book/checkout", () => {
   });
 
   test("renders the trip, the full money summary, and the sticky pay bar", async ({ page }) => {
-    await page.goto(CHECKOUT);
+    // Inside the balance window, so the whole quote is due now (issue #1250).
+    await page.goto(INSIDE_CHECKOUT);
 
     // Hero + trip block reflect the picked slot.
     await expect(page.getByRole("heading", { name: "Reservation Demo Cruise", level: 1 })).toBeVisible();
     // The app's own formatter builds the expectation, so a format change reddens here rather
     // than quietly disagreeing with a string this spec invented.
-    await expect(page.getByText(`${formatShortDay(BOOKED.date)} · 3:30 PM`)).toBeVisible();
+    await expect(page.getByText(`${formatShortDay(INSIDE_BALANCE_WINDOW)} · 3:30 PM`)).toBeVisible();
     await expect(page.getByText("· 2 guests")).toBeVisible();
 
     // Summary: fare · tip → crew · tax · fee · total (DEC-134 line items, honest about
@@ -105,9 +133,8 @@ test.describe("public /book/checkout", () => {
     await expect(page.getByTestId("summary-fee")).toContainText("3%");
     await expect(page.getByTestId("summary-total")).toContainText("$652.94");
 
-    // FULL payment (issue #617): one charge, nothing deferred. The deposit/balance block does
-    // not render at all — asserted by absence, because its presence would mean the customer is
-    // being quoted a balance that no mechanism collects.
+    // Inside the balance window: one charge, nothing deferred. The deposit/balance block does not
+    // render at all — asserted by absence, because its presence would mean a balance is being quoted.
     await expect(page.getByTestId("summary-due-now")).toHaveCount(0);
     await expect(page.getByText("Balance · due before your trip")).toHaveCount(0);
     await expect(page.getByTestId("due-now")).toHaveText("$652.94");
@@ -117,15 +144,16 @@ test.describe("public /book/checkout", () => {
   });
 
   test("changing the tip tile re-totals live (client island, no navigation)", async ({ page }) => {
-    await page.goto(CHECKOUT);
+    // Inside the balance window, so the whole quote is due now (issue #1250).
+    await page.goto(INSIDE_CHECKOUT);
 
     // 20% is preselected (DEC-124).
     await expect(page.getByTestId("tip-2000")).toHaveAttribute("aria-pressed", "true");
 
     await clickHydrated(page.getByTestId("tip-1500"));
     await expect(page.getByTestId("tip-1500")).toHaveAttribute("aria-pressed", "true");
-    // Full payment (#617): due-now IS the total, so these two must agree — a divergence would
-    // mean something is being deferred again.
+    // Inside the window due-now IS the total, so these two must agree — a divergence would mean
+    // something is being deferred.
     await expect(page.getByTestId("due-now")).toHaveText("$627.25");
     await expect(page.getByTestId("summary-total")).toContainText("$627.25");
     await expect(page.getByTestId("summary-tip")).toContainText("$74.85");
@@ -225,7 +253,8 @@ test.describe("public /book/checkout", () => {
    * these, so it is cleared.
    */
   test("cancellation insurance adds a $30 row, re-totals tax and fee, and the terms turn to 72 hours", async ({ page }, info) => {
-    await page.goto(CHECKOUT);
+    // Inside the balance window, so due-now is the whole quote (issue #1250, operator 2026-11-10).
+    await page.goto(INSIDE_CHECKOUT);
     const box = page.getByTestId("add-insurance");
     await expect(page.getByText("Add cancellation insurance — $30")).toBeVisible();
     await expect(page.getByText("Cancel up to 72 hours before your cruise instead of 14 days, with no cancellation fee.")).toBeVisible();
@@ -337,5 +366,60 @@ test.describe("public /book/checkout", () => {
       () => document.documentElement.scrollWidth <= window.innerWidth + 1,
     );
     expect(fits).toBe(true);
+  });
+
+  /**
+   * The deposit at checkout (issue #1250, `docs/SPEC.md §2.8.4d`) on the built page — the same trip,
+   * party and tip as the money pins above ($652.94), on a departure pinned at least 40 days out, so
+   * a $100 deposit is offered whatever the date. The wording is `depositCopy`'s, pinned in
+   * `components/checkout/money.test.ts`; these check that the form renders it, preselects the
+   * deposit, and follows the choice.
+   */
+  test.describe("a departure outside the balance window", () => {
+    test.beforeEach(async () => {
+      await extendSeasonThrough(OUTSIDE_BALANCE_WINDOW);
+    });
+
+    test("AC16: the payment choice shows Pay deposit · $100.00 preselected, its balance under it, and Pay in full · $652.94", async ({ page }) => {
+      await page.goto(OUTSIDE_CHECKOUT);
+
+      await expect(page.getByText("Pay deposit · $100.00", { exact: true })).toBeVisible();
+      await expect(page.getByText(`$552.94 charged to this card on ${BALANCE_DUE_ON}`, { exact: true })).toBeVisible();
+      await expect(page.getByText("Pay in full · $652.94", { exact: true })).toBeVisible();
+
+      // Preselected: before anything is tapped, the pay bar asks for the deposit, with the total
+      // under it.
+      await expect(page.getByTestId("due-now")).toHaveText("$100.00");
+      await expect(payBar(page)).toHaveText(/^Due now\s*\$100\.00\s*\$652\.94 total$/);
+    });
+
+    test("AC14: with Pay deposit chosen the terms box ends with the balance line, and Pay in full removes it", async ({ page }) => {
+      await page.goto(OUTSIDE_CHECKOUT);
+
+      await expect(termsBox(page)).toHaveText(
+        new RegExp(`We'll charge the balance of \\$552\\.94 to this card on ${BALANCE_DUE_ON}\\.$`),
+      );
+
+      await clickHydrated(page.getByText("Pay in full · $652.94", { exact: true }));
+      await expect(page.getByTestId("due-now")).toHaveText("$652.94");
+      await expect(termsBox(page)).not.toContainText("We'll charge the balance");
+    });
+
+    test("AC15: choosing Pay in full puts the whole quote due now — the pay bar reads Total $652.94 and the summary's deposit rows go", async ({ page }) => {
+      await page.goto(OUTSIDE_CHECKOUT);
+      await expect(page.getByTestId("summary-due-now")).toContainText("$100.00");
+
+      await clickHydrated(page.getByText("Pay in full · $652.94", { exact: true }));
+      await expect(payBar(page)).toHaveText(/^Total\s*\$652\.94$/);
+      await expect(page.getByTestId("summary-due-now")).toHaveCount(0);
+      await expect(page.getByText("Balance · due before your trip")).toHaveCount(0);
+    });
+  });
+
+  test("AC16: inside the balance window no payment choice is shown", async ({ page }) => {
+    await page.goto(INSIDE_CHECKOUT);
+    await expect(page.getByTestId("due-now")).toHaveText("$652.94");
+    await expect(page.getByText(/^Pay deposit · /)).toHaveCount(0);
+    await expect(page.getByText(/^Pay in full · /)).toHaveCount(0);
   });
 });

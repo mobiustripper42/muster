@@ -136,8 +136,6 @@ export function buildSeededTrail(input: {
       metadata: { reason: "LOCKED OUT — old link revoked, new link not delivered" } },
 
     // ── Three days back: the money coming back ────────────────────────────
-    { type: "balance_link_created", minutesAgo: 3 * DAY, actorKind: "admin", actorId: "crew-demo-admin",
-      metadata: { actualCents: 37500, chargeRef: "cs_seed_balance" } },
     { type: "refund_issued_by_operator", minutesAgo: 3 * DAY - 30, actorKind: "admin", actorId: "crew-demo-admin",
       metadata: { quotedCents: 45000, actualCents: 50000, reason: "cancel-and-refund" } },
     { type: "refund_failed", minutesAgo: 3 * DAY - 25, actorKind: "admin", actorId: "crew-demo-admin",

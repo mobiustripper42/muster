@@ -155,6 +155,48 @@ describe("parseEvent — every named member is reachable from a signed payload (
   });
 });
 
+/**
+ * The card a deposit saved (issue #1250). The confirm stores the succeeded intent's payment method
+ * on the reservation, so the balance can be charged to it later; this is where the id comes in.
+ */
+describe("parseEvent — the payment method a succeeded intent was paid with (issue #1250)", () => {
+  it("AC11: payment_intent.succeeded carries payment_method as paymentMethodId", () => {
+    expect(
+      parse("payment_intent.succeeded", {
+        id: "pi_9",
+        amount_received: 10000,
+        currency: "usd",
+        metadata: {},
+        payment_method: "pm_card_visa",
+      }),
+    ).toEqual({
+      stripeEventId: "evt_test",
+      type: "payment_succeeded",
+      data: {
+        paymentIntentId: "pi_9",
+        amountReceivedCents: 10000,
+        currency: "usd",
+        metadata: {},
+        paymentMethodId: "pm_card_visa",
+      },
+    });
+  });
+
+  it("AC11: an intent with no payment method carries none, rather than an empty one", () => {
+    for (const payment_method of [null, undefined]) {
+      const r = parse("payment_intent.succeeded", {
+        id: "pi_10",
+        amount_received: 10000,
+        currency: "usd",
+        metadata: {},
+        ...(payment_method === null ? { payment_method } : {}),
+      });
+      expect(r).toMatchObject({ type: "payment_succeeded" });
+      expect(r && r.type === "payment_succeeded" && r.data).not.toHaveProperty("paymentMethodId");
+    }
+  });
+});
+
 describe("parseEvent — verification (15.12)", () => {
   it("throws PaymentSignatureError on a bad signature, not a generic Error", () => {
     // **Characterization, not a new behaviour.** This distinction is what makes the route answer

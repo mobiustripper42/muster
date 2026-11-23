@@ -189,6 +189,24 @@ const DISPUTE_STATE: Readonly<Record<HandledDisputeStatus, DisputeState>> = {
   lost: "lost",
 };
 
+/** The payment method a PaymentIntent names (issue #1250), as the field to spread into
+ *  `PaymentSucceeded` — absent when the intent has none, rather than an empty string. Stripe sends
+ *  the id; an expanded object is read for its id. */
+function paymentMethodOf(pi: Stripe.PaymentIntent): { paymentMethodId?: string } {
+  const pm = pi.payment_method;
+  const id = typeof pm === "string" ? pm : pm?.id;
+  return id ? { paymentMethodId: id } : {};
+}
+
+/** The decline codes that mean "the customer must approve this", not "the card failed" (issue #1254,
+ *  `docs.stripe.com/declines/codes`). No later attempt is made after one. */
+const NEEDS_APPROVAL_CODES: ReadonlySet<string> = new Set(["authentication_required", "authentication_not_handled"]);
+
+/** A Stripe card error (a 402): `type` is `StripeCardError`, `decline_code` the issuer's reason. */
+function isCardError(e: unknown): e is { type: string; code?: string; decline_code?: string } {
+  return typeof e === "object" && e !== null && (e as { type?: unknown }).type === "StripeCardError";
+}
+
 function disputeState(status: Stripe.Dispute.Status): DisputeState {
   // **The RUN-time half, and the exhaustive switch alone did not have it.** The union is a claim
   // the pinned SDK makes at build time about a string that arrives over the wire months later:
@@ -297,17 +315,28 @@ export class StripePaymentPort implements PaymentPort {
     // The inline-Elements charge (12.5, DEC-134). `automatic_payment_methods` mirrors the
     // deferred `Elements` mount client-side; the metadata (incl. `purpose`) is what the
     // `payment_intent.succeeded` webhook books from.
+    //
+    // A deposit (`setupFutureUsage` given, issue #1250) is card-only: the form offers cards only
+    // (`elementsOptions`), so the intent names `payment_method_types: ["card"]` instead — Stripe takes
+    // either that or `automatic_payment_methods`, not both (`PaymentIntentCreateParams` in the pinned SDK).
+    // The balance intent (issue #1254) is card-only too, and saves nothing: `cardsOnly` says so alone.
     const intent = await this.#stripe.paymentIntents.create({
       amount: input.amountCents,
       currency: input.currency,
       metadata: input.metadata,
-      automatic_payment_methods: { enabled: true },
+      ...(input.setupFutureUsage !== undefined || input.cardsOnly === true
+        ? { payment_method_types: ["card"] }
+        : { automatic_payment_methods: { enabled: true } }),
       // #679. `description` is the only human-readable field on a raw PaymentIntent — hosted
       // Checkout gets a line item, this path does not. `receipt_email` is what makes Stripe
       // send the guest a receipt at all; in live mode it sends regardless of the account's
       // email settings, so passing it IS the decision to send one.
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.receiptEmail !== undefined ? { receipt_email: input.receiptEmail } : {}),
+      // Only a deposit attempt (issue #1250): the customer the card is saved to, and the ask to keep
+      // it — top-level, so the payment form offers only methods that can be charged again.
+      ...(input.customerId !== undefined ? { customer: input.customerId } : {}),
+      ...(input.setupFutureUsage !== undefined ? { setup_future_usage: input.setupFutureUsage } : {}),
     },
     // **The options argument, and 15.11 is inert without it.** The first cut of that task computed
     // the key, added it to the port type and threaded it here — and stopped, leaving this call with
@@ -337,6 +366,7 @@ export class StripePaymentPort implements PaymentPort {
         amountReceivedCents: pi.amount_received,
         currency: pi.currency,
         metadata: pi.metadata ?? {},
+        ...paymentMethodOf(pi),
       };
     } catch (e) {
       // `null` reads as "not a succeeded payment", and a Stripe outage produces the same
@@ -421,6 +451,97 @@ export class StripePaymentPort implements PaymentPort {
       enabled: e.status === "enabled",
       enabledEvents: e.enabled_events,
     }));
+  }
+
+  async createCustomer(input: {
+    idempotencyKey: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    metadata: Record<string, string>;
+  }): Promise<{ customerId: string }> {
+    const customer = await this.#stripe.customers.create(
+      {
+        name: input.name,
+        metadata: input.metadata,
+        ...(input.email !== undefined ? { email: input.email } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone } : {}),
+      },
+      // The options argument, for the reason `createPaymentIntent`'s comment gives: without it the
+      // key is dropped silently and a retry creates a second customer. The sandbox pins the round trip.
+      { idempotencyKey: input.idempotencyKey },
+    );
+    return { customerId: customer.id };
+  }
+
+  /**
+   * Charge the booking's balance intent against the card saved at booking, with nobody present (issue
+   * #1254). Written from Stripe's documentation (`docs.stripe.com/payments/save-and-reuse`, "Charge the
+   * saved payment method later"; `docs.stripe.com/api/payment_intents/confirm`;
+   * `docs.stripe.com/declines/codes`), read 2026-11-19:
+   *
+   * - **Confirm with `off_session: true`**, naming the saved `payment_method`. It says the customer is
+   *   not in the checkout flow and cannot answer an authentication request; Stripe asks the issuer for
+   *   an exemption, and if that is refused "the `PaymentIntent` might throw an error".
+   * - **A failed attempt is a 402 `card_error`**, and the intent goes back to `requires_payment_method`.
+   *   The reason is on the error: `decline_code` (the issuer's) and `code`.
+   * - **Authentication is the one decline that is not the card's fault**: "If the payment failed due to
+   *   an `authentication_required` decline code, use the declined PaymentIntent's client secret with
+   *   confirmPayment to allow the customer to authenticate the payment." That is `needs_approval`, and
+   *   it is the manage page's `Pay balance` form that finishes it. `authentication_not_handled` is
+   *   listed as "related": the issuer declined again for want of the same authentication.
+   *   `mobile_device_authentication_required` is card-reader only and cannot occur here.
+   * - `error_on_requires_action` is not set: with `off_session` a required action surfaces as the decline
+   *   above, and a `requires_action` status that comes back anyway is read as `needs_approval` too.
+   *
+   * The idempotency key is per attempt, so a re-send after a network throw returns Stripe's first
+   * answer instead of charging again. Anything that is neither a card decline nor a settled status
+   * THROWS, so the caller gives the claim back and the next tick re-sends it.
+   */
+  async confirmOffSession(input: {
+    paymentIntentId: string;
+    customerId: string;
+    paymentMethodId: string;
+    idempotencyKey: string;
+  }): Promise<
+    | { outcome: "succeeded"; charge: PaymentSucceeded }
+    | { outcome: "declined"; declineCode?: string }
+    | { outcome: "needs_approval" }
+  > {
+    let pi: Stripe.PaymentIntent;
+    try {
+      pi = await this.#stripe.paymentIntents.confirm(
+        input.paymentIntentId,
+        { off_session: true, payment_method: input.paymentMethodId },
+        { idempotencyKey: input.idempotencyKey },
+      );
+    } catch (e) {
+      if (isCardError(e)) {
+        const code = e.decline_code ?? e.code;
+        if (code !== undefined && NEEDS_APPROVAL_CODES.has(code)) return { outcome: "needs_approval" };
+        return { outcome: "declined", ...(code !== undefined ? { declineCode: code } : {}) };
+      }
+      throw e;
+    }
+    if (pi.status === "succeeded") {
+      return {
+        outcome: "succeeded",
+        charge: {
+          paymentIntentId: pi.id,
+          amountReceivedCents: pi.amount_received,
+          currency: pi.currency,
+          metadata: pi.metadata ?? {},
+          ...paymentMethodOf(pi),
+        },
+      };
+    }
+    if (pi.status === "requires_action") return { outcome: "needs_approval" };
+    if (pi.status === "requires_payment_method") {
+      const code = pi.last_payment_error?.decline_code ?? pi.last_payment_error?.code;
+      if (code !== undefined && NEEDS_APPROVAL_CODES.has(code)) return { outcome: "needs_approval" };
+      return { outcome: "declined", ...(code !== undefined ? { declineCode: code } : {}) };
+    }
+    throw new Error(`Stripe confirm of ${pi.id} returned status ${pi.status}; neither paid nor declined`);
   }
 
   parseEvent(rawBody: string, signature: string): PaymentEvent | null {
@@ -516,6 +637,7 @@ export class StripePaymentPort implements PaymentPort {
           amountReceivedCents: pi.amount_received ?? 0,
           currency: pi.currency ?? "usd",
           metadata: (pi.metadata ?? {}) as Record<string, string>,
+          ...paymentMethodOf(pi),
         },
       };
     }

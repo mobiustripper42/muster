@@ -116,10 +116,7 @@ export function PhoneBookingForm({
             inputName="hasFlex"
           />
         ) : null}
-        {/* Deposits are not in use (§2.8.4a), and the box re-totals in full-payment terms only. */}
-        {money.depositMode ? null : (
-          <DiscountBox value={discount} onChange={setDiscount} invalid={parsed === null} comped={d.comped} />
-        )}
+        <DiscountBox value={discount} onChange={setDiscount} invalid={parsed === null} comped={d.comped} />
         <CheckoutSummary m={shown} tipBps={tip.bps} t={totals} />
         <p className="pt-3 text-xs text-muted">
           {d.comped
@@ -128,7 +125,7 @@ export function PhoneBookingForm({
         </p>
       </div>
 
-      <PayBar m={shown} t={totals}>
+      <PayBar t={totals}>
         <span data-testid="book-phone" className="ml-auto">
           <SubmitButton className="btn-primary btn-lg">
             Book it

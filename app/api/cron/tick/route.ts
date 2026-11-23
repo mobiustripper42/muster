@@ -3,6 +3,8 @@ import { reformWindow } from "@core/builder/form-shifts.js";
 import { logFormAudit } from "@core/oracle/audit-log.js";
 import { tick, type TickResult } from "@core/builder/tick.js";
 import { HANDLED_EVENT_TYPES, StripePaymentPort } from "@core/adapters/stripe-payment.js";
+import { chargeDueBalances } from "@core/reservations/balance-charge.js";
+import { alertThatNeverThrows } from "@core/reservations/booking-webhook.js";
 import { monitorWebhookEndpoint } from "@core/reservations/webhook-health.js";
 import { getRepo } from "../../../lib/repo";
 import { forwardFormNotices, relayAsks } from "../../../lib/channel";
@@ -32,6 +34,12 @@ import { runWaiverReminders } from "../../../lib/waiver-reminders";
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/**
+ * The longest a tick may run, in seconds (DEC-202). The balance job reclaims an attempt claimed more
+ * than an hour ago on the strength of this: no run lives that long, so an old unfinished claim has no
+ * live owner. Keep it well under `RECLAIM_AFTER_MS` in `src/reservations/balance-charge.ts`.
+ */
+export const maxDuration = 300;
 
 export async function GET(req: Request) {
   // Vercel sends `Authorization: Bearer <CRON_SECRET>` on cron invocations; a
@@ -181,11 +189,38 @@ export async function GET(req: Request) {
     console.error("tick: waiver reminders could not run — no booker was reminded this tick", e);
   }
 
+  // **The scheduled balance charge (19.6, issue #1254)** — each due deposit booking's saved card,
+  // charged off-session once per attempt. `chargeDueBalances` holds the rules.
+  //
+  // ABOVE the pause gate, as the webhook check is: DEC-054's pause means "stop asking people to work",
+  // never "stop collecting money" — a paused engine that silently stopped charging balances would
+  // leave every booking owing past its due date. Best-effort like every leg here, and dark without
+  // Stripe keys (a dev or preview deploy has no card to charge): a throw must not cost this tick its
+  // asks and escalations, and the job logs each booking it could not finish.
+  let balances = { charged: 0, declined: 0, needsApproval: 0, errors: 0 };
+  try {
+    const secretKey = process.env.STRIPE_SECRET_KEY;
+    if (secretKey) {
+      balances = await chargeDueBalances({
+        repo,
+        payments: new StripePaymentPort(secretKey, process.env.STRIPE_WEBHOOK_SECRET ?? ""),
+        now: () => new Date().toISOString(),
+        alertPaidButUnbooked: alertThatNeverThrows(alertMoneyProblem),
+      });
+    }
+  } catch (e) {
+    console.error("tick: the balance charge could not run — no balance was charged this tick", e);
+  }
+
   if (await repo.isEnginePaused()) {
     return NextResponse.json({
       ok: true,
       paused: true,
       shiftsFormed,
+      balancesCharged: balances.charged,
+      balancesDeclined: balances.declined,
+      balancesNeedingApproval: balances.needsApproval,
+      balanceErrors: balances.errors,
       webhookChecked,
       webhookHealthy,
       remindersSent,
@@ -269,6 +304,10 @@ export async function GET(req: Request) {
     webhookHealthy,
     remindersSent,
     remindersFailed,
+    balancesCharged: balances.charged,
+    balancesDeclined: balances.declined,
+    balancesNeedingApproval: balances.needsApproval,
+    balanceErrors: balances.errors,
     shiftsFormed,
     formFailures,
     formFailuresAlerted,

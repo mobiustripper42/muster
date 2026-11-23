@@ -156,12 +156,9 @@ export default async function ReservationDetailPage({
   searchParams,
 }: {
   params: Promise<{ reservationId: string }>;
-  /** `Search`, the balance-link round-trip params (11.2b), and the cancel/refund/resend
-   *  round-trip params (#616) each action redirects back with. */
+  /** `Search`, and the cancel/refund/resend round-trip params (#616) each action redirects back with. */
   searchParams: Promise<
     Search & {
-      balanceUrl?: string;
-      balanceErr?: string;
       cancel?: string;
       cancelled?: string;
       cancelErr?: string;
@@ -236,22 +233,19 @@ export default async function ReservationDetailPage({
   let payments: Payment[];
   let gratuities: Gratuity[];
   let shifts: Shift[];
-  let taxRateBps: number;
   try {
     const repo = getRepo();
-    const [p, g, s, config] = await Promise.all([
+    const [p, g, s] = await Promise.all([
       repo.listPaymentsForReservation(reservation.id),
       repo.listGratuitiesForEvent(event.id),
       repo.listShifts(),
-      repo.getPaymentConfig(),
     ]);
     payments = p;
     gratuities = g;
     shifts = s;
-    taxRateBps = config.taxRateBps;
   } catch (e) {
-    // Money path — payments, gratuities and the tax rate this pane totals from.
-    logSwallowed("admin/reservation", e, "the payments, gratuities, shifts or tax rate did not load");
+    // Money path — the payments and gratuities this pane totals from.
+    logSwallowed("admin/reservation", e, "the payments, gratuities or shifts did not load");
     return (
       <Shell width="6xl">
         <Notice>Couldn’t load this reservation right now. {ADMIN_LOG_HINT}</Notice>
@@ -282,7 +276,6 @@ export default async function ReservationDetailPage({
     vessel: data.vesselById.get(String(event.vesselId)),
     payments,
     gratuities,
-    taxRateBps,
     ...(shift ? { shift: { shift, seats } } : {}),
   });
 
@@ -412,7 +405,7 @@ export default async function ReservationDetailPage({
      * A refused action's own values (#780).
      *
      * This pane is the one surface that never sets `?err=`: three independent actions share it,
-     * so each refuses on its own param (`cancelErr` / `refundErr` / `balanceErr`). A draft read
+     * so each refuses on its own param (`cancelErr` / `refundErr`). A draft read
      * gated on `err` would be written on every refusal here and read on none.
      *
      * Scoped to THIS reservation. `reservationId` is a hidden field on every form in the pane,
@@ -420,11 +413,6 @@ export default async function ReservationDetailPage({
      * without this check a refused refund on one booking would prefill the box on the next one
      * the operator opened, with a money figure they never typed for it.
      */
-    // `balanceErr` is deliberately NOT here. Minting a balance link posts no typed field, so it
-    // can never write a draft — but it CAN fail while one is live, and reading on it would
-    // resurface a refund figure from a minute ago into a money box the operator had moved on
-    // from. Clearing on that path instead would be worse: it would throw away a draft the
-    // refund box is legitimately still showing.
     const refusalHere = sp.cancelErr !== undefined || sp.refundErr !== undefined;
     const rawDraft = refusalHere ? await readFormDraft("/admin/calendar") : null;
     const draft =
@@ -475,13 +463,6 @@ export default async function ReservationDetailPage({
       <ReservationDetailPane
         // A history that didn't load can't say who sold it; it falls back to the row's source.
         v={{ ...view, soldByPhone: trail ? soldByPhone(trail) : false }}
-        balance={{
-          ...(sp.balanceUrl !== undefined ? { url: sp.balanceUrl } : {}),
-          ...(sp.balanceErr !== undefined ? { err: sp.balanceErr } : {}),
-          date: sp.date ?? "",
-          filter: sp.filter ?? "",
-          view: sp.view === "list" ? "list" : "",
-        }}
         {...(actions ? { actions } : {})}
         waivers={waivers}
         comped={sp.comped}

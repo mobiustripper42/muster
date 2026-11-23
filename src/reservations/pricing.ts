@@ -16,10 +16,9 @@
  * over the fare. Pure + integer-cents throughout (float-safe, Stripe-aligned).
  *
  * **Gratuity is deliberately NOT part of `fareCents`** (@architect, 12.3). It is crew money,
- * tax- and fee-EXEMPT and charged in FULL regardless of deposit mode (DEC-124) — folding it in
- * here would (i) tax the tip via `taxCentsFor(fareCents)` and (ii) deposit-split it via
- * `chargeNowCents`. The checkout computes gratuity separately (% of `fareCents`) and adds it on
- * top, after tax. `fareCents` is the TAXABLE base — keep it tip-free.
+ * tax- and fee-EXEMPT (DEC-124) — folding it in here would tax the tip via
+ * `taxCentsFor(fareCents)`. The checkout computes gratuity separately (% of `fareCents`) and adds
+ * it on top, after tax; a deposit then covers it inside the whole quote (`dueNowCents`). `fareCents` is the TAXABLE base — keep it tip-free.
  */
 
 import type { GratuityKindConfig } from "../domain/entities.js";

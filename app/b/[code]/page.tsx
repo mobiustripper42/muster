@@ -12,23 +12,27 @@
  * flagged: crew NAMES (view model gives counts), the guest waiver roster (no per-attendee
  * roster, DEC-110), leave-a-review, email-receipt.
  */
+import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { ensureTripLink, tripDayOver } from "@core/checkin/trip-link.js";
 import { vesselClockOf, vesselDateOf } from "@core/config/tenant.js";
 import type { EventId } from "@core/domain/ids.js";
 import { formatCents } from "@core/reservations/calendar-detail.js";
 import { refundOnItsWay } from "@core/reservations/cancel-notice.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
+import { recordBalanceReturn } from "@core/reservations/balance-charge.js";
+import { alertThatNeverThrows } from "@core/reservations/booking-webhook.js";
 import { buildManageView } from "@core/reservations/manage-view.js";
 import { customerCancelQuote, manageHref, type CustomerCancelQuote } from "@core/reservations/customer-cancel.js";
 import { cancellationTerms, dollars } from "@core/reservations/refund-terms.js";
-import { hasFlex } from "@core/reservations/booking-invoice.js";
-import { flexChargedCents } from "@core/reservations/discount.js";
 import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { Badge } from "../../../components/ui/badge";
 import { SubmitButton } from "../../../components/ui/submit-button";
+import { alertMoneyProblem } from "../../lib/alert";
+import { appBaseUrl } from "../../lib/base-url";
 import { getRepo } from "../../lib/repo";
 import { logSwallowed } from "../../lib/swallowed";
+import { BalancePayForm } from "./balance-pay-form";
 import { cancelFromManagePage, requestBookingChange } from "./actions";
 import { loadBookingByCode, loadCancelledFigure } from "./load";
 import { Textarea } from "../../../components/ui/input";
@@ -36,7 +40,9 @@ import { Card, Well } from "../../../components/ui/card";
 
 export const dynamic = "force-dynamic";
 
-type Search = { requested?: string; error?: string; cancel?: string; cancelled?: string };
+// `payment_intent` is Stripe's own return parameter after the balance form's card (and any 3-D Secure
+// step); it is text in an address bar, so `recordBalanceReturn` asks Stripe before it records anything.
+type Search = { requested?: string; error?: string; cancel?: string; cancelled?: string; payment_intent?: string };
 
 const ERROR_COPY: Record<string, React.ReactNode> = {
   link: "That didn’t work — please reopen your booking link.",
@@ -67,6 +73,10 @@ export default async function ManagePage({
 }) {
   const { code } = await params;
   const sp = await searchParams;
+  // The return from the balance form (issue #1254): record the paid intent BEFORE the booking is read,
+  // so `Paid in full` shows without waiting for the webhook. Best-effort — the webhook still records
+  // it, and a failure here costs nothing but that head start.
+  if (sp.payment_intent) await recordReturnedBalance(code, sp.payment_intent);
   const load = await loadBookingByCode(code);
 
   // A code that resolved but is dead gets its own state (DEC-154). Whoever holds it already knew
@@ -132,7 +142,6 @@ export default async function ManagePage({
     vessel: booking.vessel,
     payments: booking.payments,
     gratuities: booking.gratuities,
-    taxRateBps: booking.taxRateBps,
     ...(booking.shift ? { shift: booking.shift } : {}),
     now: { date: vesselDateOf(now), time: vesselClockOf(now) },
   });
@@ -144,8 +153,9 @@ export default async function ManagePage({
   const receiptLinks = booking.payments
     .filter((p) => p.receiptUrl !== undefined)
     .map((p) => ({ id: String(p.id), url: p.receiptUrl!, amountCents: p.amountCents }));
+  const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
   const taxAndFees = m.taxCents + m.serviceFeeCents;
-  const insured = hasFlex(booking.reservation.invoice);
+  const insured = m.insured;
   const cancelled = detail.status === "cancelled";
   // Cancel is offered only when the terms refund something (16.9); otherwise the request form stays.
   const cancelQuote = cancelled
@@ -283,19 +293,30 @@ export default async function ManagePage({
                 {/* Cancellation insurance (16.8): what was charged for it, off the frozen invoice —
                     so a comp that took it to $0 still shows the booking has it. */}
                 {insured && (
-                  <Row label="Cancellation insurance" value={formatCents(flexChargedCents(booking.reservation.invoice!))} mono />
+                  <Row label="Cancellation insurance" value={formatCents(m.flexCents)} mono />
                 )}
                 {view.paidInFull ? (
                   <Row label="Paid in full" value={formatCents(m.paidCents)} mono strong />
                 ) : (
                   <>
                     <Row label="Paid so far" value={formatCents(m.paidCents)} mono />
-                    {/* "charged" promised an automatic collection that does not exist — nothing in
-                        Muster reads `balanceDueDaysBeforeEvent` on a schedule (#617; #712 is the
-                        unbuilt auto-collect). The obligation is real; the mechanism is a link the
-                        operator sends, so the label states the first and claims nothing about the second. */}
+                    {/* The label names the day the saved card is charged when the booking carries a
+                        frozen due date (`balanceDueAt`, set when the deposit was paid), read off the
+                        row and never recomputed from the setting; a booking with none states the
+                        obligation and claims no mechanism (#617). See `buildManageView`. */}
                     {m.balanceCents > 0 && (
-                      <Row label="Balance · due before your trip" value={formatCents(m.balanceCents)} mono strong />
+                      <Row label={view.balanceLabel} value={formatCents(m.balanceCents)} mono strong />
+                    )}
+                    {/* Pay it now, with any card (issue #1254): the button while the booking can take
+                        a balance payment, then the card form in its place. */}
+                    {view.payBalance && publishableKey && (
+                      <BalancePayForm
+                        code={code}
+                        publishableKey={publishableKey}
+                        returnUrl={`${appBaseUrl()}/b/${code}`}
+                        label={view.payBalance.label}
+                        amountCents={view.payBalance.amountCents}
+                      />
                     )}
                   </>
                 )}
@@ -402,6 +423,26 @@ export default async function ManagePage({
       </Card>
     </main>
   );
+}
+
+/** Record the balance intent the manage page was returned with, if it is this booking's and paid. */
+async function recordReturnedBalance(code: string, paymentIntentId: string): Promise<void> {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) return;
+  try {
+    await recordBalanceReturn(
+      {
+        repo: getRepo(),
+        payments: new StripePaymentPort(secretKey, process.env.STRIPE_WEBHOOK_SECRET ?? ""),
+        now: () => new Date().toISOString(),
+        alertPaidButUnbooked: alertThatNeverThrows(alertMoneyProblem),
+      },
+      code,
+      paymentIntentId,
+    );
+  } catch (e) {
+    logSwallowed("b/[code]:balanceReturn", e, "the paid balance was not recorded on return; the webhook still will");
+  }
 }
 
 /**

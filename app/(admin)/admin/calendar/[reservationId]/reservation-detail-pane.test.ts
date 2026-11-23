@@ -104,7 +104,6 @@ const paidView = (o: { reservation?: Partial<Reservation>; payments?: Payment[];
     event: event(),
     payments: o.payments ?? [payment()],
     gratuities: o.gratuities ?? [gratuity()],
-    taxRateBps: 800,
   });
 
 const actions = (over: Partial<PaneActionState> = {}): PaneActionState => ({
@@ -264,21 +263,6 @@ describe("ReservationDetailPane — the paid booking's Money card", () => {
       }),
     );
     expect(chargeRows(insured).reduce((sum, [, value]) => sum + cents(value), 0)).toBe(63580);
-  });
-
-  it("AC18: with no invoice to read the rate from, the row is plain Service fee", () => {
-    const { invoice: _none, ...noInvoice } = reservation();
-    const html = render(
-      buildReservationDetail({
-        reservation: noInvoice,
-        event: event(),
-        payments: [payment()],
-        gratuities: [gratuity()],
-        taxRateBps: 800,
-      }),
-    );
-
-    expect(chargeRows(html)).toContainEqual(["Service fee", "$18.00"]);
   });
 
   it("AC18: no fee charged, no row", () => {

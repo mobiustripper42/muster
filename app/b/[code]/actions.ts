@@ -7,6 +7,7 @@
  *  - `requestBookingChange` — email the operator inbox a cancel/change request, best-effort. A date
  *    or time change is only ever a request; a cancel is a request too when the terms owe no refund.
  *  - `cancelFromManagePage` — the customer cancels a booking the terms refund, and gets the refund.
+ *  - `payBalanceFromManagePage` — the customer starts paying the balance with any card (issue #1254).
  */
 
 import { randomUUID } from "node:crypto";
@@ -16,6 +17,9 @@ import { getRepo } from "../../lib/repo";
 import { redirect } from "next/navigation";
 import { EmailChannel } from "@core/adapters/email-channel.js";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
+import { startBalancePayment } from "@core/reservations/balance-charge.js";
+import { alertThatNeverThrows } from "@core/reservations/booking-webhook.js";
+import { balanceRefusalMessage } from "@core/reservations/manage-view.js";
 import { bookingUrl } from "@core/reservations/booking-code.js";
 import {
   bookingChangeRequestEmail,
@@ -31,6 +35,7 @@ import {
 } from "@core/reservations/customer-cancel.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
 import { readEmailEnv } from "../../lib/auth-delivery";
+import { alertMoneyProblem } from "../../lib/alert";
 import { tellCustomerOfCancel } from "../../lib/cancel-notice";
 import { forwardFormNotices } from "../../lib/channel";
 import { logSwallowed } from "../../lib/swallowed";
@@ -184,5 +189,41 @@ async function emailOperatorOfCancel(booking: LoadedBooking, refund: CancelRefun
     });
   } catch (e) {
     logSwallowed("b/cancelFromManagePage", e, "the operator was not emailed about the customer's cancel");
+  }
+}
+
+/**
+ * The manage page's `Pay balance` press (issue #1254): starts the balance payment on the booking's one
+ * balance intent and hands the card form its client secret and the amount set on it, or the refusal
+ * line. No logic past `startBalancePayment`, which carries the tests; the booking is re-resolved from
+ * the code like every action here (a revoked link fails here too).
+ *
+ * A `"use server"` export is a public endpoint: everything this does is gated by the code and by
+ * `balancePayable`. Never throws, per the forward guidance for new actions — a failure is a line the
+ * form shows.
+ */
+export async function payBalanceFromManagePage(
+  code: string,
+): Promise<{ clientSecret: string; amountCents: number } | { error: string }> {
+  const load = await loadBookingByCode(code);
+  if (load.kind !== "ok") return { error: "That didn’t work — please reopen your booking link." };
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) return { error: "Payments aren’t available right now — please try again later." };
+  try {
+    const repo = getRepo();
+    const r = await startBalancePayment(
+      {
+        repo,
+        payments: new StripePaymentPort(secretKey, process.env.STRIPE_WEBHOOK_SECRET ?? ""),
+        now: () => new Date().toISOString(),
+        alertPaidButUnbooked: alertThatNeverThrows(alertMoneyProblem),
+      },
+      load.booking.reservation.id,
+    );
+    if (r.ok) return { clientSecret: r.clientSecret, amountCents: r.amountCents };
+    return { error: balanceRefusalMessage(r.reason, await repo.getContactPhone()) };
+  } catch (e) {
+    logSwallowed("b/payBalanceFromManagePage", e, "the customer's balance payment did not start");
+    return { error: "Couldn’t start your payment just now. You have not been charged — try again in a moment." };
   }
 }

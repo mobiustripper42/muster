@@ -21,9 +21,9 @@
  * derived here. An unpaid phone booking (`buildUnpaidBookingDetail`) carries its frozen invoice
  * instead, which does itemise the fee.
  *
- * Money follows the existing authorities, never a local recompute: fare is
- * `Event.price + Reservation.extrasCents` (#474, DEC-107 amend), tax is `taxCentsFor`, and
- * the residual is `balanceOwedCents` (the ONE balance authority, DEC-107). Gratuity is read
+ * Money follows the existing authorities, never a local recompute: fare and tax are the
+ * amounts frozen on the booking's invoice (`frozenMoney`, issue #1241), and the residual is
+ * `balanceOwedCents` (the ONE balance authority, DEC-107). Gratuity is read
  * from `Gratuity` rows (DEC-124) — crew money, tax- and fee-exempt, deliberately outside the
  * fare and outside the balance.
  */
@@ -39,15 +39,8 @@ import type {
   Shift,
   Vessel,
 } from "../domain/entities.js";
-import { hasFlex } from "./booking-invoice.js";
-import {
-  bookedFareCents,
-  chargedFareCents,
-  fareDiscountCents,
-  flexCarveOutCents,
-  flexChargedCents,
-} from "./discount.js";
-import { balanceDueCents, countsAsPaid, taxCentsFor } from "./payment-config.js";
+import { frozenMoney } from "./booking-invoice.js";
+import { balanceDueCents, countsAsPaid } from "./payment-config.js";
 
 export interface ReservationDetailInput {
   reservation: Reservation;
@@ -59,14 +52,13 @@ export interface ReservationDetailInput {
   /** Gratuities listed for the claimed event (both kinds) — `buildReservationDetail` keeps only
    *  this reservation's own, so a caller may pass the event's whole list. */
   gratuities: readonly Gratuity[];
-  taxRateBps: number;
   /** The crew shift covering this event, with its seats — for the cross-link. */
   shift?: { shift: Shift; seats: readonly Seat[] } | undefined;
 }
 
 export interface DetailMoney {
-  /** `Event.price` base + frozen `extrasCents` − the discount — the taxable, tip-free party
-   *  fare, i.e. what tax was actually charged on (DEC-194). */
+  /** `chargedFareCents(invoice)`: frozen fare + extras − the discount — the taxable, tip-free party
+   *  fare, i.e. what tax was actually charged on (DEC-194, issue #1241). */
   fareCents: number;
   /** The operator's dollars off the FARE (16.5, DEC-194), 0 when none. `fareCents + discountCents`
    *  is the fare before it — what the pane shows on the Fare line, with this beneath it. Any part
@@ -102,7 +94,7 @@ export interface DetailMoney {
    * flag the pane offers a balance link to a customer whose bank is clawing the money back.
    */
   disputed: boolean;
-  /** `Event.price` absent ⇒ the fare is unknown and the money block can't be trusted. */
+  /** No invoice frozen on the row (a Xola row) ⇒ no recorded price; every figure is 0. */
   priceKnown: boolean;
 }
 
@@ -184,11 +176,7 @@ export function buildUnpaidBookingDetail(input: {
     capacity: vessel?.coiMaxPax ?? 0,
     gratuityRows: [],
     money: {
-      fareCents: inv ? chargedFareCents(inv) : 0,
-      discountCents: inv ? fareDiscountCents(inv) : 0,
-      insured: hasFlex(inv),
-      flexCents: inv ? flexChargedCents(inv) : 0,
-      taxCents: inv?.taxCents ?? 0,
+      ...frozenMoney(inv),
       serviceFeeCents: inv?.serviceFeeCents ?? 0,
       serviceFeeBps: inv?.serviceFeeBps,
       gratuityCents: inv?.gratuityCents ?? 0,
@@ -196,7 +184,6 @@ export function buildUnpaidBookingDetail(input: {
       balanceCents: inv && r.status !== "cancelled" ? inv.amountDueNowCents : 0,
       refundedCents: 0,
       disputed: false,
-      priceKnown: inv !== undefined,
     },
     invoice: inv,
   };
@@ -207,19 +194,14 @@ const HELD_BY_PERSON = new Set(["Claimed", "Confirmed"]);
 
 /** Build the pane's view model. Pure — every input is already-loaded data. */
 export function buildReservationDetail(input: ReservationDetailInput): ReservationDetailView {
-  const { reservation: r, event, offering, vessel, payments, taxRateBps } = input;
+  const { reservation: r, event, offering, vessel, payments } = input;
 
   // An event holds the whole boat for ONE reservation, but filter anyway — a cancelled-and-
   // rebooked event can carry a prior reservation's tips, and those aren't this customer's.
   const gratuities = input.gratuities.filter((g) => String(g.reservationId) === String(r.id));
 
-  const priceKnown = typeof event.price === "number";
-  // Less the discount (DEC-194): `Event.price` is the undiscounted fare.
-  const fareCents = bookedFareCents(event.price ?? 0, r);
-  // The fare's tax, derived like the balance — plus the insurance's, which is taxed too (DEC-196)
-  // and sits outside fare + tax in the carve-out, frozen on the invoice.
-  const flexTaxCents = r.invoice ? flexCarveOutCents(r.invoice) - flexChargedCents(r.invoice) : 0;
-  const taxCents = taxCentsFor(fareCents, taxRateBps) + Math.max(0, flexTaxCents);
+  // The fare, discount, insurance and whole tax (the insurance's included, DEC-196) are the amounts
+  // frozen on the invoice — never today's rate (issue #1241). No invoice, no recorded price.
   const gratuityCents = gratuities.reduce((sum, g) => sum + g.amountCents, 0);
   // `countsAsPaid` — a partially refunded row is still money the customer paid, shown gross
   // here with `refundedCents` on its own line (#522). The balance reads `tookMoney` instead.
@@ -250,11 +232,7 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .map((g) => ({ kind: g.kind, amountCents: g.amountCents, bps: g.bps })),
     money: {
-      fareCents,
-      discountCents: r.invoice ? fareDiscountCents(r.invoice) : 0,
-      insured: hasFlex(r.invoice),
-      flexCents: r.invoice ? flexChargedCents(r.invoice) : 0,
-      taxCents,
+      ...frozenMoney(r.invoice),
       serviceFeeCents,
       serviceFeeBps: r.invoice?.serviceFeeBps,
       gratuityCents,
@@ -262,10 +240,9 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
       // `balanceDueCents`, not `balanceOwedCents` — a cancelled booking owes nothing (issue
       // #803). This composer is shared: the admin pane reads it, and so does the guest's
       // `/b/<code>` page via `buildManageView`, whose `paidInFull` is derived from it.
-      balanceCents: balanceDueCents(r.status, fareCents, taxRateBps, payments),
+      balanceCents: balanceDueCents(r.status, r.invoice, payments),
       refundedCents,
       disputed: payments.some((p) => p.status === "disputed" || p.status === "dispute_lost"),
-      priceKnown,
     },
     crew: crewLinkOf(input.shift),
   };

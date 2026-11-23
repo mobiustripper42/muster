@@ -11,7 +11,7 @@
  * Pure, and free of anything server-only, so the checkout and the operator's booking form import it
  * to re-total live — the figure on screen and the figure frozen are one computation.
  */
-import type { BookingInvoice, Reservation } from "../domain/entities.js";
+import type { BookingInvoice } from "../domain/entities.js";
 import { feeCentsFor, taxCentsFor } from "./payment-config.js";
 import { gratuityCentsFor } from "./pricing.js";
 
@@ -130,14 +130,11 @@ export function chargedFareCents(inv: DiscountFields): number {
   return inv.fareCents + inv.extrasCents - fareDiscountCents(inv);
 }
 
-/**
- * The same for a BOOKED row, whose balance is derived from its Event (§2.8.10): `Event.price` is
- * the undiscounted fare, so the discount comes off the row's own frozen invoice. Without it a
- * discounted booking paid in full reads as owing the discount plus its tax — and the pane offers
- * a balance link to collect it.
- */
-export function bookedFareCents(eventPrice: number, r: Pick<Reservation, "extrasCents" | "invoice">): number {
-  return eventPrice + (r.extrasCents ?? 0) - (r.invoice ? fareDiscountCents(r.invoice) : 0);
+/** The tax on the fare alone, off a frozen invoice: `taxCentsFor(chargedFareCents(inv),
+ *  inv.taxRateBps)`. The one home for that figure (issue #1241) — `flexCarveOutCents` and
+ *  `balanceOwedCents` both read it, so the insurance's carve-out and the balance land on one cent. */
+export function fareTaxCents(inv: DiscountFields & Pick<BookingInvoice, "taxRateBps">): number {
+  return taxCentsFor(chargedFareCents(inv), inv.taxRateBps);
 }
 
 /** What the customer was charged for insurance (16.8): its price less any discount that reached
@@ -158,5 +155,5 @@ export function flexChargedCents(inv: DiscountFields): number {
 export function flexCarveOutCents(inv: DiscountFields & Pick<BookingInvoice, "taxCents" | "taxRateBps">): number {
   const charged = flexChargedCents(inv);
   if (charged <= 0) return 0;
-  return charged + inv.taxCents - taxCentsFor(chargedFareCents(inv), inv.taxRateBps);
+  return charged + inv.taxCents - fareTaxCents(inv);
 }

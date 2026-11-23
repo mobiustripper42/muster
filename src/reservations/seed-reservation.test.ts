@@ -6,11 +6,14 @@
  * drifts so the fixture stops rendering a conflict, this goes red.
  */
 import { describe, expect, it } from "vitest";
-import type { Block, Vessel } from "../domain/entities.js";
+import type { Block, Event, Reservation, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { addDays } from "../config/tenant.js";
 import { deriveVirtualAvailability } from "./availability.js";
 import { computeBlockImpact } from "./block-impact.js";
+import { buildReservationDetail } from "./calendar-detail.js";
+import { chargedFareCents } from "./discount.js";
+import { taxCentsFor } from "./payment-config.js";
 import {
   MIN_BOOKING_LEAD_DAYS,
   buildSeededReservationWorld,
@@ -226,5 +229,39 @@ describe("db:seed:reservation fixture", () => {
     expect(impact.conflictCount).toBe(2);
     expect(impact.conflictCents).toBe(54900 + 43900);
     expect(impact.removedSlots).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * A booked trip's money is its frozen invoice (issue #1241), so every seeded booking carries one —
+ * written out to the figures the e2e specs already read (`e2e/calendar.spec.ts`,
+ * `e2e/purchases.spec.ts`, `e2e/book-manage.spec.ts`), which are not edited. Those figures are held
+ * here: the fare is the event's price and the tax is that price at 7.25%.
+ */
+describe("db:seed:reservation — each booking's frozen invoice (issue #1241)", () => {
+  const eventOf = (r: Reservation): Event => world.events.find((e) => String(e.id) === String(r.eventId))!;
+
+  it("issue #1241 AC9: every booked Muster row carries an invoice whose fare is its event's price and whose tax is that price at 7.25%", () => {
+    const booked = world.reservations.filter((r) => r.source === "muster" && r.status === "booked");
+    expect(booked).toHaveLength(DEMO.bookings.length);
+    for (const r of booked) {
+      const price = eventOf(r).price!;
+      expect(r.invoice, `invoice on ${String(r.id)}`).toBeDefined();
+      expect(chargedFareCents(r.invoice!), `fare on ${String(r.id)}`).toBe(price);
+      expect(r.invoice!.taxCents, `tax on ${String(r.id)}`).toBe(taxCentsFor(price, 725));
+    }
+  });
+
+  const detailFor = (priceCents: number) => {
+    const r = world.reservations.find((x) => eventOf(x).price === priceCents)!;
+    return buildReservationDetail({ reservation: r, event: eventOf(r), payments: [], gratuities: [] }).money;
+  };
+
+  it("issue #1241 AC9: the $549 departure reads fare $549.00, tax $39.80, balance $588.80", () => {
+    expect(detailFor(54900)).toMatchObject({ fareCents: 54900, taxCents: 3980, balanceCents: 58880 });
+  });
+
+  it("issue #1241 AC9: the $439 departure reads $470.83 owed", () => {
+    expect(detailFor(43900).balanceCents).toBe(47083);
   });
 });

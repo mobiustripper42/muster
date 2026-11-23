@@ -22,6 +22,7 @@ import type {
   Customer,
   Ask,
   AuthSubjectKind,
+  BalanceChargeAttempt,
   Block,
   BookingCode,
   Credential,
@@ -97,7 +98,11 @@ import type {
 } from "../messaging/entities.js";
 import type { ThreadId } from "../domain/ids.js";
 import {
+  BALANCE_RETRY_DAYS_KEY,
+  DEPOSIT_CENTS_KEY,
   PAYMENT_CONFIG_DEFAULTS,
+  parseBalanceRetryDays,
+  parseDepositCents,
   type PaymentConfig,
 } from "../reservations/payment-config.js";
 import { BOOKING_CUTOFF_KEY, parseBookingCutoffHours } from "../reservations/booking-cutoff.js";
@@ -355,6 +360,13 @@ const toReservation = (r: any): Reservation => ({
   ...opt("tripMinutes", r.trip_minutes),
   ...opt("invoice", r.booking_invoice),
   ...opt("confirmationSentAt", r.confirmation_sent_at),
+  // The deposit (issue #1250): null on every row with no balance.
+  ...opt("balanceDueAt", r.balance_due_at),
+  ...opt("balanceReleaseAt", r.balance_release_at),
+  ...opt("stripeCustomerId", r.stripe_customer_id),
+  ...opt("stripePaymentMethodId", r.stripe_payment_method_id),
+  // The booking's one balance PaymentIntent (issue #1254).
+  ...opt("balancePaymentIntentId", r.balance_payment_intent_id),
 });
 
 /**
@@ -363,6 +375,12 @@ const toReservation = (r: any): Reservation => ({
  * flips a row (`bookPendingIfHullFree`); before 14.4 each carried its own column list and the
  * 14.4 columns would have been a fourth place for them to drift apart. `id` first is
  * load-bearing: the pending-write insert and the flip both refer to it as `$1`.
+ *
+ * **Not here, by design:** `checkout_attempts` (15.9), and `stripe_customer_id` and
+ * `stripe_payment_method_id` (issue #1250), and `balance_payment_intent_id` (issue #1254). The customer
+ * is written once by `recordCheckoutAttempt`, the saved card by the confirm flip and the balance intent
+ * by `saveBalancePaymentIntentId`, so no whole-row upsert of a stale copy can clear any of them.
+ * The balance dates ARE here: they are frozen with the invoice and re-frozen with it.
  */
 const RESERVATION_COLUMNS = [
   "id",
@@ -388,6 +406,8 @@ const RESERVATION_COLUMNS = [
   "trip_minutes",
   "booking_invoice",
   "confirmation_sent_at",
+  "balance_due_at",
+  "balance_release_at",
 ] as const;
 
 /** The values for `RESERVATION_COLUMNS`, same order. `eventId` overridable — the booking write
@@ -417,6 +437,8 @@ function reservationValues(r: Reservation, eventId: EventId | null = r.eventId):
     r.tripMinutes ?? null,
     r.invoice ?? null,
     r.confirmationSentAt ?? null,
+    r.balanceDueAt ?? null,
+    r.balanceReleaseAt ?? null,
   ];
 }
 
@@ -466,6 +488,14 @@ function pendingOverlapSql(): string {
        )
      limit 1`;
 }
+
+const toBalanceAttempt = (r: any): BalanceChargeAttempt => ({
+  reservationId: asId<"ReservationId">(r.reservation_id),
+  attempt: r.attempt,
+  attemptedAt: r.attempted_at,
+  ...opt("outcome", r.outcome),
+  ...opt("declineCode", r.decline_code),
+});
 
 const toPayment = (r: any): Payment => ({
   id: asId<"PaymentId">(r.id),
@@ -1329,28 +1359,33 @@ export class PostgresRepository implements Repository {
       const n = kv.has(k) ? Number(kv.get(k)) : NaN;
       return Number.isFinite(n) ? n : d; // absent / unparseable ⇒ default (DEC-054)
     };
-    const mode = kv.get("payment.deposit_mode");
     return {
-      depositMode:
-        mode === "full" || mode === "deposit"
-          ? mode
-          : PAYMENT_CONFIG_DEFAULTS.depositMode,
-      depositPercent: num("payment.deposit_percent", PAYMENT_CONFIG_DEFAULTS.depositPercent),
+      // The deposit alone is read whole-or-default and logged when malformed (issue #1250); the
+      // other keys keep their lenient `num()` parse.
+      depositCents: parseDepositCents(kv.get(DEPOSIT_CENTS_KEY)),
       taxRateBps: num("payment.tax_rate_bps", PAYMENT_CONFIG_DEFAULTS.taxRateBps),
       serviceFeeBps: num("payment.service_fee_bps", PAYMENT_CONFIG_DEFAULTS.serviceFeeBps),
       balanceDueDaysBeforeEvent: num(
         "payment.balance_due_days",
         PAYMENT_CONFIG_DEFAULTS.balanceDueDaysBeforeEvent,
       ),
+      balanceReleaseDaysBeforeEvent: num(
+        "payment.balance_release_days",
+        PAYMENT_CONFIG_DEFAULTS.balanceReleaseDaysBeforeEvent,
+      ),
+      // Stored as the raw comma list and parsed on read, like the deposit: a list that does not
+      // parse reads as the default and is logged (issue #1254).
+      balanceRetryDaysAfterDue: parseBalanceRetryDays(kv.get(BALANCE_RETRY_DAYS_KEY)),
     };
   }
   async setPaymentConfig(patch: Partial<PaymentConfig>, at: string): Promise<void> {
     const entries: [string, string][] = [];
-    if (patch.depositMode !== undefined) entries.push(["payment.deposit_mode", patch.depositMode]);
-    if (patch.depositPercent !== undefined) entries.push(["payment.deposit_percent", String(patch.depositPercent)]);
+    if (patch.depositCents !== undefined) entries.push([DEPOSIT_CENTS_KEY, String(patch.depositCents)]);
     if (patch.taxRateBps !== undefined) entries.push(["payment.tax_rate_bps", String(patch.taxRateBps)]);
     if (patch.serviceFeeBps !== undefined) entries.push(["payment.service_fee_bps", String(patch.serviceFeeBps)]);
     if (patch.balanceDueDaysBeforeEvent !== undefined) entries.push(["payment.balance_due_days", String(patch.balanceDueDaysBeforeEvent)]);
+    if (patch.balanceReleaseDaysBeforeEvent !== undefined) entries.push(["payment.balance_release_days", String(patch.balanceReleaseDaysBeforeEvent)]);
+    if (patch.balanceRetryDaysAfterDue !== undefined) entries.push([BALANCE_RETRY_DAYS_KEY, patch.balanceRetryDaysAfterDue.join(",")]);
     for (const [key, value] of entries) {
       await this.#pool.query(
         `insert into app_settings(key, value, updated_at) values ($1,$2,$3)
@@ -1693,7 +1728,8 @@ export class PostgresRepository implements Repository {
                 event_id=$2,
                 updated_at=coalesce($3, updated_at),
                 customer_id=coalesce($4, customer_id),
-                extras_cents=coalesce($5, extras_cents)
+                extras_cents=coalesce($5, extras_cents),
+                stripe_payment_method_id=coalesce($6, stripe_payment_method_id)
           where id=$1 and status='pending'
             and not exists (
               select 1 from reservations
@@ -1706,6 +1742,7 @@ export class PostgresRepository implements Repository {
           patch.updatedAt ?? null,
           patch.customerId ?? null,
           patch.extrasCents ?? null,
+          patch.stripePaymentMethodId ?? null,
         ],
       );
       if (flipped.rowCount === 0) {
@@ -1906,7 +1943,10 @@ export class PostgresRepository implements Repository {
               customer_name = case when status = 'pending' then $5 else customer_name end,
               party_size = case when status = 'pending' then $6 else party_size end,
               email = case when status = 'pending' then $7 else email end,
-              phone = case when status = 'pending' then $8 else phone end
+              phone = case when status = 'pending' then $8 else phone end,
+              balance_due_at = case when status = 'pending' then $9 else balance_due_at end,
+              balance_release_at = case when status = 'pending' then $10 else balance_release_at end,
+              stripe_customer_id = coalesce(stripe_customer_id, $11)
         where id = $1`,
       [
         attempt.id,
@@ -1920,7 +1960,108 @@ export class PostgresRepository implements Repository {
         attempt.partySize,
         attempt.email ?? null,
         attempt.phone ?? null,
+        // The balance dates are the invoice's: set with a deposit, cleared (NULL lands) when the
+        // attempt has none (issue #1250). The customer is written once and the first is kept.
+        attempt.balanceDueAt ?? null,
+        attempt.balanceReleaseAt ?? null,
+        attempt.stripeCustomerId ?? null,
       ],
+    );
+  }
+
+  async saveStripeCustomerId(reservationId: ReservationId, customerId: string): Promise<void> {
+    await this.#pool.query(
+      `update reservations set stripe_customer_id = coalesce(stripe_customer_id, $2) where id = $1`,
+      [reservationId, customerId],
+    );
+  }
+
+  // ── The scheduled balance charge (issue #1254, migration 20261119132310) ────────────────────
+  async listBalancesDue(now: string): Promise<Reservation[]> {
+    // Due has come and release has not. The dates are ISO-8601 UTC text (house style), compared as
+    // instants so a stored value's precision cannot change the answer. Owing, disputes and the saved
+    // card are the job's checks, not the query's.
+    const { rows } = await this.#pool.query(
+      `select * from reservations
+        where status = 'booked'
+          and balance_due_at is not null
+          and balance_release_at is not null
+          and balance_due_at::timestamptz <= $1::timestamptz
+          and $1::timestamptz < balance_release_at::timestamptz
+        order by balance_due_at::timestamptz, id`,
+      [now],
+    );
+    return rows.map(toReservation);
+  }
+  async claimBalanceAttempt(input: {
+    reservationId: ReservationId;
+    attempt: number;
+    at: string;
+    staleBefore?: string;
+  }): Promise<boolean> {
+    // The claim is the primary key: of two ticks inserting the same attempt, one gets the row and
+    // `returning` tells it so; the other gets nothing and must not charge. A reservation that does
+    // not exist violates the foreign key and throws.
+    //
+    // DEC-202: with `staleBefore`, a conflicting row that is unfinished and claimed strictly before it
+    // is taken over by the same statement — the update resets `attempted_at`, so of two reclaimers the
+    // second re-evaluates the `where` against the reset row and gets nothing. A null `staleBefore`
+    // compares to null, so the `where` never holds and a claimed attempt stays claimed.
+    const { rowCount } = await this.#pool.query(
+      `insert into balance_charge_attempts (reservation_id, attempt, attempted_at)
+       values ($1,$2,$3)
+       on conflict (reservation_id, attempt) do update
+         set attempted_at = excluded.attempted_at
+         where balance_charge_attempts.outcome is null
+           and balance_charge_attempts.attempted_at::timestamptz < $4::timestamptz
+       returning reservation_id`,
+      [input.reservationId, input.attempt, input.at, input.staleBefore ?? null],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+  async finishBalanceAttempt(input: {
+    reservationId: ReservationId;
+    attempt: number;
+    outcome: "succeeded" | "declined" | "needs_approval";
+    declineCode?: string;
+  }): Promise<void> {
+    await this.#pool.query(
+      `update balance_charge_attempts set outcome = $3, decline_code = $4
+        where reservation_id = $1 and attempt = $2`,
+      [input.reservationId, input.attempt, input.outcome, input.declineCode ?? null],
+    );
+  }
+  async releaseBalanceAttempt(input: { reservationId: ReservationId; attempt: number }): Promise<void> {
+    await this.#pool.query(
+      "delete from balance_charge_attempts where reservation_id = $1 and attempt = $2",
+      [input.reservationId, input.attempt],
+    );
+  }
+  async listBalanceAttempts(reservationId: ReservationId): Promise<BalanceChargeAttempt[]> {
+    const { rows } = await this.#pool.query(
+      "select * from balance_charge_attempts where reservation_id = $1 order by attempt",
+      [reservationId],
+    );
+    return rows.map(toBalanceAttempt);
+  }
+  async listAllBalanceAttempts(): Promise<BalanceChargeAttempt[]> {
+    const { rows } = await this.#pool.query(
+      "select * from balance_charge_attempts order by reservation_id, attempt",
+    );
+    return rows.map(toBalanceAttempt);
+  }
+  async saveBalancePaymentIntentId(reservationId: ReservationId, intentId: string): Promise<void> {
+    // Overwrites (a second call replaces the first); the id joins `payment_intent_ids` once, so a
+    // decline's trail row finds the booking and a cancel retires the intent with the rest.
+    await this.#pool.query(
+      `update reservations
+          set balance_payment_intent_id = $2::text,
+              payment_intent_ids = case
+                when $2::text = any(coalesce(payment_intent_ids, '{}'::text[])) then payment_intent_ids
+                else array_append(coalesce(payment_intent_ids, '{}'::text[]), $2::text)
+              end
+        where id = $1`,
+      [reservationId, intentId],
     );
   }
 

@@ -69,6 +69,35 @@ Lower value, still open:
 - **A fix is an ordinary task.** A behaviour change is specced in its issue and built with `/build-task`; a stale comment or spec sentence can go straight in. Several small S4 fixes can share one pull request.
 - **Filing is not the default** (`.claude/CLAUDE-context.md` § Median gaps): if the fix is smaller than writing the issue, fix it.
 
+## Triage result
+
+The patterns behind the findings, worst first (issue #1230). A pattern is one spec and one `/build-task`, sized as big as it holds together. A row joins a pattern when it is triaged; a row marked *candidate* has not been re-checked yet.
+
+### Pattern 1 — Money moves in four steps, everywhere
+
+**The hole:** we ask Stripe to move money, something breaks halfway, and nothing written down says what was being done. The customer is owed, refunded twice, or told the wrong thing, and nothing finishes the job.
+
+**The rule (operator, 2026-11-22):** every path that moves money does all four.
+
+1. Write down what is about to happen, before calling Stripe.
+2. Call Stripe with a fixed key taken from that record, so asking twice cannot move money twice.
+3. Write down the result. Until it is written, the record is unfinished, and no screen says what happened unless it is known.
+4. A job finds unfinished records, asks Stripe what happened, and finishes them.
+
+**Where it exists:** the balance charge, all four (`src/reservations/balance-charge.ts`, DEC-202). Booking payments have the first three; the fourth is the reconciler (`docs/SPEC.md` §2.8.9), not built: issue #1236. Refunds have neither the first nor the fourth.
+
+**Keeping it plugged (proposed, not in the codebase):** a check that fails when anything outside the one module calls a Stripe method that moves money, so a new path cannot skip the steps. Today refunds are called from `src/reservations/refund-payment.ts` and `src/reservations/booking-webhook.ts`.
+
+**When:** Feb 1. **Rows:** paired PS-1 (silent S1-1), silent S2-1 (paired PS-9, silent S3-7), money F3, F5, F20 and U2, conformance C15 and C19. **Candidates:** paired PS-2, PS-3 and PS-5. **Existing issues:** issue #1236 (F3, F20) and issue #1240 (F5, U2); the spec decides whether it replaces or widens issue #1240.
+
+### Pattern 2 — Check that it can still be paid for, right before the money moves
+
+**The hole:** a link or a form opened earlier is paid after the trip stopped being sellable: cancelled, blocked, or already sailed.
+
+**The rule (operator, 2026-11-22):** one check, run before Stripe is called and again before the customer is handed a way to pay: the booking is still payable, its slot is not blocked, and the trip has not started. If it fails, nothing is charged.
+
+**When:** Feb 1. **Rows:** operator OR-1, OR-2 and OR-3. **Candidates:** silent S2-2.
+
 ## Ledger
 
 Statuses are `open` unless a row says otherwise. A "same finding as" or "overlaps" note on an untriaged row is an import-time lead, not a verdict: triage confirms it, sets one row to `duplicate of …`, and buckets the pair once, at the higher of the two severities. IDs are each report's own; refer across audits as "money F5" or "crewing S2-7".
@@ -237,7 +266,7 @@ Refer to these as "silent S2-1". The report also cites about twenty findings alr
 | ID | Sev | Finding | When | Status |
 |---|---|---|---|---|
 | S1-1 | S1 | A self-cancel that commits, loses its acknowledgement and fails its re-read tells the customer "Nothing changed", and the refund is never sent | Feb 1 | duplicate of paired PS-1 |
-| S2-1 | S2 | After an operator refund moved money then hit a database error, the screen says "Nothing moved" and a second press refunds again | — | open |
+| S2-1 | S2 | After an operator refund moved money then hit a database error, the screen says "Nothing moved" and a second press refunds again | Feb 1 | open — real work, pattern 1; re-checked on `main` at `c280379` (`src/reservations/refund-payment.ts:208`, `:253`). Covers cancel-and-refund too (`src/reservations/operator-cancel.ts:226-229`). Wanted: the screen never says "Nothing moved" unless that is known |
 | S2-2 | S2 | A pay-link payment on a cancelled phone booking writes no payment, trail or refund row, and the customer is told "You're booked!" | — | open |
 | S2-3 | S2 | The sold-out-while-paying office alert says "the customer has been told" whether or not anyone told them | — | open |
 | S2-4 | S2 | When a confirmation reports nobody was told, the claim is released, the webhook answers 200 and nothing retries | — | open |
@@ -261,7 +290,7 @@ Refer to these as "silent S2-1". The report also cites about twenty findings alr
 | S3-4 | S3 | A balance overpayment is announced by one SMS and `/admin/purchases` shows it as "paid" | — | open |
 | S3-5 | S3 | Three money branches alert by one SMS and write no row: unknown hosted-session purpose, balance for a missing reservation, unusable row | — | open |
 | S3-6 | S3 | When the residual-race auto-refund fails, only one SMS and a pull-only `refund_failed` row record it | — | open |
-| S3-7 | S3 | A self-cancel refund that moved money then hit a ledger write throw is reported as a failed refund | — | open |
+| S3-7 | S3 | A self-cancel refund that moved money then hit a ledger write throw is reported as a failed refund | Feb 1 | duplicate of silent S2-1 |
 | S3-8 | S3 | If the `refund_failed` trail write is itself swallowed, the manage page says the refund is on its way | — | open |
 | S3-9 | S3 | Formation failures on the booking and cancel paths go to a log at the source and wait for the next tick | — | open |
 | S3-10 | S3 | An operator cancel that commits but loses its acknowledgement says "Try again"; the customer notice and re-form never run | — | open |
@@ -407,7 +436,7 @@ Refer to these as "operator OR-1". The report cites money and capability-URL fin
 | OR-3 | S2 | The payment link books and charges a trip that has already sailed | Feb 1 | open — real work. Wanted (operator, 2026-11-21): the pay link expires once the trip starts |
 | OR-4 | S2 | An existing unpaid booking cannot be discounted; the discount box is only on the booking form, so DEC-194 is not built | after release | open — real work; rare. Check how often it would come up before building (operator, 2026-11-22). Until then: cancel and rebook. plan S3-5 is the same finding |
 | OR-5 | S2 | A dispute raises an SMS and a ledger mark but no admin alert with Stripe's deadline or the customer, and no evidence attach | Feb 1 | open — real work, re-checked on `main` at `c280379`. Feb 1: the dispute text carries Stripe's deadline and the customer's name (`src/adapters/stripe-payment.ts:621-627` drops the deadline). Carries from silent S3-3: the text is one attempt, and an inquiry changes no payment record. Spec: drop evidence attach from `docs/SPEC.md` §3.4 and its acceptance line; everything stays in Stripe (operator, 2026-11-22). plan S3-7 is the same finding |
-| OR-6 | S2 (S4 if "starts from the calendar click" governs) | "The season, the schedule grid — passes" is unreachable because no screen offers an off-grid or out-of-season slot | after release | open — real work, the other way round: a departure that is not on the schedule is not to be booked (operator, 2026-11-22). The fix is `docs/SPEC.md` §2.10.6's "passes" row, `OPERATOR_RULES.grid` (`src/reservations/claim.ts:140`) and a record superseding DEC-184, which says the grid and season pass. A longer season is the offering's dates, and a boat off sale is a block. plan S3-4 is the same finding |
+| OR-6 | S2 (S4 if "starts from the calendar click" governs) | "The season, the schedule grid — passes" is unreachable because no screen offers an off-grid or out-of-season slot | after release | open — real work, the other way round: a departure that is not on the schedule is not to be booked (operator, 2026-11-22). The fix is `docs/SPEC.md` §2.10.6's "passes" row, `OPERATOR_RULES.grid` (`src/reservations/claim.ts:140`) and a record superseding DEC-184, which says the grid and season pass. A longer season is the offering's dates, and a boat off sale is a block. The one way to reach it today: the booking form is open while the offering's times or dates change, and the submit re-checks nothing (`app/(admin)/admin/calendar/book-actions.ts:53-70`). Issue #1148 keeps its start-time half (operator, 2026-11-22), so a deliberate time change is that issue's to allow. plan S3-4 is the same finding |
 | OR-7 | S3 | The `booked` trail row for a phone sale carries no operator id; a comp or an unreached link records no admin at all | — | open |
 | OR-8 | S3 | No screen shows which admin did anything; every operator trail row renders as just "Operator" | — | open |
 | OR-9 | S3 | "Booked by phone" rests on one swallowed trail write and one fallible read; either failure makes the pane say "Booked online" | — | open |
@@ -449,7 +478,7 @@ Refer to these as "paired PS-1". The report cites findings already in this ledge
 | PS-6 | S2 | A merge that dies halfway drops side B's confirmed crew without texts or audit rows | — | open |
 | PS-7 | S2 | An import that dies in pass 3 leaves events `cancelled` and hides the cancellation from the operator | — | open |
 | PS-8 | S2 (low impact) | The flip commits, then delivery dies, and the `booked` trail row is never written | — | open |
-| PS-9 | S3 | Stripe refunds, then a local write throws, and the result is reported as "nothing moved" | — | open — overlaps silent S2-1 |
+| PS-9 | S3 | Stripe refunds, then a local write throws, and the result is reported as "nothing moved" | Feb 1 | duplicate of silent S2-1 |
 | PS-10 | S3 | A comp's $0 `pending` row is written, then the confirm fails before the flip, leaving a stuck row | — | open |
 | PS-11 | S3 | Sweeping a silent ask can charge the −3 twice | — | open |
 | PS-12 | S3 | A "Yes" is stamped `accepted` before the seat claim, so a failed claim uses up the answer | — | open — same finding as silent S2-16 |

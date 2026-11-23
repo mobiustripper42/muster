@@ -71,7 +71,7 @@ Lower value, still open:
 
 ## Triage result
 
-The patterns behind the findings, worst first (issue #1230). A pattern is one spec and one `/build-task`, sized as big as it holds together. A row joins a pattern when it is triaged; a row marked *candidate* has not been re-checked yet.
+The patterns behind the findings, worst first (issue #1230). Patterns 1 and 2 are the operator's rulings; everything marked *proposed* here or in a row is triage's proposal until the operator goes through it (operator, 2026-11-22). Each row also says which kind it is: *normal use*, or *needs a failure* (a dropped connection or a crash at the wrong moment). A pattern is one spec and one `/build-task`, sized as big as it holds together. A row joins a pattern when it is triaged; a row marked *candidate* has not been re-checked yet.
 
 ### Pattern 1 — Money moves in four steps, everywhere
 
@@ -100,21 +100,21 @@ The patterns behind the findings, worst first (issue #1230). A pattern is one sp
 
 **When:** Feb 1. **Rows:** operator OR-1, OR-2 and OR-3, silent S2-2, paired PS-2, money F2. **Existing issues:** issue #1237 (F2).
 
-### Pattern 3 — Nothing says it happened until it is known
+### Pattern 3 — Nothing says it happened until it is known (proposed)
 
 **The hole:** a screen or a message is fixed text, and the send behind it threw away whether it worked. Someone is told "we've sent your request" or "the crew have been told" when nobody was.
 
-**The rule (operator, 2026-11-22):** a send returns its real result, and the message is made from that result. A screen says "sent" only if it was. The model is re-sending a confirmation, which reports each channel (`app/(admin)/admin/calendar/[reservationId]/actions.ts`).
+**The rule (proposed):** a send returns its real result, and the message is made from that result. A screen says "sent" only if it was. The model is re-sending a confirmation, which reports each channel (`app/(admin)/admin/calendar/[reservationId]/actions.ts`).
 
 **Feb 1, customers:** silent S2-3, S2-5 and S2-7, paired PS-4. **May 1, crew and the operator:** silent S2-6, S2-9, S2-10, S2-11, S2-12, S2-15 and S2-17. **Existing issues:** issue #1239 (F4, and silent S2-4, a confirmation nobody retries) and issue #1263 (silent S2-8, nothing notices the cron tick stopping).
 
-### Pattern 4 — Two saves that should be one
+### Pattern 4 — Two saves that should be one (proposed; hold until something breaks)
 
 **The hole:** one thing is saved, the next save fails, and what is left is half a change that nothing finishes. A retry makes it worse or is refused.
 
-**The rule (operator, 2026-11-22):** the two are saved together or not at all, and people are told after. Where they cannot be saved together, the order is the one that fails safe.
+**The rule (proposed):** the two are saved together or not at all, and people are told after. Where they cannot be saved together, the order is the one that fails safe.
 
-**When:** May 1 (crew). **Rows:** silent S2-13, S2-16 and S2-18, paired PS-6, PS-11 and PS-16. **After release:** paired PS-8, the one that is not crew.
+**When (proposed):** after release, once something actually breaks this way: every one of these needs a failure at the wrong moment. **Rows:** silent S2-13, S2-16 and S2-18, paired PS-6, PS-11 and PS-16. **Also:** paired PS-8, the one that is not crew.
 
 ## Ledger
 
@@ -286,22 +286,22 @@ Refer to these as "silent S2-1". The report also cites about twenty findings alr
 | S1-1 | S1 | A self-cancel that commits, loses its acknowledgement and fails its re-read tells the customer "Nothing changed", and the refund is never sent | Feb 1 | duplicate of paired PS-1 |
 | S2-1 | S2 | After an operator refund moved money then hit a database error, the screen says "Nothing moved" and a second press refunds again | Feb 1 | open — real work, pattern 1; re-checked on `main` at `c280379` (`src/reservations/refund-payment.ts:208`, `:253`). Covers cancel-and-refund too (`src/reservations/operator-cancel.ts:226-229`). Wanted: the screen never says "Nothing moved" unless that is known |
 | S2-2 | S2 | A pay-link payment on a cancelled phone booking writes no payment, trail or refund row, and the customer is told "You're booked!" | Feb 1 | open — real work, pattern 2; re-checked on `main` at `c280379` |
-| S2-3 | S2 | The sold-out-while-paying office alert says "the customer has been told" whether or not anyone told them | Feb 1 | open — real work, pattern 3; re-checked on `main` at `c280379` |
+| S2-3 | S2 | The sold-out-while-paying office alert says "the customer has been told" whether or not anyone told them | Feb 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
 | S2-4 | S2 | When a confirmation reports nobody was told, the claim is released, the webhook answers 200 and nothing retries | Feb 1 | issue #1239 |
-| S2-5 | S2 | A manage-page change or cancel request shows "we've sent your request to the team" whether or not the email went | Feb 1 | open — real work, pattern 3; re-checked on `main` at `c280379` |
-| S2-6 | S2 | The operator's cancel always prints "the crew have been told", but crew notice failures go only to a log | May 1 | open — real work, pattern 3; re-checked on `main` at `c280379` |
-| S2-7 | S2 | With Twilio unset, the sold-out notice records "Sold-out notice sent" for a message that only reached the log | Feb 1 | open — real work, pattern 3; re-checked on `main` at `c280379` |
+| S2-5 | S2 | A manage-page change or cancel request shows "we've sent your request to the team" whether or not the email went | Feb 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
+| S2-6 | S2 | The operator's cancel always prints "the crew have been told", but crew notice failures go only to a log | May 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
+| S2-7 | S2 | With Twilio unset, the sold-out notice records "Sold-out notice sent" for a message that only reached the log | Feb 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
 | S2-8 | S2 | Nothing notices when the cron tick stops running | Feb 1 | issue #1263 |
-| S2-9 | S2 | A failed engine Pause/Resume shows no error: the error banner redirects to a page that drops the query | May 1 | open — real work, pattern 3; re-checked on `main` at `c280379` |
-| S2-10 | S2 | Lean, Assign and Nudge save the ask, then the relay throws and the operator is told "nothing was sent"; crew is later charged `ask_ignored` | May 1 | open — real work, pattern 3; re-checked on `main` at `c280379` |
-| S2-11 | S2 | After a merge, the banner says "N crew notified" even when the notice threw | May 1 | open — real work, pattern 3; re-checked on `main` at `c280379` |
-| S2-12 | S2 | Cockpit success banners promise a delivery the code never checks | May 1 | open — real work, pattern 3; re-checked on `main` at `c280379` |
-| S2-13 | S2 | A no-penalty remove that went through then hit an error is shown as a race, with no notice and no audit row | May 1 | open — real work, pattern 4; code unchanged since the audit (checked at `c280379`) |
+| S2-9 | S2 | A failed engine Pause/Resume shows no error: the error banner redirects to a page that drops the query | May 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
+| S2-10 | S2 | Lean, Assign and Nudge save the ask, then the relay throws and the operator is told "nothing was sent"; crew is later charged `ask_ignored` | May 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
+| S2-11 | S2 | After a merge, the banner says "N crew notified" even when the notice threw | May 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
+| S2-12 | S2 | Cockpit success banners promise a delivery the code never checks | May 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
+| S2-13 | S2 | A no-penalty remove that went through then hit an error is shown as a race, with no notice and no audit row | after release | open — proposed: pattern 4, needs a failure; code unchanged since the audit (checked at `c280379`) |
 | S2-14 | S2 | A manual Xola pull that fails in the database is reported as "Couldn't reach Xola — nothing was pulled" | — | open |
-| S2-15 | S2 | Notices from split, merge and the Xola pull fire once, are never retried, and the screen says "done" | May 1 | open — real work, pattern 3; re-checked on `main` at `c280379` |
-| S2-16 | S2 | A crew Yes/No that fails partway closes the ask without taking the seat, and a second tap says "you're all set" | May 1 | open — real work, pattern 4; code unchanged since the audit (checked at `c280379`) |
-| S2-17 | S2 | The crew check-in list draws a tick that failed to save as checked in, and may show "Everyone's aboard" | May 1 | open — real work, pattern 3; re-checked on `main` at `c280379` |
-| S2-18 | S2 | A bail that fails halfway is shown as a stale card, but the bail is already on the person's record | May 1 | open — real work, pattern 4; code unchanged since the audit (checked at `c280379`) |
+| S2-15 | S2 | Notices from split, merge and the Xola pull fire once, are never retried, and the screen says "done" | May 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
+| S2-16 | S2 | A crew Yes/No that fails partway closes the ask without taking the seat, and a second tap says "you're all set" | after release | open — proposed: pattern 4, needs a failure; code unchanged since the audit (checked at `c280379`) |
+| S2-17 | S2 | The crew check-in list draws a tick that failed to save as checked in, and may show "Everyone's aboard" | May 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
+| S2-18 | S2 | A bail that fails halfway is shown as a stale card, but the bail is already on the person's record | after release | open — proposed: pattern 4, needs a failure; code unchanged since the audit (checked at `c280379`) |
 | S3-1 | S3 | The At-Risk landing is recorded before the SMS is tried, so a failed send is never retried | — | open |
 | S3-2 | S3 | A persistent failure to read webhook endpoints logs "UNKNOWN" every run and never alerts | — | open |
 | S3-3 | S3 | A dispute alert is one SMS attempt with no deadline; inquiry and unknown disputes move no ledger row | Feb 1 | duplicate of operator OR-5 |
@@ -491,20 +491,20 @@ Refer to these as "paired PS-1". The report cites findings already in this ledge
 | PS-1 | S1 | The customer's cancel commits, then the refund never runs, and nothing records that the refund is owed | Feb 1 | open — real work; silent S1-1 is the same defect (re-checked on `main` at `c280379`, issue #1230; since issue #1254 a Stripe call to cancel the balance intent also sits between the cancel and the refund, `src/reservations/cancel-reservation.ts:291`). Proposed fix (not in the codebase): write the owed refund in the cancelling transaction, and resume the refund from it on a retry or a sweep (`docs/audit/2026-11-14-paired-saves.md:53`) |
 | PS-2 | S2 | A residual-race loser that was refunded stays `pending` and can later be booked as if it had paid | Feb 1 | open — real work, pattern 2; re-checked on `main` at `c280379` |
 | PS-3 | S2 | The operator's cancel-and-refund can crash after the cancel, leaving no refund and no customer notice | Feb 1 | open — real work, pattern 1; re-checked on `main` at `c280379` |
-| PS-4 | S2 | A comp flips to booked, then the confirmation claim throws; the operator is told it is not booked | Feb 1 | open — real work, pattern 3; re-checked on `main` at `c280379` |
+| PS-4 | S2 | A comp flips to booked, then the confirmation claim throws; the operator is told it is not booked | Feb 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
 | PS-5 | S2 | The customer's best-effort `cancelled` trail row is the only source for the money screens' refund figures | Feb 1 | open — real work, pattern 1 (step 1: the owed figure is written before the refund, not in a row that can be lost); re-checked on `main` at `c280379` |
-| PS-6 | S2 | A merge that dies halfway drops side B's confirmed crew without texts or audit rows | May 1 | open — real work, pattern 4; code unchanged since the audit (checked at `c280379`) |
+| PS-6 | S2 | A merge that dies halfway drops side B's confirmed crew without texts or audit rows | after release | open — proposed: pattern 4, needs a failure; code unchanged since the audit (checked at `c280379`) |
 | PS-7 | S2 | An import that dies in pass 3 leaves events `cancelled` and hides the cancellation from the operator | — | open |
 | PS-8 | S2 (low impact) | The flip commits, then delivery dies, and the `booked` trail row is never written | after release | open — real work; only the history entry is lost, the booking and payment are right |
 | PS-9 | S3 | Stripe refunds, then a local write throws, and the result is reported as "nothing moved" | Feb 1 | duplicate of silent S2-1 |
 | PS-10 | S3 | A comp's $0 `pending` row is written, then the confirm fails before the flip, leaving a stuck row | — | open |
-| PS-11 | S3 | Sweeping a silent ask can charge the −3 twice | May 1 | open — real work, pattern 4; code unchanged since the audit (checked at `c280379`) |
-| PS-12 | S3 | A "Yes" is stamped `accepted` before the seat claim, so a failed claim uses up the answer | May 1 | duplicate of silent S2-16 |
-| PS-13 | S3 | A bail logs the penalty and leaves the person on the seat | May 1 | duplicate of silent S2-18 |
+| PS-11 | S3 | Sweeping a silent ask can charge the −3 twice | after release | open — proposed: pattern 4, needs a failure; code unchanged since the audit (checked at `c280379`) |
+| PS-12 | S3 | A "Yes" is stamped `accepted` before the seat claim, so a failed claim uses up the answer | after release | duplicate of silent S2-16 |
+| PS-13 | S3 | A bail logs the penalty and leaves the person on the seat | after release | duplicate of silent S2-18 |
 | PS-14 | S3 | An At-Risk alert is marked sent before the SMS goes out | — | open — overlaps silent S3-1 |
 | PS-15 | S3 | A re-form uses up crew transitions before anyone is told | May 1 | duplicate of silent S2-15 |
-| PS-16 | S3 | A self-claim succeeds while telling the crew member it failed | May 1 | open — real work, pattern 4; code unchanged since the audit (checked at `c280379`) |
-| PS-17 | S3 | A remove or bail that fails at the refresh reports `raced`, and nobody is told | May 1 | duplicate of silent S2-13 |
+| PS-16 | S3 | A self-claim succeeds while telling the crew member it failed | after release | open — proposed: pattern 4, needs a failure; code unchanged since the audit (checked at `c280379`) |
+| PS-17 | S3 | A remove or bail that fails at the refresh reports `raced`, and nobody is told | after release | duplicate of silent S2-13 |
 | PS-18 | S3 | A waiver-reminder window is claimed before the sends, so a crash leaves nobody reminded | — | open |
 | PS-19 | S3 | A crew DM is started with three writes and no transaction | — | open |
 | PS-20 | S3 | Rotating a calendar feed saves the new token, then hands it over in a cookie that can be lost | — | open |

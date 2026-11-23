@@ -71,6 +71,17 @@ Lower value, still open:
 
 ## Triage result
 
+### The short list (issue #1230, 2026-11-22)
+
+What happens in normal use and can lose money or put the wrong person on a boat. Everything else is in the ledger, mostly `after release`. Rows are proposals unless marked otherwise.
+
+- **Feb 1, normal use, money:** money F1 (a booking blocks its boat for too short a time), operator OR-2 and OR-3 (the pay link takes money for a blocked boat or a sailed trip), operator OR-5 (a dispute with no deadline on it).
+- **Feb 1, needs a failure, money:** patterns 1 and 2. One build each.
+- **May 1, normal use, crew pay:** operator OR-21 and payroll F16 and F18. Payroll F1 is issue #1222.
+- **May 1, normal use, legal crewing (pattern 5):** crewing S1-1, S1-2, S1-3 and S1-6. Trips that go uncrewed with nobody told: crewing S2-3, S2-9 and S2-10.
+
+### Patterns
+
 The patterns behind the findings, worst first (issue #1230). Patterns 1 and 2 are the operator's rulings; everything marked *proposed* here or in a row is triage's proposal until the operator goes through it (operator, 2026-11-22). Each row also says which kind it is: *normal use*, or *needs a failure* (a dropped connection or a crash at the wrong moment). A pattern is one spec and one `/build-task`, sized as big as it holds together. A row joins a pattern when it is triaged; a row marked *candidate* has not been re-checked yet.
 
 ### Pattern 1 — Money moves in four steps, everywhere

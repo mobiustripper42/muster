@@ -257,7 +257,7 @@ Refer to these as "silent S2-1". The report also cites about twenty findings alr
 | S2-18 | S2 | A bail that fails halfway is shown as a stale card, but the bail is already on the person's record | — | open |
 | S3-1 | S3 | The At-Risk landing is recorded before the SMS is tried, so a failed send is never retried | — | open |
 | S3-2 | S3 | A persistent failure to read webhook endpoints logs "UNKNOWN" every run and never alerts | — | open |
-| S3-3 | S3 | A dispute alert is one SMS attempt with no deadline; inquiry and unknown disputes move no ledger row | — | open |
+| S3-3 | S3 | A dispute alert is one SMS attempt with no deadline; inquiry and unknown disputes move no ledger row | Feb 1 | duplicate of operator OR-5 |
 | S3-4 | S3 | A balance overpayment is announced by one SMS and `/admin/purchases` shows it as "paid" | — | open |
 | S3-5 | S3 | Three money branches alert by one SMS and write no row: unknown hosted-session purpose, balance for a missing reservation, unusable row | — | open |
 | S3-6 | S3 | When the residual-race auto-refund fails, only one SMS and a pull-only `refund_failed` row record it | — | open |
@@ -312,10 +312,10 @@ Refer to these as "plan S2-1". The report numbers its S4 findings as table rows 
 | S3-1 | S3 | No `payment_status` gate, no async-payment event handling, and no decision record for keeping the card lock | — | open |
 | S3-2 | S3 | The "REFUND MANUALLY" alert names no amount, and the promised tests for unconfigured SMS and a throwing alert are missing | — | open |
 | S3-3 | S3 | An operator edit to the offering mid-checkout can make a declined-card retry refuse as sold out, or hold a second boat | — | open |
-| S3-4 | S3 | The operator write accepts off-season and off-grid slots, but no screen can reach such a slot | — | open |
+| S3-4 | S3 | The operator write accepts off-season and off-grid slots, but no screen can reach such a slot | after release | duplicate of operator OR-6 |
 | S3-5 | S3 | An unpaid phone booking cannot be discounted after it is written, contrary to §2.10.6 | after release | duplicate of operator OR-4 |
 | S3-6 | S3 | The Stripe round-trip test runs only by hand, not in CI | — | open |
-| S3-7 | S3 | Disputes are recorded and texted, but with no customer name, deadline, date or evidence upload | — | open |
+| S3-7 | S3 | Disputes are recorded and texted, but with no customer name, deadline, date or evidence upload | Feb 1 | duplicate of operator OR-5 |
 | S3-8 | S3 | The per-booking cancel misses the reason in the notice, the full-refund default and rebook-or-credit, beyond money F10 | — | open |
 | S3-9 | S3 | BrewBoat's waiver text is not seeded as v1, so confirmations may carry no sign line (suspected) | — | open |
 | S3-10 | S3 | No first-contact message is sent when a crew member is added | — | open |
@@ -402,12 +402,12 @@ Refer to these as "operator OR-1". The report cites money and capability-URL fin
 
 | ID | Sev | Finding | When | Status |
 |---|---|---|---|---|
-| OR-1 | S1 | A payment started while the operator cancels survives the cancel; the customer is charged for a cancelled trip, refundable only in Stripe | Feb 1 | open — real work, re-checked on `main` at `6182e1c`. Proposed fix (not in the codebase): after `recordCheckoutAttempt` (`src/reservations/create-departure-payment-intent.ts:545`), re-read the status; if the row is no longer `pending`, cancel the intent and refuse instead of returning the secret |
+| OR-1 | S1 | A payment started while the operator cancels survives the cancel; the customer is charged for a cancelled trip, refundable only in Stripe | Feb 1 | open — real work, re-checked on `main` at `c280379`. Proposed fix (not in the codebase): after `recordCheckoutAttempt` (`src/reservations/create-departure-payment-intent.ts:620`), re-read the status; if the row is no longer `pending`, cancel the intent and refuse instead of returning the secret |
 | OR-2 | S2 | A block saved over an unpaid phone booking hides it from the calendar, reports no conflict, and the customer can still pay onto the blocked boat | Feb 1 | open — real work. Wanted (operator, 2026-11-21): saving a block or hold warns about an unpaid or pending booking under it, and the pay link refuses a blocked slot |
 | OR-3 | S2 | The payment link books and charges a trip that has already sailed | Feb 1 | open — real work. Wanted (operator, 2026-11-21): the pay link expires once the trip starts |
 | OR-4 | S2 | An existing unpaid booking cannot be discounted; the discount box is only on the booking form, so DEC-194 is not built | after release | open — real work; rare. Check how often it would come up before building (operator, 2026-11-22). Until then: cancel and rebook. plan S3-5 is the same finding |
-| OR-5 | S2 | A dispute raises an SMS and a ledger mark but no admin alert with Stripe's deadline or the customer, and no evidence attach | — | open — overlaps plan S3-7 and silent S3-3 |
-| OR-6 | S2 (S4 if "starts from the calendar click" governs) | "The season, the schedule grid — passes" is unreachable because no screen offers an off-grid or out-of-season slot | — | open — same finding as plan S3-4 |
+| OR-5 | S2 | A dispute raises an SMS and a ledger mark but no admin alert with Stripe's deadline or the customer, and no evidence attach | Feb 1 | open — real work, re-checked on `main` at `c280379`. Feb 1: the dispute text carries Stripe's deadline and the customer's name (`src/adapters/stripe-payment.ts:621-627` drops the deadline). Carries from silent S3-3: the text is one attempt, and an inquiry changes no payment record. Spec: drop evidence attach from `docs/SPEC.md` §3.4 and its acceptance line; everything stays in Stripe (operator, 2026-11-22). plan S3-7 is the same finding |
+| OR-6 | S2 (S4 if "starts from the calendar click" governs) | "The season, the schedule grid — passes" is unreachable because no screen offers an off-grid or out-of-season slot | after release | open — real work, the other way round: a departure that is not on the schedule is not to be booked (operator, 2026-11-22). The fix is `docs/SPEC.md` §2.10.6's "passes" row, `OPERATOR_RULES.grid` (`src/reservations/claim.ts:140`) and a record superseding DEC-184, which says the grid and season pass. A longer season is the offering's dates, and a boat off sale is a block. plan S3-4 is the same finding |
 | OR-7 | S3 | The `booked` trail row for a phone sale carries no operator id; a comp or an unreached link records no admin at all | — | open |
 | OR-8 | S3 | No screen shows which admin did anything; every operator trail row renders as just "Operator" | — | open |
 | OR-9 | S3 | "Booked by phone" rests on one swallowed trail write and one fallible read; either failure makes the pane say "Booked online" | — | open |
@@ -441,7 +441,7 @@ Refer to these as "paired PS-1". The report cites findings already in this ledge
 
 | ID | Sev | Finding | When | Status |
 |---|---|---|---|---|
-| PS-1 | S1 | The customer's cancel commits, then the refund never runs, and nothing records that the refund is owed | Feb 1 | open — real work; silent S1-1 is the same defect (re-checked on `main` at `6182e1c`, issue #1230). Proposed fix (not in the codebase): write the owed refund in the cancelling transaction, and resume the refund from it on a retry or a sweep (`docs/audit/2026-11-14-paired-saves.md:53`) |
+| PS-1 | S1 | The customer's cancel commits, then the refund never runs, and nothing records that the refund is owed | Feb 1 | open — real work; silent S1-1 is the same defect (re-checked on `main` at `c280379`, issue #1230; since issue #1254 a Stripe call to cancel the balance intent also sits between the cancel and the refund, `src/reservations/cancel-reservation.ts:291`). Proposed fix (not in the codebase): write the owed refund in the cancelling transaction, and resume the refund from it on a retry or a sweep (`docs/audit/2026-11-14-paired-saves.md:53`) |
 | PS-2 | S2 | A residual-race loser that was refunded stays `pending` and can later be booked as if it had paid | — | open |
 | PS-3 | S2 | The operator's cancel-and-refund can crash after the cancel, leaving no refund and no customer notice | — | open |
 | PS-4 | S2 | A comp flips to booked, then the confirmation claim throws; the operator is told it is not booked | — | open |

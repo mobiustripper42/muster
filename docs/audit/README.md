@@ -23,16 +23,38 @@ Counts are per finding, as the ledger lists them. The capability-URL report's ow
 
 Earlier audits in this folder keep their own status and are not in the ledger: `docs/audit/2026-07-25/README.md` (doc consistency, sharded) and `docs/audit/2026-08-07-cutover-phase-a.md` (cutover phase A). The §2.8 conformance audit, `docs/audit/2026-08-29-spec-2.8-conformance.md`, keeps its own citation ratchet (`npm run check:audit`), but what it left open is in the ledger since issue #1230.
 
+## Parked
+
+What to pick up the next time anyone works on audits (operator, 2026-11-23). `/its-alive` will not bring these up.
+
+**When to look:**
+- **Before Feb 1:** the Feb 1 rows. Filed on issues #1278, #1279, #1280 and #1282 and the Phase 20 issues (#1236 to #1240, #1242 to #1244); security rows are Phase 22 tasks. F15 needs no code: confirm the production tax row reads 8%. Confirm F29.
+- **March or April, before May 1:** crew pay and legal crewing, gone through with the operator. Issue #1230 stays open for this.
+- **After the release:** the rest.
+
+**Not settled:**
+1. Xola import: silent S2-14 and paired PS-7. Phase 22's plan has a one-time import of two bookings (`docs/PROJECT_PLAN.md`, 22.6), so they may not matter.
+2. Crewing S1-5: the earlier rulings on deactivation and days off were made at one boat and about six crew. Do they hold at four boats?
+3. Pattern 5 (the same legality check at every way into a seat), and the crew half of pattern 3: proposals, not ruled.
+4. Payroll F16: when a cancellation earns no refund, is the tip the crew's or the business's? The spec is silent.
+5. Pattern 4 is held until something actually breaks that way.
+
+**Limits of this triage:**
+- About 250 rows say *agent-checked*. Sonnet agents re-checked them at `c280379`; nobody re-read them by hand, and a *money: no* call can be wrong (operator OR-21 was marked no and is yes). Re-read a row before speccing it.
+- The deposits code and the scheduled balance charge reached `main` in pull request #1276, after every audit here. Nothing has audited them. A money audit of them, before Feb 1, is item 1 below.
+- Issue numbers in rows were matched by title and by reading the close ones, not by reading every issue.
+
 ## To do
 
 Worth running, most valuable first:
 
-1. **Messaging and scheduled jobs.** §3.1 and the delivery half of §2.6.1: what happens when a job under `app/api/cron/` runs twice, runs late or fails halfway, and when a send fails. The crewing audit covered whether an ask is made; this covers whether it arrives. Crewing S2-7 and S3-2 are the overlap.
-2. **UI and copy consistency, read from the code.** Every surface against `.claude/ui-context.md` and the glossary in `docs/SPEC.md §0.4` ("trip", never "cruise"), and every surface's empty, error and loading states. A cloud session has no database, so nothing can be screenshotted; this one reads JSX.
+1. **The deposits code and the scheduled balance charge, before Feb 1** (proposed). Money code against §2.8.4d and DEC-201 and DEC-202, with the four-step rule in pattern 1 and the reconciler question. It landed after every audit in this folder.
+2. **Messaging and scheduled jobs.** §3.1 and the delivery half of §2.6.1: what happens when a job under `app/api/cron/` runs twice, runs late or fails halfway, and when a send fails. The crewing audit covered whether an ask is made; this covers whether it arrives. Crewing S2-7 and S3-2 are the overlap.
+3. **UI and copy consistency, read from the code.** Every surface against `.claude/ui-context.md` and the glossary in `docs/SPEC.md §0.4` ("trip", never "cruise"), and every surface's empty, error and loading states. A cloud session has no database, so nothing can be screenshotted; this one reads JSX.
 
 Lower value, still open:
 
-3. **Check-in and waivers**, against `docs/design/check-in-and-waivers.md` and `docs/design/check-in-surfaces.md`.
+4. **Check-in and waivers**, against `docs/design/check-in-and-waivers.md` and `docs/design/check-in-surfaces.md`.
 
 ## Running an audit
 
@@ -117,7 +139,7 @@ The patterns behind the findings, worst first (issue #1230). Patterns 1 and 2 ar
 
 **The rule (proposed):** a send returns its real result, and the message is made from that result. A screen says "sent" only if it was. The model is re-sending a confirmation, which reports each channel (`app/(admin)/admin/calendar/[reservationId]/actions.ts`).
 
-**Feb 1, customers:** silent S2-3, S2-5 and S2-7, paired PS-4. **May 1, crew and the operator:** silent S2-6, S2-9, S2-10, S2-11, S2-12, S2-15 and S2-17. **Existing issues:** issue #1239 (F4, and silent S2-4, a confirmation nobody retries) and issue #1263 (silent S2-8, nothing notices the cron tick stopping).
+**Feb 1, customers (issue #1282, operator 2026-11-23):** silent S2-3, S2-5 and S2-7, paired PS-4. **May 1 (proposed), crew and the operator:** silent S2-6, S2-9, S2-10, S2-11, S2-12, S2-15 and S2-17. **Existing issues:** issue #1239 (F4, and silent S2-4, a confirmation nobody retries) and issue #1263 (silent S2-8, nothing notices the cron tick stopping).
 
 ### Pattern 4 — Two saves that should be one (proposed; hold until something breaks)
 
@@ -179,7 +201,7 @@ Statuses are `open` unless a row says otherwise. A "same finding as" or "overlap
 | F26 | S4 | After a partial refund failure the customer notice quotes the whole figure | — | fixed — agent-checked on `main` at `c280379`: The cancelled-page notice now carries the amount that actually moved and the page says the remainder still to come instead of quoting the whole figure (src/reservations/customer-cancel.ts:307-321, app/b/[code]/page.tsx:482-489). |
 | F27 | S4 | The confirm's "less the $50" nets prior refunds; the terms say "$30" against a discounted insurance | Feb 1 | issue #1242 |
 | F28 | S4 | §3.3 says "tenant-configurable"; §2.8.4c rejects a policy engine | Feb 1 | issue #1244 |
-| F29 | S4 | §2.8.10's admitted balance-path defects are present as described | Feb 1 | open — goes with deposits |
+| F29 | S4 | §2.8.10's admitted balance-path defects are present as described | Feb 1 | check — issue #1254 replaced the code this describes (`docs/SPEC.md:2341`); not confirmed clause by clause |
 | F30a | S4 | Spec: the invoice has no per-add-on line | after release | open — proposed; no behaviour, nobody, text; agent-checked on `main` at `c280379`: The spec says the invoice carries add-on lines but the invoice has only a guest-extras total and no per-add-on line, and no add-on is written to it (src/domain/entities.ts BookingInvoice extrasCents, src/reservations/booking-invoice.ts:134, docs/SPEC.md:1699). |
 | F30b | S4 | Spec: the checkout step list leaves out the insurance box | after release | open — proposed; no behaviour, nobody, text; agent-checked on `main` at `c280379`: The spec's checkout step 2 does not list the insurance box that checkout shows (app/(public)/book/checkout/checkout-form.tsx:38, docs/SPEC.md:1631-1632). |
 | F30c | S4 | The spec says the deposit split is live and editable in payment configuration but no admin screen or action writes it | after release | open — proposed; no behaviour, nobody, text; agent-checked on `main` at `c280379`: The spec says the deposit split is live and editable in payment configuration but no admin screen or action writes it (setPaymentConfig has no caller in app/ or src/ besides a sandbox script) (docs/SPEC.md:1703-1704, src/adapters/stripe-payment.sandbox.ts:92). |
@@ -210,7 +232,7 @@ Statuses are `open` unless a row says otherwise. A "same finding as" or "overlap
 | A10 | S3 | No `noindex`, no `robots.txt`, no security headers | Feb 1 | open |
 | A11 | S3 | Three paths put another person's data or writes on a customer page | Feb 1 | open — read the report's three paths first; may be a privacy leak |
 | A12 | S3 | `/api/guest-contact` lets any signed-in subject stamp or erase "Texted by" on any reservation | May 1 | open |
-| A13 | S3 | The balance-checkout URL round-trips through the query string, rendered unvalidated | Feb 1 | open — goes with deposits and money F29 |
+| A13 | S3 | The balance-checkout URL round-trips through the query string, rendered unvalidated | Feb 1 | fixed — pull request #1269 (issue #1254): the pane reads no `balanceUrl`, and the checkout-session balance link is gone |
 | A14 | S3 | `SESSION_SECRET` has no minimum length, a repo-public fallback, and also signs pay links | Feb 1 | open — hardening pull request with A16 and A17; refuse to start without a real secret |
 | A15 | S3 | `/api/health` opens a database connection per anonymous request | Feb 1 | open |
 | A16 | S3 | `CRON_SECRET` is compared with `!==` | Feb 1 | open — with A14 |
@@ -313,11 +335,11 @@ Refer to these as "silent S2-1". The report also cites about twenty findings alr
 | S1-1 | S1 | A self-cancel that commits, loses its acknowledgement and fails its re-read tells the customer "Nothing changed", and the refund is never sent | Feb 1 | duplicate of paired PS-1 |
 | S2-1 | S2 | After an operator refund moved money then hit a database error, the screen says "Nothing moved" and a second press refunds again | Feb 1 | issue #1278 — re-checked on `main` at `c280379` (`src/reservations/refund-payment.ts:208`, `:253`). Covers cancel-and-refund too (`src/reservations/operator-cancel.ts:226-229`). Wanted: the screen never says "Nothing moved" unless that is known |
 | S2-2 | S2 | A pay-link payment on a cancelled phone booking writes no payment, trail or refund row, and the customer is told "You're booked!" | Feb 1 | issue #1279 — re-checked on `main` at `c280379` |
-| S2-3 | S2 | The sold-out-while-paying office alert says "the customer has been told" whether or not anyone told them | Feb 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
+| S2-3 | S2 | The sold-out-while-paying office alert says "the customer has been told" whether or not anyone told them | Feb 1 | issue #1282 — pattern 3; re-checked on `main` at `c280379` |
 | S2-4 | S2 | When a confirmation reports nobody was told, the claim is released, the webhook answers 200 and nothing retries | Feb 1 | issue #1239 |
-| S2-5 | S2 | A manage-page change or cancel request shows "we've sent your request to the team" whether or not the email went | Feb 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
+| S2-5 | S2 | A manage-page change or cancel request shows "we've sent your request to the team" whether or not the email went | Feb 1 | issue #1282 — pattern 3; re-checked on `main` at `c280379` |
 | S2-6 | S2 | The operator's cancel always prints "the crew have been told", but crew notice failures go only to a log | May 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
-| S2-7 | S2 | With Twilio unset, the sold-out notice records "Sold-out notice sent" for a message that only reached the log | Feb 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
+| S2-7 | S2 | With Twilio unset, the sold-out notice records "Sold-out notice sent" for a message that only reached the log | Feb 1 | issue #1282 — pattern 3; re-checked on `main` at `c280379` |
 | S2-8 | S2 | Nothing notices when the cron tick stops running | Feb 1 | issue #1263 |
 | S2-9 | S2 | A failed engine Pause/Resume shows no error: the error banner redirects to a page that drops the query | May 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
 | S2-10 | S2 | Lean, Assign and Nudge save the ask, then the relay throws and the operator is told "nothing was sent"; crew is later charged `ask_ignored` | May 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
@@ -520,7 +542,7 @@ Refer to these as "paired PS-1". The report cites findings already in this ledge
 | PS-1 | S1 | The customer's cancel commits, then the refund never runs, and nothing records that the refund is owed | Feb 1 | issue #1278 — silent S1-1 is the same defect (re-checked on `main` at `c280379`, issue #1230; since issue #1254 a Stripe call to cancel the balance intent also sits between the cancel and the refund, `src/reservations/cancel-reservation.ts:291`). Proposed fix (not in the codebase): write the owed refund in the cancelling transaction, and resume the refund from it on a retry or a sweep (`docs/audit/2026-11-14-paired-saves.md:53`) |
 | PS-2 | S2 | A residual-race loser that was refunded stays `pending` and can later be booked as if it had paid | Feb 1 | issue #1279 — re-checked on `main` at `c280379` |
 | PS-3 | S2 | The operator's cancel-and-refund can crash after the cancel, leaving no refund and no customer notice | Feb 1 | issue #1278 — re-checked on `main` at `c280379` |
-| PS-4 | S2 | A comp flips to booked, then the confirmation claim throws; the operator is told it is not booked | Feb 1 | open — proposed: pattern 3; re-checked on `main` at `c280379` |
+| PS-4 | S2 | A comp flips to booked, then the confirmation claim throws; the operator is told it is not booked | Feb 1 | issue #1282 — pattern 3; re-checked on `main` at `c280379` |
 | PS-5 | S2 | The customer's best-effort `cancelled` trail row is the only source for the money screens' refund figures | Feb 1 | issue #1278 — pattern 1 (step 1: the owed figure is written before the refund, not in a row that can be lost); re-checked on `main` at `c280379` |
 | PS-6 | S2 | A merge that dies halfway drops side B's confirmed crew without texts or audit rows | after release | open — proposed: pattern 4, needs a failure; code unchanged since the audit (checked at `c280379`) |
 | PS-7 | S2 | An import that dies in pass 3 leaves events `cancelled` and hides the cancellation from the operator | after release | open — proposed; needs a failure, operator, medium; agent-checked on `main` at `c280379`: If a Xola pull dies partway, events are saved as cancelled while their bookings still read booked, and the retry no longer lists those cancellations as new, so the operator is not prompted to call the captain; events are saved in pass 2 and reservations one by one in pass 3 with no shared transaction (src/import/import-reservations.ts:245, :306, :318-322). |

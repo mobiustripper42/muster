@@ -8,21 +8,28 @@ work to two agents, verify what they return, and ship. Every check below is one 
 an agent's report that something passed is a claim, not a result.
 
 **The operator running this skill is the approval of the spec.** The spec was worked through
-with the operator from `task-spec.md` (beside this file) before now: the summary first, then the
-job and acceptance criteria, then the `[Lead]` lines. Step 0 writes it into the issue; the
+with the operator from `task-spec.md` (beside this file) before now, in the stops it lists.
+Step 0 writes it into the issue; the
 operator does not. Do not present it again. From here the run goes to the pull request,
 stopping only where information turns out to be missing.
 
 ## Step 0 — Gate
 
+**First, the session file's Next Steps,** unless this conversation has read them since the last
+`/save-this`: find the open session file the way `/kill-this` Step 0 does (none open: abort, the
+operator runs `/its-alive`; several: ask, as it does), read its Next Steps, restore its parking
+lot, and obey its standing rules from here on. Run in a fresh context on an issue whose spec is
+already written, this skill is the first thing that context does, and skipping the file is how a
+Haul run missed a standing rule about its branch and cut the wrong one.
+
 Abort with a one-line reason if any of these fail:
 
 - **Testable.** The line between the two loops, whatever the points. At least one acceptance
-  criterion is something the `Proof` slot can check — behavior, data, or on-screen wording and
-  order. A task that is only layout, spacing or styling
-  has nothing for `@test-writer` to assert: use the normal loop, with `@ui-reviewer` and a
-  screenshot at the hand-back.
-- **Branch.** You are on `task/X.Y-*` or `task/<issue>-*`, not `main`.
+  criterion is something the `Proof` slot can check — behavior or data. A task that is only
+  layout, spacing, styling or wording has nothing for `@test-writer` to assert: use the normal
+  loop, with `@ui-reviewer` and a screenshot at the hand-back.
+- **Branch.** You are on `task/X.Y-*` or `task/<issue>-*`, not `main`, and on the branch any
+  standing rule names for this task.
 - **Proof slot.** `.claude/CLAUDE-context.md` § Workflow Mechanisms names a real `Proof` and
   `Proof command`. If it says `none`, there is nothing to write tests in — use the normal loop.
 - **Spec.** Decide by the issue body, not by memory of the conversation. If the body already has
@@ -82,11 +89,17 @@ both agents, and comes back as the same item next round.
   with your recommendation. Write each answer as a `[you]` line.
 
 **A reuse match** goes into Reuses as a `[code]` line with the existing path — a Screen match onto that
-element's line in Screen, as its component. Then the spec stops asking for the copy: the
+element's line in Screen, as its component. Then the spec stops asking for the duplicate: the
 criterion that restated it is reworded to point at it, its "New or changed signatures" entry is
 removed, and "Files touched" gains the existing file if reuse means exporting from it. When
 reusing it would change behaviour — the existing rule differs from the spec's — sort it as a
 `[you]` item above, with your recommendation. A match you reject is one `[Lead]` line saying why.
+
+**A criterion that quotes or names wording**: its words move into Wording unchanged, and the
+criterion is restated as the behaviour behind them — a `[Lead]` line when that behaviour is
+evident from the criterion or the code, a `[you]` item above when it is not, and dropped, leaving
+only the Wording line, when there is no behaviour behind the words. It changes what the criterion
+checks, so the Rounds rule below applies.
 
 **Something described twice with no shared home** gets one: a `[Lead]` line under Interfaces' "New
 or changed signatures" naming the CSS class, component, function or constant that holds it, marked
@@ -100,8 +113,10 @@ recommendation.
 thing, it is deleted: a `[code]` line citing the criterion or Removes entry that takes the
 behaviour away. When the behaviour survives under what replaces it, it is retargeted: a `[code]`
 line naming the replacement. When the spec does not say whether the behaviour survives, sort it as
-a `[you]` item above, with your recommendation. A removal changes what that test checks, not what
-a criterion does, so it earns no second round on its own.
+a `[you]` item above, with your recommendation. A test that asserts a copy key's text is deleted
+even when the screen survives; one that only reads the key to locate a control is retargeted to the
+new key. A removal changes what that test checks, not what a criterion does, so it earns no second
+round on its own.
 
 Keep every `[code]` and `[Lead]` line, word for word, for the pull request body (Step 6).
 
@@ -111,7 +126,7 @@ states — and name the changed lines in its prompt. A reuse match counts only w
 what a criterion does (the `[you]` case above); rewording a criterion to point at existing code,
 or adding a Reuses path, does not. Naming a shared home, and rewording the places to point at it,
 does not either. **If round 2 changes behaviour again, stop and ask** — the spec needs rework, not
-a third read. An edit that only clarifies wording does not earn
+a third read. An edit that only clarifies a criterion's phrasing does not earn
 another round; `@test-writer` can still stop in Step 2 and return a question.
 
 **Coming back to the spec later counts against the same rule.** A question from Step 2 is sorted
@@ -152,7 +167,9 @@ Check, in order:
    test's name or body is an edit, and that is a stub report, not a test — unless Interfaces'
    Removes line lists it, and the edit is the deletion or retarget that line names. A retargeted
    test keeps its own name, with no criterion id, and is exempt from the naming rule and from
-   check 2: it guards behaviour that already exists, so it may pass against the stubs.
+   check 2: it guards behaviour that already exists, so it may pass against the stubs. A name the
+   retarget would make false is renamed by `@test-writer`, reported as `renamed from <old name>`;
+   check the new name is true, and write the rename into the Removes line as a `[Lead]` line.
 2. **Fails for the right reason.** Run the `Proof command` yourself, against the stubs. Each test
    must fail on its own assertion — a wrong value, a missing row, a call that didn't throw — not on
    a missing file or function, a typo, a bad import path, or broken setup. The one exception is a
@@ -269,3 +286,7 @@ compared against. `settled` is the operator's audit of the calls made without th
 request body and not the printed receipt because in Haul the block ran long and hand-backs
 summarised it, and a summary of a call made without the operator is not an audit of it. The
 hand-back links to that section instead of restating it.
+
+`/kill-this` printed the sample block last, before this receipt. The hand-back prints the receipt
+first, and then repeats the `**Sample:**` block, unsummarised, with its two questions and "Answer
+with `/sample`", so it is the last thing the operator reads.

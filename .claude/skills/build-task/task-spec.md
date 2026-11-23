@@ -9,13 +9,24 @@ behaviour it should have; a section with nothing to say is "None".
 
 The Lead drafts this from the spec conversation and reads the code to fill Interfaces, to find
 what it must reuse, and to search the tests for everything it removes — readback's reuse and
-removal checks are the second look, not the first. Walk the operator through it in this order,
-and stop at the first part they say is wrong:
-  1. Summary
-  2. Job and acceptance criteria
-  3. Every [Lead] line, grouped by section. [you] and [code] lines only if asked.
+removal checks are the second look, not the first. A task with a screen starts from its design:
+before stop 1 the Lead opens its approved mockups (where they live is in `.claude/ui-context.md`)
+and the built screens it changes, and the Summary and the poker estimate are drafted from them, not from
+the code alone. Walk it in stops, one per reply, and wait for the operator's answer at each:
+  1. Summary and Job, together
+  2. Acceptance criteria
+  3. Interfaces — the [Lead] calls first, each a plain sentence: what changes and why, no file
+     names. The file and signature lists follow, for reference; the operator reads the calls and
+     skims the lists.
+  4. Screen and Wording
+  5. Seeds, Out of scope, Decisions and Open questions, together — they are usually short.
+[you] and [code] lines only if asked. At each stop the operator discusses it or approves it
+before the next goes out. Any word of approval is "Approved" — "next", "okay", "sounds good",
+"yes" — and moves to the next stop without asking whether it was one. The finished spec goes into
+the issue whole, at /build-task Step 0, and the agents read the full lists there; the walk is a
+conversation, not one document.
 The operator approves the walk by running /build-task. Its Step 0 writes the spec into the issue,
-then refuses to start while any section is blank or Open questions has anything in it. "None" is an answer; blank is not.
+unless /save-this already has (that is saving it, not approving it), then refuses to start while any section is blank or Open questions has anything in it. "None" is an answer; blank is not.
 
 Every line in the sections below carries its source:
   [you]  — the operator said it
@@ -33,7 +44,13 @@ Every line in the sections below carries its source:
 ## Acceptance criteria
 <!-- Numbered. One behavior each. Tests will name these ids. Mark a criterion only a person can
      check — on a device, by eye — with `(by hand)`: it gets no test and is checked at the
-     hand-back. -->
+     hand-back.
+     A criterion names behaviour — which branch, which value, which count, which email to whom —
+     and never quotes wording, `(by hand)` ones included; the words live in Wording. Its "then" is something a test can check
+     without reading a sentence: a URL, a row, a returned value, a field or control that appears, a
+     value (a date, an amount, a count) that reaches the page. Never "shows <a heading>". A branch
+     that changes only how the screen reads names the catalog key each state shows. An email is
+     named by its recipient, its count, its template and the values it carries, never its subject. -->
 - **AC1** — given …, when …, then …
 - **AC2** — …
 - **AC3** — (by hand) on the phone, …
@@ -50,14 +67,21 @@ Every line in the sections below carries its source:
 - **New or changed signatures:** `functionName(arg: Type): ReturnType`, route `POST /api/…`, …
 - **Data shapes:** table/column, type, or JSON shape the tests will assert on
 - **Reuses:** existing functions, components, constants and rules this must call rather than re-create
-- **Removes:** each export, constant, copy or config key, route, page or file this deletes or renames, and every test that uses it, with what happens to that test: deleted, or retargeted to what replaces it. "None" when nothing goes
+- **Removes:** each export, constant, copy or config key, route, page or file this deletes or renames, and every test that uses it, with what happens to that test: deleted, or retargeted to what replaces it. A test that asserts a copy key's text is deleted, never retargeted. "None" when nothing goes
 
 ## Screen
 <!-- Only if the task has a screen. Otherwise write "None".
      Components are the ones `.claude/ui-context.md` points to. -->
 - **Design:** a new screen names its desktop mockup and its mobile mockup. A change to a built screen names that screen as its design and says where the change goes at desktop width and at mobile width; it gets a new mockup only if the operator asks for one.
-- **What's on the screen, in order:** one line per element — its component, or for a button its kind, then its actual wording.
+- **What's on the screen, in order:** one line per element — its component, or for a button its kind, then the Wording line that holds its text.
 - **New:** an element no component covers is marked new, with one line on why none fits. The task adds it as a component, with any rule the project enforces for components, named under Interfaces like any other shared home.
+
+## Wording
+<!-- Every user-facing text this task adds or changes, word for word: screen copy, an email's
+     subject and body, anything else a person reads. One line each, labelled by where it appears.
+     The operator approves the words here, in the walk. This section is the builder's copy, not a
+     requirement for tests: no criterion restates it, no test asserts it, and a person checks it at
+     the hand-back. "None" when the task adds or changes no text. -->
 
 ## Seeds
 <!-- The data a person needs for the (by hand) criteria, made by the project's dev seeds — never by clicking through the app first. Name the seed commands each (by hand) criterion starts from, and the seed this task adds or extends to reach that state. A seed this task adds or extends is listed under Interfaces' Files touched. "None" when no criterion is (by hand), or the project has no database or no seed command. -->

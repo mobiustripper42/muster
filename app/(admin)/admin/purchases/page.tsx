@@ -317,7 +317,7 @@ export default async function AdminPurchases({
         </Notice>
       )}
 
-      {windowEmpty && <Notice>Nothing sails in this window. Try a wider one.</Notice>}
+      {windowEmpty && <Notice>No results returned</Notice>}
 
       {allRows.length > 0 && !windowEmpty && groups.length === 0 && (
         <Notice>
@@ -415,11 +415,6 @@ export default async function AdminPurchases({
           </div>
         </Card>
       )}
-
-      <p className="mt-2 text-xs text-muted">
-        Total is fare + extra guests + tax. Tips aren’t included — they go to crew, not revenue.
-        Refunds and messaging aren’t wired up here yet.
-      </p>
 
       <VersionTag />
     </Shell>

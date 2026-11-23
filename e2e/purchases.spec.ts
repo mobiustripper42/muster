@@ -50,9 +50,6 @@ test.describe("admin /admin/purchases", () => {
     // stores "216-555-0148", "+1 216 555 0148" and "(440) 555-0102".
     await expect(dana).toContainText("(440) 555-0102");
     await expect(rows.filter({ hasText: "Marcus Webb" }).first()).toContainText("(216) 555-0148");
-
-    // The caveat is stated — the total isn't "money collected", and tips aren't in it.
-    await expect(page.getByText(/Tips aren’t included/)).toBeVisible();
   });
 
   test("filter chips carry counts and narrow the list", async ({ page }) => {

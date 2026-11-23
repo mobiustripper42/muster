@@ -96,7 +96,9 @@ The patterns behind the findings, worst first (issue #1230). A pattern is one sp
 
 **The rule (operator, 2026-11-22):** one check, run before Stripe is called and again before the customer is handed a way to pay: the booking is still payable, its slot is not blocked, and the trip has not started. If it fails, nothing is charged.
 
-**When:** Feb 1. **Rows:** operator OR-1, OR-2 and OR-3. **Candidates:** silent S2-2.
+**And when money lands anyway** (operator, 2026-11-22): a check cannot catch a customer already on their bank's approval screen. Money that lands on a booking that cannot take it is recorded, refunded automatically, and the customer and the operator are told. The refund goes through pattern 1.
+
+**When:** Feb 1. **Rows:** operator OR-1, OR-2 and OR-3, silent S2-2, paired PS-2, money F2. **Existing issues:** issue #1237 (F2).
 
 ## Ledger
 
@@ -267,7 +269,7 @@ Refer to these as "silent S2-1". The report also cites about twenty findings alr
 |---|---|---|---|---|
 | S1-1 | S1 | A self-cancel that commits, loses its acknowledgement and fails its re-read tells the customer "Nothing changed", and the refund is never sent | Feb 1 | duplicate of paired PS-1 |
 | S2-1 | S2 | After an operator refund moved money then hit a database error, the screen says "Nothing moved" and a second press refunds again | Feb 1 | open — real work, pattern 1; re-checked on `main` at `c280379` (`src/reservations/refund-payment.ts:208`, `:253`). Covers cancel-and-refund too (`src/reservations/operator-cancel.ts:226-229`). Wanted: the screen never says "Nothing moved" unless that is known |
-| S2-2 | S2 | A pay-link payment on a cancelled phone booking writes no payment, trail or refund row, and the customer is told "You're booked!" | — | open |
+| S2-2 | S2 | A pay-link payment on a cancelled phone booking writes no payment, trail or refund row, and the customer is told "You're booked!" | Feb 1 | open — real work, pattern 2; re-checked on `main` at `c280379` |
 | S2-3 | S2 | The sold-out-while-paying office alert says "the customer has been told" whether or not anyone told them | — | open |
 | S2-4 | S2 | When a confirmation reports nobody was told, the claim is released, the webhook answers 200 and nothing retries | — | open |
 | S2-5 | S2 | A manage-page change or cancel request shows "we've sent your request to the team" whether or not the email went | — | open |
@@ -471,7 +473,7 @@ Refer to these as "paired PS-1". The report cites findings already in this ledge
 | ID | Sev | Finding | When | Status |
 |---|---|---|---|---|
 | PS-1 | S1 | The customer's cancel commits, then the refund never runs, and nothing records that the refund is owed | Feb 1 | open — real work; silent S1-1 is the same defect (re-checked on `main` at `c280379`, issue #1230; since issue #1254 a Stripe call to cancel the balance intent also sits between the cancel and the refund, `src/reservations/cancel-reservation.ts:291`). Proposed fix (not in the codebase): write the owed refund in the cancelling transaction, and resume the refund from it on a retry or a sweep (`docs/audit/2026-11-14-paired-saves.md:53`) |
-| PS-2 | S2 | A residual-race loser that was refunded stays `pending` and can later be booked as if it had paid | — | open |
+| PS-2 | S2 | A residual-race loser that was refunded stays `pending` and can later be booked as if it had paid | Feb 1 | open — real work, pattern 2; re-checked on `main` at `c280379` |
 | PS-3 | S2 | The operator's cancel-and-refund can crash after the cancel, leaving no refund and no customer notice | Feb 1 | open — real work, pattern 1; re-checked on `main` at `c280379` |
 | PS-4 | S2 | A comp flips to booked, then the confirmation claim throws; the operator is told it is not booked | — | open |
 | PS-5 | S2 | The customer's best-effort `cancelled` trail row is the only source for the money screens' refund figures | Feb 1 | open — real work, pattern 1 (step 1: the owed figure is written before the refund, not in a row that can be lost); re-checked on `main` at `c280379` |

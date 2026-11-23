@@ -12,7 +12,7 @@
  * to re-total live — the figure on screen and the figure frozen are one computation.
  */
 import type { BookingInvoice } from "../domain/entities.js";
-import { feeCentsFor, taxCentsFor } from "./payment-config.js";
+import { feeCentsFor, taxCentsFor } from "./rates.js";
 import { gratuityCentsFor } from "./pricing.js";
 
 /** Under this much due, a discount becomes a comp — collecting a dollar or two is not worth
@@ -135,6 +135,12 @@ export function chargedFareCents(inv: DiscountFields): number {
  *  `balanceOwedCents` both read it, so the insurance's carve-out and the balance land on one cent. */
 export function fareTaxCents(inv: DiscountFields & Pick<BookingInvoice, "taxRateBps">): number {
   return taxCentsFor(chargedFareCents(inv), inv.taxRateBps);
+}
+
+/** Fare + the fare's tax, off a frozen invoice: `chargedFareCents(invoice) + fareTaxCents(invoice)`
+ *  (issue #1266). */
+export function fareAndTaxCents(invoice: BookingInvoice): number {
+  return chargedFareCents(invoice) + fareTaxCents(invoice);
 }
 
 /** What the customer was charged for insurance (16.8): its price less any discount that reached

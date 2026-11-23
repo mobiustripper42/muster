@@ -259,6 +259,68 @@ describe("a booked row's money is the frozen invoice (issue #1241)", () => {
   });
 });
 
+/**
+ * The Total on an insured row (issue #1266): fare + extras − discount + the FARE's tax, on paid and
+ * unpaid rows alike. The invoice's `taxCents` also holds the tax on the $30 insurance, which the
+ * Total leaves out with the insurance itself.
+ *
+ * $549 fare at 7.25%: fare tax 3980 (3980.25). With $30 insurance the frozen tax is on $579 — 4198
+ * (4197.75) — and a 3% fee on $579 is 1737. Fare + frozen tax would read $590.98; fare + fare tax is
+ * $588.80.
+ */
+describe("the Total on an insured row (issue #1266)", () => {
+  const INSURED: BookingInvoice = {
+    fareCents: 54900,
+    extrasCents: 0,
+    flexCents: 3000,
+    taxCents: 4198,
+    taxRateBps: TAX,
+    serviceFeeCents: 1737,
+    serviceFeeBps: 300,
+    gratuityCents: 0,
+    gratuityBps: 0,
+    totalCents: 63835,
+    amountDueNowCents: 63835,
+  };
+
+  it("AC1: a paid insured row's Total is fare + the fare's tax, $588.80 — not $590.98", () => {
+    const [row] = build({
+      reservations: [reservation("r1", { invoice: INSURED })],
+      paymentsByReservation: new Map([
+        ["r1", [payment("p1", "r1", { kind: "full", amountCents: 63835, serviceFeeCents: 1737, flexCents: 3000 })]],
+      ]),
+    });
+    expect(row).toMatchObject({ state: "paid", priceKnown: true });
+    expect(row!.totalCents).toBe(58880);
+  });
+
+  it("AC1: an unpaid insured phone booking's Total is the same $588.80", () => {
+    const [row] = build({
+      reservations: [
+        reservation("r1", {
+          eventId: null,
+          source: "admin",
+          status: "pending",
+          date: "2026-10-21",
+          time: "15:30",
+          invoice: INSURED,
+        }),
+      ],
+      eventsById: new Map(),
+    });
+    expect(row).toMatchObject({ state: "awaiting", paidCents: 0, priceKnown: true });
+    expect(row!.totalCents).toBe(58880);
+  });
+
+  it("AC2: an uninsured row's Total is unchanged — fare + the invoice's tax, $588.80 on $549", () => {
+    const { flexCents: _none, ...uninsured } = INSURED;
+    const [row] = build({
+      reservations: [reservation("r1", { invoice: { ...uninsured, taxCents: 3980, serviceFeeCents: 1647, totalCents: 60527, amountDueNowCents: 60527 } })],
+    });
+    expect(row!.totalCents).toBe(54900 + 3980);
+  });
+});
+
 describe("scope", () => {
   it("excludes Xola reservations — Xola owns its own money (DEC-105)", () => {
     const rows = build({

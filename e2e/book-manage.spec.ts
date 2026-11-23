@@ -57,7 +57,8 @@ test.describe("public /b/<code>", () => {
 
     // Money: fare $549, tax $39.80 (7.25%), nothing paid, balance $588.80 — no Payment rows seeded.
     await expect(page.getByText("$549.00")).toBeVisible();
-    await expect(page.getByText("$588.80")).toBeVisible();
+    // Exact: 19.6's "Pay balance · $588.80" button carries the same figure.
+    await expect(page.getByText("$588.80", { exact: true })).toBeVisible();
 
     // The manage actions. Post-trip tip tiers were asserted here until 15.18 removed them.
     await expect(page.getByText("Add to calendar")).toBeVisible();

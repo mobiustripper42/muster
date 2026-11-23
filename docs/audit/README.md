@@ -88,7 +88,7 @@ The patterns behind the findings, worst first (issue #1230). A pattern is one sp
 
 **Keeping it plugged (proposed, not in the codebase):** a check that fails when anything outside the one module calls a Stripe method that moves money, so a new path cannot skip the steps. Today refunds are called from `src/reservations/refund-payment.ts` and `src/reservations/booking-webhook.ts`.
 
-**When:** Feb 1. **Rows:** paired PS-1 (silent S1-1), silent S2-1 (paired PS-9, silent S3-7), money F3, F5, F20 and U2, conformance C15 and C19. **Candidates:** paired PS-2, PS-3 and PS-5. **Existing issues:** issue #1236 (F3, F20) and issue #1240 (F5, U2); the spec decides whether it replaces or widens issue #1240.
+**When:** Feb 1. **Rows:** paired PS-1 (silent S1-1), silent S2-1 (paired PS-9, silent S3-7), money F3, F5, F20 and U2, conformance C15 and C19. **Also:** paired PS-3 and PS-5, plan S2-1. **Existing issues:** issue #1236 (F3, F20) and issue #1240 (F5, U2); the spec decides whether it replaces or widens issue #1240.
 
 ### Pattern 2 — Check that it can still be paid for, right before the money moves
 
@@ -334,7 +334,7 @@ Refer to these as "plan S2-1". The report numbers its S4 findings as table rows 
 
 | ID | Sev | Finding | When | Status |
 |---|---|---|---|---|
-| S2-1 | S2 | A card charge that differs from the invoice frozen on the reservation books silently as `booked`, `kind: "full"`, with no alert | — | open |
+| S2-1 | S2 | A card charge that differs from the invoice frozen on the reservation books silently as `booked`, `kind: "full"`, with no alert | Feb 1 | open — real work, pattern 1 (step 3: the result is checked against what was written down). The report tested that the code stays silent and only suspects the mismatch can happen; re-checked on `main` at `c280379` |
 | S2-2 | S2 | The reservation pane has no "change arrival" and no way to move a booking | — | open |
 | S2-3 | S2 | The admin "Message" button via the customer sender is not built | — | open |
 | S2-4 | S2 | The booking success page still promises a post-trip tip after the tipping code was removed | — | open |
@@ -472,9 +472,9 @@ Refer to these as "paired PS-1". The report cites findings already in this ledge
 |---|---|---|---|---|
 | PS-1 | S1 | The customer's cancel commits, then the refund never runs, and nothing records that the refund is owed | Feb 1 | open — real work; silent S1-1 is the same defect (re-checked on `main` at `c280379`, issue #1230; since issue #1254 a Stripe call to cancel the balance intent also sits between the cancel and the refund, `src/reservations/cancel-reservation.ts:291`). Proposed fix (not in the codebase): write the owed refund in the cancelling transaction, and resume the refund from it on a retry or a sweep (`docs/audit/2026-11-14-paired-saves.md:53`) |
 | PS-2 | S2 | A residual-race loser that was refunded stays `pending` and can later be booked as if it had paid | — | open |
-| PS-3 | S2 | The operator's cancel-and-refund can crash after the cancel, leaving no refund and no customer notice | — | open |
+| PS-3 | S2 | The operator's cancel-and-refund can crash after the cancel, leaving no refund and no customer notice | Feb 1 | open — real work, pattern 1; re-checked on `main` at `c280379` |
 | PS-4 | S2 | A comp flips to booked, then the confirmation claim throws; the operator is told it is not booked | — | open |
-| PS-5 | S2 | The customer's best-effort `cancelled` trail row is the only source for the money screens' refund figures | — | open |
+| PS-5 | S2 | The customer's best-effort `cancelled` trail row is the only source for the money screens' refund figures | Feb 1 | open — real work, pattern 1 (step 1: the owed figure is written before the refund, not in a row that can be lost); re-checked on `main` at `c280379` |
 | PS-6 | S2 | A merge that dies halfway drops side B's confirmed crew without texts or audit rows | — | open |
 | PS-7 | S2 | An import that dies in pass 3 leaves events `cancelled` and hides the cancellation from the operator | — | open |
 | PS-8 | S2 (low impact) | The flip commits, then delivery dies, and the `booked` trail row is never written | — | open |

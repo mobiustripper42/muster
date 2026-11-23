@@ -18,6 +18,9 @@ import {
   type WebhookEndpointInfo,
 } from "../ports/payment.js";
 
+/** What `confirmOffSession` answers (issue #1254) — the port's own return type. */
+type OffSessionResult = Awaited<ReturnType<PaymentPort["confirmOffSession"]>>;
+
 /** The signature the fake accepts — tests pass this as the "Stripe-Signature" header. */
 export const FAKE_SIGNATURE = "fake-sig";
 
@@ -120,6 +123,9 @@ export class FakePaymentPort implements PaymentPort {
       description: input.description,
       receiptEmail: input.receiptEmail,
       metadata: input.metadata,
+      customerId: input.customerId,
+      setupFutureUsage: input.setupFutureUsage,
+      cardsOnly: input.cardsOnly,
     });
     const cached = this.#intentsByKey.get(input.idempotencyKey);
     if (cached) {
@@ -205,6 +211,82 @@ export class FakePaymentPort implements PaymentPort {
   async listWebhookEndpoints(): Promise<readonly WebhookEndpointInfo[]> {
     if (this.listWebhookEndpointsError) throw this.listWebhookEndpointsError;
     return this.webhookEndpoints;
+  }
+
+  /** Every `createCustomer` call, in order, WITHOUT deduping on the key (issue #1250) — a test that
+   *  asserts "one customer" is asserting the caller made one call, not that the fake collapsed two. */
+  readonly createdCustomers: { idempotencyKey: string; name: string }[] = [];
+  readonly #customerParams = new Map<string, string>();
+
+  async createCustomer(input: {
+    idempotencyKey: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    metadata: Record<string, string>;
+  }): Promise<{ customerId: string }> {
+    this.createdCustomers.push({ idempotencyKey: input.idempotencyKey, name: input.name });
+    // Stripe refuses a key it has seen with different parameters; the fake says so too (issue #1250),
+    // so a caller that restates the customer on a retry fails here rather than only in production.
+    const { idempotencyKey, ...params } = input;
+    const seen = JSON.stringify(params);
+    const earlier = this.#customerParams.get(idempotencyKey);
+    if (earlier !== undefined && earlier !== seen) {
+      throw new Error(`FakePaymentPort: idempotency key ${idempotencyKey} was reused with different parameters`);
+    }
+    this.#customerParams.set(idempotencyKey, seen);
+    return { customerId: `cus_fake_${input.idempotencyKey}` };
+  }
+
+  // ── issue #1254: the scheduled balance charge ──────────────────────────────────────────────
+  /**
+   * The outcome of each NEW `confirmOffSession` call, consumed one per call (empty ⇒ `succeeded`).
+   * `"throw"` models a network failure: it records no result for its key, so the re-send with the same
+   * key consumes the next outcome.
+   */
+  confirmOffSessionOutcomes: Array<"succeeded" | { declined: string } | "needs_approval" | "throw"> = [];
+  /** Every `confirmOffSession` call, in order, deduped or not — assert on this rather than on charges,
+   *  because the key dedupe below would hide a caller that forgot to claim its attempt. */
+  readonly confirmOffSessionCalls: {
+    paymentIntentId: string;
+    customerId: string;
+    paymentMethodId: string;
+    idempotencyKey: string;
+  }[] = [];
+  readonly #offSessionByKey = new Map<string, OffSessionResult>();
+
+  async confirmOffSession(input: {
+    paymentIntentId: string;
+    customerId: string;
+    paymentMethodId: string;
+    idempotencyKey: string;
+  }): Promise<OffSessionResult> {
+    this.confirmOffSessionCalls.push({ ...input });
+    // Like Stripe: a repeated key returns the first result, charges nothing and consumes no outcome.
+    const earlier = this.#offSessionByKey.get(input.idempotencyKey);
+    if (earlier) return earlier;
+    const next = this.confirmOffSessionOutcomes.shift() ?? "succeeded";
+    if (next === "throw") throw new Error("FakePaymentPort: confirmOffSession network failure");
+    let result: OffSessionResult;
+    if (next === "succeeded") {
+      const amountReceivedCents = this.liveAmountCents.get(input.paymentIntentId) ?? 0;
+      const charge: PaymentSucceeded = {
+        paymentIntentId: input.paymentIntentId,
+        amountReceivedCents,
+        currency: "usd",
+        metadata: {},
+        paymentMethodId: input.paymentMethodId,
+      };
+      this.succeededIntents.set(input.paymentIntentId, charge);
+      this.intentStates.set(input.paymentIntentId, "settled");
+      result = { outcome: "succeeded", charge };
+    } else if (next === "needs_approval") {
+      result = { outcome: "needs_approval" };
+    } else {
+      result = { outcome: "declined", declineCode: next.declined };
+    }
+    this.#offSessionByKey.set(input.idempotencyKey, result);
+    return result;
   }
 
   parseEvent(rawBody: string, signature: string): PaymentEvent | null {

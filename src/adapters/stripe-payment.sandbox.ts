@@ -29,7 +29,9 @@
  *
  * **Not in `npm test` or `verify`**: the default include is `*.test.ts` and this is `*.sandbox.ts`.
  * It needs the network, it is rate-limited, and every run leaves objects in the sandbox account —
- * two paid test charges (one $275.70 booking, one $50 bare intent) and two cancelled $1 intents.
+ * three paid test charges (one booking, one $50 bare intent, one $1 intent paid to read its card
+ * back), one $1 off-session balance charge and four cancelled $1 intents. The provider customers
+ * the deposit and balance cases create are deleted at the end of each case (issues #1250, #1254).
  * `vitest.sandbox.config.ts` runs it. Folded in from the standalone `db:stripe:cancel` script.
  *
  * **Sandbox only, enforced.** It confirms real PaymentIntents, which moves no money in test mode
@@ -85,8 +87,9 @@ async function seededRepo(): Promise<InMemoryRepository> {
   const repo = new InMemoryRepository();
   await repo.saveOffering(offering);
   await repo.saveVessel(vessel);
-  // Deposit mode + real rates, so the amount Stripe is asked for is a sum of every money field.
-  await repo.setPaymentConfig({ depositMode: "deposit", depositPercent: 25, taxRateBps: 725 }, NOW);
+  // Real rates, so the amount Stripe is asked for is a sum of every money field. The departure is the
+  // same day as `NOW`, inside the balance window, so the whole quote is charged (issue #1250).
+  await repo.setPaymentConfig({ depositCents: 10000, taxRateBps: 725 }, NOW);
   return repo;
 }
 
@@ -228,7 +231,7 @@ if (!haveKeys) {
     });
 
     it("a paid intent that is not ours books nothing and pages nobody (the 15.6 regression)", async () => {
-      // The shape that broke: the bare PaymentIntent under a hosted balance Checkout Session. No
+      // The shape that broke: the bare PaymentIntent under a hosted Checkout Session. No
       // metadata, no pending row. Minted through our adapter so its arguments are the app's.
       const since = sinceNow();
       const repo = await seededRepo();
@@ -311,6 +314,192 @@ if (!haveKeys) {
         await threw(() => payments.cancelPaymentIntent(created.paymentIntentId, "duplicate")),
         "Stripe accepted a second cancel, so the swallow guards nothing",
       ).not.toBeNull();
+    });
+  });
+
+  /**
+   * The deposit's half of the adapter (issue #1250): a provider customer to save the card against,
+   * an intent asked to keep the card, and the card read back off a succeeded intent.
+   */
+  describe("Stripe sandbox — the deposit's saved card (issue #1250)", () => {
+    /** A $1 intent, never confirmed unless the case pays it. */
+    const mintDollar = (extra: { customerId?: string; setupFutureUsage?: "off_session" } = {}) =>
+      payments.createPaymentIntent({
+        amountCents: 100,
+        currency: "usd",
+        description: "muster test:stripe — deposit verification",
+        metadata: {},
+        idempotencyKey: `sandbox_deposit_${randomUUID()}`,
+        ...extra,
+      });
+
+    it("AC9: createCustomer creates one customer under its idempotency key — the same key returns the same customer", async () => {
+      const key = `customer_sandbox_${randomUUID()}`;
+      const input = { idempotencyKey: key, name: "Deposit Sandbox", metadata: {} };
+      const created = await payments.createCustomer(input);
+      try {
+        expect(created.customerId).toMatch(/^cus_/);
+        const repeated = await payments.createCustomer(input);
+        expect(repeated.customerId, "the key was DROPPED — two customers exist").toBe(created.customerId);
+        const customer = await stripe.customers.retrieve(created.customerId);
+        expect(customer.deleted).not.toBe(true);
+        if (!customer.deleted) expect(customer.name).toBe("Deposit Sandbox");
+      } finally {
+        await stripe.customers.del(created.customerId);
+      }
+    });
+
+    it("AC9: an intent carries the customer and top-level setup_future_usage only when they are given", async () => {
+      const { customerId } = await payments.createCustomer({
+        idempotencyKey: `customer_sandbox_${randomUUID()}`,
+        name: "Deposit Sandbox",
+        metadata: {},
+      });
+      const saving = await mintDollar({ customerId, setupFutureUsage: "off_session" });
+      const plain = await mintDollar();
+      try {
+        const savingIntent = await stripe.paymentIntents.retrieve(saving.paymentIntentId);
+        expect(savingIntent.customer).toBe(customerId);
+        // Top-level, not under payment_method_options — so the Payment Element offers only methods
+        // that can be charged again off-session.
+        expect(savingIntent.setup_future_usage).toBe("off_session");
+
+        const plainIntent = await stripe.paymentIntents.retrieve(plain.paymentIntentId);
+        expect(plainIntent.customer).toBeNull();
+        expect(plainIntent.setup_future_usage).toBeNull();
+      } finally {
+        await payments.cancelPaymentIntent(saving.paymentIntentId, "abandoned");
+        await payments.cancelPaymentIntent(plain.paymentIntentId, "abandoned");
+        await stripe.customers.del(customerId);
+      }
+    });
+
+    it("AC11: getSucceededPaymentIntent reads the card the intent was paid with as paymentMethodId", async () => {
+      const paid = await mintDollar();
+      await payWithTestCard(stripe, paid.paymentIntentId);
+
+      const succeeded = await payments.getSucceededPaymentIntent(paid.paymentIntentId);
+
+      // `pm_card_visa` is a test token; Stripe attaches a fresh `pm_…` and that is what the intent
+      // names, so the expectation is Stripe's own record of it.
+      const intent = await stripe.paymentIntents.retrieve(paid.paymentIntentId);
+      expect(typeof intent.payment_method).toBe("string");
+      expect(succeeded?.paymentMethodId).toBe(intent.payment_method);
+      expect(succeeded?.paymentMethodId).toMatch(/^pm_/);
+    });
+  });
+
+  /**
+   * The scheduled balance charge's half of the adapter (issue #1254): confirm an existing intent
+   * against a saved card with nobody present, and read the three outcomes back. Test cards are
+   * Stripe's own (`docs.stripe.com/testing`): `pm_card_visa` charges, `pm_card_authenticationRequired`
+   * "requires authentication on all transactions, regardless of how the card is set up", and
+   * `pm_card_visa_chargeDeclinedInsufficientFunds` declines with `insufficient_funds`.
+   */
+  describe("Stripe sandbox — the off-session balance charge (issue #1254)", () => {
+    /** A customer, a balance intent for $1 on it (cards only, nothing saved — as `ensureBalanceIntent`
+     *  makes it), and the card saved to the customer when it can be (issuer-decline test cards cannot
+     *  be attached, and are confirmed unattached). Cleaned up by `finish`. */
+    async function setup(testCard: string, attach: boolean) {
+      const { customerId } = await payments.createCustomer({
+        idempotencyKey: `customer_sandbox_${randomUUID()}`,
+        name: "Balance Sandbox",
+        metadata: {},
+      });
+      const paymentMethodId = attach
+        ? (await stripe.paymentMethods.attach(testCard, { customer: customerId })).id
+        : testCard;
+      const intent = await payments.createPaymentIntent({
+        amountCents: 100,
+        currency: "usd",
+        description: "muster test:stripe — off-session balance verification",
+        metadata: { purpose: "balance" },
+        idempotencyKey: `sandbox_balance_${randomUUID()}`,
+        customerId,
+        cardsOnly: true,
+      });
+      return {
+        customerId,
+        paymentMethodId,
+        paymentIntentId: intent.paymentIntentId,
+        key: `sandbox_balance_confirm_${randomUUID()}`,
+        async finish() {
+          // A refusal is ordinary here (a succeeded intent cannot be cancelled), so it is read, not thrown.
+          await threw(() => payments.cancelPaymentIntent(intent.paymentIntentId, "abandoned"));
+          await stripe.customers.del(customerId);
+        },
+      };
+    }
+
+    it("AC14: an off-session charge of a saved card succeeds, and the repeated key returns the same result", async () => {
+      const w = await setup("pm_card_visa", true);
+      try {
+        const input = {
+          paymentIntentId: w.paymentIntentId,
+          customerId: w.customerId,
+          paymentMethodId: w.paymentMethodId,
+          idempotencyKey: w.key,
+        };
+        const first = await payments.confirmOffSession(input);
+        expect(first.outcome).toBe("succeeded");
+        if (first.outcome !== "succeeded") return;
+        expect(first.charge).toMatchObject({
+          paymentIntentId: w.paymentIntentId,
+          amountReceivedCents: 100,
+          currency: "usd",
+          paymentMethodId: w.paymentMethodId,
+        });
+        expect((await stripe.paymentIntents.retrieve(w.paymentIntentId)).status).toBe("succeeded");
+
+        // Stripe answers the same key with the first result: a re-send after a network failure is
+        // not a second charge.
+        const again = await payments.confirmOffSession(input);
+        expect(again.outcome).toBe("succeeded");
+      } finally {
+        await stripe.customers.del(w.customerId);
+      }
+    });
+
+    it("AC14: the always-authenticate card is refused as needs-approval, not as a decline", async () => {
+      const w = await setup("pm_card_authenticationRequired", true);
+      try {
+        const r = await payments.confirmOffSession({
+          paymentIntentId: w.paymentIntentId,
+          customerId: w.customerId,
+          paymentMethodId: w.paymentMethodId,
+          idempotencyKey: w.key,
+        });
+        expect(r).toEqual({ outcome: "needs_approval" });
+      } finally {
+        await w.finish();
+      }
+    });
+
+    it("AC14: an insufficient-funds card is declined with its decline code", async () => {
+      const w = await setup("pm_card_visa_chargeDeclinedInsufficientFunds", false);
+      try {
+        const r = await payments.confirmOffSession({
+          paymentIntentId: w.paymentIntentId,
+          customerId: w.customerId,
+          paymentMethodId: w.paymentMethodId,
+          idempotencyKey: w.key,
+        });
+        expect(r).toEqual({ outcome: "declined", declineCode: "insufficient_funds" });
+      } finally {
+        await w.finish();
+      }
+    });
+
+    it("AC14: the balance intent is cards only and saves nothing", async () => {
+      const w = await setup("pm_card_visa", true);
+      try {
+        const intent = await stripe.paymentIntents.retrieve(w.paymentIntentId);
+        expect(intent.payment_method_types).toEqual(["card"]);
+        expect(intent.customer).toBe(w.customerId);
+        expect(intent.setup_future_usage).toBeNull();
+      } finally {
+        await w.finish();
+      }
     });
   });
 }

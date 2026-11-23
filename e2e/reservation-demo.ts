@@ -24,8 +24,13 @@
  * the format asserts its own idea of correct, which is how "Wed, Aug 12" passes while the page
  * says something else.
  */
-import { vesselDateOf } from "../src/config/tenant.js";
+import type { Page } from "@playwright/test";
+import { TEST_DATABASE_URL } from "../db/reset-test.js";
+import { PostgresRepository } from "../src/adapters/postgres-repository.js";
+import { addDays, vesselDateOf } from "../src/config/tenant.js";
+import { asId } from "../src/domain/ids.js";
 import { formatShortDay } from "../src/reservations/availability-screen.js";
+import { PAYMENT_CONFIG_DEFAULTS } from "../src/reservations/payment-config.js";
 import {
   demoBookingCode,
   demoRevokedBookingCode,
@@ -58,6 +63,60 @@ export const BOOKED_3 = DEMO.bookings[2]!;
 
 /** An OPEN slot on the booked day: same date, a departure nobody has taken. */
 export const OPEN_TIME = DEMO.departureTimes[1]!; // 15:30
+
+/**
+ * A departure day INSIDE the balance window (issue #1250): 20 days out, so the whole quote is due at
+ * checkout and no deposit is offered, whatever time of day the suite runs — the window is
+ * `balanceDueDaysBeforeEvent` (30 unset, and `resetAndSeed` wipes `app_settings`). The seeded week
+ * moves with today and sits roughly three to eight weeks out, so a spec that pointed at it was on one side of the
+ * window or the other depending on the date.
+ *
+ * Inside the seed's season (which starts today), before its first booking (`MIN_BOOKING_LEAD_DAYS`,
+ * 21), so every boat is free; and past the 14-day cancellation line, so the terms read as they do
+ * further out.
+ */
+export const INSIDE_BALANCE_WINDOW = addDays(TODAY, 20);
+
+/**
+ * A departure day OUTSIDE the balance window (issue #1250): at least 40 days out, and after the
+ * seeded week so no seeded booking is on it. That puts it past the seed's season end, which is the
+ * last day of that week — a spec that books it extends the season first.
+ */
+export const OUTSIDE_BALANCE_WINDOW = ((a: string, b: string) => (a > b ? a : b))(
+  addDays(TODAY, 40),
+  addDays(DEMO.window.end, 1),
+);
+
+/** The day the balance is charged for the outside-window departure, as the page writes it: the
+ *  departure date less the balance-due setting, which `resetAndSeed` leaves at its default. */
+export const BALANCE_DUE_ON = formatShortDay(
+  addDays(OUTSIDE_BALANCE_WINDOW, -PAYMENT_CONFIG_DEFAULTS.balanceDueDaysBeforeEvent),
+);
+
+/**
+ * Run the demo offering's season through `date`. The seed's season ends with the seeded week, and a
+ * departure far enough out to be outside the balance window can fall after it — late in a month it
+ * always does. Written through the port, as `booking-cutoff.spec.ts` sets its cutoff.
+ *
+ * Here rather than in `book-checkout.spec.ts` since issue #1251: the payment link's spec books a
+ * phone booking on the same outside-window day.
+ */
+export async function extendSeasonThrough(date: string): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const offering = (await repo.getOffering(asId<"OfferingId">(DEMO.offeringId)))!;
+    if (offering.schedule.seasonEnd >= date) return;
+    await repo.saveOffering({ ...offering, schedule: { ...offering.schedule, seasonEnd: date } });
+  } finally {
+    await repo.close();
+  }
+}
+
+/** The pay bar's figures: its label, the due-now figure and, for a deposit, the total under it. */
+export const payBar = (page: Page) => page.getByTestId("due-now").locator("..");
+
+/** The terms box — the label the required tick belongs to (#1112). */
+export const termsBox = (page: Page) => page.locator("label", { has: page.getByTestId("agree-terms") });
 
 /** "September 2026" — the calendar header, formatted exactly as `buildMonthCalendar` does. */
 export function monthLabel(isoDay: string): string {

@@ -13,6 +13,7 @@
  */
 import type { Event, Gratuity, Reservation, Seat, Shift, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
+import { seedInvoice } from "./seed-reservation.js";
 
 export interface SeedGratuityCrew {
   id: string;
@@ -46,6 +47,8 @@ export interface SeededGratuityWorld {
 }
 
 const DEFAULT_ROLE = "role-captain";
+/** The seeded departure's fare — its event's price and its booking's frozen invoice. */
+const EVENT_PRICE_CENTS = 50000;
 
 /**
  * Build a full crewed vessel-day carrying one booked reservation + a pre gratuity. Everything
@@ -77,7 +80,7 @@ export function buildSeededGratuity(input: SeedGratuityInput): SeededGratuityWor
     capacity: 12,
     status: "scheduled",
     source: "muster",
-    price: 50000,
+    price: EVENT_PRICE_CENTS,
   };
 
   const shift: Shift = {
@@ -105,6 +108,7 @@ export function buildSeededGratuity(input: SeedGratuityInput): SeededGratuityWor
     partySize: 2,
     email: "seed-tipper@example.com",
     status: "booked",
+    invoice: seedInvoice(EVENT_PRICE_CENTS),
     updatedAt: input.createdAt,
   };
 

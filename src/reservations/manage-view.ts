@@ -14,10 +14,16 @@
 
 import {
   buildReservationDetail,
+  formatCents,
   type ReservationDetailInput,
   type ReservationDetailView,
 } from "./calendar-detail.js";
 import { formatClock } from "./availability-screen.js";
+import { dueDayLabel } from "./checkout-quote.js";
+import { vesselClockOf, vesselDateOf } from "../config/tenant.js";
+import type { CanonicalPhone } from "../customers/identity.js";
+import { balancePayable } from "./balance-charge.js";
+import { atContactPhone } from "./contact-phone.js";
 
 export type TripPhase = "upcoming" | "completed";
 
@@ -40,6 +46,24 @@ export interface ManageView {
   timing: TripTiming;
   /** True once the fare is settled (no balance) — gates the receipt's "Paid in full". */
   paidInFull: boolean;
+  /** The balance row's label: the day the saved card is charged, read from the booking's frozen
+   *  `balanceDueAt` (never recomputed from the setting), "Balance due" once that date has passed,
+   *  else "due before your trip" (issue #1252). */
+  balanceLabel: string;
+  /** The `Pay balance · $552.94` button while the booking can take a balance payment
+   *  (`balancePayable`), else null — so a balance the job already collected shows no button (issue
+   *  #1254). The form's `Pay $552.94` reads `amountCents`. */
+  payBalance: { label: string; amountCents: number } | null;
+}
+
+/** The manage page's refusal line for a balance press it cannot take (issue #1254): a balance that is
+ *  already paid says so; a cancelled, unpriced or disputed booking sends the customer to the phone. */
+export function balanceRefusalMessage(
+  reason: "not_active" | "no_balance" | "disputed",
+  contactPhone: CanonicalPhone | null,
+): string {
+  if (reason === "no_balance") return "Your balance is already paid.";
+  return `This booking can’t take a payment right now — call us${atContactPhone(contactPhone)}.`;
 }
 
 /** "HH:MM" → minutes since midnight, or null on a malformed clock. */
@@ -110,5 +134,29 @@ export function buildManageView(input: ManageViewInput): ManageView {
     // common case on the operator-cancel path (#797): a full refund leaves exactly this state.
     paidInFull:
       detail.money.priceKnown && detail.money.paidCents > 0 && detail.money.balanceCents <= 0,
+    balanceLabel: balanceLabelOf(input.reservation.balanceDueAt, input.now),
+    payBalance: payBalanceOf(input),
   };
+}
+
+/** The `Pay balance` button, from the one rule of whether a balance can be paid. */
+function payBalanceOf(input: ManageViewInput): ManageView["payBalance"] {
+  const payable = balancePayable(input.reservation, input.payments);
+  return payable.ok
+    ? { label: `Pay balance · ${formatCents(payable.owedCents)}`, amountCents: payable.owedCents }
+    : null;
+}
+
+/** The balance row's label. A due date still ahead names the day the card is charged; one that has
+ *  passed (the charge failed, an admin stopped the auto-cancel, or the trip started owing) reads
+ *  "Balance due" — nothing more, by the operator's ruling, since "is charged"
+ *  would be false. The due instant is compared in the vessel's own date and clock, `now`'s frame,
+ *  and counts as passed at that instant. */
+function balanceLabelOf(balanceDueAt: string | null | undefined, now: { date: string; time: string }): string {
+  if (!balanceDueAt) return "Balance · due before your trip";
+  const due = new Date(balanceDueAt);
+  const dueDate = vesselDateOf(due);
+  const dueClock = vesselClockOf(due);
+  const passed = dueDate < now.date || (dueDate === now.date && dueClock <= now.time);
+  return passed ? "Balance due" : `Balance · charged to your card on ${dueDayLabel(balanceDueAt)}`;
 }

@@ -92,7 +92,8 @@ export async function cancelByOperator(
         // This is the notice that matters most in the whole product: without it a confirmed
         // crew member drives to a boat that is not sailing.
         ...(deps.relayFormNotices ? { relayFormNotices: deps.relayFormNotices } : {}),
-        // Only used if this is an unpaid phone booking, which `cancelReservation` hands on.
+        // Used by an unpaid phone booking (which `cancelReservation` hands on) and by a booked
+        // booking's balance intent (issue #1254).
         payments: deps.payments,
       },
       reservationId,

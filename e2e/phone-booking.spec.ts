@@ -25,13 +25,18 @@ import {
   signInAsAdmin,
 } from "./fixtures.js";
 import { shortTime } from "../src/reservations/calendar-grid.js";
-import { BOOKED, DEMO, OPEN_TIME } from "./reservation-demo.js";
+import { BOOKED, DEMO, INSIDE_BALANCE_WINDOW, OPEN_TIME } from "./reservation-demo.js";
 
 const openAt = (page: Page, time: string) =>
   page.locator(`[data-testid="cal-block"][data-vessel="${DEMO.vesselId}"]`).filter({ hasText: `open · ${time}` });
 
 const BOOK = `/admin/calendar?date=${BOOKED.date}&hold=${encodeURIComponent(`${DEMO.vesselId}|${OPEN_TIME}`)}&book=1`;
-const PUBLIC = `/book/checkout?offering=offering-reservation-demo&date=${BOOKED.date}&time=${OPEN_TIME}&guests=2`;
+/**
+ * Public checkout for the same trip and party, on a day inside the balance window (issue #1250): the
+ * phone booking takes no deposit, so its due-now is the whole quote, and the public one is the whole
+ * quote only inside the window. Pinned there so the comparison does not turn on the calendar date.
+ */
+const PUBLIC = `/book/checkout?offering=offering-reservation-demo&date=${INSIDE_BALANCE_WINDOW}&time=${OPEN_TIME}&guests=2`;
 
 test.describe("admin phone booking", () => {
   test.beforeEach(async () => {
@@ -46,7 +51,7 @@ test.describe("admin phone booking", () => {
     const publicAt15 = (await page.getByTestId("due-now").textContent())!.trim();
 
     await signInAsAdmin(page, "eric");
-    await page.goto(`/admin/calendar?date=${BOOKED.date}`);
+    await page.goto(`/admin/calendar?date=${INSIDE_BALANCE_WINDOW}`);
     await openAt(page, shortTime(OPEN_TIME)).click();
     await page.getByTestId("slot-pane").getByTestId("book-slot").click();
 
@@ -92,7 +97,7 @@ test.describe("admin phone booking", () => {
     await expect(pane.getByTestId("money-owes")).toHaveText(publicTotal);
 
     // On the grid it names the customer, like a booked card, and says it is unpaid (#1104).
-    await page.goto(`/admin/calendar?date=${BOOKED.date}`);
+    await page.goto(`/admin/calendar?date=${INSIDE_BALANCE_WINDOW}`);
     const card = page.locator('[data-testid="cal-block"][data-status="awaiting-payment"]');
     await expect(card).toContainText("Phone Caller");
     await expect(card).toContainText(`${shortTime(OPEN_TIME)} · 2 · Unpaid`);

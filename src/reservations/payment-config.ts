@@ -16,54 +16,106 @@
  * §3.3 cancel cascade stays parked (self-service cancel is #616).
  */
 
-import type { PaymentStatus, ReservationStatus } from "../domain/entities.js";
+import { parseWholeNumberSetting } from "../config/whole-number-setting.js";
+import { logSwallowed } from "../log.js";
+import type { BookingInvoice, PaymentStatus, ReservationStatus } from "../domain/entities.js";
+import { chargedFareCents, fareTaxCents } from "./discount.js";
 
 export interface PaymentConfig {
-  /** Charge the whole price up front, or a deposit now + balance later (11.2b). */
-  depositMode: "full" | "deposit";
-  /** Deposit as an integer percent (used only when `depositMode === "deposit"`). */
-  depositPercent: number;
+  /** The deposit a customer may pay now instead of the whole quote, in cents — one fixed number,
+   *  not a percent (issue #1250, `docs/SPEC.md §2.8.4d`). Stored as `payment.deposit_cents`. */
+  depositCents: number;
   /** Sales-tax rate in BASIS POINTS (725 = 7.25%) — integer, float-free (DEC-112). Ohio. */
   taxRateBps: number;
   /** Service fee in BASIS POINTS (300 = 3%) on everything but tax — fare, extras, insurance and the
-   *  tip (DEC-196); untaxed. Formerly the fare only (DEC-134). Charged IN FULL with the deposit
-   *  charge; the balance carries none. */
+   *  tip (DEC-196); untaxed. Formerly the fare only (DEC-134). */
   serviceFeeBps: number;
-  /** How many days before the event the balance is due — a formalized default; the
-   *  scheduler that reads it (auto-emit) is P12+. Balance is collected on demand for now. */
+  /** How many days before the departure the balance is due. Inside this window a booking is paid
+   *  whole at checkout (`insideBalanceWindow`). */
   balanceDueDaysBeforeEvent: number;
+  /** How many days before the departure an unpaid balance releases the seats. */
+  balanceReleaseDaysBeforeEvent: number;
+  /** Days after the due date a declined balance charge is retried — 3 and 6 by default (issue #1254,
+   *  `docs/SPEC.md §2.8.4d`). Stored as `payment.balance_retry_days`, a comma list, and read through
+   *  `parseBalanceRetryDays` by both adapters. Live: it applies to every attempt not yet made. */
+  balanceRetryDaysAfterDue: readonly number[];
 }
 
 /**
  * Defaults (BrewBoat). Overridden per-field by any `payment.*` key in `app_settings`.
  *
- * **`depositMode` is `full`, and that is a deliberate reversal (issue #617).** It was `deposit` at
- * 25% from the day this file was written — and nothing overrides it: production's `app_settings`
- * holds a single row and it isn't this one. So any environment nobody had configured charged 25%
- * and left 75% owed to a collection mechanism **that does not exist**. Nothing reads
- * `balanceDueDaysBeforeEvent` on a schedule; issue #712 is the unbuilt auto-collect. Collecting
- * meant the operator noticing, opening the booking, copying a link and texting it, per booking.
- *
- * A default is what an unconfigured deploy inherits, so it should be the posture that cannot leak
- * revenue by being forgotten. Deposit mode is untouched and fully supported — it is now opt-IN,
- * which is the right direction for a mode whose back half is manual.
- *
- * `depositPercent` stays at 25 so opting in remains one setting rather than two.
- *
- * **This IS the operator's choice, for every environment — recorded as DEC-155**, which reverses
- * DEC-107 on the default and launch posture only. issue #617 also asked for that posture to be an
- * explicit row in production's `app_settings` rather than inherited; it is answered by the
- * decision instead — full payment everywhere, carried by this default, with no per-environment row
- * to set and none to forget.
+ * `depositCents` is $100 (`docs/SPEC.md §2.8.4d`): an unconfigured deploy offers the customer a
+ * deposit on a trip more than `balanceDueDaysBeforeEvent` days out, and the whole quote inside it.
  */
 export const PAYMENT_CONFIG_DEFAULTS: PaymentConfig = {
-  depositMode: "full",
-  depositPercent: 25,
+  depositCents: 10000,
   taxRateBps: 725, // Ohio state sales tax 7.25% (operator-adjustable)
   serviceFeeBps: 300, // 3% of everything but tax (operator-adjustable), untaxed (DEC-196)
-  balanceDueDaysBeforeEvent: 14,
+  balanceDueDaysBeforeEvent: 30,
+  balanceReleaseDaysBeforeEvent: 21,
+  balanceRetryDaysAfterDue: [3, 6],
 };
 
+/** The `app_settings` key for the balance retry days. */
+export const BALANCE_RETRY_DAYS_KEY = "payment.balance_retry_days";
+
+/**
+ * Parse the stored retry days (issue #1254): a comma list of whole days, each at least 1. Absent ⇒
+ * the default, silently. Each entry is trimmed; the result is sorted ascending and deduplicated, so
+ * `"6,3"` reads `[3, 6]` and `"3,3"` reads `[3]`. Any bad entry — `"0"`, `"-1"`, `"3.5"`, `"x"`, an
+ * empty entry, or an empty string — ⇒ the whole list falls back to the default **and a log line**,
+ * as `parseWholeNumberSetting` does for the other settings.
+ *
+ * `normalizeCheckInConfig`'s list rule is not reused: it reads an empty list as "off", and this
+ * setting has no "off" — a balance that is never retried is `"1"` with a release date, not a blank.
+ */
+export function parseBalanceRetryDays(raw: string | null | undefined): number[] {
+  if (raw === null || raw === undefined) return [...PAYMENT_CONFIG_DEFAULTS.balanceRetryDaysAfterDue];
+  const entries = raw.split(",");
+  const days = entries.every((e) => /^\s*\d+\s*$/.test(e) && Number(e.trim()) >= 1)
+    ? [...new Set(entries.map((e) => Number(e.trim())))].sort((a, b) => a - b)
+    : null;
+  if (days !== null) return days;
+  logSwallowed(
+    `settings:${BALANCE_RETRY_DAYS_KEY}`,
+    new Error(`${BALANCE_RETRY_DAYS_KEY} is ${JSON.stringify(raw)}, not a comma list of whole days`),
+    "the balance retries read as the default — declined charges are retried on the default days, not the ones the operator set",
+  );
+  return [...PAYMENT_CONFIG_DEFAULTS.balanceRetryDaysAfterDue];
+}
+
+/** The `app_settings` key for the deposit. */
+export const DEPOSIT_CENTS_KEY = "payment.deposit_cents";
+
+/**
+ * Parse the stored deposit. Absent ⇒ the default, silently; whole cents ⇒ that; anything else
+ * (`"abc"`, `"-5"`, `"10.5"`) ⇒ the default **and a log line**, so a typo in a hand-written SQL row
+ * does not turn the deposit off without anyone knowing. Same shape as `parseBookingCutoffHours`.
+ */
+export function parseDepositCents(raw: string | null | undefined): number {
+  return parseWholeNumberSetting(
+    raw,
+    DEPOSIT_CENTS_KEY,
+    PAYMENT_CONFIG_DEFAULTS.depositCents,
+    "the deposit reads as the default — customers are offered it, not the figure the operator set",
+  );
+}
+
+/** Is a deposit offered on this quote? Not inside the balance window, and only when the quote is
+ *  more than the deposit — a quote at or below it is just paid whole. */
+export function depositOffered(
+  totalCents: number,
+  depositCents: number,
+  insideBalanceWindow: boolean,
+): boolean {
+  return !insideBalanceWindow && totalCents > depositCents;
+}
+
+/** What is due now: the deposit, or the whole quote (no deposit, or a quote at or below it). The one
+ *  home of the split — `priceBooking` charges it and `totalsFor` shows it. */
+export function dueNowCents(totalCents: number, depositCents: number | null): number {
+  return depositCents === null || totalCents <= depositCents ? totalCents : depositCents;
+}
 /** Tax on a taxable amount, integer cents (round half-up). Pure — used by the charge builder. */
 export function taxCentsFor(taxableCents: number, taxRateBps: number): number {
   return Math.round((taxableCents * taxRateBps) / 10000);
@@ -75,24 +127,6 @@ export function taxCentsFor(taxableCents: number, taxRateBps: number): number {
  *  from live config. */
 export function feeCentsFor(baseCents: number, serviceFeeBps: number): number {
   return Math.round((baseCents * serviceFeeBps) / 10000);
-}
-
-/**
- * The amount to charge NOW given the config: full price+tax+fee, or the deposit share.
- * `feeCents` is the frozen service fee (DEC-134) — like tax, it is collected IN FULL with
- * the now-charge so the balance carries none. Callers on the pre-fee hosted paths pass 0.
- */
-export function chargeNowCents(
-  priceCents: number,
-  taxCents: number,
-  feeCents: number,
-  config: PaymentConfig,
-): number {
-  if (config.depositMode === "full") return priceCents + taxCents + feeCents;
-  // Deposit is a share of the price; tax + fee are collected in full with the deposit charge
-  // so the balance row carries zero of either (keeps Σ tax == total tax per reservation, and
-  // the fee one-shot — the later balance charge carries NO second fee).
-  return Math.round((priceCents * config.depositPercent) / 100) + taxCents + feeCents;
 }
 
 /**
@@ -158,7 +192,7 @@ export const tookMoney = (p: { status: PaymentStatus }): boolean =>
  * recompute of the deposit share. `total = fare + tax`, minus what every payment that took
  * money contributed toward fare+tax (the deposit carried all the tax, so the residual is pure
  * principal). The `Payment` entity mandates balance be derived, not stored, so this is
- * the ONE authority: immune to a `depositPercent`/price change between deposit and
+ * the ONE authority: immune to a `depositCents`/price change between deposit and
  * balance. `<= 0` means nothing owed.
  *
  * **A refund never changes the balance (issue #841).** Money that went back to the card lowers
@@ -166,18 +200,17 @@ export const tookMoney = (p: { status: PaymentStatus }): boolean =>
  * the way still owes nothing. Each row counts at its gross amount, whatever its refund status
  * (`tookMoney`), and `refundedCents` is not read. This replaces the tip-first netting the
  * balance used since #522, under which a refund past the tip and fee re-opened a balance that
- * `createBalanceCheckout` would then charge. A refund that comes off the balance instead is
+ * the balance charge would then collect. A refund that comes off the balance instead is
  * issue #1222.
  *
- * **`fareCents` is the composed party fare** — `Event.price` base **+** the frozen
- * `Reservation.extrasCents` (#474, DEC-107 amend), NOT the bare base. The base alone
- * undercollects a deposit-mode balance by `extras + tax(extras)`; callers must pass
- * `event.price + (reservation.extrasCents ?? 0)`. Extras are frozen at booking, never
- * recomputed from a live Offering — that would break the "never a config recompute" rule.
+ * **The total is read off the booking's frozen invoice (issue #1241)** — `chargedFareCents(invoice)`
+ * (fare + extras − the fare's share of the discount) plus `fareTaxCents(invoice)` (the tax on that
+ * fare, at the rate frozen on the invoice). Nothing here reads today's tax-rate setting, so a rate
+ * change never moves a booked customer's balance; and the insurance's tax, carved out of the first
+ * payment by `flexCarveOutCents`, lands on the same cent because both read `fareTaxCents`.
  */
 export function balanceOwedCents(
-  fareCents: number,
-  taxRateBps: number,
+  invoice: BookingInvoice,
   // `PaymentStatus`, not `string`. The body branches on status, and with a bare `string`
   // the branch is a DENY-list: any value that isn't `"refunded"` counts as fully paid.
   // The column carries no CHECK constraint (deliberately — DEC-131), so the compiler is
@@ -191,7 +224,7 @@ export function balanceOwedCents(
     flexCents?: number;
   }[],
 ): number {
-  const total = fareCents + taxCentsFor(fareCents, taxRateBps);
+  const total = chargedFareCents(invoice) + fareTaxCents(invoice);
   // Net the GRATUITY, the SERVICE FEE and the INSURANCE out of each amount taken (DEC-124 /
   // DEC-134 / 16.8): the tip is crew money, the fee a one-shot surcharge, insurance a flat
   // untaxed $30 — none is part of fare+tax, so counting any as "paid toward balance" would
@@ -218,8 +251,8 @@ export function balanceOwedCents(
  *
  * **Deliberately a separate function rather than a `status` parameter on `balanceOwedCents`.**
  * The two non-presentation callers already refuse a cancelled reservation before they reach the
- * arithmetic — `createBalanceCheckout` returns `not_active` (`create-balance-checkout.ts`), and
- * the balance webhook early-returns on "cancelled or unpriced" (`booking-webhook.ts`). So folding
+ * arithmetic — `balancePayable` returns `not_active` (`balance-charge.ts`), and
+ * `recordBalancePayment` flags a "cancelled or unpriced" booking (`balance-charge.ts`). So folding
  * the status in there would be dead code, not a fix.
  *
  * The reason to keep them apart is the one that survives that: `balanceOwedCents` answers "what
@@ -231,10 +264,9 @@ export function balanceOwedCents(
  */
 export function balanceDueCents(
   status: ReservationStatus,
-  fareCents: number,
-  taxRateBps: number,
-  payments: Parameters<typeof balanceOwedCents>[2],
+  invoice: BookingInvoice | undefined,
+  payments: Parameters<typeof balanceOwedCents>[1],
 ): number {
-  if (status !== "booked") return 0;
-  return balanceOwedCents(fareCents, taxRateBps, payments);
+  if (status !== "booked" || !invoice) return 0;
+  return balanceOwedCents(invoice, payments);
 }

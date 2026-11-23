@@ -7,6 +7,7 @@ import { createDeparturePaymentIntent } from "@core/reservations/create-departur
 import { canonicalizePhone } from "@core/customers/identity.js";
 import { isHolderToken, mintHolderToken } from "@core/reservations/holder-token.js";
 import { cookies } from "next/headers";
+import { PRICE_CHANGED_MESSAGE } from "../../../../components/checkout/money";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 // Deliberately NOT defined in this file: every export of a `"use server"` module is a
@@ -40,15 +41,18 @@ export interface StartElementsCheckoutInput {
   /** The due-now total the page showed, in cents (issue #1217). Required, so the form cannot omit
    *  it; the server refuses the checkout if it is not the total it is about to freeze. */
   shownDueNowCents: number;
+  /** The customer chose to pay the deposit rather than the whole quote (issue #1250). A choice, not an
+   *  order: the server charges the whole quote inside the balance window whatever is posted here. */
+  payDeposit: boolean;
+  /** The balance the page showed, in cents (issue #1250) — the quote less what is due now, 0 when the
+   *  whole quote is. Required for the same reason as `shownDueNowCents`: refused if it is not the
+   *  balance the server is about to freeze. */
+  shownBalanceCents: number;
 }
 
 export type StartElementsCheckoutResult =
   | { ok: true; clientSecret: string }
   | { ok: false; message: string };
-
-/** One copy for the reason map and the gate in `startElementsCheckout` (issue #1217). */
-const PRICE_CHANGED_MESSAGE =
-  "The price changed while you were checking out — reload to see the new total. You have not been charged.";
 
 const REASON_MESSAGES: Record<string, string> = {
   offering_missing: "That cruise isn't bookable anymore. Head back and pick another.",
@@ -189,10 +193,11 @@ export async function startElementsCheckout(
     };
   }
 
-  // The total the page showed must be a whole number of cents (issue #1217). A post without one —
-  // missing, a string, NaN, a fraction — is refused with the same words as a changed price, before
-  // any dependency is touched. The comparison with the real total is the core's.
-  if (!Number.isInteger(input.shownDueNowCents)) {
+  // The total the page showed, and the balance it showed, must be whole numbers of cents (issues
+  // #1217, #1250). A post without one — missing, a string, NaN, a fraction — is refused with the same
+  // words as a changed price, before any dependency is touched. The comparison with the real figures
+  // is the core's.
+  if (!Number.isInteger(input.shownDueNowCents) || !Number.isInteger(input.shownBalanceCents)) {
     return { ok: false, message: PRICE_CHANGED_MESSAGE };
   }
 
@@ -249,6 +254,9 @@ async function startCheckout(
       // `=== true`: a raw post carrying anything else buys no insurance, rather than a truthy string.
       hasFlex: input.hasFlex === true,
       shownDueNowCents: input.shownDueNowCents,
+      // `=== true`, like `hasFlex`: anything else is pay in full.
+      payDeposit: input.payDeposit === true,
+      shownBalanceCents: input.shownBalanceCents,
       customerName,
       ...(email ? { email } : {}),
       // Store the CANONICAL form so the reservation's phone and the customer's identity key

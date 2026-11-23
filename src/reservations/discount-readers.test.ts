@@ -6,13 +6,12 @@
  * as owing the discount plus its tax, and the pane offers a balance link to collect it.
  */
 import { describe, expect, it } from "vitest";
-import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { BookingInvoice, Event, Payment, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { buildReservationDetail, buildUnpaidBookingDetail } from "./calendar-detail.js";
-import { createBalanceCheckout } from "./create-balance-checkout.js";
 import { chargedFareCents } from "./discount.js";
 import { payLinkMoney } from "./pay-by-link.js";
+import { PAYMENT_CONFIG_DEFAULTS } from "./payment-config.js";
 import { buildPurchaseRows } from "./purchases-view.js";
 
 const EVENT_ID = asId<"EventId">("m-evt-1");
@@ -85,7 +84,6 @@ describe("a discounted booking paid in full owes nothing", () => {
       event,
       payments: [paidInFull],
       gratuities: [],
-      taxRateBps: TAX_BPS,
     });
     expect(v.money.balanceCents).toBe(0);
     expect(v.money.fareCents).toBe(39900);
@@ -97,19 +95,9 @@ describe("a discounted booking paid in full owes nothing", () => {
       reservations: [booked],
       eventsById: new Map([[String(EVENT_ID), event]]),
       paymentsByReservation: new Map([[String(RESV_ID), [paidInFull]]]),
-      taxRateBps: TAX_BPS,
+      now: "2026-06-01T12:00:00.000Z",
     });
     expect(row?.balanceCents).toBe(0);
-  });
-
-  it("and no balance link can be minted for it", async () => {
-    const repo = new InMemoryRepository();
-    await repo.saveEvent(event);
-    await repo.saveReservation(booked);
-    await repo.savePayment(paidInFull);
-    await repo.setPaymentConfig({ taxRateBps: TAX_BPS }, "2026-07-01T12:00:00Z");
-    const res = await createBalanceCheckout(repo, {} as never, RESV_ID, { successUrl: "", cancelUrl: "" });
-    expect(res).toEqual({ ok: false, reason: "no_balance" });
   });
 });
 
@@ -130,7 +118,7 @@ describe("an insured booking whose discount went past the fare (16.8)", () => {
   const paid: Payment = { ...paidInFull, amountCents: 2205, taxCents: 145, gratuityCents: 0, serviceFeeCents: 60, flexCents: 2145 };
 
   it("the pane shows the fare's share of the discount, the insurance charged, and the tax on it", () => {
-    const v = buildReservationDetail({ reservation: insured, event, payments: [paid], gratuities: [], taxRateBps: TAX_BPS });
+    const v = buildReservationDetail({ reservation: insured, event, payments: [paid], gratuities: [] });
     expect(v.money.fareCents).toBe(0);
     expect(v.money.discountCents).toBe(49900);
     expect(v.money.flexCents).toBe(2000);
@@ -145,13 +133,13 @@ describe("an insured booking whose discount went past the fare (16.8)", () => {
       reservations: [insured],
       eventsById: new Map([[String(EVENT_ID), event]]),
       paymentsByReservation: new Map([[String(RESV_ID), [paid]]]),
-      taxRateBps: TAX_BPS,
+      now: "2026-06-01T12:00:00.000Z",
     });
     expect(row?.balanceCents).toBe(0);
   });
 
   it("an uninsured booking reads no insurance", () => {
-    const v = buildReservationDetail({ reservation: booked, event, payments: [paidInFull], gratuities: [], taxRateBps: TAX_BPS });
+    const v = buildReservationDetail({ reservation: booked, event, payments: [paidInFull], gratuities: [] });
     expect(v.money.flexCents).toBe(0);
     expect(v.money.insured).toBe(false);
   });
@@ -167,7 +155,13 @@ describe("an unpaid discounted booking", () => {
   });
 
   it("the payment link's summary carries the discount, and its total is what is charged", () => {
-    const { money } = payLinkMoney(invoice);
+    // Three days out: inside the balance window, so the frozen figures are shown as they are.
+    const { money } = payLinkMoney(invoice, {
+      config: PAYMENT_CONFIG_DEFAULTS,
+      date: "2026-07-04",
+      time: "13:30",
+      asOf: "2026-07-01T12:00:00.000Z",
+    });
     expect(money.discountCents).toBe(10000);
     // Fare stays the undiscounted figure, the discount is its own row, and the sum is the charge.
     expect(money.fareCents).toBe(49900);

@@ -951,6 +951,256 @@ export function runRepositoryContract(
       expect(got.invoice).toEqual(INVOICE_2);
     });
 
+    // ── The deposit's columns (issue #1250) ─────────────────────────────────────
+    const DUE = "2026-06-01T18:00:00.000Z";
+    const RELEASE = "2026-06-10T18:00:00.000Z";
+
+    it("AC8: recordCheckoutAttempt re-freezes the balance dates with the invoice, and clears them when the attempt has none", async () => {
+      await repo.saveReservation(firstAttempt());
+      await repo.recordCheckoutAttempt(
+        { ...firstAttempt(), balanceDueAt: DUE, balanceReleaseAt: RELEASE, updatedAt: NOW },
+        "pi_paid",
+      );
+      const set = (await repo.getReservation(rid("pend-1")))!;
+      expect(set.balanceDueAt).toBe(DUE);
+      expect(set.balanceReleaseAt).toBe(RELEASE);
+
+      // A retry that pays in full leaves no balance, so the dates go with it.
+      await repo.recordCheckoutAttempt({ ...firstAttempt(), updatedAt: NOW }, null);
+      const cleared = (await repo.getReservation(rid("pend-1")))!;
+      expect(cleared.balanceDueAt).toBeUndefined();
+      expect(cleared.balanceReleaseAt).toBeUndefined();
+    });
+
+    it("AC9: recordCheckoutAttempt stores the provider customer once and keeps the first", async () => {
+      await repo.saveReservation(firstAttempt());
+      await repo.recordCheckoutAttempt({ ...firstAttempt(), stripeCustomerId: "cus_first", updatedAt: NOW }, "pi_paid");
+      expect((await repo.getReservation(rid("pend-1")))!.stripeCustomerId).toBe("cus_first");
+
+      // Neither a different id nor an attempt without one replaces it.
+      await repo.recordCheckoutAttempt({ ...firstAttempt(), stripeCustomerId: "cus_second", updatedAt: NOW }, null);
+      await repo.recordCheckoutAttempt({ ...firstAttempt(), updatedAt: NOW }, null);
+      expect((await repo.getReservation(rid("pend-1")))!.stripeCustomerId).toBe("cus_first");
+    });
+
+    // From review (2026-11-10): the customer is stored the moment it is created, before the intent
+    // is minted, so a retry after a failed mint finds it on the row rather than re-sending
+    // `customer_<reservationId>` with the restated name — which Stripe refuses.
+    it("AC9: saveStripeCustomerId stores the provider customer on the row and keeps the first", async () => {
+      await repo.saveReservation(firstAttempt());
+      await repo.saveStripeCustomerId(rid("pend-1"), "cus_first");
+      expect((await repo.getReservation(rid("pend-1")))!.stripeCustomerId).toBe("cus_first");
+
+      await repo.saveStripeCustomerId(rid("pend-1"), "cus_second");
+      expect((await repo.getReservation(rid("pend-1")))!.stripeCustomerId).toBe("cus_first");
+    });
+
+    // ── The scheduled balance charge (issue #1254) ──────────────────────────────
+    // The job's reads and claims, on both adapters: the attempt table's foreign key lives only in
+    // Postgres, so the double has to refuse a missing booking itself (parity audit S3-13).
+    describe("the scheduled balance charge (issue #1254)", () => {
+      const RELEASE = "2026-06-10T12:00:00.000Z";
+      const booked = (id: string, over: Partial<Reservation> = {}): Reservation =>
+        reservation({
+          id: rid(id),
+          eventId: asId<"EventId">(`evt-${id}`),
+          source: "muster",
+          status: "booked",
+          balanceReleaseAt: RELEASE,
+          ...over,
+        });
+
+      it("AC1: listBalancesDue returns booked rows whose due date has come and whose release has not, by due date then id", async () => {
+        await repo.saveReservation(booked("due-late", { balanceDueAt: "2026-06-01T10:00:00.000Z" }));
+        await repo.saveReservation(booked("due-now", { balanceDueAt: NOW }));
+        await repo.saveReservation(booked("due-b", { balanceDueAt: "2026-05-30T09:00:00.000Z" }));
+        await repo.saveReservation(booked("due-a", { balanceDueAt: "2026-05-30T09:00:00.000Z" }));
+        await repo.saveReservation(booked("future", { balanceDueAt: "2026-06-01T12:00:01.000Z" }));
+        await repo.saveReservation(
+          booked("released", { balanceDueAt: "2026-05-20T12:00:00.000Z", balanceReleaseAt: NOW }),
+        );
+        await repo.saveReservation(
+          booked("cancelled", { balanceDueAt: "2026-05-30T09:00:00.000Z", status: "cancelled" }),
+        );
+        await repo.saveReservation(
+          booked("pending", { balanceDueAt: "2026-05-30T09:00:00.000Z", status: "pending", eventId: null }),
+        );
+        const { balanceReleaseAt: _r, ...noBalance } = booked("paid-whole");
+        await repo.saveReservation(noBalance);
+
+        const due = await repo.listBalancesDue(NOW);
+        expect(due.map((r) => String(r.id))).toEqual(["due-a", "due-b", "due-late", "due-now"]);
+      });
+
+      it("AC7: claimBalanceAttempt is true once per attempt, and a second claim of it is false", async () => {
+        await repo.saveReservation(booked("r1", { balanceDueAt: NOW }));
+        expect(await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: NOW })).toBe(true);
+        expect(await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: NOW })).toBe(false);
+        expect(await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 1, at: NOW })).toBe(true);
+        expect(await repo.listBalanceAttempts(rid("r1"))).toEqual([
+          { reservationId: rid("r1"), attempt: 0, attemptedAt: NOW },
+          { reservationId: rid("r1"), attempt: 1, attemptedAt: NOW },
+        ]);
+      });
+
+      it("AC7: finishBalanceAttempt records the outcome; releaseBalanceAttempt gives the claim back", async () => {
+        await repo.saveReservation(booked("r1", { balanceDueAt: NOW }));
+        await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 1, at: NOW });
+        await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: NOW });
+        await repo.finishBalanceAttempt({
+          reservationId: rid("r1"),
+          attempt: 0,
+          outcome: "declined",
+          declineCode: "card_declined",
+        });
+        await repo.finishBalanceAttempt({ reservationId: rid("r1"), attempt: 1, outcome: "needs_approval" });
+        await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 2, at: NOW });
+        await repo.releaseBalanceAttempt({ reservationId: rid("r1"), attempt: 2 });
+
+        // Ordered by attempt, whatever order they were claimed in.
+        expect(await repo.listBalanceAttempts(rid("r1"))).toEqual([
+          { reservationId: rid("r1"), attempt: 0, attemptedAt: NOW, outcome: "declined", declineCode: "card_declined" },
+          { reservationId: rid("r1"), attempt: 1, attemptedAt: NOW, outcome: "needs_approval" },
+        ]);
+        expect(await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 2, at: NOW })).toBe(true);
+      });
+
+      it("AC7: a claim for a reservation that does not exist is refused", async () => {
+        await expect(
+          repo.claimBalanceAttempt({ reservationId: rid("ghost"), attempt: 0, at: NOW }),
+        ).rejects.toThrow();
+      });
+
+      // The purchases list's Owed column reads every booking's last failure in one pass (issue #1142).
+      it("issue #1142 AC6: listAllBalanceAttempts returns every attempt, ordered by reservation then attempt", async () => {
+        await repo.saveReservation(booked("r-a", { balanceDueAt: NOW }));
+        await repo.saveReservation(booked("r-b", { balanceDueAt: NOW }));
+        await repo.claimBalanceAttempt({ reservationId: rid("r-b"), attempt: 1, at: NOW });
+        await repo.claimBalanceAttempt({ reservationId: rid("r-a"), attempt: 0, at: NOW });
+        await repo.claimBalanceAttempt({ reservationId: rid("r-b"), attempt: 0, at: NOW });
+        await repo.finishBalanceAttempt({
+          reservationId: rid("r-b"),
+          attempt: 0,
+          outcome: "declined",
+          declineCode: "card_declined",
+        });
+        await repo.finishBalanceAttempt({ reservationId: rid("r-b"), attempt: 1, outcome: "needs_approval" });
+
+        expect(await repo.listAllBalanceAttempts()).toEqual([
+          { reservationId: rid("r-a"), attempt: 0, attemptedAt: NOW },
+          { reservationId: rid("r-b"), attempt: 0, attemptedAt: NOW, outcome: "declined", declineCode: "card_declined" },
+          { reservationId: rid("r-b"), attempt: 1, attemptedAt: NOW, outcome: "needs_approval" },
+        ]);
+      });
+
+      it("AC1: saveBalancePaymentIntentId stores the balance intent and appends it to the row's intents once", async () => {
+        await repo.saveReservation(booked("r1", { balanceDueAt: NOW, paymentIntentIds: ["pi_dep"] }));
+        await repo.saveBalancePaymentIntentId(rid("r1"), "pi_bal");
+        await repo.saveBalancePaymentIntentId(rid("r1"), "pi_bal");
+
+        const got = (await repo.getReservation(rid("r1")))!;
+        expect(got.balancePaymentIntentId).toBe("pi_bal");
+        expect(got.paymentIntentIds).toEqual(["pi_dep", "pi_bal"]);
+        expect(String((await repo.getReservationByPaymentIntentId("pi_bal"))!.id)).toBe("r1");
+      });
+
+      it("AC1: a second saveBalancePaymentIntentId overwrites the first", async () => {
+        await repo.saveReservation(booked("r1", { balanceDueAt: NOW, paymentIntentIds: ["pi_dep"] }));
+        await repo.saveBalancePaymentIntentId(rid("r1"), "pi_bal");
+        await repo.saveBalancePaymentIntentId(rid("r1"), "pi_bal_2");
+
+        const got = (await repo.getReservation(rid("r1")))!;
+        expect(got.balancePaymentIntentId).toBe("pi_bal_2");
+        expect(got.paymentIntentIds).toEqual(["pi_dep", "pi_bal", "pi_bal_2"]);
+      });
+
+      it("AC1: a whole-row save neither sets nor clears the balance intent", async () => {
+        await repo.saveReservation(booked("r1", { balanceDueAt: NOW, balancePaymentIntentId: "pi_forged" }));
+        expect((await repo.getReservation(rid("r1")))!.balancePaymentIntentId).toBeUndefined();
+
+        await repo.saveBalancePaymentIntentId(rid("r1"), "pi_bal");
+        const { balancePaymentIntentId: _b, ...withoutIt } = (await repo.getReservation(rid("r1")))!;
+        await repo.saveReservation({ ...withoutIt, customerName: "Renamed" });
+        expect((await repo.getReservation(rid("r1")))!.balancePaymentIntentId).toBe("pi_bal");
+      });
+
+      // DEC-202: a claim whose run died before finishing is taken over once it is older than an hour.
+      // The adapter is handed `staleBefore` (the core's `now` minus the reclaim age) and reclaims only
+      // an unfinished row claimed strictly before it.
+      describe("reclaiming an unfinished attempt (DEC-202)", () => {
+        /** `NOW` minus one hour: what the core passes as `staleBefore` for a run at `NOW`. */
+        const STALE_BEFORE = "2026-06-01T11:00:00.000Z";
+        const OLD = "2026-06-01T10:30:00.000Z";
+
+        it("AC7: an unfinished claim not older than staleBefore is not reclaimed", async () => {
+          await repo.saveReservation(booked("r1", { balanceDueAt: NOW }));
+          const fresh = "2026-06-01T11:30:00.000Z";
+          await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: fresh, staleBefore: fresh });
+          // Exactly at staleBefore is not before it.
+          await repo.claimBalanceAttempt({
+            reservationId: rid("r1"),
+            attempt: 1,
+            at: STALE_BEFORE,
+            staleBefore: STALE_BEFORE,
+          });
+
+          expect(
+            await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: NOW, staleBefore: STALE_BEFORE }),
+          ).toBe(false);
+          expect(
+            await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 1, at: NOW, staleBefore: STALE_BEFORE }),
+          ).toBe(false);
+          expect(await repo.listBalanceAttempts(rid("r1"))).toEqual([
+            { reservationId: rid("r1"), attempt: 0, attemptedAt: fresh },
+            { reservationId: rid("r1"), attempt: 1, attemptedAt: STALE_BEFORE },
+          ]);
+        });
+
+        it("AC7: an unfinished claim older than staleBefore is reclaimed exactly once, its attempted_at reset", async () => {
+          await repo.saveReservation(booked("r1", { balanceDueAt: NOW }));
+          await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: OLD, staleBefore: OLD });
+
+          const reclaim = () =>
+            repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt: 0, at: NOW, staleBefore: STALE_BEFORE });
+          // Two reclaimers at the same moment: one winner.
+          const both = await Promise.all([reclaim(), reclaim()]);
+          expect([...both].sort()).toEqual([false, true]);
+          // The reset row is fresh now, so a third reclaimer at the same moment loses too.
+          expect(await reclaim()).toBe(false);
+
+          expect(await repo.listBalanceAttempts(rid("r1"))).toEqual([
+            { reservationId: rid("r1"), attempt: 0, attemptedAt: NOW },
+          ]);
+        });
+
+        it("AC7: a finished claim is never reclaimed, whatever its outcome and however old", async () => {
+          await repo.saveReservation(booked("r1", { balanceDueAt: NOW }));
+          for (const attempt of [0, 1, 2]) {
+            await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt, at: OLD, staleBefore: OLD });
+          }
+          await repo.finishBalanceAttempt({ reservationId: rid("r1"), attempt: 0, outcome: "succeeded" });
+          await repo.finishBalanceAttempt({
+            reservationId: rid("r1"),
+            attempt: 1,
+            outcome: "declined",
+            declineCode: "card_declined",
+          });
+          await repo.finishBalanceAttempt({ reservationId: rid("r1"), attempt: 2, outcome: "needs_approval" });
+
+          for (const attempt of [0, 1, 2]) {
+            expect(
+              await repo.claimBalanceAttempt({ reservationId: rid("r1"), attempt, at: NOW, staleBefore: NOW }),
+            ).toBe(false);
+          }
+          expect(await repo.listBalanceAttempts(rid("r1"))).toEqual([
+            { reservationId: rid("r1"), attempt: 0, attemptedAt: OLD, outcome: "succeeded" },
+            { reservationId: rid("r1"), attempt: 1, attemptedAt: OLD, outcome: "declined", declineCode: "card_declined" },
+            { reservationId: rid("r1"), attempt: 2, attemptedAt: OLD, outcome: "needs_approval" },
+          ]);
+        });
+      });
+    });
+
     // ── checkout_attempts — the count the screen actually claims to show (15.9, issue #977) ──
     // `/admin/abandonment` has always said "Card form counts payment attempts" while deriving that
     // number from `paymentIntentIds.length`. 15.8 made the two disagree: a retry that reuses its
@@ -1097,6 +1347,17 @@ export function runRepositoryContract(
       expect(await repo.listEvents()).toHaveLength(0); // nothing materialized
     });
 
+    it("AC8: savePendingIfHullFree writes the balance dates the row was priced with (issue #1250)", async () => {
+      const res = await repo.savePendingIfHullFree(
+        pendingRow({ balanceDueAt: "2026-06-01T18:00:00.000Z", balanceReleaseAt: "2026-06-10T18:00:00.000Z" }),
+        SINCE,
+      );
+      expect(res.result).toBe("won");
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.balanceDueAt).toBe("2026-06-01T18:00:00.000Z");
+      expect(got.balanceReleaseAt).toBe("2026-06-10T18:00:00.000Z");
+    });
+
     it("savePendingIfHullFree: LOSES against a live pending row measured by the RIVAL's hold minutes (criterion 4, DEC-161)", async () => {
       // 13:30 with 120 hold minutes occupies the hull to 15:30. Measured by its 100-minute trip it
       // would free the boat at 15:10 and a 15:15 sale would go through — the SPEC's worked case.
@@ -1227,6 +1488,20 @@ export function runRepositoryContract(
       const stored = (await repo.getReservation(rid("pend-1")))!;
       expect(String(stored.customerId)).toBe("cust-conf");
       expect(stored.extrasCents).toBe(6000);
+    });
+
+    it("AC11: bookPendingIfHullFree writes the saved card from the confirm patch (issue #1250)", async () => {
+      await repo.saveReservation(pendingRow());
+      const res = await repo.bookPendingIfHullFree(
+        rid("pend-1"),
+        slotEvent(),
+        { updatedAt: NOW, stripePaymentMethodId: "pm_card_1" },
+        SINCE,
+      );
+      expect(res.result).toBe("won");
+      if (res.result !== "won") return;
+      expect(res.reservation.stripePaymentMethodId).toBe("pm_card_1");
+      expect((await repo.getReservation(rid("pend-1")))!.stripePaymentMethodId).toBe("pm_card_1");
     });
 
     it("bookPendingIfHullFree: LOSES when a Xola trip already holds the hull (#615) — the row stays pending", async () => {
@@ -2133,21 +2408,82 @@ export function runRepositoryContract(
     });
 
     it("payment config: defaults when unset; per-field override round-trips (DEC-107)", async () => {
-      // `full` is the default since issue #617: an unset environment must charge the whole fare,
-      // not 25% with the remaining 75% owed to a collection mechanism that does not exist.
+      // The fixed deposit (issue #1250) replaced the mode and the percent; the deposit is optional
+      // at checkout, so an unconfigured environment offers $100 and the customer may decline it.
       expect(await repo.getPaymentConfig()).toEqual({
-        depositMode: "full",
-        depositPercent: 25,
+        depositCents: 10000,
         taxRateBps: 725,
         serviceFeeBps: 300,
-        balanceDueDaysBeforeEvent: 14,
+        balanceDueDaysBeforeEvent: 30,
+        balanceReleaseDaysBeforeEvent: 21,
+        balanceRetryDaysAfterDue: [3, 6],
       });
-      await repo.setPaymentConfig({ depositMode: "deposit", taxRateBps: 800 }, "2026-07-12T00:00:00.000Z");
+      await repo.setPaymentConfig({ depositCents: 15000, taxRateBps: 800 }, "2026-07-12T00:00:00.000Z");
       const cfg = await repo.getPaymentConfig();
-      // Deposit mode is still fully supported — it is opt-IN now rather than inherited.
-      expect(cfg.depositMode).toBe("deposit");
+      expect(cfg.depositCents).toBe(15000);
       expect(cfg.taxRateBps).toBe(800);
-      expect(cfg.depositPercent).toBe(25); // untouched field keeps its default
+      expect(cfg.balanceReleaseDaysBeforeEvent).toBe(21); // untouched field keeps its default
+    });
+
+    // The deposit's stored value (issue #1250). The parse's edge cases are `parseDepositCents`'s
+    // (`payment-config.test.ts`); here, one case either side proves the read goes through it.
+    describe("payment config — the deposit and the balance dates (issue #1250)", () => {
+      const AT = "2026-07-12T00:00:00.000Z";
+      afterEach(() => vi.restoreAllMocks());
+
+      it("AC1: no deposit, balance-due or release row reads as 10000, 30 and 21", async () => {
+        const cfg = await repo.getPaymentConfig();
+        expect(cfg.depositCents).toBe(10000);
+        expect(cfg.balanceDueDaysBeforeEvent).toBe(30);
+        expect(cfg.balanceReleaseDaysBeforeEvent).toBe(21);
+      });
+
+      it("AC1: each of the three round-trips its own value", async () => {
+        await repo.setPaymentConfig(
+          { depositCents: 7500, balanceDueDaysBeforeEvent: 45, balanceReleaseDaysBeforeEvent: 28 },
+          AT,
+        );
+        const cfg = await repo.getPaymentConfig();
+        expect(cfg.depositCents).toBe(7500);
+        expect(cfg.balanceDueDaysBeforeEvent).toBe(45);
+        expect(cfg.balanceReleaseDaysBeforeEvent).toBe(28);
+      });
+
+      it("AC2: a stored deposit that is not whole cents reads as 10000 and is logged", async () => {
+        await repo.setPaymentConfig({ depositCents: 10.5 }, AT);
+        const err = vi.spyOn(console, "error").mockImplementation(() => {});
+        expect((await repo.getPaymentConfig()).depositCents).toBe(10000);
+        expect(err).toHaveBeenCalledOnce();
+      });
+
+      it("AC2: a whole deposit is read without a log line", async () => {
+        await repo.setPaymentConfig({ depositCents: 15000 }, AT);
+        const err = vi.spyOn(console, "error").mockImplementation(() => {});
+        expect((await repo.getPaymentConfig()).depositCents).toBe(15000);
+        expect(err).not.toHaveBeenCalled();
+      });
+    });
+
+    // The balance retry days (issue #1254). Their parse's edge cases are `parseBalanceRetryDays`'s
+    // (`payment-config.test.ts`); here, one stored list either side proves both adapters read through it.
+    describe("payment config — the balance retry days (issue #1254)", () => {
+      const AT = "2026-07-12T00:00:00.000Z";
+      afterEach(() => vi.restoreAllMocks());
+
+      it("AC4: no row reads as [3, 6]; a stored list round-trips without a log line", async () => {
+        expect((await repo.getPaymentConfig()).balanceRetryDaysAfterDue).toEqual([3, 6]);
+        await repo.setPaymentConfig({ balanceRetryDaysAfterDue: [2, 5] }, AT);
+        const err = vi.spyOn(console, "error").mockImplementation(() => {});
+        expect((await repo.getPaymentConfig()).balanceRetryDaysAfterDue).toEqual([2, 5]);
+        expect(err).not.toHaveBeenCalled();
+      });
+
+      it("AC4: a stored list that does not parse reads as [3, 6] and is logged", async () => {
+        await repo.setPaymentConfig({ balanceRetryDaysAfterDue: [0] }, AT);
+        const err = vi.spyOn(console, "error").mockImplementation(() => {});
+        expect((await repo.getPaymentConfig()).balanceRetryDaysAfterDue).toEqual([3, 6]);
+        expect(err).toHaveBeenCalledOnce();
+      });
     });
 
     it("booking cutoff: 0 when unset; whole hours round-trip, 0 included (DEC-193)", async () => {

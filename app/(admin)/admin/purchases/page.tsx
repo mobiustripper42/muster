@@ -360,7 +360,7 @@ export default async function AdminPurchases({
                         href={`/admin/calendar/${encodeURIComponent(r.reservationId)}${
                           r.date ? `?date=${r.date}` : ""
                         }`}
-                        className="font-semibold text-ink underline underline-offset-2"
+                        className="whitespace-nowrap font-semibold text-ink underline underline-offset-2"
                       >
                         {r.customerName}
                       </AppLink>

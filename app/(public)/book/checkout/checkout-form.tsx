@@ -30,7 +30,15 @@
  * the Stripe confirm are this form's own, unchanged.
  */
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type FormEvent,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
 import type { Stripe, StripeElements } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { CheckoutSummary } from "../../../../components/checkout/checkout-summary";
@@ -135,6 +143,32 @@ export function CheckoutForm(props: CheckoutFormProps) {
   const whole = props.pay ? props.pay.totals : totalsFor(props.money, tip.tipCents, flexCents);
   const deposit = depositCopy(props.money, whole);
   const payDeposit = deposit !== null && depositChosen;
+
+  // What the customer typed and ticked lives here, not in `InnerForm`: Stripe's `<Elements>` is keyed
+  // on the choice below, so everything inside it remounts on each one (issue #1277).
+  const [contact, setContact] = useState<ContactValues>(
+    props.pay
+      ? { name: props.pay.bookedFor.name, phone: props.pay.bookedFor.phone, email: props.pay.bookedFor.email ?? "" }
+      : { name: "", phone: "", email: "" },
+  );
+  // The cancellation-terms box (issue #1112) — not a waiver, which is its own module.
+  const [agreed, setAgreed] = useState(false);
+  // The terms box gains a line when the deposit becomes what is being paid — by a tile or by a tip
+  // taking the total over the deposit — so a tick given before it is not consent to it: the customer
+  // ticks the terms they read. The one place the tick clears for that.
+  const [wasPayDeposit, setWasPayDeposit] = useState(payDeposit);
+  if (payDeposit !== wasPayDeposit) {
+    setWasPayDeposit(payDeposit);
+    if (payDeposit) setAgreed(false);
+  }
+  // A tile was just chosen and Stripe's form remounts the tiles with it, so the browser drops focus:
+  // the tiles read this once on their next mount and put focus back on the pressed one.
+  const [focusChoice, setFocusChoice] = useState(false);
+  function chooseDeposit(on: boolean) {
+    // Only a press that will remount. A re-tap, or a press before Stripe has loaded, remounts nothing.
+    if (stripePromise && on !== payDeposit) setFocusChoice(true);
+    setDepositChosen(on);
+  }
   // Re-totalled as the tip, the box and the choice change; the payment link's are the frozen price
   // with only the split following the choice — never a fresh price.
   const totals = props.pay
@@ -153,7 +187,13 @@ export function CheckoutForm(props: CheckoutFormProps) {
       dueNowCents={dueNowCents}
       deposit={deposit}
       payDeposit={payDeposit}
-      setDepositChosen={setDepositChosen}
+      setDepositChosen={chooseDeposit}
+      contact={contact}
+      setContact={setContact}
+      agreed={agreed}
+      setAgreed={setAgreed}
+      focusChoice={focusChoice}
+      clearFocusChoice={() => setFocusChoice(false)}
       stripeFailed={stripeFailed}
       {...bridge}
     />
@@ -216,6 +256,14 @@ type InnerProps = CheckoutFormProps & {
   /** The deposit is what is being paid: offered and chosen. */
   payDeposit: boolean;
   setDepositChosen: (on: boolean) => void;
+  /** What the customer typed and ticked, kept by `CheckoutForm` so it survives the remount. */
+  contact: ContactValues;
+  setContact: Dispatch<SetStateAction<ContactValues>>;
+  agreed: boolean;
+  setAgreed: (on: boolean) => void;
+  /** A tile was just chosen: the tiles put focus back on the pressed one when they next mount. */
+  focusChoice: boolean;
+  clearFocusChoice: () => void;
   stripe: Stripe | null;
   elements: StripeElements | null;
   inElements: boolean;
@@ -233,16 +281,29 @@ function PaymentChoice({
   copy,
   payDeposit,
   onChoose,
+  focusOnMount,
+  onFocused,
 }: {
   copy: NonNullable<ReturnType<typeof depositCopy>>;
   payDeposit: boolean;
   onChoose: (deposit: boolean) => void;
+  /** Put focus on the pressed tile, once: set by a press that remounts these tiles (issue #1277). */
+  focusOnMount: boolean;
+  onFocused: () => void;
 }) {
+  const depositTile = useRef<HTMLButtonElement>(null);
+  const fullTile = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!focusOnMount) return;
+    (payDeposit ? depositTile : fullTile).current?.focus();
+    onFocused();
+  }, [focusOnMount, payDeposit, onFocused]);
   return (
     <div className="pb-3" role="group" aria-label="Payment option">
       <div className="grid grid-cols-1 gap-2">
         <button
           type="button"
+          ref={depositTile}
           data-testid="pay-deposit"
           aria-pressed={payDeposit}
           onClick={() => onChoose(true)}
@@ -253,6 +314,7 @@ function PaymentChoice({
         </button>
         <button
           type="button"
+          ref={fullTile}
           data-testid="pay-full"
           aria-pressed={!payDeposit}
           onClick={() => onChoose(false)}
@@ -278,13 +340,7 @@ function BookedFor({ name, phoneLabel }: { name: string; phoneLabel: string }) {
 }
 
 function InnerForm(p: InnerProps) {
-  const [contact, setContact] = useState<ContactValues>(
-    p.pay
-      ? { name: p.pay.bookedFor.name, phone: p.pay.bookedFor.phone, email: p.pay.bookedFor.email ?? "" }
-      : { name: "", phone: "", email: "" },
-  );
-  // The cancellation-terms box (issue #1112) — not a waiver, which is its own module.
-  const [agreed, setAgreed] = useState(false);
+  const { contact, setContact, agreed, setAgreed } = p;
   // "A payment is in flight" is the SCREEN's, not only this form's (issue #1082 part A): the page
   // draws the header's ‹ and the trip card's Change, and they lock in the same render as this body.
   const { locked: submitting, setLocked: setSubmitting } = usePaymentLock();
@@ -446,13 +502,9 @@ function InnerForm(p: InnerProps) {
             <PaymentChoice
               copy={p.deposit}
               payDeposit={p.payDeposit}
-              onChoose={(deposit) => {
-                p.setDepositChosen(deposit);
-                // The terms box gains a line when the choice changes to the deposit, so a tick given
-                // before it is not consent to it — the customer ticks the terms they read. Re-tapping
-                // the tile already chosen leaves the tick alone.
-                if (deposit && !p.payDeposit) setAgreed(false);
-              }}
+              onChoose={p.setDepositChosen}
+              focusOnMount={p.focusChoice}
+              onFocused={p.clearFocusChoice}
             />
           ) : null}
           {p.inElements ? (

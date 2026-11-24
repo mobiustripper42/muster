@@ -50,6 +50,9 @@ export interface ManageView {
    *  `balanceDueAt` (never recomputed from the setting), "Balance due" once that date has passed,
    *  else "due before your trip" (issue #1252). */
   balanceLabel: string;
+  /** The day inside `balanceLabel`, alone, when the label names one (the frozen date still ahead),
+   *  else null — so the page can keep the day on one line (issue #1277). */
+  balanceDueDay: string | null;
   /** The `Pay balance · $552.94` button while the booking can take a balance payment
    *  (`balancePayable`), else null — so a balance the job already collected shows no button (issue
    *  #1254). The form's `Pay $552.94` reads `amountCents`. */
@@ -135,6 +138,7 @@ export function buildManageView(input: ManageViewInput): ManageView {
     paidInFull:
       detail.money.priceKnown && detail.money.paidCents > 0 && detail.money.balanceCents <= 0,
     balanceLabel: balanceLabelOf(input.reservation.balanceDueAt, input.now),
+    balanceDueDay: balanceDueDayOf(input.reservation.balanceDueAt, input.now),
     payBalance: payBalanceOf(input),
   };
 }
@@ -147,6 +151,9 @@ function payBalanceOf(input: ManageViewInput): ManageView["payBalance"] {
     : null;
 }
 
+/** The balance label's text before the day. Held once: the label and the page's two-span render both read it. */
+export const BALANCE_CHARGED_ON = "Balance · charged to your card on ";
+
 /** The balance row's label. A due date still ahead names the day the card is charged; one that has
  *  passed (the charge failed, an admin stopped the auto-cancel, or the trip started owing) reads
  *  "Balance due" — nothing more, by the operator's ruling, since "is charged"
@@ -154,9 +161,17 @@ function payBalanceOf(input: ManageViewInput): ManageView["payBalance"] {
  *  and counts as passed at that instant. */
 function balanceLabelOf(balanceDueAt: string | null | undefined, now: { date: string; time: string }): string {
   if (!balanceDueAt) return "Balance · due before your trip";
+  return balanceDuePassed(balanceDueAt, now) ? "Balance due" : `${BALANCE_CHARGED_ON}${dueDayLabel(balanceDueAt)}`;
+}
+
+/** The day the label names, alone: set only on the branch where the label names one. */
+function balanceDueDayOf(balanceDueAt: string | null | undefined, now: { date: string; time: string }): string | null {
+  return balanceDueAt && !balanceDuePassed(balanceDueAt, now) ? dueDayLabel(balanceDueAt) : null;
+}
+
+function balanceDuePassed(balanceDueAt: string, now: { date: string; time: string }): boolean {
   const due = new Date(balanceDueAt);
   const dueDate = vesselDateOf(due);
   const dueClock = vesselClockOf(due);
-  const passed = dueDate < now.date || (dueDate === now.date && dueClock <= now.time);
-  return passed ? "Balance due" : `Balance · charged to your card on ${dueDayLabel(balanceDueAt)}`;
+  return dueDate < now.date || (dueDate === now.date && dueClock <= now.time);
 }

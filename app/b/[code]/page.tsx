@@ -21,7 +21,7 @@ import { refundOnItsWay } from "@core/reservations/cancel-notice.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
 import { recordBalanceReturn } from "@core/reservations/balance-charge.js";
 import { alertThatNeverThrows } from "@core/reservations/booking-webhook.js";
-import { buildManageView } from "@core/reservations/manage-view.js";
+import { BALANCE_CHARGED_ON, buildManageView } from "@core/reservations/manage-view.js";
 import { customerCancelQuote, manageHref, type CustomerCancelQuote } from "@core/reservations/customer-cancel.js";
 import { cancellationTerms, dollars } from "@core/reservations/refund-terms.js";
 import { AppLink } from "../../../components/ui/app-link";
@@ -305,7 +305,22 @@ export default async function ManagePage({
                         row and never recomputed from the setting; a booking with none states the
                         obligation and claims no mechanism (#617). See `buildManageView`. */}
                     {m.balanceCents > 0 && (
-                      <Row label={view.balanceLabel} value={formatCents(m.balanceCents)} mono strong />
+                      <Row
+                        label={
+                          view.balanceDueDay ? (
+                            // The day stays whole at 375px (issue #1277); the sentence may wrap before it.
+                            <>
+                              {BALANCE_CHARGED_ON}
+                              <span className="whitespace-nowrap">{view.balanceDueDay}</span>
+                            </>
+                          ) : (
+                            view.balanceLabel
+                          )
+                        }
+                        value={formatCents(m.balanceCents)}
+                        mono
+                        strong
+                      />
                     )}
                     {/* Pay it now, with any card (issue #1254): the button while the booking can take
                         a balance payment, then the card form in its place. */}
@@ -513,7 +528,7 @@ function Row({
   strong,
   mono,
 }: {
-  label: string;
+  label: React.ReactNode;
   value: React.ReactNode;
   strong?: boolean;
   mono?: boolean;

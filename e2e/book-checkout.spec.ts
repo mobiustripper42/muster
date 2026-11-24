@@ -29,6 +29,9 @@
  *
  * Runs desktop + 375px (registered in the mobile testMatch).
  */
+import type { Page } from "@playwright/test";
+import { TEST_DATABASE_URL } from "../db/reset-test.js";
+import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import {
   test,
   expect,
@@ -105,6 +108,84 @@ const HANGING_STRIPE_JS = `
     };
   })();
 `;
+
+/** Appended to the stand-in above: keeps the options of every `stripe.elements(options)` call, one
+ *  per mount of the card box (issue #1277). */
+const RECORD_ELEMENTS_CALLS = `
+  (function () {
+    var make = window.Stripe;
+    window.__elementsCalls = [];
+    window.Stripe = function () {
+      var stripe = make();
+      var elements = stripe.elements;
+      stripe.elements = function (options) { window.__elementsCalls.push(options); return elements(options); };
+      return stripe;
+    };
+  })();
+`;
+
+/** Every `stripe.elements` call so far, as the card-saving each asked for: `"off_session"` is the
+ *  deposit's, `"none"` the full payment's (`elementsOptions`, tested in `money.test.ts`). */
+const cardSavingPerMount = (page: Page): Promise<string[]> =>
+  page.evaluate(() =>
+    ((window as unknown as { __elementsCalls?: { setupFutureUsage?: string }[] }).__elementsCalls ?? []).map(
+      (o) => o.setupFutureUsage ?? "none",
+    ),
+  );
+
+/**
+ * Open a checkout and wait until Stripe's form has mounted (issue #1277). Only then does a choice
+ * remount anything, so a test that tapped a tile earlier would pass whatever the remount did.
+ */
+async function openWithStripe(page: Page, url: string): Promise<void> {
+  await page.route("https://js.stripe.com/**", (route) =>
+    route.fulfill({ contentType: "application/javascript", body: HANGING_STRIPE_JS + RECORD_ELEMENTS_CALLS }),
+  );
+  await page.goto(url);
+  await expect(page.getByTestId("agree-terms")).toBeVisible();
+  await expect(page.getByTestId("stripe-loading")).toHaveCount(0);
+}
+
+const TYPED = { name: "Pat Typed", phone: "216-555-0144", email: "pat@example.test" };
+const contactFields = (page: Page) => ({
+  name: page.getByPlaceholder("Full name"),
+  phone: page.getByPlaceholder(/^Mobile/),
+  email: page.getByPlaceholder("Email"),
+});
+
+async function typeContactAndTick(page: Page): Promise<void> {
+  const fields = contactFields(page);
+  await fillHydrated(fields.name, TYPED.name);
+  await fillHydrated(fields.phone, TYPED.phone);
+  await fillHydrated(fields.email, TYPED.email);
+  await setCheckedHydrated(page.getByTestId("agree-terms"), true);
+}
+
+async function expectContactKept(page: Page): Promise<void> {
+  const fields = contactFields(page);
+  await expect(fields.name).toHaveValue(TYPED.name);
+  await expect(fields.phone).toHaveValue(TYPED.phone);
+  await expect(fields.email).toHaveValue(TYPED.email);
+}
+
+/** Choose a payment tile and wait until it is the one chosen. */
+async function chooseTile(page: Page, tile: "pay-deposit" | "pay-full"): Promise<void> {
+  await clickHydrated(page.getByTestId(tile));
+  await expect(page.getByTestId(tile)).toHaveAttribute("aria-pressed", "true");
+}
+
+/**
+ * A deposit between the 15% tip's total ($627.25) and the 20% tip's ($652.94), so the tip decides
+ * whether one is offered (issue #1277). `resetAndSeed` wipes `app_settings`.
+ */
+async function setDepositBetweenTipTotals(): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    await repo.setPaymentConfig({ depositCents: 64000 }, new Date().toISOString());
+  } finally {
+    await repo.close();
+  }
+}
 
 test.describe("public /book/checkout", () => {
   test.beforeEach(async () => {
@@ -413,6 +494,107 @@ test.describe("public /book/checkout", () => {
       await expect(payBar(page)).toHaveText(/^Total\s*\$652\.94$/);
       await expect(page.getByTestId("summary-due-now")).toHaveCount(0);
       await expect(page.getByText("Balance · due before your trip")).toHaveCount(0);
+    });
+
+    /**
+     * Switching between the deposit and the full payment (issue #1277): the card box remounts for
+     * the new choice, and what the customer typed, ticked and focused outlives it.
+     */
+    test("issue #1277 AC1: choosing Pay in full keeps the typed name, mobile and email, and the tick", async ({ page }) => {
+      await openWithStripe(page, OUTSIDE_CHECKOUT);
+      await expect(page.getByTestId("pay-deposit")).toHaveAttribute("aria-pressed", "true");
+      await typeContactAndTick(page);
+
+      await chooseTile(page, "pay-full");
+
+      await expectContactKept(page);
+      await expect(page.getByTestId("agree-terms")).toBeChecked();
+    });
+
+    test("issue #1277 AC2: choosing Pay deposit keeps the typed name, mobile and email, and clears the tick", async ({ page }) => {
+      await openWithStripe(page, OUTSIDE_CHECKOUT);
+      await chooseTile(page, "pay-full");
+      await typeContactAndTick(page);
+
+      await chooseTile(page, "pay-deposit");
+
+      await expectContactKept(page);
+      await expect(page.getByTestId("agree-terms")).not.toBeChecked();
+    });
+
+    for (const tile of ["pay-deposit", "pay-full"] as const) {
+      test(`issue #1277 AC3: re-tapping ${tile} when it is already chosen leaves the fields and the tick`, async ({ page }) => {
+        await openWithStripe(page, OUTSIDE_CHECKOUT);
+        await chooseTile(page, tile);
+        await typeContactAndTick(page);
+
+        await chooseTile(page, tile);
+
+        await expectContactKept(page);
+        await expect(page.getByTestId("agree-terms")).toBeChecked();
+      });
+    }
+
+    test("issue #1277 AC4: a tile chosen with Enter keeps the keyboard focus, either way", async ({ page }) => {
+      await openWithStripe(page, OUTSIDE_CHECKOUT);
+
+      for (const tile of ["pay-full", "pay-deposit"]) {
+        await page.getByTestId(tile).focus();
+        await page.keyboard.press("Enter");
+        await expect(page.getByTestId(tile)).toHaveAttribute("aria-pressed", "true");
+        await expect(page.getByTestId(tile)).toBeFocused();
+      }
+    });
+
+    /** The focus goes back once, for the press that remounted. A tip that takes the choice away and
+     *  brings it back mounts the tiles afresh, which is where a note left over would show. */
+    test("issue #1277 AC4: no tile takes focus on page load, after a re-tap, or a second time after a choice", async ({ page }) => {
+      await setDepositBetweenTipTotals();
+      const tiles = ["pay-deposit", "pay-full"];
+      const expectNoTileFocused = async () => {
+        for (const tile of tiles) await expect(page.getByTestId(tile)).not.toBeFocused();
+      };
+      const mountTilesAfresh = async () => {
+        await clickHydrated(page.getByTestId("tip-1500"));
+        await expect(page.getByTestId("pay-full")).toHaveCount(0);
+        await clickHydrated(page.getByTestId("tip-2000"));
+        await expect(page.getByTestId("pay-full")).toBeVisible();
+      };
+
+      await openWithStripe(page, OUTSIDE_CHECKOUT);
+      await expectNoTileFocused();
+
+      await chooseTile(page, "pay-deposit"); // already chosen: a re-tap
+      await mountTilesAfresh();
+      await expectNoTileFocused();
+
+      await chooseTile(page, "pay-full");
+      await mountTilesAfresh();
+      await expectNoTileFocused();
+    });
+
+    test("issue #1277 AC6: each choice remounts the card box with that choice's options", async ({ page }) => {
+      await openWithStripe(page, OUTSIDE_CHECKOUT);
+      await expect.poll(() => cardSavingPerMount(page)).toEqual(["off_session"]);
+
+      await chooseTile(page, "pay-full");
+      await expect.poll(() => cardSavingPerMount(page)).toEqual(["off_session", "none"]);
+
+      await chooseTile(page, "pay-deposit");
+      await expect.poll(() => cardSavingPerMount(page)).toEqual(["off_session", "none", "off_session"]);
+    });
+
+    test("issue #1277 AC9: a tip that brings the deposit on offer clears a tick given before it", async ({ page }) => {
+      await setDepositBetweenTipTotals();
+      await openWithStripe(page, OUTSIDE_CHECKOUT);
+      await clickHydrated(page.getByTestId("tip-1500"));
+      await expect(page.getByTestId("pay-deposit")).toHaveCount(0);
+      await setCheckedHydrated(page.getByTestId("agree-terms"), true);
+
+      await clickHydrated(page.getByTestId("tip-2000"));
+
+      await expect(page.getByTestId("pay-deposit")).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByTestId("agree-terms")).not.toBeChecked();
     });
   });
 

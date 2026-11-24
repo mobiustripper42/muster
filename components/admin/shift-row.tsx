@@ -3,9 +3,9 @@ import { Card } from "../ui/card";
 import { Select } from "../ui/input";
 import { SubmitButton } from "../ui/submit-button";
 import { SeatPips, AssignedCrew } from "./seat-pips";
+import { VesselLabel } from "./vessel-label";
 import type { AllShiftsRow } from "@core/admin/all-shifts.js";
-import { fmt12 } from "../../app/lib/format";
-import { vesselHueClass } from "../../app/lib/vessel-hue";
+import { fmt12, guestCount } from "../../app/lib/format";
 import { splitAction, mergeAction } from "../../app/(admin)/admin/shifts/actions";
 import type { Mode } from "./shifts-view-types";
 
@@ -84,13 +84,9 @@ export function ShiftRow({
       // a long list. Kept keyed off `shiftId` (matches the React key + split-side
       // ids), so no collisions.
       id={`shiftrow-${row.shiftId}`}
-      // Press cue for the stretched-link row (#250): a calm whole-card background
-      // dip on :active — fires because the row `<AppLink>` is in the card's activation
-      // chain. Background, NOT transform/filter, so it can't collapse the link's
-      // `after:inset-0` overlay (that would establish a containing block).
+      // `stretch-card`: the press cue for the stretched-link row (#250) and the box its link fills.
       edge={selected ? "accent" : "line"}
-      // eslint-disable-next-line muster/layout-only -- the press cue on a stretched-link row: a state fill, the one card that has it
-      className={`relative flex flex-col gap-2 active:bg-accent/10 ${row.cancelled ? "opacity-60" : ""}`}
+      className={`stretch-card flex flex-col gap-2 ${row.cancelled ? "opacity-60" : ""}`}
     >
       <div className="flex items-start justify-between gap-4">
         {/* Stretched link (9.8): the whole card opens the cockpit; the split/
@@ -102,18 +98,14 @@ export function ShiftRow({
         <AppLink
           href={href}
           spinner="overlay"
-          className="flex min-w-0 flex-col gap-0.5 after:absolute after:inset-0 after:content-['']"
+          className="stretch-link flex min-w-0 flex-col gap-0.5"
         >
           {/* Vessel leads — the date now lives in the day-section header (#122).
               The dot is the DEC-086 identity hue: same boat, same hue, always —
               it answers "which boat", never state (aria-hidden; the name is the
               accessible answer). */}
-          <span className="flex items-center gap-1.5 font-medium text-ink">
-            <span
-              aria-hidden="true"
-              className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(row.vesselId, row.vesselHue)}`}
-            />
-            {row.vesselName}
+          <span className="flex items-center gap-1.5">
+            <VesselLabel id={row.vesselId} hue={row.vesselHue} name={row.vesselName} />
             {splitTag && (
               <span className="text-xs font-normal text-muted">{splitTag}</span>
             )}
@@ -127,7 +119,7 @@ export function ShiftRow({
               ? "no scheduled trip"
               // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
               : row.trips.length === 1
-                ? `${fmt12(row.trips[0]!.time)} · ${row.trips[0]!.pax} pax`
+                ? `${fmt12(row.trips[0]!.time)} · ${guestCount(row.trips[0]!.pax)}`
                 : `${fmt12(row.trips[0]!.time)} · ${row.trips.length} trips`}
           </span>
           {/* Pips + assigned crew on one line (Variant C, #310): the pips lead,

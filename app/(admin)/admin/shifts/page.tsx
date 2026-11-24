@@ -9,6 +9,7 @@ import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { Filter } from "../../../../components/admin/shifts-filter";
+import { DayList, DaySection } from "../../../../components/admin/day-heading";
 import { ShiftRow, canonicalIdOf } from "../../../../components/admin/shift-row";
 import { RevealSelectedRow } from "../../../../components/admin/reveal-selected-row";
 import { MasterDetail } from "../../../../components/admin/master-detail";
@@ -339,42 +340,37 @@ export default async function AllShifts({
       ) : (
         // Day sections (gap-5) with tighter rows inside (gap-2) give the weekend
         // visual rhythm under real density (#122) without adding colour/scoreboard.
-        <div className="flex flex-col gap-2">
-          {/* The summary caption hugs the sections; day-sections (gap-5) carry
-              the rhythm between them, not around this line (@ui-reviewer). */}
-          <p className="text-xs text-muted">
-            {rows.length}
-            {showSplitOnly ? " split candidate" : " shift"}
-            {rows.length === 1 ? "" : "s"} · {scope}
-          </p>
-          <div className="flex flex-col gap-5">
-            {groupByDay(rows).map((day) => (
-              <section key={day.date} className="flex flex-col gap-2">
-                <h2 className="flex items-baseline justify-between border-b border-line pb-1">
-                  <span className="text-sm font-semibold text-ink">
-                    {fmtDayHeader(day.date)}
-                  </span>
-                  <span className="text-xs text-muted">
-                    {day.rows.length} shift{day.rows.length === 1 ? "" : "s"}
-                  </span>
-                </h2>
-                {day.rows.map((r) => (
-                  <ShiftRow
-                    key={r.shiftId}
-                    row={r}
-                    mode={mode}
-                    back={back}
-                    href={hrefFor(sp, mode, r.shiftId)}
-                    selected={sel === r.shiftId}
-                    changed={changedDays.has(canonicalIdOf(r))}
-                    isNew={newShifts.has(r.shiftId)}
-                    canMerge={canMergeRow(r)}
-                  />
-                ))}
-              </section>
-            ))}
-          </div>
-        </div>
+        <DayList
+          caption={
+            <>
+              {rows.length}
+              {showSplitOnly ? " split candidate" : " shift"}
+              {rows.length === 1 ? "" : "s"} · {scope}
+            </>
+          }
+        >
+          {groupByDay(rows).map((day) => (
+            <DaySection
+              key={day.date}
+              label={fmtDayHeader(day.date)}
+              aside={`${day.rows.length} shift${day.rows.length === 1 ? "" : "s"}`}
+            >
+              {day.rows.map((r) => (
+                <ShiftRow
+                  key={r.shiftId}
+                  row={r}
+                  mode={mode}
+                  back={back}
+                  href={hrefFor(sp, mode, r.shiftId)}
+                  selected={sel === r.shiftId}
+                  changed={changedDays.has(canonicalIdOf(r))}
+                  isNew={newShifts.has(r.shiftId)}
+                  canMerge={canMergeRow(r)}
+                />
+              ))}
+            </DaySection>
+          ))}
+        </DayList>
       )}
     </>
   );

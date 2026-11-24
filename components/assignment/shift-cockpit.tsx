@@ -9,7 +9,7 @@ import { resolveShiftStateOnRead } from "@core/builder/tick.js";
 import { TENANT_TIMEZONE, vesselDateOf } from "@core/config/tenant.js";
 import { cockpitHref } from "../../app/lib/cockpit-href";
 import { messagingEnabled } from "../../app/lib/flags";
-import { fmtDeadline, fmt12 } from "../../app/lib/format";
+import { fmtDeadline, fmt12, guestCount } from "../../app/lib/format";
 import { getRepo } from "../../app/lib/repo";
 import { ADMIN_LOG_HINT, logSwallowed } from "../../app/lib/swallowed";
 import { TENANT_ID } from "../../app/lib/tenant";
@@ -255,7 +255,7 @@ export async function ShiftCockpit({
                   className="whitespace-nowrap rounded-md border border-line bg-bg px-1.5 py-0.5"
                 >
                   <span className="font-mono text-ink">{fmt12(t.departureTime)}</span>
-                  {" "}· {t.pax} pax
+                  {" "}· {guestCount(t.pax)}
                 </span>
               ))}
             </p>

@@ -363,6 +363,27 @@ body {
   }
 }
 
+/* The card that is one big link (issue #1285): All Shifts' rows and Purchases' bookings. `stretch-card`
+ * is the box the link's overlay fills and the press cue — a calm whole-card background dip on :active
+ * (#250), fired because the link is in the card's activation chain. A background, NOT a transform or
+ * filter, so it cannot establish a containing block and collapse the link's overlay. `stretch-link`
+ * is the link: its ::after covers the card, so the whole card opens it, and any control that must stay
+ * independently tappable is positioned and stacks above it. A `@utility`, in the utilities layer, so
+ * the press fill outranks the card's own `bg-card`. */
+@utility stretch-card {
+  position: relative;
+  &:active {
+    background-color: color-mix(in oklab, var(--color-accent) 10%, transparent);
+  }
+}
+@utility stretch-link {
+  &::after {
+    position: absolute;
+    inset: 0;
+    content: "";
+  }
+}
+
 /* The select arrow, drawn (issue #1200). The browser pins its own arrow about 6px from the right
  * edge whatever the padding, so on desktop — where every field has 9px between its letters and
  * its border — the arrow is ours, 9px in, the ink colour (`--color-ink`, written out: a data URI

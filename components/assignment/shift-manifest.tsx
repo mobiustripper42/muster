@@ -1,7 +1,7 @@
 import type { EventManifestView } from "@core/crewapp/shift-card.js";
 import { buildIntroText, firstName } from "@core/crewapp/intro-text.js";
 import { PICKUP_LOCATION, PICKUP_MAP_URL, TENANT_TIMEZONE } from "@core/config/tenant.js";
-import { fmt12, tel, sms } from "../../app/lib/format";
+import { fmt12, guestCount, tel, sms } from "../../app/lib/format";
 import { TENANT_NAME } from "../../app/lib/tenant";
 import { AppLink } from "../ui/app-link";
 import { GuestTextButton } from "./guest-text-button";
@@ -80,7 +80,7 @@ export function ShiftManifest({
             >
               <span className="font-mono">{fmt12(ev.departureTime)}</span>
               <span className="flex items-center gap-2 text-sm font-normal text-muted">
-                {ev.pax} guests
+                {guestCount(ev.pax)}
                 {/* eslint-disable-next-line muster/faint-text -- aria-hidden caret: decoration, not text (#951). <summary> announces its own open/closed state. */}
                 <span className="text-faint transition-transform group-open:rotate-90" aria-hidden>
                   ›

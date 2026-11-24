@@ -105,6 +105,7 @@ export const TRAIL_TYPE_LABEL: Record<TrailEventType, string> = {
   cancel_notice_failed: "Cancellation notice failed",
   waiver_reminder_sent: "Waiver reminder sent",
   waiver_reminder_failed: "Waiver reminder not delivered",
+  balance_charge_failed: "Balance charge failed",
 
   // ── The slot, and the rest ───────────────────────────────────────────────
   slot_held: "Slot held",

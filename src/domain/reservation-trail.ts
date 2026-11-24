@@ -151,6 +151,14 @@ export const EMITTED_TRAIL_TYPES = [
    * provider's message (it can echo the phone number). One row per window, not per tick.
    */
   "waiver_reminder_failed",
+  /**
+   * A scheduled balance charge was declined, or the bank asked the customer to approve it (issue
+   * #1273). One row per failed attempt, written once the customer notice has been tried.
+   * `metadata.attempt` is the job's attempt number (the due date is 0), `metadata.reason` the decline
+   * code, `declined` or `needs_approval`, and `metadata.outcome` how the customer notice fared:
+   * `email=<o> sms=<o>`, `skipped` or `error`.
+   */
+  "balance_charge_failed",
 
   // ── The slot (issue #1052) ──────────────────────────────────────────────────
   /** The operator takes a departure off the market and puts it back. The release
@@ -267,6 +275,11 @@ export interface TrailEventMetadata {
    *  reconciler. A dimension rather than three types, because §2.8.6 requires all
    *  three to call one idempotent confirm and the reconciler is not built yet. */
   via?: string;
+  /** `balance_charge_failed`: the job's attempt number, the due date being 0 (issue #1273). */
+  attempt?: number;
+  /** `balance_charge_failed`: how the customer notice fared, in the `email=<o> sms=<o>` shape, or
+   *  `skipped` or `error`. Stored, not shown. */
+  outcome?: string;
 }
 
 /**

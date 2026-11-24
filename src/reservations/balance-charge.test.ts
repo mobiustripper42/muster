@@ -15,11 +15,13 @@
  * Asserted on `confirmOffSessionCalls` throughout, never on charges: the fake dedupes a repeated
  * idempotency key the way Stripe does, which would hide a missing claim.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { FakeChannel } from "../adapters/fake-channel.js";
 import { FAKE_SIGNATURE, FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { BookingInvoice, Payment, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
+import type { OutboundMessage, SendResult } from "../ports/channel.js";
 import { eventIdForSlot } from "./availability.js";
 import {
   balanceAttemptTimes,
@@ -30,6 +32,14 @@ import {
   recordBalanceReturn,
   startBalancePayment,
 } from "./balance-charge.js";
+import {
+  balanceAdminAlertBody,
+  balanceFailedBody,
+  deliverBalanceNotice,
+  type BalanceFailure,
+  type TellBalanceFailed,
+} from "./balance-notice.js";
+import { bookingUrl } from "./booking-code.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
 import { confirmBookingByPaymentIntent } from "./confirm-booking.js";
 import { balanceRefusalMessage, buildManageView } from "./manage-view.js";
@@ -92,22 +102,68 @@ const pendingRow = (over: Partial<Reservation> = {}): Reservation => ({
   ...over,
 });
 
+const LINK_BASE = "https://muster.example";
+const BOTH = { email: "dana@example.com", phone: "+12165550148" };
+
+/** The console stand-in for a text channel: it records, and says it only logged. */
+class LoggedOnlyChannel extends FakeChannel {
+  override async send(message: OutboundMessage): Promise<SendResult> {
+    return { ...(await super.send(message)), loggedOnly: true };
+  }
+}
+
+/** The pending row, on the contact given (its own phone when none is). */
+const pendingWith = (releaseAt: string, contact?: { email?: string; phone?: string }): Reservation => {
+  const row = pendingRow({ balanceReleaseAt: releaseAt });
+  if (!contact) return row;
+  const { phone: _phone, ...rest } = row;
+  return { ...rest, ...contact };
+};
+
 /**
  * A booked deposit booking, through the real deposit confirm: the pending row, the provider
  * customer, then `payment_intent.succeeded` for the $100 deposit with the card it saved.
+ *
+ * The customer notice (issue #1273) goes through the real `deliverBalanceNotice`, over fake channels.
  */
-async function world(opts: { card?: boolean; releaseAt?: string } = {}) {
+async function world(
+  opts: {
+    card?: boolean;
+    releaseAt?: string;
+    contact?: { email?: string; phone?: string };
+    smsLogsOnly?: boolean;
+  } = {},
+) {
   const repo = new InMemoryRepository();
   const pay = new FakePaymentPort();
   let clock = BOOKED_AT;
   const alert = vi.fn(async (_message: string) => {});
-  const deps: WebhookDeps = {
+  const stamp = () => new Date(clock);
+  const email = new FakeChannel(stamp);
+  const sms = opts.smsLogsOnly ? new LoggedOnlyChannel(stamp) : new FakeChannel(stamp);
+  const tell = vi.fn<TellBalanceFailed>(async (reservation, failure) => {
+    await deliverBalanceNotice(
+      {
+        repo,
+        now: () => clock,
+        tenantName: "BrewBoat",
+        linkBase: LINK_BASE,
+        email,
+        sms,
+        live: !opts.smsLogsOnly,
+      },
+      reservation,
+      failure,
+    );
+  });
+  const deps: WebhookDeps & { tellBalanceFailed: TellBalanceFailed } = {
     repo,
     payments: pay,
     now: () => clock,
     alertPaidButUnbooked: alert,
     sendConfirmation: vi.fn(async () => true),
     notifyCustomerSoldOut: vi.fn(async () => {}),
+    tellBalanceFailed: tell,
   };
   // Real manning, or the confirm forms a shift with no seats and logs it (#582).
   await repo.saveVessel({
@@ -116,7 +172,7 @@ async function world(opts: { card?: boolean; releaseAt?: string } = {}) {
     coiMaxPax: 12,
     manning: [{ roleTypeId: asId<"RoleTypeId">("role-captain"), count: 1 }],
   });
-  await repo.saveReservation(pendingRow({ balanceReleaseAt: opts.releaseAt ?? RELEASE }));
+  await repo.saveReservation(pendingWith(opts.releaseAt ?? RELEASE, opts.contact));
   await repo.saveStripeCustomerId(RES, CUS);
   const deposit = JSON.stringify({
     type: "payment_succeeded",
@@ -133,11 +189,19 @@ async function world(opts: { card?: boolean; releaseAt?: string } = {}) {
     outcome: "booked",
   });
   await repo.saveBookingCode({ code: CODE, reservationId: RES, createdAt: BOOKED_AT });
+  const bookedRows = new Set((await repo.listTrailEvents()).map((e) => String(e.id)));
   return {
     repo,
     pay,
     alert,
+    email,
+    sms,
+    tell,
     deps,
+    /** The booking's trail rows, oldest first, less the ones its booking wrote. */
+    async trail() {
+      return (await repo.listTrailEventsFor(RES, [])).filter((e) => !bookedRows.has(String(e.id)));
+    },
     at(iso: string) {
       clock = iso;
     },
@@ -641,6 +705,323 @@ describe("chargeDueBalances", () => {
     expect(await w.run("2026-07-20T13:00:00.000Z")).toEqual(NONE);
     expect(await w.run(DUE)).toEqual({ ...NONE, charged: 1 });
     expect(w.keys()).toEqual([`balance_${RES}_0`]);
+  });
+});
+
+// ── Telling both sides of a failed charge (issue #1273) ────────────────────────────────────
+
+describe("chargeDueBalances tells the customer and the admins of a failed charge (issue #1273)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const URL = bookingUrl(LINK_BASE, CODE);
+  type World = Awaited<ReturnType<typeof world>>;
+
+  const customerBody = async (w: World, outcome: BalanceFailure["outcome"], owedCents = OWED): Promise<string> =>
+    balanceFailedBody({ reservation: await w.row(), owedCents, manageUrl: URL, tenantName: "BrewBoat", outcome });
+
+  const declinedAt = (attempt: number, nextAttemptAt: string | null, declineCode = "insufficient_funds"): BalanceFailure => ({
+    attempt,
+    owedCents: OWED,
+    nextAttemptAt,
+    outcome: "declined",
+    declineCode,
+  });
+  const NEEDS_APPROVAL: BalanceFailure = { attempt: 0, owedCents: OWED, nextAttemptAt: null, outcome: "needs_approval" };
+
+  const sentTo = (w: World) => ({
+    email: w.email.sent.map(({ to, body }) => ({ to, body })),
+    sms: w.sms.sent.map(({ to, body }) => ({ to, body })),
+  });
+  const alerts = (w: World) => w.alert.mock.calls.map(([message]) => message);
+  const quietLog = () => vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+  it("AC1: a declined charge sends the customer one email and one text, with their booking's link and what is owed", async () => {
+    const w = await world({ contact: BOTH });
+    w.pay.confirmOffSessionOutcomes = [{ declined: "insufficient_funds" }];
+
+    expect(await w.run(DUE)).toEqual({ ...NONE, declined: 1 });
+
+    const body = await customerBody(w, "declined");
+    expect(sentTo(w)).toEqual({
+      email: [{ to: { email: BOTH.email }, body }],
+      sms: [{ to: { phone: BOTH.phone }, body }],
+    });
+  });
+
+  it("AC1: the amount is what is still owed, the figure the card was charged", async () => {
+    const w = await world({ contact: BOTH });
+    await w.repo.savePayment({
+      id: asId<"PaymentId">("pay_part"),
+      reservationId: RES,
+      method: "stripe",
+      kind: "balance",
+      amountCents: OWED - 50000,
+      taxCents: 0,
+      currency: "usd",
+      status: "succeeded",
+      createdAt: "2026-07-20T12:00:00.000Z",
+    });
+    w.pay.confirmOffSessionOutcomes = [{ declined: "insufficient_funds" }];
+
+    await w.run(DUE);
+
+    expect(w.pay.intents.map((i) => i.amountCents)).toEqual([50000]);
+    expect(w.sms.sent.map((m) => m.body)).toEqual([await customerBody(w, "declined", 50000)]);
+    expect(alerts(w)).toEqual([
+      balanceAdminAlertBody({ reservation: await w.row(), failure: { ...declinedAt(0, DUE_3), owedCents: 50000 } }),
+    ]);
+  });
+
+  it("AC2: a bank that asks for approval is told to the customer the same way, on that attempt", async () => {
+    const w = await world({ contact: BOTH });
+    w.pay.confirmOffSessionOutcomes = ["needs_approval"];
+
+    expect(await w.run(DUE)).toEqual({ ...NONE, needsApproval: 1 });
+
+    const body = await customerBody(w, "needs_approval");
+    expect(sentTo(w)).toEqual({
+      email: [{ to: { email: BOTH.email }, body }],
+      sms: [{ to: { phone: BOTH.phone }, body }],
+    });
+  });
+
+  it("AC3: a charge that succeeds sends nothing to anyone, and writes no trail row", async () => {
+    const w = await world({ contact: BOTH });
+
+    expect(await w.run(DUE)).toEqual({ ...NONE, charged: 1 });
+
+    expect(sentTo(w)).toEqual({ email: [], sms: [] });
+    expect(w.alert).not.toHaveBeenCalled();
+    expect(await w.trail()).toEqual([]);
+  });
+
+  it("AC4: a declined charge texts the admins once, with the next scheduled attempt", async () => {
+    const w = await world({ contact: BOTH });
+    w.pay.confirmOffSessionOutcomes = [{ declined: "insufficient_funds" }];
+
+    await w.run(DUE);
+
+    expect(w.tell.mock.calls.map(([, failure]) => failure)).toEqual([declinedAt(0, DUE_3)]);
+    expect(alerts(w)).toEqual([balanceAdminAlertBody({ reservation: await w.row(), failure: declinedAt(0, DUE_3) })]);
+  });
+
+  it("AC4: the last scheduled attempt has no next one, a retry on the release date not counting", async () => {
+    const w = await world({ contact: BOTH, releaseAt: DUE_6 });
+    w.pay.confirmOffSessionOutcomes = [{ declined: "insufficient_funds" }, { declined: "insufficient_funds" }];
+
+    await w.run(DUE);
+    await w.run(DUE_3);
+
+    expect(w.tell.mock.calls.map(([, failure]) => failure)).toEqual([declinedAt(0, DUE_3), declinedAt(1, null)]);
+    expect(alerts(w)).toEqual(
+      [
+        balanceAdminAlertBody({ reservation: await w.row(), failure: declinedAt(0, DUE_3) }),
+        balanceAdminAlertBody({ reservation: await w.row(), failure: declinedAt(1, null) }),
+      ],
+    );
+  });
+
+  it("AC4: a bank approval texts the admins once, and nothing is retried though retry days are left", async () => {
+    const w = await world({ contact: BOTH });
+    w.pay.confirmOffSessionOutcomes = ["needs_approval"];
+
+    await w.run(DUE);
+
+    expect(w.tell.mock.calls.map(([, failure]) => failure)).toEqual([NEEDS_APPROVAL]);
+    expect(alerts(w)).toEqual([balanceAdminAlertBody({ reservation: await w.row(), failure: NEEDS_APPROVAL })]);
+  });
+
+  it("AC5: a declined charge writes one engine row with the attempt, the code and the outcome per channel", async () => {
+    const w = await world({ contact: BOTH });
+    w.pay.confirmOffSessionOutcomes = [{ declined: "insufficient_funds" }];
+
+    await w.run(DUE);
+
+    const rows = await w.trail();
+    expect(rows).toMatchObject([
+      {
+        id: `balance_charge_failed:${RES}:0`,
+        reservationId: RES,
+        type: "balance_charge_failed",
+        actorKind: "engine",
+        timestamp: DUE,
+      },
+    ]);
+    expect(rows.map((r) => r.metadata)).toEqual([
+      { attempt: 0, reason: "insufficient_funds", outcome: "email=sent sms=sent" },
+    ]);
+  });
+
+  it("AC5: a decline the bank sent no code for reads declined", async () => {
+    const w = await world({ contact: BOTH });
+    vi.spyOn(w.pay, "confirmOffSession").mockResolvedValueOnce({ outcome: "declined" });
+
+    expect(await w.run(DUE)).toEqual({ ...NONE, declined: 1 });
+
+    expect((await w.trail()).map((r) => r.metadata)).toEqual([
+      { attempt: 0, reason: "declined", outcome: "email=sent sms=sent" },
+    ]);
+  });
+
+  it("AC5: a bank approval's reason reads needs_approval", async () => {
+    const w = await world({ contact: BOTH });
+    w.pay.confirmOffSessionOutcomes = ["needs_approval"];
+
+    await w.run(DUE);
+
+    expect((await w.trail()).map((r) => r.metadata)).toEqual([
+      { attempt: 0, reason: "needs_approval", outcome: "email=sent sms=sent" },
+    ]);
+  });
+
+  it("AC5: a channel that is the console reads logged", async () => {
+    const w = await world({ contact: BOTH, smsLogsOnly: true });
+    w.pay.confirmOffSessionOutcomes = [{ declined: "insufficient_funds" }];
+
+    await w.run(DUE);
+
+    expect((await w.trail()).map((r) => r.metadata)).toEqual([
+      { attempt: 0, reason: "insufficient_funds", outcome: "email=sent sms=logged" },
+    ]);
+  });
+
+  it("AC6: a booking with neither email nor phone is sent nothing, reads absent on both, and the admins are still texted", async () => {
+    const w = await world({ contact: {} });
+    w.pay.confirmOffSessionOutcomes = [{ declined: "insufficient_funds" }];
+
+    await w.run(DUE);
+
+    expect(sentTo(w)).toEqual({ email: [], sms: [] });
+    expect((await w.trail()).map((r) => r.metadata)).toEqual([
+      { attempt: 0, reason: "insufficient_funds", outcome: "email=absent sms=absent" },
+    ]);
+    expect(w.alert).toHaveBeenCalledOnce();
+  });
+
+  /** The attempt stands: recorded declined, its claim kept, and the next tick charges nothing. */
+  async function expectAttemptStands(w: World) {
+    expect(await w.repo.listBalanceAttempts(RES)).toMatchObject([{ attempt: 0, outcome: "declined" }]);
+    expect(await w.run(later(DUE, 15))).toEqual(NONE);
+    expect(w.keys()).toEqual([`balance_${RES}_0`]);
+  }
+
+  it("AC7: a customer notice that throws leaves the attempt declined and no error counted, the admins texted, and the row reading error", async () => {
+    quietLog();
+    const w = await world({ contact: BOTH });
+    w.pay.confirmOffSessionOutcomes = [{ declined: "insufficient_funds" }];
+    vi.spyOn(w.repo, "listBookingCodesForReservation").mockRejectedValue(new Error("database unreachable"));
+
+    expect(await w.run(DUE)).toEqual({ ...NONE, declined: 1 });
+
+    expect(sentTo(w)).toEqual({ email: [], sms: [] });
+    expect(alerts(w)).toHaveLength(1);
+    expect((await w.trail()).map((r) => r.metadata)).toEqual([
+      { attempt: 0, reason: "insufficient_funds", outcome: "error" },
+    ]);
+    await expectAttemptStands(w);
+  });
+
+  it("AC7: a tellBalanceFailed that rejects is swallowed and logged, writes no row of its own, and the admins are still texted", async () => {
+    const logged = quietLog();
+    const w = await world({ contact: BOTH });
+    w.pay.confirmOffSessionOutcomes = [{ declined: "insufficient_funds" }];
+    w.tell.mockRejectedValueOnce(new Error("sender blew up"));
+
+    expect(await w.run(DUE)).toEqual({ ...NONE, declined: 1 });
+
+    expect(alerts(w)).toHaveLength(1);
+    expect(await w.trail()).toEqual([]);
+    expect(
+      logged.mock.calls.filter((args) => args.some((a) => a instanceof Error && a.message === "sender blew up")),
+    ).toHaveLength(1);
+    await expectAttemptStands(w);
+  });
+
+  it("AC7: a money alert that throws does not stop the customer notice, and leaves the attempt declined", async () => {
+    quietLog();
+    const w = await world({ contact: BOTH });
+    w.pay.confirmOffSessionOutcomes = [{ declined: "insufficient_funds" }];
+    w.alert.mockRejectedValueOnce(new Error("carrier down"));
+
+    expect(await w.run(DUE)).toEqual({ ...NONE, declined: 1 });
+
+    expect(w.alert).toHaveBeenCalledOnce();
+    expect(w.email.sent).toHaveLength(1);
+    expect(w.sms.sent).toHaveLength(1);
+    expect((await w.trail()).map((r) => r.metadata)).toEqual([
+      { attempt: 0, reason: "insufficient_funds", outcome: "email=sent sms=sent" },
+    ]);
+    await expectAttemptStands(w);
+  });
+
+  it("AC8: declines on the due date and both retries send three notices and three admin texts, one per attempt", async () => {
+    const w = await world({ contact: BOTH });
+    w.pay.confirmOffSessionOutcomes = [
+      { declined: "insufficient_funds" },
+      { declined: "insufficient_funds" },
+      { declined: "insufficient_funds" },
+    ];
+
+    // Each attempt's tick, then the next tick fifteen minutes on, which tells nobody again.
+    const told: number[][] = [];
+    for (const at of [DUE, DUE_3, DUE_6]) {
+      for (const minutes of [0, 15]) {
+        await w.run(later(at, minutes));
+        told.push([w.email.sent.length, w.sms.sent.length, w.alert.mock.calls.length]);
+      }
+    }
+
+    expect(told).toEqual([
+      [1, 1, 1],
+      [1, 1, 1],
+      [2, 2, 2],
+      [2, 2, 2],
+      [3, 3, 3],
+      [3, 3, 3],
+    ]);
+    expect((await w.trail()).map((r) => [String(r.id), r.metadata])).toEqual(
+      [0, 1, 2].map((attempt) => [
+        `balance_charge_failed:${RES}:${attempt}`,
+        { attempt, reason: "insufficient_funds", outcome: "email=sent sms=sent" },
+      ]),
+    );
+  });
+
+  it("AC9: a charge that throws before an outcome sends nothing, and the next tick's failure is told once", async () => {
+    quietLog();
+    const w = await world({ contact: BOTH });
+    w.pay.confirmOffSessionOutcomes = ["throw", { declined: "insufficient_funds" }];
+
+    expect(await w.run(DUE)).toEqual({ ...NONE, errors: 1 });
+    expect(sentTo(w)).toEqual({ email: [], sms: [] });
+    expect(w.alert).not.toHaveBeenCalled();
+    expect(await w.trail()).toEqual([]);
+
+    expect(await w.run(later(DUE, 15))).toEqual({ ...NONE, declined: 1 });
+    expect(w.email.sent).toHaveLength(1);
+    expect(w.sms.sent).toHaveLength(1);
+    expect(w.alert).toHaveBeenCalledOnce();
+    expect(await w.trail()).toHaveLength(1);
+  });
+
+  it("AC9: a decline whose outcome could not be written sends nothing until the next tick writes it, then tells once", async () => {
+    quietLog();
+    const w = await world({ contact: BOTH });
+    w.pay.confirmOffSessionOutcomes = [{ declined: "insufficient_funds" }];
+    vi.spyOn(w.repo, "finishBalanceAttempt").mockRejectedValueOnce(new Error("connection lost"));
+
+    expect(await w.run(DUE)).toEqual({ ...NONE, errors: 1 });
+    expect(sentTo(w)).toEqual({ email: [], sms: [] });
+    expect(w.alert).not.toHaveBeenCalled();
+    expect(await w.trail()).toEqual([]);
+
+    expect(await w.run(later(DUE, 15))).toEqual({ ...NONE, declined: 1 });
+    expect(w.email.sent).toHaveLength(1);
+    expect(w.sms.sent).toHaveLength(1);
+    expect(w.alert).toHaveBeenCalledOnce();
+    expect(await w.trail()).toHaveLength(1);
   });
 });
 

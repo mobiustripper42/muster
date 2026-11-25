@@ -68,7 +68,7 @@ export function ManningSection({
         </h2>
         <p className="text-xs text-muted">
           Extra hands beyond the COI minimum. A required hand gates crewing; a trainee
-          rides along — takes a pax slot, doesn’t gate.
+          rides along — takes a guest’s spot, doesn’t gate.
         </p>
       </div>
 

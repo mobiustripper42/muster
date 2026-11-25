@@ -52,6 +52,12 @@ export function fmt12(hhmm: string): string {
   return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+/** "1 guest", "12 guests" — the admin surfaces' one spelling of a party size, so no screen prints
+ *  "1 guests" (issue #1285). */
+export function guestCount(n: number): string {
+  return `${n} ${n === 1 ? "guest" : "guests"}`;
+}
+
 /** Phone → a `tel:` / `sms:` deep-link href, stripped to digits + a leading `+`.
  *  Shared by every contact button (seat-card, crew shift page, guest manifest) so
  *  the three can't drift. */

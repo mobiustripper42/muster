@@ -1,16 +1,19 @@
 /**
- * `db:seed:past-due` — a past-due deposit booking for `/admin/purchases` (issue #1142), so the
- * **Balance due** chip and the Owed column's `past due · card_declined` have a row to show without
- * waiting a day for a real balance to fall due.
+ * `db:seed:past-due` — past-due deposit bookings for `/admin/purchases` (issue #1142, #1285), so the
+ * **Balance due** entry of the status dropdown and the card's words under the amount have rows to
+ * show without waiting a day for a real balance to fall due.
  *
  *   - **Odell Pruitt, 12 days out at 11:30** — a $100 deposit paid, the balance's due date
  *     yesterday, and one balance attempt that `declined` with `card_declined`. Under **Balance due**
- *     from any window, and in the window of its trip day with the Owed cell reading
- *     `past due · card_declined` in the bad tone.
+ *     from any date, and in the dates of its trip day, with the card reading `Card declined` under
+ *     the amount in the bad tone.
+ *   - **Bartholomew Featherstonehaugh-Villiers, 13 days out at 11:30** — the same, but its attempt
+ *     ended `needs_approval`: the card reads `Needs approval`. The long name is on purpose, to
+ *     check a name wraps in its own column and the amount does not move (AC12, at 375px).
  *
- * The booking goes through the real paths — `bookForCustomer`, then `confirmBookingFromIntent` on a
+ * Each booking goes through the real paths — `bookForCustomer`, then `confirmBookingFromIntent` on a
  * payment for the deposit — as `db:seed:self-cancel` books its deposit rows; only the due date is
- * moved to yesterday and the declined attempt row written, since no tick has run here.
+ * moved to yesterday and the failed attempt row written, since no tick has run here.
  *
  * It is not in `db:seed:reservation`: `resetAndSeed("reservation")` runs that file for 19 e2e specs,
  * and `e2e/purchases.spec.ts` asserts every badge reads `unpaid`.
@@ -22,8 +25,8 @@
  *
  * For a balance due today instead, `npm run db:balance-due -- <booking code>`. Re-running the same day
  * is safe: a slot already held refuses as `busy`, which is printed and skipped, so no second attempt
- * row is written. The slot moves with the clock, so a re-run on a later day books a second one —
- * reseed `db:seed:reservation` first.
+ * row is written. The slots move with the clock, so a re-run on a later day books more — reseed
+ * `db:seed:reservation` first.
  */
 import { existsSync } from "node:fs";
 import { FakePaymentPort } from "../src/adapters/fake-payment.js";
@@ -62,9 +65,18 @@ const now = () => new Date().toISOString();
 const repo = PostgresRepository.fromConnectionString(url);
 const payments = new FakePaymentPort();
 
-const DATE = addDays(today, 12);
 const TIME = "11:30";
-const NAME = "Odell Pruitt";
+
+/** One past-due booking: its trip day, who, and how the charge run's first try ended. */
+const BOOKINGS = [
+  { date: addDays(today, 12), name: "Odell Pruitt", phone: "216-555-1142", outcome: "declined" },
+  {
+    date: addDays(today, 13),
+    name: "Bartholomew Featherstonehaugh-Villiers",
+    phone: "216-555-1143",
+    outcome: "needs_approval",
+  },
+] as const;
 
 try {
   if (!(await repo.getOffering(asId<"OfferingId">(demo.offeringId)))) {
@@ -72,26 +84,28 @@ try {
     process.exit(1);
   }
 
-  console.log(`✓ Past-due balance (db: ${new URL(url).host}).`);
+  console.log(`✓ Past-due balances (db: ${new URL(url).host}).`);
 
-  const res = await bookForCustomer(
-    repo,
-    {
-      offeringId: asId<"OfferingId">(demo.offeringId),
-      vesselId: asId<"VesselId">(demo.vesselId),
-      date: DATE,
-      time: TIME,
-      guestCount: 6,
-      gratuityBps: 2000,
-      customerName: NAME,
-      phone: "216-555-1142",
-      hasFlex: false,
-    },
-    now,
-  );
-  if (!res.ok) {
-    console.log(`  skipped   ${DATE} ${TIME}  ${NAME} — ${res.reason} (already seeded, or the slot is taken)`);
-  } else {
+  for (const { date: DATE, name: NAME, phone, outcome: attemptOutcome } of BOOKINGS) {
+    const res = await bookForCustomer(
+      repo,
+      {
+        offeringId: asId<"OfferingId">(demo.offeringId),
+        vesselId: asId<"VesselId">(demo.vesselId),
+        date: DATE,
+        time: TIME,
+        guestCount: 6,
+        gratuityBps: 2000,
+        customerName: NAME,
+        phone,
+        hasFlex: false,
+      },
+      now,
+    );
+    if (!res.ok) {
+      console.log(`  skipped   ${DATE} ${TIME}  ${NAME} — ${res.reason} (already seeded, or the slot is taken)`);
+      continue;
+    }
     // Only the deposit is paid, and its balance fell due yesterday.
     const config = await repo.getPaymentConfig();
     const dates = balanceDates(DATE, TIME, config);
@@ -124,17 +138,18 @@ try {
     if (!(await repo.getBookingCode(code))) {
       await repo.saveBookingCode({ code, reservationId: res.reservation.id, createdAt: now() });
     }
-    // The charge run's first try, declined — what the Owed cell reads after `past due · `.
+    // The charge run's first try, which did not go through — what the card reads under the amount.
     await repo.claimBalanceAttempt({ reservationId: res.reservation.id, attempt: 0, at: now() });
     await repo.finishBalanceAttempt({
       reservationId: res.reservation.id,
       attempt: 0,
-      outcome: "declined",
-      declineCode: "card_declined",
+      outcome: attemptOutcome,
+      ...(attemptOutcome === "declined" ? { declineCode: "card_declined" } : {}),
     });
+    const reads = attemptOutcome === "declined" ? "Card declined" : "Needs approval";
     console.log(`  past due  ${DATE} ${TIME}  ${demo.vesselName}  6 guests  ${NAME} — ${JSON.stringify(outcome)}`);
     console.log(
-      `            /admin/purchases?state=balance_due   the row, from any window; Owed reads "past due · card_declined"; /b/${code}`,
+      `            /admin/purchases?state=balance_due   the card, from any dates; reads "${reads}" under the amount; /b/${code}`,
     );
   }
 } finally {

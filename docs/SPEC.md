@@ -2076,11 +2076,14 @@ to say they are sorting it out. A stopped booking is never released by Muster; i
 past-due list, marked stopped, until an admin cancels it or the balance is paid. Stopping it does not
 stop the retries already scheduled.
 
-**The past-due list.** The admin purchases list gains every balance due, past-due ones flagged: an
-**Owed** column with what is owed, the due date, and for a past-due balance the last failure and its
-reason, and a **Balance due** chip that selects them across the whole set, not the date window. The
-release date and `Auto-cancel stopped` are not on it: the automatic release is deferred, so the
-column goes with it. §2.10.6's **Awaiting payment** was named so that deposit balances could join it.
+**The past-due list.** The admin purchases list is one card per booking, and the only amount on a card
+is what the customer still owes; a card that owes nothing carries none. Under the amount stands the
+due date, then from the due instant one of three words, taken from the failed attempt with the highest
+number: **Past due** (no failed attempt), **Needs approval** or **Card declined**, all three in the
+bad tone. No decline code is shown. A **Balance due** entry in the status dropdown selects every
+balance with a due date across the whole set, not the date window. The release date and
+`Auto-cancel stopped` are not on it: the automatic release is deferred, so they go with it.
+§2.10.6's **Awaiting payment** was named so that deposit balances could join it.
 
 **Cancelling a booking that has a deposit.** 2.8.4c applies unchanged; "everything paid" is what has
 been paid. An uninsured customer cancelling 14 days or more out with only the deposit paid gets $50
@@ -3056,8 +3059,11 @@ happening daily.
 **Which forces one change to the purchases list.** §2.8.10 already names the obstacle: the
 purchases view returns "cancelled" for any status that is not `booked`, so an unpaid booking would
 render to the operator as **Cancelled** — on the one screen this whole arrangement depends on them
-reading. So an unpaid phone booking reads **Awaiting payment**, with its own filter, its trip read
-off the booking itself (it has no Event yet) and its total off the frozen invoice. The name is for
+reading. So an unpaid phone booking reads **Awaiting payment**, with its own status entry, its trip
+read off the booking itself (it has no Event yet) and what it owes off the frozen invoice: the whole
+total, tip, fee and insurance included, because nothing is paid. A booking with nothing paid, this one
+or a web booking whose payment never landed (**Unpaid**), owes that total on the purchases list and
+has no due date, so it is never a balance due; a total of nothing is owed nothing. The name is for
 "boat held, money owed", so past-due deposit balances join it (2.8.4d).
 
 **A reservation the operator wrote carries `admin` as its source.** Third value beside `muster` and

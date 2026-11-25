@@ -66,6 +66,19 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     await expect(page.getByText("Barrel")).toHaveCount(0);
   });
 
+  test("AC9: the lit date chip is the page's current one (issue #1285)", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    const lit = page.locator('a[href*="preset="][aria-current="page"]');
+
+    await page.goto("/admin/shifts");
+    await expect(lit).toHaveCount(1);
+    await expect(lit).toHaveAttribute("href", /preset=next7\b/);
+
+    await page.goto("/admin/shifts?preset=days30");
+    await expect(lit).toHaveCount(1);
+    await expect(lit).toHaveAttribute("href", /preset=days30\b/);
+  });
+
   test("the crew filter narrows to one member's shifts and RESPECTS the window (#330)", async ({
     page,
   }) => {
@@ -133,16 +146,16 @@ test.describe("board bundle — /admin/shifts (9.6)", () => {
     await page.goto("/admin/shifts");
 
     // Operator QA on 9.5: the list stays scannable — Barrel's two departures
-    // collapse to one compact fact; a single-trip row keeps time · pax.
+    // collapse to one compact fact; a single-trip row keeps its time and its number of guests.
     const barrel = page.getByRole("link", { name: /Barrel/ }).first();
     await expect(barrel.getByText("11:00 AM · 2 trips")).toBeVisible();
-    await expect(page.getByText(/\d+:\d+ [AP]M · \d+ pax/).first()).toBeVisible();
+    await expect(page.getByText(/\d+:\d+ [AP]M · \d+ (?!trips)/).first()).toBeVisible();
 
     // The cockpit keeps every trip, chip-per-trip, no aboard-total tail.
     await barrel.click();
     await page.waitForURL(/sel=/);
     await expect(page.getByText(/11:00 AM/).last()).toBeVisible();
-    await expect(page.getByText(/6:00 PM · \d+ pax/)).toBeVisible();
+    await expect(page.getByTestId("pane-col").getByText(/6:00 PM · \d+ (?!trips)/)).toBeVisible();
     await expect(page.getByText(/aboard total/)).toHaveCount(0);
   });
 

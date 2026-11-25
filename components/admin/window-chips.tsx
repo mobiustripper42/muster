@@ -13,7 +13,7 @@ const PRESET_LABEL: Partial<Record<Scope, string>> = {
   next7: "Week",
   next8to15: "2 Weeks out",
   days30: "30 Days",
-  past: "Past",
+  past: "Past 30 days",
   all: "All",
 };
 
@@ -21,7 +21,9 @@ const PRESET_LABEL: Partial<Record<Scope, string>> = {
  * The preset chips row and the **More filters** From/To `<details>`, shared by All Shifts and
  * Purchases (issue #1142) — lifted out of `shifts-filter.tsx` so both pages draw the window one
  * way. Renders no `Card`: the page's filter bar owns that, and `children` land inside the
- * `<details>` after the From/To form (All Shifts' crew select and toggles).
+ * `<details>` after the From/To form (All Shifts' crew select and toggles). `filter` is a control
+ * that sits between the chips and More filters (Purchases' status dropdown); All Shifts passes none.
+ * The lit chip carries `aria-current="page"`.
  *
  * Plain links and a no-JS GET form (DEC-026). `hidden` is the From/To form's hidden fields —
  * carrying no window key, or a carried preset would beat the submitted range.
@@ -35,6 +37,7 @@ export function WindowChips({
   hidden,
   submitLabel,
   open,
+  filter,
   children,
 }: {
   kind: Scope;
@@ -48,6 +51,8 @@ export function WindowChips({
   submitLabel: string;
   /** Whether the panel opens by default — when something inside it is in effect. */
   open: boolean;
+  /** Rendered between the chips and More filters. */
+  filter?: ReactNode;
   /** Rendered inside the `<details>` after the From/To form. */
   children?: ReactNode;
 }) {
@@ -57,11 +62,18 @@ export function WindowChips({
     <>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         {presets.map((p) => (
-          <AppLink key={p} href={hrefFor(p)} className={chip(kind === p)}>
+          <AppLink
+            key={p}
+            href={hrefFor(p)}
+            aria-current={kind === p ? "page" : undefined}
+            className={chip(kind === p)}
+          >
             {PRESET_LABEL[p]}
           </AppLink>
         ))}
       </div>
+
+      {filter}
 
       {/* Custom date range, tucked behind a no-JS <details> toggle (DEC-026 — native
           disclosure, no client JS). Open by default when something in it is actually active so

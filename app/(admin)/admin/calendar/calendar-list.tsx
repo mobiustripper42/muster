@@ -1,6 +1,7 @@
 import { formatCents } from "@core/reservations/calendar-detail.js";
 import { AppLink } from "../../../../components/ui/app-link";
 import { RevealSelectedCard } from "../../../../components/admin/reveal-selected-card";
+import { guestCount } from "../../../lib/format";
 import { vesselHueClass } from "../../../lib/vessel-hue";
 import { Card } from "../../../../components/ui/card";
 import { Badge, Tag, type Tone } from "../../../../components/ui/badge";
@@ -68,8 +69,6 @@ const PILL: Record<RowState, { label: string; tone: Tone }> = {
   departed: { label: "Departed", tone: "neutral" },
 };
 
-const guests = (n: number) => `${n} ${n === 1 ? "guest" : "guests"}`;
-
 /** The day's departures as list rows, in time order and then the fleet's order. Pure over `data`. */
 export function listRows(data: CalendarData, selectedReservationId?: string): ListRow[] {
   const groups = new Map<string, typeof data.slots>();
@@ -128,7 +127,7 @@ function rowOf(
       ...base,
       state: "booked",
       cruises: cruisesOf([sold]),
-      who: onBoard ? `${onBoard.customerName} · ${guests(onBoard.partySize)}` : null,
+      who: onBoard ? `${onBoard.customerName} · ${guestCount(onBoard.partySize)}` : null,
       xola: occupying?.event.source === "xola" && !own,
       crew: data.crewByEventId.get(eventId),
       href: onBoard ? detailHref(data, String(onBoard.id)) : undefined,
@@ -144,7 +143,7 @@ function rowOf(
     return {
       ...base,
       state: "unpaid",
-      who: `${phone.customerName} · ${guests(phone.partySize)}`,
+      who: `${phone.customerName} · ${guestCount(phone.partySize)}`,
       owesCents: phone.invoice?.amountDueNowCents,
       href: detailHref(data, String(phone.id)),
       label: `Awaiting payment, ${phone.customerName}, ${where}`,
@@ -164,7 +163,7 @@ function rowOf(
       ...base,
       state: "open",
       cruises: cruisesOf(open),
-      who: `Takes ${guests(vessel?.coiMaxPax ?? first.capacity)}`,
+      who: `Takes ${guestCount(vessel?.coiMaxPax ?? first.capacity)}`,
       href: calendarHref(data, { hold: `${vesselId}|${time}` }),
       bookHref: bookHref(data, { vesselId, time }, {}),
       label: `Book or block ${where}${phoneOnly ? ", phone only" : ""}`,

@@ -24,10 +24,12 @@ test.describe("cockpit guest manifest (#319)", () => {
 
     // The manifest section rendered, with the per-event pax summaries visible
     // (guests themselves sit in a collapsed <details> until expanded).
+    // Scoped to the manifest region: the cockpit's trip chips carry the same counts (issue #1285).
     const manifestHeading = page.getByRole("heading", { name: /Manifest/ });
+    const manifest = page.getByRole("region", { name: "Manifest" });
     await expect(manifestHeading).toBeVisible();
-    await expect(page.getByText("10 guests")).toBeVisible(); // 3pm: Brody 4 + Vaughn 6
-    await expect(page.getByText("2 guests")).toBeVisible(); //  5pm: Ellen 2
+    await expect(manifest.getByText("10 guests")).toBeVisible(); // 3pm: Brody 4 + Vaughn 6
+    await expect(manifest.getByText("2 guests")).toBeVisible(); //  5pm: Ellen 2
 
     // It sits BELOW the seat list (the #319 placement, re-anchored on the
     // Crewed-gate summary now that Manning is gone).
@@ -38,7 +40,7 @@ test.describe("cockpit guest manifest (#319)", () => {
     expect(manifestY).toBeGreaterThan(gateY);
 
     // Expand the 3pm trip → a real booked guest, party size shown, cancelled ones absent.
-    await page.getByText("10 guests").click();
+    await manifest.getByText("10 guests").click();
     await expect(page.getByText("Brody party")).toBeVisible();
     await expect(page.getByText("×4")).toBeVisible();
 
@@ -58,7 +60,6 @@ test.describe("cockpit guest manifest (#319)", () => {
     // Two of the three seeded guests have phones (Brody 3pm, Ellen 5pm) → two Call
     // links WITHIN the manifest; phone-less Vaughn contributes none. Scope to the
     // manifest region so the crew seat-card Call buttons elsewhere don't count.
-    const manifest = page.getByRole("region", { name: "Manifest" });
     await expect(manifest.locator('a[href^="tel:"]')).toHaveCount(2);
   });
 
@@ -67,8 +68,8 @@ test.describe("cockpit guest manifest (#319)", () => {
   }) => {
     await signInAsAdmin(page, "eric");
     await page.goto("/admin/shift/shift-soon");
-    await page.getByText("10 guests").click(); // expand the 3pm trip (Brody has a phone)
     const manifest = page.getByRole("region", { name: "Manifest" });
+    await manifest.getByText("10 guests").click(); // expand the 3pm trip (Brody has a phone)
     await expect(manifest.getByText(/Texted by/)).toHaveCount(0); // nobody contacted yet
 
     // Tap Text → the client island fires the record (then hands off to Messages,
@@ -83,7 +84,7 @@ test.describe("cockpit guest manifest (#319)", () => {
     // Any subsequent render (the sender reloads, or another crew loads it) shows the
     // shared mark — "✓ Texted by Eric · <time>".
     await page.goto("/admin/shift/shift-soon");
-    await page.getByText("10 guests").click();
+    await manifest.getByText("10 guests").click();
     await expect(manifest.getByText(/✓ Texted by Eric/)).toBeVisible();
   });
 });

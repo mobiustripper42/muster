@@ -29,7 +29,7 @@ This file *summarizes* the decisions. It is not the record, and it goes stale. B
    jig: amending in place is retired). Older records may still end in dated `## Amendment` sections;
    for those, **read to the bottom** — the last one is the current position.
    Some also carry a `**See also**` block near the top pointing at related decisions.
-3. Read the relevant part of `docs/SPEC.md`, especially the "Not V1" list. A section that has been
+3. Read the relevant part of `docs/SPEC.md`, especially the parked list, `docs/SPEC.md §4`. A section that has been
    amended carries a generated block under its heading naming the decision and the scope (DEC-143);
    read it before treating the prose beneath as current.
 4. Read `.claude/CLAUDE-context.md` for the domain shape — data model, stack, conventions. It is
@@ -154,7 +154,7 @@ clean it looks.
    migration, a new port, an RSC boundary crossing, test surface, config surface. Judge the
    obligations, not just the sentence. A proposal can be clean as stated and broken by what it drags
    in — "UNIQUE on (vessel_id, date)" passes DEC-131 and dies on split shifts.
-4. **Complexity** — complexity justified by current scope (`docs/SPEC.md` "Not V1")?
+4. **Complexity** — complexity justified by current scope (`docs/SPEC.md §4`, what is parked)?
 5. **Future cost** — does it create lock-in or make the next change harder?
 6. **Simpler alternative** — is there one that achieves the same goal?
 
@@ -169,7 +169,7 @@ only.
   `DEC-TBD` holds open questions with named human owners; if a proposal crosses one, **defer** and
   name the owner rather than deciding it.
 - `.claude/CLAUDE-context.md` — stack, data model, commands (authoritative for project facts)
-- `docs/SPEC.md` — scope; the "Not V1" list
+- `docs/SPEC.md` — scope; `docs/SPEC.md §4` is the parked list
 - `docs/PROJECT_PLAN.md` — phases and what's left
 - `CLAUDE.md` — workflow conventions
 

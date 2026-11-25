@@ -88,7 +88,7 @@ The shell's `## Decision Record (DEC-S036)` is the mechanism. This is the standi
 
 ## Workflow Mechanisms
 
-The shell's `## Micro Workflow` states what three steps must achieve and names a slot for how (DEC-S042). Filled below. **Slots, not overrides** — the shell states no default to correct, and nothing here cites a step *number*, because numbers move and a stale cross-reference in an always-loaded file fails silently. This section previously said "Step 5 (Write the test)" for two months after the shell renumbered.
+The shell's `## Micro Workflow` states what its proof steps must achieve and names a slot for how (DEC-S042). Filled below. **Slots, not overrides** — the shell states no default to correct, and nothing here cites a step *number*, because numbers move and a stale cross-reference in an always-loaded file fails silently. This section previously said "Step 5 (Write the test)" for two months after the shell renumbered.
 
 Muster is Next.js over a framework-free domain core.
 
@@ -96,7 +96,6 @@ Muster is Next.js over a framework-free domain core.
 |---|---|
 | **Proof** | Vitest against the domain core (oracle, state machine, reliability log), which is heavily unit- and integration-tested. Test-first when behaviour changes. **No pgTAP** — there is no Supabase and no RLS; persistence sits behind the `Repository` port with an in-memory adapter as the test substrate. |
 | **Proof command** | The relevant Vitest file or suite, not the whole thing. The full suite is my call, never automatic. |
-| **Surface check** | **Every page works at 375px.** Playwright's `mobile` project already runs that pass over ~30 named specs and feeds failure screenshots to `@ui-reviewer` — read `testMatch` in `playwright.config.ts` for the current set, and add to it when a surface with real mobile layout risk lands. A surface outside that set is eyeballed at `mill-dev:3000` per `docs/RUNNING.md`. Looking is still a separate step from the proof: the automated pass catches overflow and clipping, never whether a control is reachable or a surface can be escaped. |
 
 **Vercel previews are not a test surface.** Preview builds are cancelled at the dashboard (Settings → Build and Deployment → Ignored Build Step, keyed on `VERCEL_GIT_COMMIT_REF`), and there is no preview database — the Neon project was deleted 2026-09-15. A preview that serves pages cannot reach Postgres, so "open the preview and check" verifies nothing; a hand-test step that says so has been written twice and was wrong both times. The preview code path is selected by two environment variables and runs locally: `VERCEL_ENV=preview VERCEL_URL=<host> npm run dev`. DEC-173 superseded DEC-057, which had described previews as running against an isolated Neon branch; DEC-057 is in `docs/decisions/archive/`.
 
@@ -276,6 +275,7 @@ Where a competent default does the wrong thing in this repo.
 ## Workflow Notes (project)
 
 - **`git push` exception to the shell's "environment-changing commands":** the `/kill-this` ritual owns commit + push + PR — that's its job, no separate approval needed for the push inside it.
+- **`@architect` runs at `effort: xhigh` on purpose** (operator, 2026-11-25) — the shell's `## Model Selection` says all six agents run at `high`; this one does not. Do not lower it in a cleanup.
 - **`@ui-reviewer` is live** — `.claude/ui-context.md` exists and carries the brand tokens, surfaces, viewports and review checklist it hard-stops without. That file (brand tokens, surfaces, viewports, checklist) is authored with the first crew/admin surface.
 
 ### Concurrent lanes

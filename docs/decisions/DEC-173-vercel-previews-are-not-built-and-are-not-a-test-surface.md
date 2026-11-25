@@ -9,7 +9,7 @@ ruling: "Only the `production` ref builds; every other branch is cancelled by a 
 claims:
   - kind: "file"
     target: ".claude/CLAUDE-context.md"
-    note: "states the rule beside the Surface check slot"
+    note: "states the rule under Workflow Mechanisms"
   - kind: "file"
     target: "app/lib/base-url.ts"
     note: "the preview branch, chosen by env vars not by the platform"

@@ -280,4 +280,28 @@ describe("buildManageView — the balance row's label (issue #1252)", () => {
     expect(at.balanceLabel).toBe("Balance due");
     expect(before.balanceLabel).toBe("Balance · charged to your card on Mon, Oct 12");
   });
+
+  /**
+   * The day on its own (issue #1277), so the page can keep it on one line. When a due date counts as
+   * passed is the label's rule, tested at its instant above; these check that the day follows it.
+   */
+  it("issue #1277 AC10: with the frozen due date ahead, balanceDueDay is that day", () => {
+    // Twelve days before departure, as AC2 above: a day recomputed from the setting would be Mon, Oct 12.
+    const v = buildManageView(depositBooking({ balanceDueAt: "2026-10-30T19:30:00.000Z" }));
+
+    expect(v.balanceDueDay).toBe("Fri, Oct 30");
+  });
+
+  it("issue #1277 AC10: with no due date, balanceDueDay is null", () => {
+    expect(buildManageView(depositBooking()).balanceDueDay).toBeNull();
+  });
+
+  it("issue #1277 AC10: with a due date that has passed, balanceDueDay is null", () => {
+    const v = buildManageView({
+      ...depositBooking({ balanceDueAt: "2026-10-12T19:30:00.000Z" }),
+      now: { date: "2026-11-01", time: "09:00" },
+    });
+
+    expect(v.balanceDueDay).toBeNull();
+  });
 });

@@ -408,4 +408,29 @@ test.describe("the payment link", () => {
     await expect(customer.getByText(/^Pay in full · /)).toHaveCount(0);
     await expect(termsBox(customer)).not.toContainText("We'll charge the balance");
   });
+
+  test("issue #1277 AC5: choosing Pay in full keeps the tick, and choosing Pay deposit again clears it", async ({ page, browser, baseURL }) => {
+    await extendSeasonThrough(OUTSIDE_BALANCE_WINDOW);
+    await bookByPhone(page, OUTSIDE_BALANCE_WINDOW);
+    const path = await copiedLink(page);
+    const ctx = await browser.newContext({ baseURL, viewport: page.viewportSize() });
+    const customer = await ctx.newPage();
+    await customer.route("https://js.stripe.com/**", (route) =>
+      route.fulfill({ contentType: "application/javascript", body: HANGING_STRIPE_JS }),
+    );
+    await customer.goto(path);
+    const agree = customer.getByTestId("agree-terms");
+    await expect(agree).toBeVisible();
+    // Stripe's form has mounted: only then does a choice remount anything.
+    await expect(customer.getByTestId("stripe-loading")).toHaveCount(0);
+    await setCheckedHydrated(agree, true);
+
+    await clickHydrated(customer.getByTestId("pay-full"));
+    await expect(customer.getByTestId("pay-full")).toHaveAttribute("aria-pressed", "true");
+    await expect(agree).toBeChecked();
+
+    await clickHydrated(customer.getByTestId("pay-deposit"));
+    await expect(customer.getByTestId("pay-deposit")).toHaveAttribute("aria-pressed", "true");
+    await expect(agree).not.toBeChecked();
+  });
 });

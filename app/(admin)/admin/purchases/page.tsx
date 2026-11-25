@@ -135,11 +135,11 @@ function OwedCell({ owed, labelled = false }: { owed: PurchaseOwed; labelled?: b
       {labelled ? `owed ${formatCents(owed.cents)}` : formatCents(owed.cents)}
       {owed.dueAt &&
         (owed.pastDue ? (
-          <div className="text-[11px] font-normal text-bad">
+          <div className="whitespace-nowrap text-[11px] font-normal text-bad">
             past due{owed.lastFailure ? ` · ${owed.lastFailure}` : ""}
           </div>
         ) : (
-          <div className="text-[11px] font-normal text-muted">due {dueDayLabel(owed.dueAt)}</div>
+          <div className="whitespace-nowrap text-[11px] font-normal text-muted">due {dueDayLabel(owed.dueAt)}</div>
         ))}
     </>
   );
@@ -360,11 +360,11 @@ export default async function AdminPurchases({
                         href={`/admin/calendar/${encodeURIComponent(r.reservationId)}${
                           r.date ? `?date=${r.date}` : ""
                         }`}
-                        className="font-semibold text-ink underline underline-offset-2"
+                        className="whitespace-nowrap font-semibold text-ink underline underline-offset-2"
                       >
                         {r.customerName}
                       </AppLink>
-                      <div className="text-[11px] text-muted">
+                      <div className="whitespace-nowrap text-[11px] text-muted">
                         {displayContact(r.phone, r.email)}
                       </div>
                       {/* The phone-width copy of the Payment column's badge. No test id: the

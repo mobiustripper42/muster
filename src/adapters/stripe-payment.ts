@@ -652,7 +652,8 @@ export class StripePaymentPort implements PaymentPort {
       };
     }
     if (event.type === "payment_intent.processing") {
-      // A delayed payment method settling (15.12). Named rather than left to fall through to
+      // A delayed payment method settling (15.12), which cards only should rule out (issue #1288).
+      // Named rather than left to fall through to
       // `null`, which is where it went until now — so an event that means "a booking is in flight
       // for days" was indistinguishable from an event type we have never heard of. The handler
       // acks it and alerts; see `PaymentProcessing` for why it alerts where its neighbours do not.

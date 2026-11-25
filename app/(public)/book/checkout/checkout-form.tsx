@@ -518,7 +518,7 @@ function InnerForm(p: InnerProps) {
                Name and phone only — both are `required` above, and a field disabled here becomes
                REQUIRED at confirm. Email is optional at `/book`, so suppressing it would reject
                the payment of every guest who left it blank. Stripe keeps collecting email when it
-               wants to (Link), and wins on it; the email we pass applies when it doesn't ask. */
+               wants to, and wins on it; the email we pass applies when it doesn't ask. */
             <PaymentElement options={paymentElementOptions(p.payDeposit ? "deposit" : "full")} />
           // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
           ) : p.stripeFailed ? (

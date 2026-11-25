@@ -380,7 +380,16 @@ body {
   &::after {
     position: absolute;
     inset: 0;
+    border-radius: var(--radius-box);
     content: "";
+  }
+  /* The focus ring goes round the card, the thing Enter opens, not round the link's own words. */
+  &:focus-visible {
+    outline: none;
+  }
+  &:focus-visible::after {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 }
 

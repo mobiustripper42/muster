@@ -56,37 +56,34 @@ export function PurchaseCard({ row, href }: { row: PurchaseRow; href: string }) 
   const under = owed ? UNDER_AMOUNT[owed.status ?? "undated"] : undefined;
   return (
     <Card className="stretch-card flex flex-col gap-2">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <div className="flex items-start justify-between gap-3">
-            {/* The stretched link (`stretch-link`): its overlay fills the card, so the whole card opens
-                the booking. `spinner="overlay"` covers the card from the click until the pane renders. */}
-            <AppLink
-              href={href}
-              spinner="overlay"
-              className="stretch-link min-w-0 break-words font-semibold text-ink"
-            >
-              {row.customerName}
-            </AppLink>
-            {row.vesselId && row.vesselName && (
-              <span className="shrink-0 whitespace-nowrap text-sm">
-                <VesselLabel id={row.vesselId} hue={row.vesselHue} name={row.vesselName} />
-              </span>
-            )}
-          </div>
-          <span className="font-mono text-xs text-muted">
-            {row.time ? `${fmt12(row.time)} · ` : ""}
-            {guestCount(row.guestCount)}
+      {/* Three columns, the last a fixed width and held open on a card that owes nothing, so the vessel
+          and the amount stand in the same place on every card in the list. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_6rem] items-baseline gap-x-3 gap-y-0.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_7rem]">
+        {/* The stretched link (`stretch-link`): its overlay fills the card, so the whole card opens
+            the booking. `spinner="overlay"` covers the card from the click until the pane renders. */}
+        <AppLink href={href} spinner="overlay" className="stretch-link min-w-0 break-words font-semibold text-ink">
+          {row.customerName}
+        </AppLink>
+        {row.vesselId && row.vesselName && (
+          <span className="col-start-2 whitespace-nowrap text-sm">
+            <VesselLabel id={row.vesselId} hue={row.vesselHue} name={row.vesselName} />
           </span>
-        </div>
+        )}
         {owed && under && (
-          <div data-testid={`owed-${row.reservationId}`} className="shrink-0 whitespace-nowrap text-right">
+          <div
+            data-testid={`owed-${row.reservationId}`}
+            className="col-start-3 row-span-2 row-start-1 whitespace-nowrap text-right"
+          >
             <div className="font-mono font-semibold text-ink">{formatCents(owed.cents)}</div>
             <div className={`text-xs ${under.bad ? "text-bad" : "text-muted"}`}>
               {under.words(owed.dueAt ?? "")}
             </div>
           </div>
         )}
+        <span className="col-span-2 col-start-1 row-start-2 font-mono text-xs text-muted">
+          {row.time ? `${fmt12(row.time)} · ` : ""}
+          {guestCount(row.guestCount)}
+        </span>
       </div>
       <div>
         <Badge

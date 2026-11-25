@@ -1095,8 +1095,6 @@ the walk-through demo for Drew; its fixes get rows of their own.
 
 **Phase 23 total: 14 tasks, 39 points.** Drafted 2026-11-08. Then: release, 2027-02-01.
 
-**Phases 19–23: 162 points plus Phase 21's fixes.**
-
 ---
 
 ## Phase Boundary Checklist

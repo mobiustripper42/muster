@@ -72,10 +72,12 @@ export function PurchaseCard({ row, href }: { row: PurchaseRow; href: string }) 
         {owed && under && (
           <div
             data-testid={`owed-${row.reservationId}`}
-            className="col-start-3 row-span-2 row-start-1 whitespace-nowrap text-right"
+            // `items-end`: a due line wider than the column spills left into the gap, so it and the
+            // amount keep one right edge.
+            className="col-start-3 row-span-2 row-start-1 flex flex-col items-end whitespace-nowrap"
           >
             <div className="font-mono font-semibold text-ink">{formatCents(owed.cents)}</div>
-            <div className={`text-xs ${under.bad ? "text-bad" : "text-muted"}`}>
+            <div className={`text-sm ${under.bad ? "text-bad" : "text-ink"}`}>
               {under.words(owed.dueAt ?? "")}
             </div>
           </div>

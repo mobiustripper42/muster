@@ -249,7 +249,11 @@ export default async function AdminPurchases({
             <DaySection
               key={g.key}
               label={g.label}
-              aside={g.owedCents > 0 ? `${formatCents(g.owedCents)} still owed` : undefined}
+              aside={
+                g.owedCents > 0 ? (
+                  <span className="text-sm text-ink">{formatCents(g.owedCents)} still owed</span>
+                ) : undefined
+              }
             >
               {g.rows.map((r) => (
                 <PurchaseCard

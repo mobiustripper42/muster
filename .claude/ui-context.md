@@ -97,7 +97,7 @@ The surface count has outgrown a per-page list, and *who* a surface is for now m
 which ones exist. Route group tells you the posture:
 
 - **Crew** (`app/(crew)`) — mobile-first, "insultingly small", answerable in one tap. Session via
-  magic link. The strictest surface: every extra screen is somewhere stale info hides.
+  an emailed 6-digit code. The strictest surface: every extra screen is somewhere stale info hides.
 - **Admin** (`app/(admin)`) — Eric's cockpit. Desktop-leaning, must not break on a phone. Dense is
   fine; **anxious is not**. Triage surfaces summon; they aren't monitors.
 - **Customer** (`app/(public)/book/*`, `app/b/[code]`) — the newest audience, and the one

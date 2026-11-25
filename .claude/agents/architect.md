@@ -93,7 +93,7 @@ number from this file as current.
 
 | Fact | Where it actually lives |
 |---|---|
-| Pull-window and staffing-horizon values | env config / `.claude/CLAUDE-context.md` |
+| Pull-window and staffing-horizon values | defaults in `src/builder/derive.ts`; deployed values in Vercel env |
 | Vessel count and per-vessel manning | tenant data, not code |
 | The crew surface list | `ls app/(crew)/crew/` |
 | Which crew surfaces are live | the feature flags — `messagingEnabled()`, `timeClockEnabled()` |

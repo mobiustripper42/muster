@@ -1011,11 +1011,11 @@ rows 19.2–19.16 until deposits took Phase 19 (2026-11-09); money F6 moved into
 
 | # | Task | Est | Closes | Status |
 |---|------|-----|--------|--------|
-| 20.1 | **The reconciler.** Money F3 (15.16 is marked shipped and was never built) and F20 (a payment that matches no booking is acked silently) | 8 | — | [ ] [#1236](https://github.com/mobiustripper42/muster/issues/1236) |
-| 20.2 | **A stale payment that succeeds late is refunded and alerted.** Money F2 | 5 | — | [ ] [#1237](https://github.com/mobiustripper42/muster/issues/1237) |
+| 20.1 | **Money moves in four steps, everywhere.** Pattern 1 (`docs/audit/README.md`), the reconciler included: money F3, F5, F20 and U2 with the rest of its rows. Pulled from Phase 21; replaces the old 20.1 ([#1236](https://github.com/mobiustripper42/muster/issues/1236)) and 20.5 ([#1240](https://github.com/mobiustripper42/muster/issues/1240)). Pointed at spec; before 20.9 and 20.11 | — | — | [ ] [#1278](https://github.com/mobiustripper42/muster/issues/1278) |
+| 20.2 | **Check a trip can still be paid for before the money moves, and refund what lands anyway.** Pattern 2, money F2 with the rest of its rows. Pulled from Phase 21; replaces the old 20.2 ([#1237](https://github.com/mobiustripper42/muster/issues/1237)). Pointed at spec; after 20.1, before 20.9 and 20.11 | — | — | [ ] [#1279](https://github.com/mobiustripper42/muster/issues/1279) |
 | 20.3 | **A booking blocks its boat for its hold minutes, not its trip time.** Money F1 | 3 | — | [ ] [#1238](https://github.com/mobiustripper42/muster/issues/1238) |
 | 20.4 | **A failed confirmation send is not counted as told, and is retried.** Money F4 | 3 | — | [ ] [#1239](https://github.com/mobiustripper42/muster/issues/1239) |
-| 20.5 | **A failed refund is a work item someone sees, and a retry is not refused.** Money F5 and U2 | 5 | — | [ ] [#1240](https://github.com/mobiustripper42/muster/issues/1240) |
+| 20.5 | **A failed refund is a work item someone sees, and a retry is not refused.** Money F5 and U2 | — | — | folded into 20.1, [#1278](https://github.com/mobiustripper42/muster/issues/1278) |
 | 20.6 | **Money copy.** Money F7, F11, F14, F27 | 3 | — | [ ] [#1242](https://github.com/mobiustripper42/muster/issues/1242) |
 | 20.7 | **Admin lists tell the truth.** `/admin/integrity` and `/admin/purchases`: money F12, F13 | 3 | — | [ ] [#1243](https://github.com/mobiustripper42/muster/issues/1243) |
 | 20.8 | **Spec and comment sweep.** Money F16, F22, F23, F28; capability A20 | 2 | — | [ ] [#1244](https://github.com/mobiustripper42/muster/issues/1244) |
@@ -1026,7 +1026,7 @@ rows 19.2–19.16 until deposits took Phase 19 (2026-11-09); money F6 moved into
 | 20.13 | **Calendar: the List runs forward from today, and a date picker jumps to any day** | 3 | #1157 | [ ] [#1157](https://github.com/mobiustripper42/muster/issues/1157) |
 | 20.14 | **Breadcrumbs and browser title** | 3 | #502 | [ ] [#502](https://github.com/mobiustripper42/muster/issues/502) |
 
-**Phase 20 total: 13 tasks, 51 points.** 20.10–20.14 added 2026-11-08 at the operator's call; 20.12 (3) moved to Phase 19. Drafted
+**Phase 20 total: 12 tasks, 33 points, with 20.1 and 20.2 still unpointed** (operator, 2026-11-25: issues #1278 and #1279 pulled from Phase 21 so one build replaces the single fixes; an exception to the rule that audit triage cannot grow this phase). 20.10–20.14 added 2026-11-08 at the operator's call; 20.12 (3) moved to Phase 19. Drafted
 at the Phase 16 retro, 2026-11-08. Hand step, no row: confirm production's tax setting reads 8% (money
 F15).
 

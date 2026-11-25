@@ -28,7 +28,7 @@ Earlier audits in this folder keep their own status and are not in the ledger: `
 What to pick up the next time anyone works on audits (operator, 2026-11-23). `/its-alive` will not bring these up.
 
 **When to look:**
-- **Before Feb 1:** the Feb 1 rows. Filed on issues #1278, #1279, #1280 and #1282 and the Phase 20 issues (#1236 to #1240, #1242 to #1244); security rows are Phase 22 tasks. F15 needs no code: confirm the production tax row reads 8%. Confirm F29.
+- **Before Feb 1:** the Feb 1 rows. Filed on issues #1278 and #1279 (Phase 20), #1280 and #1282, and the other Phase 20 issues (#1238, #1239, #1242 to #1244); security rows are Phase 22 tasks. F15 needs no code: confirm the production tax row reads 8%. Confirm F29.
 - **March or April, before May 1:** crew pay and legal crewing, gone through with the operator. Issue #1230 stays open for this.
 - **After the release:** the rest.
 
@@ -115,11 +115,11 @@ The patterns behind the findings, worst first (issue #1230). Patterns 1 and 2 ar
 3. Write down the result. Until it is written, the record is unfinished, and no screen says what happened unless it is known.
 4. A job finds unfinished records, asks Stripe what happened, and finishes them.
 
-**Where it exists:** the balance charge, all four (`src/reservations/balance-charge.ts`, DEC-202). Booking payments have the first three; the fourth is the reconciler (`docs/SPEC.md` §2.8.9), not built: issue #1236. Refunds have neither the first nor the fourth.
+**Where it exists:** the balance charge, all four (`src/reservations/balance-charge.ts`, DEC-202). Booking payments have the first three; the fourth is the reconciler (`docs/SPEC.md` §2.8.9), not built: part of issue #1278. Refunds have neither the first nor the fourth.
 
 **Keeping it plugged (proposed, not in the codebase):** a check that fails when anything outside the one module calls a Stripe method that moves money, so a new path cannot skip the steps. Today refunds are called from `src/reservations/refund-payment.ts` and `src/reservations/booking-webhook.ts`.
 
-**When:** Feb 1. **Rows:** paired PS-1 (silent S1-1), silent S2-1 (paired PS-9, silent S3-7), money F3, F5, F20 and U2, conformance C15 and C19. **Also:** paired PS-3 and PS-5, plan S2-1. **Proposed by triage:** silent S3-4, S3-5, S3-6, S3-8, S3-21, S4-2 and S4-5, paired PS-22. **Issue:** issue #1278. It builds on issue #1236 (F3, F20), and the spec decides whether it replaces or widens issue #1240 (F5, U2).
+**When:** Feb 1. **Rows:** paired PS-1 (silent S1-1), silent S2-1 (paired PS-9, silent S3-7), money F3, F5, F20 and U2, conformance C15 and C19. **Also:** paired PS-3 and PS-5, plan S2-1. **Proposed by triage:** silent S3-4, S3-5, S3-6, S3-8, S3-21, S4-2 and S4-5, paired PS-22. **Issue:** issue #1278. It replaces issues #1236 (F3, F20) and #1240 (F5, U2) and is Phase 20 (operator, 2026-11-25).
 
 ### Pattern 2 — Check that it can still be paid for, right before the money moves
 
@@ -129,7 +129,7 @@ The patterns behind the findings, worst first (issue #1230). Patterns 1 and 2 ar
 
 **And when money lands anyway** (operator, 2026-11-22): a check cannot catch a customer already on their bank's approval screen. Money that lands on a booking that cannot take it is recorded, refunded automatically, and the customer and the operator are told. The refund goes through pattern 1.
 
-**When:** Feb 1. **Rows:** operator OR-1, OR-2 and OR-3, silent S2-2, paired PS-2, money F2. **Proposed by triage:** silent S4-7. **Issue:** issue #1279. The spec decides whether it replaces or widens issue #1237 (F2).
+**When:** Feb 1. **Rows:** operator OR-1, OR-2 and OR-3, silent S2-2, paired PS-2, money F2. **Proposed by triage:** silent S4-7. **Issue:** issue #1279. It replaces issue #1237 (F2) and is Phase 20 (operator, 2026-11-25).
 
 ### Pattern 3 — Nothing says it happened until it is known (ruled)
 
@@ -172,10 +172,10 @@ Statuses are `open` unless a row says otherwise. A "same finding as" or "overlap
 | ID | Sev | Finding | When | Status |
 |---|---|---|---|---|
 | F1 | S1 | A booked trip blocks its hull for its trip time, not its hold minutes | Feb 1 | issue #1238 — confirmed real (operator, 2026-11-03) |
-| F2 | S1 | A superseded PaymentIntent that succeeds late is a second payment and tip; no refund, nobody told | Feb 1 | issue #1237 — confirmed real (operator, 2026-11-03) |
-| F3 | S1 | The reconciler is not built; `docs/PROJECT_PLAN.md` marks it shipped | Feb 1 | issue #1236 — confirmed real (operator, 2026-11-03) |
+| F2 | S1 | A superseded PaymentIntent that succeeds late is a second payment and tip; no refund, nobody told | Feb 1 | issue #1279 (was #1237) — confirmed real (operator, 2026-11-03) |
+| F3 | S1 | The reconciler is not built; `docs/PROJECT_PLAN.md` marks it shipped | Feb 1 | issue #1278 (was #1236) — confirmed real (operator, 2026-11-03) |
 | F4 | S2 | A failed confirmation send keeps the claim; the customer is booked, charged and never told | Feb 1 | issue #1239 |
-| F5 | S2 | A failed self-service refund leaves no work item; the operator email is best-effort | Feb 1 | issue #1240 |
+| F5 | S2 | A failed self-service refund leaves no work item; the operator email is best-effort | Feb 1 | issue #1278 (was #1240) |
 | F6 | S3 | Booked-row readers recompute tax and balance from the live tax rate (latent S1) | Feb 1 | fixed — issue #1241: the five readers read the tax and balance frozen on the booking's invoice |
 | F7 | S3 | `/book/success` tells a race loser they were refunded and texted before either happens | Feb 1 | issue #1242 |
 | F8 | S3 | Two concurrent self-cancel presses report a failed refund to both parties | — | fixed — agent-checked on `main` at `c280379`: Fixed by issue #1228: cancel and boat release run in one transaction with a guarded status update, so the second press matches nothing and reports already cancelled instead of a failed refund (src/adapters/postgres-repository.ts:1838-1878, src/reservations/cancel-reservation.ts:286-287, src/reservations/customer-cancel.ts:188). |
@@ -190,7 +190,7 @@ Statuses are `open` unless a row says otherwise. A "same finding as" or "overlap
 | F17 | S4 | The cutoff's settings-page control is not built | May 1 | open |
 | F18 | S4 | An override `Event` at the asker's slot: the read exempts it, the write does not (latent S1) | after release | issue #945 (deferred) — unreachable until a per-trip override exists: issue #1228 stops a cancel leaving an unbooked Event |
 | F19 | S4 | Slots under a live pending row are hidden on the operator grid, not drawn busy | May 1 | open |
-| F20 | S4 | A `payment_intent.succeeded` that matches no row is acked silently | Feb 1 | issue #1236 |
+| F20 | S4 | A `payment_intent.succeeded` that matches no row is acked silently | Feb 1 | issue #1278 (was #1236) |
 | F21 | S4 | The customer record is created before the flip, not in step 6 | after release | open |
 | F22 | S4 | Stale docstrings state the pre-DEC-196 fee base and an untaxed insurance | Feb 1 | issue #1244 |
 | F23 | S4 | "Nothing else is created at checkout" is broader than the code | Feb 1 | issue #1244 |
@@ -211,7 +211,7 @@ Statuses are `open` unless a row says otherwise. A "same finding as" or "overlap
 | ID | Sev | Finding | When | Status |
 |---|---|---|---|---|
 | U1 | — | A failed refund's only alert is a best-effort email filed as `booking_request` | Feb 1 | duplicate of money F5 |
-| U2 | — | A retried refund reuses the Stripe idempotency key (`src/reservations/refund-payment.ts`, predates 16.9) | Feb 1 | issue #1240 |
+| U2 | — | A retried refund reuses the Stripe idempotency key (`src/reservations/refund-payment.ts`, predates 16.9) | Feb 1 | issue #1278 (was #1240) |
 | U3 | — | Cleanup: the cancel-and-refund sequence is written twice, the operator-email block three times, `refund=` is written and never read | after release | open |
 
 ### Capability URLs — `docs/audit/2026-11-03-capability-urls.md`

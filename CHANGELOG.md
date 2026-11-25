@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.6.0] - 2026-11-25 — Phase 19: Deposits
+- 57 pts shipped across 24 PRs
+- See `docs/RETROSPECTIVES.md` for the retro
+
 ## [1.5.0] - 2026-11-07 — Phase 16: Reservations — the operator's side
 - 79 pts shipped across 93 PRs in the window (~31 cite a Phase 16 issue)
 - See `docs/RETROSPECTIVES.md` for the retro

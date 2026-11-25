@@ -3,6 +3,22 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 19 — 2026-11-25 — Deposits
+
+**Numbers:** 57 / 41 pts · 17 days · 5 re-estimated, drift +1 · 24 PRs
+
+**What happened:** Deposits shipped: a $100 deposit at checkout and on payment links, the balance charged automatically with retries, frozen tax, failed-charge notices. The automatic release was cancelled and bank payment ruled out. Five issues were added. Review at the merge to main found the deposit toggle wiping the checkout form; Purchases was rebuilt twice.
+
+**Operator:** Overall the phase went well and didn't expand more than phases usually expand. I was able to run a concurrent session smoothly to do the audits. Other than time and tokens that didn't disrupt this session at all, that's great. Overall time was slow due to haul developement work, a pause because my subscription was running low before reset, and I did make some pretty significant but worthwhile changes.
+
+My biggest frustration with this phase is payments are hard. There are so many edges and the consiqueses are high. I don't really know how to make that any better, other than just muesling though
+
+**PM read:** You are right on scope: 18 of 57 points arrived mid-phase, against 42 of 79 in Phase 16. On why payments feel hard, the record shows where defects surfaced. @code-review found a replay-after-success bug in the balance charge, and @ui-reviewer found the toggle wiping the checkout form only at the merge to main. Task pull requests on feature/deposits ran no verify or e2e check, only Vercel, until pull request #1276 targeted main. test:stripe and AC15 by hand, owed in pull request #1269, have no recorded run. Next phase, write each money task's failure cases into its spec using patterns 1 and 2 in docs/audit/README.md.
+
+**Unpointed:** #1253 (re-pointed 3 → 0, nothing to build)
+
+**Notes:** Pull requests are counted from Phase 16's close (2026-11-07), days from the phase's first issue (#1235, 2026-11-08). The retro skill's phase `N-1` rule would start at Phase 18's close on 2026-10-05 and recount 36 pull requests from Phase 16's window: it assumes phases close in number order. Drift adds the original points of issues folded into others (#1256 into #1142, #1265 into #1266). 41 planned includes 19.7's 5 (deferred) and 19.4's 3. UI review skipped at the operator's call; a full pass is planned in Phase 23. The skill's UI review step expects a route list, languages and viewports and a screen-file definition from `.claude/ui-context.md`, which has none of them. Both are for a jig session.
+
 ## Phase 16 — 2026-11-07 — Reservations: the operator's side
 
 **Numbers:** 79 / 40 pts · 46 days · 1 re-estimated, drift +3 · 93 PRs

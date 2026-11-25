@@ -44,6 +44,7 @@ phases are *burst-shaped* (clear inside a calendar week), so a per-week rate isn
 | 15    | 4*       | 73     | — (DEC-S026) | — | — | **43.6 pts/wk** — 73 pts over 11.7d (09-10→09-22); re-est'd **6**, drift **−8** — the largest negative drift of any phase, and every one of the six was scope found to be already built or not worth building (15.5 is the lone +5). 16 PRs from session 106; 54 merged in the window across both lanes. 20/20 planned tasks closed, **0 added mid-phase** |
 | 18    | —        | 64     | — (DEC-S026) | — | — | **64 / 52 pts over 7.3d** (09-28→10-05); re-est'd **7**, drift **+17** (every one up; 18.3 and 18.5 split); 18.9 deferred to a Reports idea (5 pts, not counted); 32 PRs in window across both lanes, 16 Phase 18's; 5 follow-ups had `phase:18` removed at retro. No rate computed (retro model 2026-10) |
 | 16    | —        | 79     | — (DEC-S026) | — | — | **79 / 40 pts over 46d** (09-22→11-07); re-est'd **1**, drift **+3** (16.9 5→8; 16.8's row says 5→8 but its label stayed 5, label counted); **16 issues added mid-phase (42 pts, 53%)**, 6 unpointed; 16.0 and 16.7 deferred and replaced; 93 PRs in window, ~31 cite a Phase 16 issue. No rate computed |
+| 19    | —        | 57     | — (DEC-S026) | — | — | **57 / 41 pts over 17d** (11-08→11-25); re-est'd **5**, drift **+1** (#1251 3→5, #1252 3→2, #1253 3→0, #1142 + #1256 6→8, #1266 + #1265 2→3); **5 issues added mid-phase (18 pts)**; 19.7 deferred (5 pts, not counted); 24 PRs in window. No rate computed |
 
 `*` Phase 12's and Phase 14's session and PR counts are **window** counts, not the phases': Phase 13
 completed inside Phase 12's span (2026-08-04) and lanes A and B ran concurrently throughout both. 47
@@ -980,18 +981,25 @@ pre-launch need goes to a later phase unless it blocks a row here.
 
 | # | Task | Est | Closes | Status |
 |---|------|-----|--------|--------|
-| 19.0 | **Deposits — spec.** A decision record superseding DEC-155, a new `docs/SPEC.md` section, and the full-payment sentences rewritten. Settles the saved card, failed and declined balance charges, the cancel terms, phone bookings and payment links, and which tax rate a finalized trip uses | 5 | — | [ ] [#1235](https://github.com/mobiustripper42/muster/issues/1235) |
-| 19.1 | **The deposit at checkout.** The four settings — deposit (fixed or percent, $100 default), balance due, retries, release; the invoice's amount due now; the three whole-quote exceptions and the insurance floor; the due-date and release-date columns; the card saved on the deposit charge; the balance line above the pay button; DEC-200's check covering the balance | 8 | — | [ ] [#1250](https://github.com/mobiustripper42/muster/issues/1250) |
-| 19.2 | **The payment link takes the deposit.** The window judged when the link is paid; the card saved | 3 | — | [ ] [#1251](https://github.com/mobiustripper42/muster/issues/1251) |
-| 19.3 | **The manage page and cancel with a deposit.** What is paid, what is due, the due date; a cancel with only the deposit paid | 3 | — | [ ] [#1252](https://github.com/mobiustripper42/muster/issues/1252) |
-| 19.4 | **Deposits in no revenue or tax report.** Tax reports cover finalized trips only | 3 | — | [ ] [#1253](https://github.com/mobiustripper42/muster/issues/1253) |
-| 19.5 | **A booked trip reads its frozen tax and balance, not today's setting.** Money F6 | 3 | — | [ ] [#1241](https://github.com/mobiustripper42/muster/issues/1241) |
-| 19.6 | **The scheduled balance charge.** The off-session charge on the due date, the retries, no retry when the bank asks the customer to approve, the manage page paying the balance; the Stripe Checkout balance link goes. Money F29 and capability A13. Reads the frozen rate, which 19.5 (money F6) fixes | 8 | #712 | [ ] [#1254](https://github.com/mobiustripper42/muster/issues/1254) |
-| 19.7 | **The release.** The auto-cancel at the release date and an admin's stop; the release notice; on every failed charge the customer is texted and emailed a link to pay, and the admins are emailed; admin email on every release | 5 | — | [ ] [#1255](https://github.com/mobiustripper42/muster/issues/1255) |
-| 19.8 | **The past-due list on purchases.** A screen: its filter, order and wording are specced with the task | 3 | — | [ ] [#1256](https://github.com/mobiustripper42/muster/issues/1256) |
+| 19.0 | **Deposits — spec.** A decision record superseding DEC-155, a new `docs/SPEC.md` section, and the full-payment sentences rewritten. Settles the saved card, failed and declined balance charges, the cancel terms, phone bookings and payment links, and which tax rate a finalized trip uses | 5 | — | [x] [#1235](https://github.com/mobiustripper42/muster/issues/1235) |
+| 19.1 | **The deposit at checkout.** The four settings — deposit (fixed or percent, $100 default), balance due, retries, release; the invoice's amount due now; the three whole-quote exceptions and the insurance floor; the due-date and release-date columns; the card saved on the deposit charge; the balance line above the pay button; DEC-200's check covering the balance | 8 | — | [x] [#1250](https://github.com/mobiustripper42/muster/issues/1250) |
+| 19.2 | **The payment link takes the deposit.** The window judged when the link is paid; the card saved | 3 | — | [x] [#1251](https://github.com/mobiustripper42/muster/issues/1251) — re-pointed 3 → 5 |
+| 19.3 | **The manage page and cancel with a deposit.** What is paid, what is due, the due date; a cancel with only the deposit paid | 3 | — | [x] [#1252](https://github.com/mobiustripper42/muster/issues/1252) — re-pointed 3 → 2 |
+| 19.4 | **Deposits in no revenue or tax report.** Tax reports cover finalized trips only | 3 | — | [x] [#1253](https://github.com/mobiustripper42/muster/issues/1253) — re-pointed 3 → 0: no revenue or tax report exists; the rule moved to issue #1234 |
+| 19.5 | **A booked trip reads its frozen tax and balance, not today's setting.** Money F6 | 3 | — | [x] [#1241](https://github.com/mobiustripper42/muster/issues/1241) |
+| 19.6 | **The scheduled balance charge.** The off-session charge on the due date, the retries, no retry when the bank asks the customer to approve, the manage page paying the balance; the Stripe Checkout balance link goes. Money F29 and capability A13. Reads the frozen rate, which 19.5 (money F6) fixes | 8 | #712 | [x] [#1254](https://github.com/mobiustripper42/muster/issues/1254) |
+| 19.7 | **The release.** The auto-cancel at the release date and an admin's stop; the release notice; on every failed charge the customer is texted and emailed a link to pay, and the admins are emailed; admin email on every release | 5 | — | deferred [#1255](https://github.com/mobiustripper42/muster/issues/1255) — out of the phase 2026-11-20; the failed-charge notices shipped as issue #1273 |
+| 19.8 | **The past-due list on purchases.** A screen: its filter, order and wording are specced with the task | 3 | #1142 | [x] [#1142](https://github.com/mobiustripper42/muster/issues/1142) — built with the Purchases revamp (was 20.12), 8 points; [#1256](https://github.com/mobiustripper42/muster/issues/1256) closed into it |
+| — | 19.10 Money-display follow-ups (absorbed 19.9, issue #1265) | 3 | — | [x] [#1266](https://github.com/mobiustripper42/muster/issues/1266) — Added during P19 retro |
+| — | 19.11 Checkout's deposit/full toggle keeps the form; values stay whole at 375px | 3 | — | [x] [#1277](https://github.com/mobiustripper42/muster/issues/1277) — Added during P19 retro |
+| — | A failed balance charge tells the customer and the admins | 5 | — | [x] [#1273](https://github.com/mobiustripper42/muster/issues/1273) — Added during P19 retro |
+| — | Purchases screen as cards: UI review | 5 | — | [x] [#1285](https://github.com/mobiustripper42/muster/issues/1285) — Added during P19 retro |
+| — | Bank payment: researched and ruled out, cards only (DEC-203) | 2 | — | [x] [#1268](https://github.com/mobiustripper42/muster/issues/1268) — Added during P19 retro |
 
 **Phase 19 total: 9 tasks, 41 points.** Split 2026-11-09 from the 19.0 spec. Hand step, no row: the
 published terms' new sentence (`docs/SPEC.md §2.8.4d`) goes on brewcle.com — the operator's.
+
+**Closed at the Phase 19 retro, 2026-11-25: 57 / 41 pts.** 8 of the 9 rows closed (19.4 at 0 points, nothing to build); 19.7 was deferred. 5 issues were added mid-phase (18 pts), and 20.12 was pulled into 19.8.
 
 ---
 
@@ -1014,11 +1022,11 @@ rows 19.2–19.16 until deposits took Phase 19 (2026-11-09); money F6 moved into
 | 20.9 | **End-to-end refund check.** Its own issue, per the operator's order of 2026-10-11 | 3 | — | [ ] [#1245](https://github.com/mobiustripper42/muster/issues/1245) |
 | 20.10 | **A stranger's booking cannot join your customer record.** Checkout merges on an unverified phone (`src/customers/resolve.ts`); 16.9 closed the cancel path, not the merge. Deferred out of Phase 16 on 2026-10-31; back in for launch (operator, 2026-11-08) | 5 | #1213 | [ ] [#1213](https://github.com/mobiustripper42/muster/issues/1213) |
 | 20.11 | **A goodwill refund takes an amount off the trip; tax, fee and tip follow it.** What Drew types is the amount off the trip, not the amount back to the card (operator, 2026-11-04); DEC-199 | 5 | #1222 | [ ] [#1222](https://github.com/mobiustripper42/muster/issues/1222) |
-| 20.12 | **Purchases is useful.** Time windows (this week…), grouping, sorting | 3 | #1142 | [ ] [#1142](https://github.com/mobiustripper42/muster/issues/1142) |
+| 20.12 | **Purchases is useful.** Time windows (this week…), grouping, sorting | — | #1142 | moved to Phase 19 as 19.8, [#1142](https://github.com/mobiustripper42/muster/issues/1142) |
 | 20.13 | **Calendar: the List runs forward from today, and a date picker jumps to any day** | 3 | #1157 | [ ] [#1157](https://github.com/mobiustripper42/muster/issues/1157) |
 | 20.14 | **Breadcrumbs and browser title** | 3 | #502 | [ ] [#502](https://github.com/mobiustripper42/muster/issues/502) |
 
-**Phase 20 total: 14 tasks, 54 points.** 20.10–20.14 added 2026-11-08 at the operator's call. Drafted
+**Phase 20 total: 13 tasks, 51 points.** 20.10–20.14 added 2026-11-08 at the operator's call; 20.12 (3) moved to Phase 19. Drafted
 at the Phase 16 retro, 2026-11-08. Hand step, no row: confirm production's tax setting reads 8% (money
 F15).
 

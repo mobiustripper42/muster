@@ -583,7 +583,7 @@ export interface ConfirmOptions {
  * Conservative by design: names that legitimately carry other characters are degraded, not
  * rejected, and the operator still has the charge id, which is the part they act on.
  */
-function safeForAlert(name: string): string {
+export function safeForAlert(name: string): string {
   const cleaned = name.replace(/[^A-Za-z0-9 .,'-]/g, " ").replace(/\s+/g, " ").trim();
   return (cleaned.length > 40 ? `${cleaned.slice(0, 40)}...` : cleaned) || "customer";
 }

@@ -159,6 +159,9 @@ export function buildSeededTrail(input: {
     // A waiver reminder whose text did not go, beside the one the `reminder` record below shows sent.
     { type: "waiver_reminder_failed", minutesAgo: 2 * DAY - 240, actorKind: "engine",
       metadata: { reason: "email=sent sms=failed" } },
+    // A scheduled balance charge that was declined, and the customer told (issue #1273).
+    { type: "balance_charge_failed", minutesAgo: 2 * DAY - 300, actorKind: "engine",
+      metadata: { attempt: 0, reason: "insufficient_funds", outcome: "email=sent sms=sent" } },
 
     // ── Yesterday: the chargeback, all four states ────────────────────────
     { type: "dispute_inquiry", minutesAgo: DAY + 180, actorKind: "stripe",

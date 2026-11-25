@@ -165,6 +165,12 @@ function stateOf(
   return balanceCents > 0 ? "deposit" : "paid";
 }
 
+/** The bank's reason for a decline as the trail row and the admin text both say it: its code, or
+ *  `declined` when it sent none. */
+export function declineReasonOf(declineCode: string | undefined): string {
+  return declineCode ?? "declined";
+}
+
 /** The latest failed balance attempt's outcome. A claim in flight (no outcome) and a success are
  *  skipped; the highest attempt number wins. */
 function lastFailureOf(attempts: readonly BalanceChargeAttempt[]): "declined" | "needs_approval" | undefined {

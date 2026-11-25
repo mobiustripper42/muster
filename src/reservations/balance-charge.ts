@@ -22,9 +22,14 @@ import type { PaymentSucceeded } from "../ports/payment.js";
 import { logSwallowed } from "../log.js";
 import { alertThatNeverThrows, paymentIdFor, type WebhookDeps } from "./booking-webhook.js";
 import { bookingCodeRefusal, normalizeBookingCode } from "./booking-code.js";
+import { balanceAdminAlertBody, type BalanceFailure, type TellBalanceFailed } from "./balance-notice.js";
 import { balanceOwedCents } from "./payment-config.js";
 
 type BalanceDeps = Pick<WebhookDeps, "repo" | "payments" | "now" | "alertPaidButUnbooked">;
+
+/** What the job takes: the balance deps, and the sender that tells the customer of a failed charge
+ *  (issue #1273). Required, so a caller that forgets it fails to compile. */
+export type ChargeDeps = BalanceDeps & { tellBalanceFailed: TellBalanceFailed };
 
 type Refusal = "not_active" | "no_balance" | "disputed";
 
@@ -145,8 +150,11 @@ type Counts = { charged: number; declined: number; needsApproval: number; errors
  *   idempotency key, which Stripe answers with the first result rather than a second charge.
  * - A booking with no saved card is skipped: no claim, no count, a log line. The past-due list (19.8)
  *   is where it surfaces.
+ * - **A declined charge, or one the bank asks the customer to approve, tells both sides** (issue
+ *   #1273), after the attempt's outcome is written and outside the block that can give the claim
+ *   back: a send that fails can never undo the attempt or charge the card again.
  */
-export async function chargeDueBalances(deps: BalanceDeps): Promise<Counts> {
+export async function chargeDueBalances(deps: ChargeDeps): Promise<Counts> {
   const counts: Counts = { charged: 0, declined: 0, needsApproval: 0, errors: 0 };
   const now = deps.now();
   const due = await deps.repo.listBalancesDue(now);
@@ -165,7 +173,7 @@ export async function chargeDueBalances(deps: BalanceDeps): Promise<Counts> {
 }
 
 async function chargeOne(
-  deps: BalanceDeps,
+  deps: ChargeDeps,
   reservation: Reservation,
   retryDays: readonly number[],
   now: string,
@@ -209,6 +217,7 @@ async function chargeOne(
 
   const staleBefore = new Date(Date.parse(now) - RECLAIM_AFTER_MS).toISOString();
   if (!(await deps.repo.claimBalanceAttempt({ reservationId: reservation.id, attempt, at: now, staleBefore }))) return;
+  let failure: BalanceFailure | undefined;
   try {
     // A previous run's charge that went through but was not recorded: record it, charge nothing. Not
     // counted as `charged` — this run charged nothing.
@@ -230,6 +239,8 @@ async function chargeOne(
     } else if (result.outcome === "needs_approval") {
       await deps.repo.finishBalanceAttempt({ reservationId: reservation.id, attempt, outcome: "needs_approval" });
       counts.needsApproval++;
+      // The job makes no later attempt once the bank has asked the customer to approve.
+      failure = { attempt, owedCents: payable.owedCents, nextAttemptAt: null, outcome: "needs_approval" };
     } else {
       await deps.repo.finishBalanceAttempt({
         reservationId: reservation.id,
@@ -238,6 +249,13 @@ async function chargeOne(
         ...(result.declineCode !== undefined ? { declineCode: result.declineCode } : {}),
       });
       counts.declined++;
+      failure = {
+        attempt,
+        owedCents: payable.owedCents,
+        nextAttemptAt: times[attempt + 1] ?? null,
+        outcome: "declined",
+        ...(result.declineCode !== undefined ? { declineCode: result.declineCode } : {}),
+      };
     }
   } catch (e) {
     // Give the claim back so the next tick re-sends it. A failed release is logged, not thrown: the
@@ -249,6 +267,25 @@ async function chargeOne(
       );
     throw e;
   }
+  if (failure) await tellFailure(deps, reservation, failure);
+}
+
+/**
+ * Tell both sides of a failed charge: the customer through the injected sender, then the admins
+ * through the money alert. Neither can stop the other, and neither can throw: the attempt is
+ * recorded and stands. A sender that rejects is logged and writes no row of its own.
+ */
+async function tellFailure(deps: ChargeDeps, reservation: Reservation, failure: BalanceFailure): Promise<void> {
+  try {
+    await deps.tellBalanceFailed(reservation, failure);
+  } catch (e) {
+    logSwallowed(
+      "balance-charge:job",
+      e,
+      `the balance charge for ${reservation.id} failed and asking to tell the customer threw`,
+    );
+  }
+  await alertThatNeverThrows(deps.alertPaidButUnbooked)(balanceAdminAlertBody({ reservation, failure }));
 }
 
 /**

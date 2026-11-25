@@ -13,7 +13,7 @@ process notes, forecast update. One entry per phase, newest at the top.
 
 My biggest frustration with this phase is payments are hard. There are so many edges and the consiqueses are high. I don't really know how to make that any better, other than just muesling though
 
-**PM read:** You are right on scope: 18 of 57 points arrived mid-phase, against 42 of 79 in Phase 16. On why payments feel hard, the record shows where defects surfaced. @code-review found a replay-after-success bug in the balance charge, and @ui-reviewer found the toggle wiping the checkout form only at the merge to main. Task pull requests on feature/deposits ran no verify or e2e check, only Vercel, until pull request #1276 targeted main. test:stripe and AC15 by hand, owed in pull request #1269, have no recorded run. Next phase, write each money task's failure cases into its spec using patterns 1 and 2 in docs/audit/README.md.
+**PM read:** You are right on scope: 18 of 57 points arrived mid-phase, against 42 of 79 in Phase 16. On why payments feel hard, the record shows where defects surfaced. @code-review found a replay-after-success bug in the balance charge, and @ui-reviewer found the toggle wiping the checkout form only at the merge to main. Task pull requests on feature/deposits ran no verify or e2e check, only Vercel, until pull request #1276 targeted main. Next phase, write each money task's failure cases into its spec using patterns 1 and 2 in docs/audit/README.md.
 
 **Unpointed:** #1253 (re-pointed 3 → 0, nothing to build)
 

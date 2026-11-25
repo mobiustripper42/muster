@@ -10,14 +10,12 @@ Crewing is the half Xola has no concept of. Xola knows a booking is paid; Muster
 
 **A shift is the unit of crewing:** all of one vessel's trips on one vessel-local day, worked as a single assignment — taking it means taking the whole day, not a trip. That grouping is the *default*, not an invariant: a day with a long midday gap can be **split** into two shifts and merged back, so **vessel+date does not uniquely identify a shift**.
 
-**Two windows, deliberately decoupled (DEC-080)** — conflating them is a recurring source of wrong reasoning. `XOLA_PULL_LEAD_DAYS` is how far ahead the importer fetches reservations; `STAFFING_HORIZON_LEAD_DAYS` is how far ahead the engine starts *working* a shift, and therefore asking (fractional is supported so the ask can be timed off the trip's clock hour). The pull window defaults to the horizon and is raised so a month of bookings is visible without the engine asking crew that far out. Both are **env-overridable, tuned per deploy without a code change** (DEC-062) — never hardcode either. **Repo defaults live in `src/builder/derive.ts:148,192`; the deployed values live in Vercel env and are not answerable from the repo** (audit shard E found 22 prod env vars absent from `DEPLOY.md`). Do not quote a number for these from memory or from this file — read the constant, or ask. A separate weekend-cohort policy (DEC-116) can collapse Fri/Sat/Sun asks onto one shared send instant.
-
 First tenant / worked example: **BrewBoat**. The fleet, its manning and the DEC-016 correction to the old single-boat placeholder are in `docs/SPEC.md`. The rule that outlives the numbers: **manning is per-vessel data the deriver loops (1/2/N), never a fixed pair** — and every vessel has some, so a boat with no required crew is an error rather than a state (`src/builder/derive.ts:84`).
 
 Roles:
 - **Eric** — the operator (BrewBoat's). Semi-retired; the design goal is **no babysitting**. Runs the admin app, leans on crew, makes the 11pm cancel/reschedule call.
 - **Drew** — the owner. Owns the money/policy decisions (refunds, deposit-vs-full). Payments shipped; the money path is live and carries its own blast-radius rows below.
-- **Crew** — captains and mates. Magic-link auth, no passwords. The crew app is deliberately small but it is **not** three screens, and some are feature-flagged, so "the crew app" means different things per deploy. Authoritative list: `ls app/\(crew\)/crew/`. The standing pressure isn't a screen count — it's whether a new thing earns a screen, because every extra screen is somewhere stale information can hide.
+- **Crew** — captains and mates. They sign in with a 6-digit code by email: no passwords, and no text carries a sign-in link (DEC-181). The crew app is deliberately small but it is **not** three screens, and some are feature-flagged, so "the crew app" means different things per deploy. Authoritative list: `ls app/\(crew\)/crew/`. The standing pressure isn't a screen count — it's whether a new thing earns a screen, because every extra screen is somewhere stale information can hide.
 
 ## Stack
 
@@ -109,13 +107,13 @@ Muster is Next.js over a framework-free domain core.
 
 ## Blast-Radius Triggers
 
-Read by `/kill-this` Step 3.5 and matched against the branch diff. On a hit the skill runs `/security-review` locally and surfaces `/code-review ultra` as the optional deeper pass. Paths, not categories — "the money path" can't be matched against a diff.
+Read by `/kill-this` Step 3.5 and matched against the branch diff. On a hit the skill runs `/security-review`. Paths, not categories — "the money path" can't be matched against a diff.
 
 | Trigger | Paths |
 |---|---|
-| **Money moving** | `app/api/webhooks/stripe/`, `src/adapters/stripe-payment.ts`, `src/ports/payment.ts`, `src/reservations/booking-webhook.ts`, `src/reservations/create-departure-payment-intent.ts`, `src/reservations/balance-charge.ts`, `src/reservations/payment-config.ts`, `src/reservations/refund-payment.ts`, `src/reservations/refund-terms.ts`, `src/reservations/cancel-reservation.ts`, `src/reservations/customer-cancel.ts`, `src/reservations/operator-cancel.ts`, `src/reservations/confirm-booking.ts`, `src/reservations/write-booking.ts`, `app/(admin)/admin/calendar/[reservationId]/actions.ts`, `app/(admin)/admin/calendar/[reservationId]/page.tsx`, `app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx`, `app/(public)/book/checkout/actions.ts` |
-| **Money computed** | `src/admin/payroll.ts`, `src/admin/gratuity-payroll.ts`, `app/(admin)/admin/payroll/**` (incl. the `gusto.csv` and `tips.csv` exports), `app/(admin)/admin/time-clock/**`, `app/(admin)/admin/shift/[shiftId]/**`, `app/(admin)/admin/shifts/**`, `app/(crew)/crew/shift/[shiftId]/**` |
-| **Auth / capability URL** | `app/lib/auth.ts`, `app/lib/auth-delivery.ts`, `app/lib/switch-actions.ts`, `app/(crew)/crew/actions.ts`, `app/(crew)/crew/dev-code/**`, `app/api/calendar/[token]/**`, `app/b/**`, `src/auth/**`, `src/reservations/booking-code.ts`, `src/reservations/ensure-booking-code.ts`, `src/rate-limit/**`, `app/lib/client-ip.ts`, `app/lib/cloudflare-ips.ts`, `src/checkin/trip-link.ts`, `app/w/**` |
+| **Money moving** | `app/api/webhooks/stripe/`, `src/adapters/stripe-payment.ts`, `src/ports/payment.ts`, `src/reservations/booking-webhook.ts`, `src/reservations/create-departure-payment-intent.ts`, `src/reservations/pay-by-link.ts`, `src/reservations/balance-charge.ts`, `src/reservations/payment-config.ts`, `src/reservations/refund-payment.ts`, `src/reservations/refund-terms.ts`, `src/reservations/cancel-reservation.ts`, `src/reservations/customer-cancel.ts`, `src/reservations/operator-cancel.ts`, `src/reservations/confirm-booking.ts`, `src/reservations/write-booking.ts`, `app/(admin)/admin/calendar/[reservationId]/actions.ts`, `app/(admin)/admin/calendar/[reservationId]/page.tsx`, `app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx`, `app/(public)/book/checkout/actions.ts`, `app/(public)/p/[token]/actions.ts` |
+| **Money computed** | `src/reservations/checkout-quote.ts`, `src/reservations/booking-invoice.ts`, `src/reservations/discount.ts`, `src/reservations/pricing.ts`, `src/reservations/rates.ts`, `components/checkout/money.ts`, `src/admin/payroll.ts`, `src/admin/gratuity-payroll.ts`, `app/(admin)/admin/payroll/**` (incl. the `gusto.csv` and `tips.csv` exports), `app/(admin)/admin/time-clock/**`, `app/(admin)/admin/shift/[shiftId]/**`, `app/(admin)/admin/shifts/**`, `app/(crew)/crew/shift/[shiftId]/**` |
+| **Auth / capability URL** | `app/lib/auth.ts`, `app/lib/auth-delivery.ts`, `app/lib/switch-actions.ts`, `app/(crew)/crew/actions.ts`, `app/(crew)/crew/dev-code/**`, `app/api/calendar/[token]/**`, `app/b/**`, `src/auth/**`, `src/reservations/booking-code.ts`, `src/reservations/ensure-booking-code.ts`, `src/rate-limit/**`, `app/lib/client-ip.ts`, `app/lib/cloudflare-ips.ts`, `src/checkin/trip-link.ts`, `app/w/**`, `app/lib/payment-link.ts`, `src/reservations/payment-link.ts`, `src/reservations/send-payment-link.ts`, `app/(public)/p/**` |
 | **Data-changing migration** | a file under `db/migrations/` containing `drop`, `alter … type`, `update`, or `delete`. An additive `add column` does **not** trigger |
 
 **`refund-payment.ts` was missing until #726** — the one module in the repo that hands real money *back*, absent from a list defined as "money moving". It was caught by asking the skill's own fallback question (does a number this produces reach someone's statement?) rather than by the table, which is the failure mode a path list has: it can only name what someone thought of. When a money change doesn't match a row, add the row in the same PR.
@@ -135,6 +133,8 @@ Read by `/kill-this` Step 3.5 and matched against the branch diff. On a hit the 
 **`reservation-detail-pane.tsx` joined at issue #484 part 3**, a UI sweep that re-wrapped its "who cancelled" radio. That radio's `value` is the `by` the cancel action reads to pick the customer or operator refund rate, so a slip there pays the wrong figure while `page.tsx` and `actions.ts` beside it stay untouched. The page computes the two quotes; the pane is where one gets chosen.
 
 **`customer-cancel.ts` joined at 16.9 (PR #1214)**, and it was missed by the PR that created it. It is the one path where a member of the public, holding only a booking link, cancels a paid trip and triggers a refund with nobody at the operator pressing anything — it decides the figure and calls `refundReservation` itself. The row listed `cancel-reservation.ts` and `refund-payment.ts` beside it and matched every file it calls while missing the file doing the calling.
+
+**`pay-by-link.ts`, `p/[token]/actions.ts` and the pricing modules joined at the Phase 19 retro** (2026-11-25). The payment link starts a real payment, and its URL is signed and checked in `src/reservations/payment-link.ts`; none of it matched a row. The invoice, its tax and fee, the discount and the totals the checkout shows all decide what a customer is charged, and only `payment-config.ts` was listed. `app/b/**` already carried the manage page's cancel and balance actions, under capability URLs.
 
 **These notes deliberately stopped counting.** Two of them were written in parallel lanes on the same afternoon, each calling itself the next ordinal, and they collided in this file. An ordinal is inventory: it is a claim about every other note, so it goes stale the moment a concurrent branch adds one. The lesson each note carries does not need a number.
 
@@ -181,10 +181,10 @@ Persistence is **Postgres behind the `Repository` port**: **local Postgres in de
 - Tokens are harvested from the mockups into `@theme` in `app/globals.css` (DEC-021) — colors, one box radius (`--radius-box` in `app/globals.css` — deliberately a single value, not a scale, held by lint; marks excepted; see `docs/BRAND.md`). No color for color's sake. Binding constraints live in `.claude/ui-context.md`.
 - Font: IBM Plex Sans/Mono, loaded via next/font in `app/layout.tsx`.
 - Layout padding in `layout.tsx` only.
-- Every page works at 375px — eyeball at `mill-dev:3000` per `docs/RUNNING.md` (Playwright screenshots when that tooling lands).
+- Every page works at 375px — Playwright's `mobile` project runs the specs in its `testMatch` (`playwright.config.ts`) at that width; eyeball the rest at `mill-dev:3000` per `docs/RUNNING.md`.
 
 ### Testing
-- The domain core (oracle, state machine, reliability log) is heavily unit/integration tested with Vitest. UI tests arrive with the stack tooling (M4). No pgTAP (no RLS).
+- The domain core (oracle, state machine, reliability log) is heavily unit/integration tested with Vitest. No pgTAP (no RLS).
 - **e2e: interact with a `"use client"` island via `clickHydrated` / `selectOptionHydrated`** (`e2e/fixtures.ts`), never a bare `.click()` / `.selectOption()`. An island is server-rendered, so its controls pass every Playwright actionability check *before* React attaches a handler — the bare call then succeeds and does nothing, and the next locator waits out its full timeout (#642). A controlled `<select>` fails a second way: React reverts the selection on hydration. Plain server-form controls (`SubmitButton`, `<a>`, `<details>/<summary>`) work without JS by design and need neither.
 
 ## PR Workflow (project)
@@ -192,7 +192,7 @@ Persistence is **Postgres behind the `Repository` port**: **local Postgres in de
 The shell's `## Pull Request Workflow` is the baseline. Muster adds:
 
 - **Small docs / idea-parking PRs ship standalone** off `main` (own branch + PR) and are **not** logged in the session file — `## Task` blocks and `pr_numbers` are reserved for substantive, issue-closing task PRs.
-- **The eyeball path** is the Vercel preview URL once deployed, else `mill-dev:3000` per `docs/RUNNING.md`. Link that file rather than re-explaining setup each PR.
+- **The eyeball path** is local, `mill-dev:3000` per `docs/RUNNING.md`. There are no previews, only local and production (DEC-173). Link that file rather than re-explaining setup each PR.
 - **`production` is a deploy pointer, never a PR base.** It went live with the original hosted deploy (DEC-033/DEC-S022); `main` is always the active trunk.
 
 ### Every PR ships a state the operator can actually test
@@ -230,7 +230,7 @@ and the requirement outlives whoever is at the keyboard.
 
 ### When to run `/code-review ultra`
 
-The `## Blast-Radius Triggers` table above is the trigger, matched against the diff by `/kill-this` Step 3.5. Two things that table cannot say:
+No skill offers it (DEC-J017). When the operator runs it:
 
 - **Run it once, on the PR, before merge.** It is branch-scoped, so per-commit runs pay repeatedly for the same answer.
 - **A row hit is not an instruction to spend.** It is billed and launches many agents, so it earns its cost exactly where a missed defect costs more than the review — **money, auth, a destructive migration, and nothing else.** A diff too big to review well is a reason to split it or to read it twice, not a reason to buy an audit.
@@ -276,45 +276,33 @@ Where a competent default does the wrong thing in this repo.
 
 - **`git push` exception to the shell's "environment-changing commands":** the `/kill-this` ritual owns commit + push + PR — that's its job, no separate approval needed for the push inside it.
 - **`@architect` runs at `effort: xhigh` on purpose** (operator, 2026-11-25) — the shell's `## Model Selection` says all six agents run at `high`; this one does not. Do not lower it in a cleanup.
-- **`@ui-reviewer` is live** — `.claude/ui-context.md` exists and carries the brand tokens, surfaces, viewports and review checklist it hard-stops without. That file (brand tokens, surfaces, viewports, checklist) is authored with the first crew/admin surface.
+- **`@ui-reviewer` is live** — `.claude/ui-context.md` exists and carries the brand tokens, surfaces, viewports and review checklist it hard-stops without.
 
-### Concurrent lanes
+### Concurrent sessions
 
-One developer, two windows. The split exists so both can run without touching the same files. **The
-lane labels are the list** — `gh issue list --state open --label lane:a`. Never copy that list into a
-doc; it is stale the next time an issue is filed.
+Sometimes two sessions run at once; it is not a rule, and nothing is divided between them in advance.
 
-| Label | Owns |
-|---|---|
-| `lane:a` | `app/(admin)`, `app/(crew)`, `src/builder/`, `src/asks/`, `src/crewapp/`, import, crew docs |
-| `lane:b` | `app/(public)/book`, `app/b`, `src/reservations/`, Stripe, webhook, customer messaging |
-| `lane:solo` | Touches both. Run alone — never while the other window is live |
-
-Unlabelled means infra, CI or workflow-process work with no product surface. Conflict-free from
-either window.
-
-**Four surfaces are lane-blind, and a label cannot protect them.** A task in either lane can reach
-all four, which is where concurrent sessions actually collide:
+**Four surfaces are where concurrent sessions collide**, whatever either one is working on:
 
 1. **The repository seam** — `src/ports/repository.ts`, `src/adapters/postgres-repository.ts`,
    `src/adapters/in-memory-repository.ts`, `app/lib/repo.ts`. Adding one read or write edits three of
-   them. Say so out loud before starting; the other window sequences around it.
+   them. Say so out loud before starting; the other session sequences around it.
 2. **`docs/decisions/`** — two branches both taking the next free id. This has already happened once
    (issue #562). Resolve the number from the directory at write time, never reserve it in an issue.
 3. **`db/migrations/`** — timestamp ordering. The shell already bans two open PRs with migrations on
-   one table; two windows make that likelier, not rarer.
-4. **`docs/SPEC.md`** — the money sections get rewritten by one lane while the other changes the
+   one table; two sessions make that likelier, not rarer.
+4. **`docs/SPEC.md`** — the money sections get rewritten by one session while the other changes the
    behaviour they describe.
 
 **Check before you start, not after the conflict:** `gh pr list --json number,headRefName,files`.
 
-**`priority:high` does not order the queue.** Five lane:a issues carry it for go-live/cutover work
-that the operator has ruled goes last — *"it's only a priority if we have an actual product to
+**`priority:high` does not order the queue.** Go-live and cutover issues carry it for work that the
+operator has ruled goes last — *"it's only a priority if we have an actual product to
 release."* Read the queue as high, **minus** go-live, minus `blocked`/`deferred`.
 
 ## Scope Discipline (project)
 
-Check `docs/SPEC.md` §4 *Parked* + the 2027 line before adding anything — that's the "Not V1" guardrail. New ideas go to `docs/FUTURE_IDEAS.md`, **not** the locked spec (DEC-014).
+Check `docs/SPEC.md` §4 *Parked* + the 2027 line before adding anything. New ideas go to `docs/FUTURE_IDEAS.md`, **not** the locked spec (DEC-014).
 
 ## Tone (project)
 

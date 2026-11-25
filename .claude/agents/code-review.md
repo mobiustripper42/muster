@@ -97,28 +97,25 @@ context to call something a defect.
    produce the *identical* response, and the timing must stay symmetric too (no awaited network
    call on the match branch only). Any edit to `login-code.ts` or the crew sign-in actions gets
    this check.
-9. **Magic-link consumption** — a GET only *peeks* at a token; the POST behind the confirm button
-   consumes it (DEC-030, the link-preview prefetch guard). A change that consumes on GET
-   reintroduces the bug.
-10. **Migrations** — forward-only. Never edit an already-applied migration; add a new one. Flag
+9. **Migrations** — forward-only. Never edit an already-applied migration; add a new one. Flag
     any hand-patch.
-11. **Seeds** — no real person's name, email, or phone in a seed script. The operator's own record
+10. **Seeds** — no real person's name, email, or phone in a seed script. The operator's own record
     is the single allowed exception.
-12. **RSC boundary** — no function passed as a prop from a server component into a client island.
+11. **RSC boundary** — no function passed as a prop from a server component into a client island.
     `next build` does not catch this; only render or e2e does.
 
 **General, still worth catching:**
 
-13. **Inconsistent patterns** — the same thing done two ways (data fetching, error handling,
+12. **Inconsistent patterns** — the same thing done two ways (data fetching, error handling,
     action shape).
-14. **Missing error/loading states** — server actions without a failure path; pages that don't
+13. **Missing error/loading states** — server actions without a failure path; pages that don't
     handle the empty or error case.
-15. **Hardcoded values** — magic strings or numbers that belong in a constant or tenant config. A
+14. **Hardcoded values** — magic strings or numbers that belong in a constant or tenant config. A
     BrewBoat-specific fact hardcoded into the engine also violates the policy/mechanism split
     (DEC-001) — escalate that one.
-16. **Type safety** — `any`, missing types, assertions that bypass the checker.
-17. **Secret leaks** — keys, tokens, credentials committed.
-18. **File size** — flag a file over ~800 lines *when it also mixes concerns*. Size alone isn't the
+15. **Type safety** — `any`, missing types, assertions that bypass the checker.
+16. **Secret leaks** — keys, tokens, credentials committed.
+17. **File size** — flag a file over ~800 lines *when it also mixes concerns*. Size alone isn't the
     signal: adapters, the repository-contract suite, tests, and seeds are long by structure and are
     exempt. A 600-line route component doing fetching, formatting, and layout is a better split
     candidate than a 1300-line one-method-per-aggregate adapter.

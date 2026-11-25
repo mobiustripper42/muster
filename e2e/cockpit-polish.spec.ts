@@ -69,7 +69,7 @@ test.describe("cockpit polish (9.7/9.8)", () => {
     // locator click auto-scrolls (a raw mouse.click at page coords misses when
     // the card sits below the fold).
     const card = page
-      .locator("div.relative", { has: page.getByText("Growler") })
+      .locator("div.stretch-card", { has: page.getByText("Growler") })
       .first();
     await card.scrollIntoViewIfNeeded();
     const box = (await card.boundingBox())!;

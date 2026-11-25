@@ -170,6 +170,12 @@ function orderTotal(r: Reservation): { totalCents: number; priceKnown: boolean }
   return { totalCents: r.invoice ? fareAndTaxCents(r.invoice) : 0, priceKnown: r.invoice !== undefined };
 }
 
+/** The bank's reason for a decline as Purchases, the trail row and the admin text all say it:
+ *  its code, or `declined` when it sent none. */
+export function declineReasonOf(declineCode: string | undefined): string {
+  return declineCode ?? "declined";
+}
+
 /** The latest failed balance attempt, worded as the Owed cell reads it. A claim in flight (no
  *  outcome) and a success are skipped. */
 function lastFailureOf(attempts: readonly BalanceChargeAttempt[]): string | undefined {
@@ -180,7 +186,7 @@ function lastFailureOf(attempts: readonly BalanceChargeAttempt[]): string | unde
   }
   if (!latest) return undefined;
   if (latest.outcome === "needs_approval") return "needs approval";
-  return latest.declineCode ?? "declined";
+  return declineReasonOf(latest.declineCode);
 }
 
 /** What the booking still owes, or none (see `PurchaseRow.owed`). */

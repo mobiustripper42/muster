@@ -2049,12 +2049,13 @@ A retry that would fall on or after the release date is skipped.
 
 **Every failed charge tells both sides.** The customer gets a text and an email — whichever the booking
 has and the deployment has set up — that the charge did not go through and a link to their booking,
-`/b/<code>`, where they pay the balance with any card. The admins get an email naming the booking, the
-amount, the reason the provider gave and the release date. Each one writes a trail row.
+`/b/<code>`, where they pay the balance with any card. The admins are texted, through the money alert,
+the booking, the amount, the reason the provider gave and what is next: the day of the next scheduled
+attempt, or that this was the last one. Each failed charge writes one trail row.
 
 **When the bank asks the customer to approve the charge**, rather than declining it, Muster does not
 retry: only the customer can approve it. They are told on the first attempt, the same way, and the
-release date does not move.
+admins' text says nothing will be retried.
 
 **The manage page pays the balance**, on demand, while the booking stands — early, after a failed
 charge, or on a booking whose auto-cancel an admin stopped. It is the same payment as the scheduled one and never a second. **The payment link is

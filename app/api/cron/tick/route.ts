@@ -7,6 +7,7 @@ import { chargeDueBalances } from "@core/reservations/balance-charge.js";
 import { alertThatNeverThrows } from "@core/reservations/booking-webhook.js";
 import { monitorWebhookEndpoint } from "@core/reservations/webhook-health.js";
 import { getRepo } from "../../../lib/repo";
+import { tellCustomerOfBalanceFailure } from "../../../lib/balance-notice";
 import { forwardFormNotices, relayAsks } from "../../../lib/channel";
 import { alertMoneyProblem, forwardBoardAlerts, forwardFormationFailures } from "../../../lib/alert";
 import { appBaseUrl } from "../../../lib/base-url";
@@ -206,6 +207,7 @@ export async function GET(req: Request) {
         payments: new StripePaymentPort(secretKey, process.env.STRIPE_WEBHOOK_SECRET ?? ""),
         now: () => new Date().toISOString(),
         alertPaidButUnbooked: alertThatNeverThrows(alertMoneyProblem),
+        tellBalanceFailed: tellCustomerOfBalanceFailure,
       });
     }
   } catch (e) {

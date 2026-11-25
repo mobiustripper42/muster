@@ -24,12 +24,18 @@ export interface PaymentLinkSendDeps {
   onFailure?: ((detail: string) => void) | undefined;
 }
 
+/** `Sat, Nov 28 at 3:30 PM`, or nothing without a date and a time (issue #1273). */
+export function tripDayTime(reservation: Reservation): string {
+  return reservation.date && reservation.time
+    ? `${formatShortDay(reservation.date)} at ${formatClock(reservation.time)}`
+    : "";
+}
+
 /** ` on Sat, Nov 28 at 3:30 PM`, with its leading space, or nothing without a date and a time.
  *  Shared with the cancel notice (issue #1212). */
 export function tripWhen(reservation: Reservation): string {
-  return reservation.date && reservation.time
-    ? ` on ${formatShortDay(reservation.date)} at ${formatClock(reservation.time)}`
-    : "";
+  const dayTime = tripDayTime(reservation);
+  return dayTime ? ` on ${dayTime}` : "";
 }
 
 /** The first word of the customer's name, or `there`. Shared with the cancel notice. */

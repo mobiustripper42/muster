@@ -87,7 +87,7 @@ When addressing review findings before opening the PR: Read every file before ed
 
 Get the project's UI rules from `.claude/ui-context.md` **with the Read tool**. **Absent:** no UI review; Step 3.6's row says why. Otherwise match its definition of a screen file against the branch diff (`git diff $(git merge-base HEAD origin/main)...HEAD --name-only`). **No match:** no UI review. **A match:** list the routes the changed files reach, by its route rule, and start `@ui-reviewer` on them in Step 3.
 
-The scope is the screens this task touched, in the languages `ui-context.md` names for review (the project's default language when it names none). Every screen is `/retro`'s pass at phase end.
+The scope is the screens this task touched, in the languages `ui-context.md` names for review (the project's default language when it names none). Reviewing every screen is an audit the operator asks for, never a step of a skill (DEC-J035).
 
 ### Step 3.5 — High-blast-radius check (does this PR want `/security-review`?)
 

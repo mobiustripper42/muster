@@ -11,7 +11,7 @@ You are promoting `main` → `production`. `main` is the always-active trunk and
 ```
 git show-ref --verify --quiet refs/remotes/origin/production || echo "missing"
 ```
-If `origin/production` doesn't exist (locally cached), STOP. Tell the user: "/promote-production requires an `origin/production` branch. This repo deploys straight off `main` — there's nothing to promote. To adopt a production branch: `git checkout -b production main && git push -u origin production`, then point the host's production branch at it." Do not proceed. Step 1 refreshes the cache from the remote regardless, so a stale local view that misses a freshly-created `production` is recovered after the user re-runs.
+If `origin/production` doesn't exist (locally cached), STOP. Tell the user: "/promote-production requires an `origin/production` branch. This repo deploys straight off `main` — there's nothing to promote. To adopt a production branch: `git checkout -b production main && git push -u origin production`, then repoint the host's production branch at it **before** `main` takes active work, or unfinished work auto-deploys to production." Do not proceed. Step 1 refreshes the cache from the remote regardless, so a stale local view that misses a freshly-created `production` is recovered after the user re-runs.
 
 **Clean working tree:**
 ```

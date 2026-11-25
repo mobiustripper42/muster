@@ -1639,9 +1639,8 @@ describe("processBookingWebhook — a failure names the Stripe event (15.13)", (
  * The contrast with its two neighbours is the whole point. A decline is ignored in silence because
  * the customer is still standing at the till. A cancel is ignored in silence because we made it.
  * A `processing` intent is neither: a payment is in flight that will settle in days, no screen in
- * Muster shows it, and — since `/book` delegates method selection to the Dashboard via
- * `automatic_payment_methods` — its arrival means a delayed payment method has been turned on.
- * That is a fact about the account, not about this booking, and nobody would otherwise learn it.
+ * Muster shows it, and — since every intent allows cards alone in code (issue #1288, DEC-203) — its
+ * arrival means the card lock failed. Nobody would otherwise learn it.
  */
 describe("processBookingWebhook — payment_intent.processing is acked and alerts (15.12)", () => {
   const processing = (pi = PI): string =>

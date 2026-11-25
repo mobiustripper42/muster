@@ -48,6 +48,7 @@ import { ContactFields, type ContactValues } from "../../../../components/checko
 import {
   depositCopy,
   elementsOptions,
+  paymentElementOptions,
   splitFrozen,
   totalsFor,
   type CheckoutMoney,
@@ -518,9 +519,7 @@ function InnerForm(p: InnerProps) {
                REQUIRED at confirm. Email is optional at `/book`, so suppressing it would reject
                the payment of every guest who left it blank. Stripe keeps collecting email when it
                wants to (Link), and wins on it; the email we pass applies when it doesn't ask. */
-            <PaymentElement
-              options={{ fields: { billingDetails: { name: "never", phone: "never" } } }}
-            />
+            <PaymentElement options={paymentElementOptions(p.payDeposit ? "deposit" : "full")} />
           // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
           ) : p.stripeFailed ? (
             <Notice tone="bad" data-testid="stripe-error">

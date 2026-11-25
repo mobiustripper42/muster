@@ -110,19 +110,51 @@ const HANGING_STRIPE_JS = `
 `;
 
 /** Appended to the stand-in above: keeps the options of every `stripe.elements(options)` call, one
- *  per mount of the card box (issue #1277). */
+ *  per mount of the card box (issue #1277), and of every `elements.create("payment", options)` call
+ *  (issue #1288). */
 const RECORD_ELEMENTS_CALLS = `
   (function () {
     var make = window.Stripe;
     window.__elementsCalls = [];
+    window.__paymentElementCalls = [];
     window.Stripe = function () {
       var stripe = make();
       var elements = stripe.elements;
-      stripe.elements = function (options) { window.__elementsCalls.push(options); return elements(options); };
+      stripe.elements = function (options) {
+        window.__elementsCalls.push(options);
+        var group = elements(options);
+        var create = group.create;
+        group.create = function (type, createOptions) {
+          if (type === "payment") window.__paymentElementCalls.push(createOptions);
+          return create(type, createOptions);
+        };
+        return group;
+      };
       return stripe;
     };
   })();
 `;
+
+interface RecordedMounts {
+  elements: { allowedPaymentMethodTypes?: string[]; paymentMethodTypes?: string[] }[];
+  paymentElements: { wallets?: Record<string, string> }[];
+}
+
+/** Every `stripe.elements` and `elements.create("payment", …)` call so far (issue #1288). */
+const recordedMounts = (page: Page): Promise<RecordedMounts> =>
+  page.evaluate(() => {
+    const w = window as unknown as {
+      __elementsCalls?: RecordedMounts["elements"];
+      __paymentElementCalls?: RecordedMounts["paymentElements"];
+    };
+    return { elements: w.__elementsCalls ?? [], paymentElements: w.__paymentElementCalls ?? [] };
+  });
+
+/** How many of each call so far: `[stripe.elements, elements.create("payment")]`. */
+const mountCounts = async (page: Page): Promise<[number, number]> => {
+  const r = await recordedMounts(page);
+  return [r.elements.length, r.paymentElements.length];
+};
 
 /** Every `stripe.elements` call so far, as the card-saving each asked for: `"off_session"` is the
  *  deposit's, `"none"` the full payment's (`elementsOptions`, tested in `money.test.ts`). */
@@ -582,6 +614,27 @@ test.describe("public /book/checkout", () => {
 
       await chooseTile(page, "pay-deposit");
       await expect.poll(() => cardSavingPerMount(page)).toEqual(["off_session", "none", "off_session"]);
+    });
+
+    test("issue #1288 AC4: every mount of the card box allows cards alone and turns off Apple Pay, Google Pay and Link", async ({ page }) => {
+      await openWithStripe(page, OUTSIDE_CHECKOUT);
+      await expect.poll(() => mountCounts(page)).toEqual([1, 1]);
+
+      await chooseTile(page, "pay-full");
+      await expect.poll(() => mountCounts(page)).toEqual([2, 2]);
+
+      await chooseTile(page, "pay-deposit");
+      await expect.poll(() => mountCounts(page)).toEqual([3, 3]);
+
+      const { elements, paymentElements } = await recordedMounts(page);
+      const cardsOnly = { allowed: ["card"], old: undefined };
+      expect.soft(elements.map((o) => ({ allowed: o.allowedPaymentMethodTypes, old: o.paymentMethodTypes }))).toEqual([
+        cardsOnly,
+        cardsOnly,
+        cardsOnly,
+      ]);
+      const noWallets = { applePay: "never", googlePay: "never", link: "never" };
+      expect(paymentElements.map((o) => o.wallets)).toEqual([noWallets, noWallets, noWallets]);
     });
 
     test("issue #1277 AC9: a tip that brings the deposit on offer clears a tick given before it", async ({ page }) => {

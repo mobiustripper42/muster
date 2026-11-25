@@ -122,9 +122,6 @@ export interface CreatePaymentIntentInput {
    * only methods that can be charged again.
    */
   setupFutureUsage?: "off_session";
-  /** Offer cards only (`payment_method_types: ["card"]`) without saving the card (issue #1254) — the
-   *  balance intent. A deposit gets cards-only from `setupFutureUsage`; this is the same without it. */
-  cardsOnly?: true;
 }
 
 /**
@@ -264,11 +261,9 @@ export interface PaymentCanceled {
  * ignored in silence: a decline leaves a customer still at the till, and a cancel is something we
  * did ourselves, while this is a booking in flight that no screen in Muster shows.
  *
- * **Its arrival is a fact about the ACCOUNT, not about the booking.** `/book` sends
- * `automatic_payment_methods: { enabled: true }`, which delegates method selection to the Stripe
- * Dashboard, so this event can only appear once somebody enables a delayed method there — a change
- * with no diff in this repository. Reading the account on 2026-09-19 showed every delayed method
- * off; the day that changes, this is how anyone finds out.
+ * **Its arrival means the card lock failed (issue #1288, DEC-203).** Every intent allows cards alone
+ * in code (`ALLOWED_PAYMENT_METHOD_TYPES`), and Stripe's lifecycle page ties `processing` to bank
+ * debits; the day this event appears, this is how anyone finds out.
  */
 export interface PaymentProcessing {
   paymentIntentId: string;

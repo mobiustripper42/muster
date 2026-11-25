@@ -1122,7 +1122,7 @@ describe("paying the balance on the manage page", () => {
     expect((await w.manageView()).payBalance).toEqual({ label: "Pay balance · $552.94", amountCents: OWED });
   });
 
-  it("AC11: the press starts the balance on the booking's balance intent, cards only, at what is owed", async () => {
+  it("AC11: the press starts the balance on the booking's balance intent, at what is owed", async () => {
     const w = await world();
     w.at("2026-07-15T12:00:00.000Z");
 
@@ -1136,7 +1136,6 @@ describe("paying the balance on the manage page", () => {
       amountCents: OWED,
       customerId: CUS,
       idempotencyKey: `balance_${RES}`,
-      cardsOnly: true,
     });
     expect(w.pay.intents[0]!.setupFutureUsage).toBeUndefined();
     expect((await w.row()).balancePaymentIntentId).toBeDefined();

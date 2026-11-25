@@ -125,7 +125,6 @@ export class FakePaymentPort implements PaymentPort {
       metadata: input.metadata,
       customerId: input.customerId,
       setupFutureUsage: input.setupFutureUsage,
-      cardsOnly: input.cardsOnly,
     });
     const cached = this.#intentsByKey.get(input.idempotencyKey);
     if (cached) {

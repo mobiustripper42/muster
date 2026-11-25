@@ -20,7 +20,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Stripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { elementsOptions } from "../../../components/checkout/money";
+import { elementsOptions, paymentElementOptions } from "../../../components/checkout/money";
 import { Notice } from "../../../components/ui/notice";
 import { payBalanceFromManagePage } from "./actions";
 
@@ -186,7 +186,7 @@ function CardForm({
 
   return (
     <form onSubmit={(e) => void onSubmit(e)} className="mt-3 flex flex-col gap-3" data-testid="balance-form">
-      <PaymentElement />
+      <PaymentElement options={paymentElementOptions("balance")} />
       {error ? (
         <Notice tone="bad" data-testid="balance-error">
           {error}

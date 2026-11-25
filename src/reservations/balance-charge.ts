@@ -108,7 +108,6 @@ export async function ensureBalanceIntent(
     idempotencyKey: `balance_${reservation.id}`,
     metadata: { reservation_id: String(reservation.id), purpose: "balance" },
     ...(reservation.stripeCustomerId !== undefined ? { customerId: reservation.stripeCustomerId } : {}),
-    cardsOnly: true,
   });
   await deps.repo.saveBalancePaymentIntentId(reservation.id, created.paymentIntentId);
   return created;

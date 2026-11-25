@@ -84,7 +84,7 @@ Muster be built perfect for one niche (BrewBoat) and still be sellable later wit
 - ~~**Payments topology internals** — deposit-vs-full, refund-schedule numbers, Stripe integration
   detail. Only the admin-facing *surfaces* of payments are in scope.~~ — **EXPIRED (DEC-105/107/124).**
   Payments landed **in 2026**, not later: a deposit at booking and the balance before the trip (§2.8.4d),
-  Stripe is in (card checkout only, no wallets — DEC-139), and tips come in as collect-and-expose
+  Stripe is in (card checkout only, no wallets — DEC-203), and tips come in as collect-and-expose
   (DEC-124). The **refund schedule** is decided and written down — §2.8.4c — and cancellation
   insurance is sold with the booking (DEC-195). Customers cancel their own booking when the terms
   refund something (§2.8.12, DEC-198).
@@ -1543,6 +1543,7 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > **Amended by DEC-199 — 2.8.10: a refund on a booking still going ahead lowers the price and the amount paid together, and never re-opens the balance**
 > **Amended by DEC-200 — 2.8.4: the checkout compares the total the page showed with the one it would freeze, and refuses a difference**
 > **Amended by DEC-201 — 2.8.4d: a deposit at booking and an automatic balance; 2.8.4a, 2.8.10 and the open questions point at it**
+> **Amended by DEC-203 — 2.8.14: bank payment and Link join wallets as methods this surface does not take**
 <!-- /amended-by-dec -->
 
 > **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
@@ -2478,7 +2479,8 @@ the largest boat is not a booking this system takes.
 
 **2.8.14 What this surface is NOT.** No seats — BrewBoat sells the whole boat and party size only has
 to fit. No customer-chosen vessel. No separate hold object. No money computed after the customer has
-been quoted. No booking assembled from data Stripe hands back. No wallets (card only). Cancelling
+been quoted. No booking assembled from data Stripe hands back. No bank payment, no wallets and no Link:
+every payment (pay in full, deposit, balance) is a card typed into the form (DEC-203). Cancelling
 inside the window, or for a $0 refund, is not self-service: it stays a request to the operator
 (§2.8.12).
 

@@ -18,7 +18,7 @@ entry is an unclassified file, which is the state this workflow keeps finding de
 | `/save-this` | Between tasks, before `/clear` | Write a spec walked in the conversation into its issue, then replace the session file's Next Steps with the next task, open PRs, standing rules (word for word), the parking lot (nothing dropped unless closed) and a carry-over for the next task; push the `sessions` branch. The cleared context reads it back at the spec step |
 | `/its-dead` | Session end, once | Stamp `ended:`, tally points, display wall clock, close the session file. No time math, no version bump |
 | `/start-phase` | Phase start | Materialize the phase as GitHub Issues with `phase:N` and `points:X` labels |
-| `/retro` | Phase end | A one-screen retro: points, days and drift from issue labels, what happened, the operator's take, a one-paragraph @pm read. Marks `[x]`, writes `RETROSPECTIVES.md`, runs version bumps |
+| `/retro` | Phase end | A one-screen retro: points, days and drift from issue labels, what happened, the operator's take, a one-paragraph @pm read. A background agent checks the context files against the code and files one issue for the next phase. Marks `[x]`, writes `RETROSPECTIVES.md`, runs version bumps |
 | `/bump-major` | Breaking change | Major bump with a supplied rationale, CHANGELOG entry, tag on `main` |
 | `/promote-production` | Ship | ff-merge `main` → `production`, push, then wait for the project's post-promote checks to report the deploy landed. Projects with that branch only |
 
@@ -38,7 +38,7 @@ entry is an unclassified file, which is the state this workflow keeps finding de
 | `@architect` | Opus | Before design decisions, new dependencies, scope creep | Coherence against SPEC and the decision record |
 | `@code-review` | Sonnet | After every commit, wired into `/kill-this` | Catch issues early. Advisory — flags, does not block |
 | `@pm` | Sonnet | Session start and end, via skills | Progress, timeline risk, scope cuts |
-| `@ui-reviewer` | Sonnet | `/kill-this` on a screen in the diff; `/retro` over every screen | Design quality against the project's design system, read from `.claude/ui-context.md`. A route it cannot reach is reported as not reached |
+| `@ui-reviewer` | Sonnet | `/kill-this` on a screen in the diff; over every screen only when the operator asks | Design quality against the project's design system, read from `.claude/ui-context.md`. A route it cannot reach is reported as not reached |
 | `@test-writer` | Opus | `/build-task`: readback, then tests | Reads the issue spec; reports what it leaves open, or writes failing tests named for each acceptance criterion, with empty stubs so each test fails on its own assertion. Writes stubs, never behaviour |
 | `@implementer` | Sonnet | `/build-task`, after the tests | The smallest change that makes the tests pass. May not edit them; stops and reports a test it believes is wrong |
 
@@ -82,10 +82,39 @@ nothing to copy. Which style is **on** is `{ "outputStyle": "One piece" }` in
 `~/.claude/settings.json`, hand-edited once; the master defines no such key, so `settings-policy`
 neither checks nor writes one.
 
-Until 2026-09-18 both travelled — the file as `logic`, the key in the master — and a project-level
-`.claude/settings.json` beats the user-level one, so the machine default was never consulted in
-any installed repo. If a style does not take effect, look for the key or a stray file somewhere
-more specific first.
+**The output style is two things, and both live on the machine (DEC-J007).** The **setting** says
+which style is on. The **file** says what that style is. They are separate, and treating them as one
+is what cost a full session.
+
+```
+~/.claude/settings.json                { "outputStyle": "One piece" }     the setting — hand-edited, once
+~/.claude/output-styles/one-piece.md   → symlink to jig's copy             the file — jig is the versioned home
+```
+
+**Both are one-time hand steps per machine.** A fresh machine has neither until someone does this,
+with `<jig>` as that machine's jig checkout:
+
+```
+mkdir -p ~/.claude/output-styles && ln -sfn <jig>/.claude/output-styles/one-piece.md ~/.claude/output-styles/one-piece.md
+```
+
+**`settings-policy.mjs` checks the link, and only when the setting names a style jig ships.** Absent,
+a regular file, a link into another checkout, a link whose target is gone — each is a separate
+finding carrying the `ln -sfn` that fixes it. Reported, never repaired: `--write` edits `permissions`
+and the machine keys, and making a symlink in a home directory is not that. An unset `outputStyle` is
+silent, because nothing is reading the file. What it still cannot see is **which** style is on — that
+setting is deliberately unmanaged, so a link that is correct says the file is current, not that it is
+in use.
+
+**Precedence, lowest to highest.** For the setting: `~/.claude/settings.json`, then
+`<repo>/.claude/settings.json`, then `<repo>/.claude/settings.local.json`. For the file:
+`~/.claude/output-styles/` loses to `<repo>/.claude/output-styles/` — observed 2026-09-18, a repo
+holding a stale copy ran it over the machine's newer one. Both run the same way: the more specific
+location silently beats the machine. That is the trap. Jig shipped the key and the file until
+2026-09-18, so setting either "at the machine level" did nothing, in any repo. A repo copy of the
+style file is therefore not untidy, it is the style that repo runs — delete it. If a style ever fails
+to take effect, look for the key or the file somewhere more specific than you looked. Both are read
+once at launch, so a change applies at the **next** session start.
 
 | Style | What it adds |
 |-------|--------------|

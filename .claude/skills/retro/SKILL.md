@@ -22,6 +22,21 @@ done
 
 Confirm: "Run retro for Phase **N**?" Wait.
 
+## Step 0.5 — Context review, in the background
+
+Once the phase is confirmed, and only on the trunk (Step 9's `WORKING_BRANCH`), start one `general-purpose` agent with `model: sonnet`, `effort: high` and `run_in_background: true`, then go straight to Step 1. On any other branch, start nothing: Step 9 sends the operator to the trunk and the re-run starts it, and switching branches under a running agent would change the files it is reading. It asks the operator nothing and no step waits for it: the operator is tired by the end of a phase, so what it finds becomes an issue for the next one (DEC-J036). When its report arrives before Step 10, keep it for Step 10 and end the turn without a reply; a question already open to the operator stays open. When it arrives after Step 10 has printed, act on it as Step 10 says and answer in one line.
+
+Its task, whole:
+
+> Review `.claude/CLAUDE-context.md`, and `.claude/ui-context.md` when it exists, against the code in this checkout. Read every line. Edit nothing. Report three kinds of finding, each quoting the line with its file and line number, and citing the `path:line` in the code that shows it:
+> - **False:** a line the code contradicts.
+> - **Missing:** something a list or table should name and does not. Do the `## Blast-Radius Triggers` table first, when there is one: for each row, search the code for every file that fits what the row is for, and report each one the row does not cover.
+> - **Finished:** a line about something that was going to happen and has, or a rule for something that is gone.
+>
+> A line you could not check is not a finding. A rule that is still true but looks unneeded is not a finding either. Report nothing you did not read the code for. With no findings, return exactly: `Clean.`
+>
+> Order: the Missing findings from Blast-Radius Triggers, then False, the other Missing, Finished.
+
 ## Step 1 — Account for all phase issues
 
 ```
@@ -32,22 +47,6 @@ For each open issue, ask the user: "Move to next phase, leave open, or close as 
 - **Move:** swap `phase:N` → `phase:N+1`.
 - **Leave open:** record in retro.
 - **Close as won't-do:** `gh issue close <N> --reason "not planned" --comment "Closed at Phase N retro — descoped."`
-
-## Step 1.5 — UI review over every screen
-
-Run only when `.claude/ui-context.md` exists; read it with the Read tool. It comes before Step 2 because a fix lands as a phase-N pull request and changes the numbers. Step 2's pull request list doesn't exist yet, so work out its `window_start_iso` here, as Step 2 defines it, and find the phase's merged pull requests from there:
-
-```
-gh pr list --state merged --search "merged:><window_start_iso>" --json number,files --limit 100   # >= when it is phase_start_iso
-```
-
-**No changed file is a screen file or a strings file**, as `ui-context.md` defines them: skip this step; the retro has no UI review line. **Otherwise** invoke `@ui-reviewer` on every route `ui-context.md`'s route rule lists, in the languages and at the viewports it names (the project's default language when it names none). Give it the open issues an earlier run filed (`gh issue list --state open --search '"UI review" in:title'`), so it does not report them again.
-
-Show the findings, then ask once for each: **"Fix before close, or file for Phase N+1?"** Every finding becomes an issue titled `UI review (Phase <N> retro): <finding>`, with the finding as its body. The phase in the title is what keeps an earlier retro's filed findings, which arrive labelled `phase:<N>`, out of this retro's count:
-- **Fix:** labelled `phase:<N>`, pointed and built as a task the normal way. When every finding has its answer and any is a fix, stop the retro. Re-run `/retro` once the fixes merge; the re-run reviews again.
-- **File:** labelled `phase:<N+1>`.
-
-Step 7 records the count from those titles.
 
 ## Step 2 — The numbers
 
@@ -145,8 +144,6 @@ Read `docs/RETROSPECTIVES.md` first (Edit requires a prior Read). If it doesn't 
 
 Add `**Unpointed:** #<N>, #<N>` only when Step 2 found closed issues with no `points:` label.
 
-Add `**UI review:** <F> fixed before close, <I> filed for Phase <N+1> (#<N>, #<N>)` only when Step 1.5 ran: `F` counts the closed `phase:<N>` issues titled `UI review (Phase <N> retro):`, from every run of this retro; `I` the `phase:<N+1>` ones. A run with no findings writes `**UI review:** clean`.
-
 ## Step 8 — Commit (sessions branch updates are read-only here)
 
 Session files were already finalized by `/its-dead` and are not modified by this skill.
@@ -240,11 +237,14 @@ Echo: `Phase <N> closed at v<NEW_VERSION>` (and `tagged` if main).
 
 ## Step 10 — Summary
 
+**First, the Step 0.5 report.** Findings: file one issue titled `Phase <N> retro: context review`, with the report as its body under the line `Found by an agent reading the files. Check each against the code before changing anything.`, labelled `phase:<N+1>` and `points:1` (create either label when it is missing, as `/start-phase` does). `Clean.`: file nothing. Not arrived: say `still running`, and file the issue, or say `clean`, when it does. The agent failed, was never started, or returned neither `Clean.` nor a finding with a file and line: file nothing and say `not run`.
+
 ```
 Phase <N> closed.
 <the Step 2 numbers line, without the bold label>
 Issues: <closed>/<created> closed; <moved> moved to Phase <N+1>
 Retro: docs/RETROSPECTIVES.md
+Context review: issue #<N> | clean | still running | not run
 Version: v<NEW_VERSION>  (versioned projects only; skipped per Step 9's gate)
 ```
 

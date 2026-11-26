@@ -1911,9 +1911,11 @@ record, so a cancel never commits with its refund lost. The press then sends the
 job: it asks Stripe whether the refund was made and finishes the record. Whatever goes wrong, the record
 ends finished or an admin is texted which booking and how much: when Stripe refuses part of it, when a
 refund fails at the customer's bank, and when it is still unconfirmed 24 hours after it was written, at
-which point Muster sends nothing more. When Stripe gives no answer, nothing is said about the money
-until it is known: the customer is told nothing yet, and the operator's pane says so. A booking with a
-refund still being checked cannot be cancelled with another refund owed: nothing is cancelled.
+which point Muster sends nothing more. When Stripe gives no answer, the customer's message waits until
+the refund is known, and the operator's pane says so. The page the customer lands on after cancelling
+says the refund is on its way all the same: the job settles it, and an admin is texted if it falls
+short (operator, 2026-11-26). A booking with a refund still being checked cannot be cancelled with
+another refund owed: nothing is cancelled.
 
 **The customer is told whenever a booked Muster reservation is cancelled** (issue #1212), by anyone:
 their own cancel from the manage page, and the operator's from the calendar pane, where a weather cancel

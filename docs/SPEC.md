@@ -1544,6 +1544,7 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > **Amended by DEC-200 — 2.8.4: the checkout compares the total the page showed with the one it would freeze, and refuses a difference**
 > **Amended by DEC-201 — 2.8.4d: a deposit at booking and an automatic balance; 2.8.4a, 2.8.10 and the open questions point at it**
 > **Amended by DEC-203 — 2.8.14: bank payment and Link join wallets as methods this surface does not take**
+> **Amended by DEC-204 — 2.8.4c: the cancel and its refund are one write, finished by the job; 2.8.7: the sold-out refund is a record**
 <!-- /amended-by-dec -->
 
 > **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
@@ -1903,7 +1904,16 @@ cancelled: a figure still above $0 re-opens the confirm with the new one, and on
 left open across the window line) sends the customer to the request form. It is refused by name,
 never silently re-quoted. **Cancel first, then refund:** a refund that does not go through leaves the
 booking cancelled, and the operator is emailed to send it from the booking while the customer is told
-the team will. Money is refunded only by the press that did the cancelling.
+the team will.
+
+**The refund a cancel owes is written in the cancel's own write** (issue #1278, DEC-204), as a refund
+record, so a cancel never commits with its refund lost. The press then sends the record, and so can a
+job: it asks Stripe whether the refund was made and finishes the record. Whatever goes wrong, the record
+ends finished or an admin is texted which booking and how much: when Stripe refuses part of it, when a
+refund fails at the customer's bank, and when it is still unconfirmed 24 hours after it was written, at
+which point Muster sends nothing more. When Stripe gives no answer, nothing is said about the money
+until it is known: the customer is told nothing yet, and the operator's pane says so. A booking with a
+refund still being checked cannot be cancelled with another refund owed: nothing is cancelled.
 
 **The customer is told whenever a booked Muster reservation is cancelled** (issue #1212), by anyone:
 their own cancel from the manage page, and the operator's from the calendar pane, where a weather cancel
@@ -2252,7 +2262,8 @@ rows that turn on one — abandonment, and a payment landing after expiry — do
 | Webhook never arrives and the customer closed the tab | The reconciler confirms it (2.8.9). |
 | Our write fails after the card was charged | The reservation exists as `pending` with a payment against it; the reconciler finds and confirms it. If even the reservation write failed, no row exists — 2.8.6's alert path, and 2.8.9's fallback. |
 | A superseded payment succeeds late — stale tab, old client secret | Its id still resolves to the reservation (2.8.5). If that reservation is already `booked`, this is a second charge for one sale: **refund it and tell the customer**, same path as the row below. |
-| Payment succeeds after the window expired, and the boat has been taken | Refund the full amount automatically — no operator action required — and tell the customer on the channel a confirmation would have used (the phone on the reservation; phone is required, email is not). The message says the trip sold out while they were paying, and says plainly that they **were** charged and then refunded: the money really was captured, the refund takes days to settle, and a message claiming they were not charged is contradicted by their own statement for that whole window. It does not state the amount — the figure adds nothing to a message whose point is that all of it is coming back. **The refund and the message are one path:** a refund nobody was told about reads as a silent failed payment. **And the office is told every time**, with no action asked for: this is a customer charged for a trip they did not get, and the count of how often it happens is the only evidence that decides whether the payment flow moves to separate authorization and capture. |
+| Payment succeeds after the window expired, and the boat has been taken | Refund the full amount automatically — no operator action required — and tell the customer on the channel a confirmation would have used (the phone on the reservation; phone is required, email is not). The message says the trip sold out while they were paying, and says plainly that they **were** charged and then refunded: the money really was captured, the refund takes days to settle, and a message claiming they were not charged is contradicted by their own statement for that whole window. It does not state the amount — the figure adds nothing to a message whose point is that all of it is coming back. **The refund and the message are one path:** a refund nobody was told about reads as a silent failed payment. **And the office is told every time**, with no action asked for: this is a customer charged for a trip they did not get, and the count of how often it happens is the only evidence that decides whether the payment flow moves to separate authorization and capture. **The refund is a refund record** written before Stripe is asked, its id taken from the PaymentIntent so one charge is one refund however often the event arrives (DEC-204). When Stripe gives no answer the customer is told nothing and every active admin is texted once; the job finishes the record and texts again only if it falls short. |
+| A refund fails at the customer's bank | The leg's cents come off the booking's refunded total at once, the refund record reads short by them, and every active admin is told once (DEC-204). Nothing is sent again without a person. |
 | Payment succeeds after the window expired, and the boat is still free | Book it. Nobody lost anything and the customer paid. Re-check overlap under the hull-day lock first; if it now fails, the row above applies. |
 
 **2.8.8 Expiry is a clock, not a job.**

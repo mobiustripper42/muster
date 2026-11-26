@@ -7,15 +7,17 @@
  * Every refund figure is against a payment that carries tax, a tip and a service fee, for the
  * reason `cancel-reservation.test.ts` gives (#797).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { BookingInvoice, Event, Payment, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { seedFleet } from "../import/resource-map.js";
 import type { ChannelPort, OutboundMessage } from "../ports/channel.js";
+import { PaymentIndeterminateError } from "../ports/payment.js";
 import { deliverCancelNotice, type CancelNoticeRefund, type TellCustomer } from "./cancel-notice.js";
 import { cancelByOperator, type OperatorCancelInput } from "./operator-cancel.js";
+import { sendRefundRecord } from "./refund-payment.js";
 
 const VESSEL = asId<"VesselId">("vessel-brew-2"); // seeded by the fleet
 const RESV = asId<"ReservationId">("resv-operator-cancel-1");
@@ -134,6 +136,7 @@ const deps = (repo: InMemoryRepository, payments = new FakePaymentPort(), tellCu
   repo,
   now: () => NOW,
   payments,
+  alert: async (_message: string, _href?: string) => {},
   ...(tellCustomer ? { tellCustomer } : {}),
 });
 
@@ -230,11 +233,16 @@ describe("cancelByOperator — the press that cancels and refunds", () => {
       metadata: { reason: "cancelled by operator" },
     });
     expect(rows.find((r) => r.type === "refund_issued_by_operator")).toMatchObject({
-      id: `refund_issued_by_operator:${RESV}:0`,
       actorKind: "admin",
       actorId: ADMIN,
       metadata: { actualCents: 10000, quotedCents: PAID, reason: "cancel-and-refund" },
     });
+    // The row is named for its refund record, so finishing the record again writes no second row.
+    const [record] = await repo.listRefundRecordsFor(RESV);
+    expect(record).toBeDefined();
+    expect(rows.find((r) => r.type === "refund_issued_by_operator")?.id).toContain(String(record?.id));
+    await sendRefundRecord({ ...deps(repo), now: () => "2026-11-01T17:00:00.000Z" }, record!.id, "job");
+    expect((await trail(repo)).filter((r) => r.type === "refund_issued_by_operator")).toHaveLength(1);
   });
 
   it("AC2: the crew's notices are relayed and the boat is freed", async () => {
@@ -377,26 +385,26 @@ describe("cancelByOperator — a refund that failed partway", () => {
 });
 
 describe("cancelByOperator — cancelled, and no money moved when some was expected", () => {
-  it("AC5: a typed amount that does not parse", async () => {
+  it("AC3: a typed amount that does not parse is refused before anything is cancelled, and nobody is told", async () => {
+    // Renamed from "AC5: a typed amount that does not parse".
     const repo = await seeded();
     const fake = new FakePaymentPort();
     const { tell, sms } = realSend(repo);
 
     const result = await cancelByOperator(deps(repo, fake, tell), input({ typedAmount: "50abc" }));
 
-    expect(result).toEqual({
-      params: { cancelled: "operator", refundErr: "invalid_amount", told: "sent-sent" },
-      draft: "stash",
-    });
+    expect(result).toEqual({ params: { cancelErr: "invalid_amount" }, draft: "stash" });
     expect(fake.refunds).toEqual([]);
-    expect(paragraphs(sms.sent[0])[1]).toBe(PENDING);
+    expect(await statusOf(repo)).toBe("booked");
+    expect(await repo.listRefundRecordsFor(RESV)).toEqual([]);
+    expect(sms.sent).toEqual([]);
   });
 
   it("AC5: Stripe keys missing", async () => {
     const repo = await seeded();
     const { tell, calls } = spyTell();
 
-    const result = await cancelByOperator({ repo, now: () => NOW, tellCustomer: tell }, input());
+    const result = await cancelByOperator({ repo, now: () => NOW, tellCustomer: tell, alert: async () => {} }, input());
 
     expect(result).toEqual({
       params: { cancelled: "operator", refundErr: "stripe_not_configured", told: "sent-sent" },
@@ -420,20 +428,19 @@ describe("cancelByOperator — cancelled, and no money moved when some was expec
     expect(fake.refunds).toEqual([]);
   });
 
-  it("AC5: refundReservation throwing leaves the draft alone", async () => {
+  it("AC9: a throw inside the send after the cancel leaves the record unfinished and reports unknown — draft cleared, nobody told yet", async () => {
+    // Renamed from "AC5: refundReservation throwing leaves the draft alone".
     const repo = await seeded();
-    repo.acquireRefundLease = async () => {
+    repo.saveRefundLegs = async () => {
       throw new Error("database unreachable");
     };
     const { tell, calls } = spyTell();
 
     const result = await cancelByOperator(deps(repo, new FakePaymentPort(), tell), input());
 
-    expect(result).toEqual({
-      params: { cancelled: "operator", refundErr: "unreachable", told: "sent-sent" },
-      draft: "leave",
-    });
-    expect(calls.map((c) => c.refund)).toEqual([{ kind: "pending" }]);
+    expect(result).toEqual({ params: { cancelled: "operator", refundErr: "unknown" }, draft: "clear" });
+    expect(calls).toEqual([]);
+    expect(await repo.listRefundRecordsFor(RESV)).toMatchObject([{ state: "unfinished" }]);
   });
 
   it("AC5: a provider error with $0 moved — and a press that moved nothing writes its refund_failed row", async () => {
@@ -458,30 +465,44 @@ describe("cancelByOperator — cancelled, and no money moved when some was expec
     const { stripePaymentIntentId: _pi, ...noIntent } = payment();
     const repo = await seeded({ payments: [noIntent] });
     const { tell, calls } = spyTell();
+    const alert = vi.fn(async (_message: string, _href?: string) => {});
 
-    const result = await cancelByOperator(deps(repo, new FakePaymentPort(), tell), input());
+    const result = await cancelByOperator({ ...deps(repo, new FakePaymentPort(), tell), alert }, input());
 
     expect(result).toEqual({
       params: { cancelled: "operator", refundErr: "no_payment_intent", told: "sent-sent" },
       draft: "stash",
     });
     expect(calls.map((c) => c.refund)).toEqual([{ kind: "pending" }]);
+    // AC31: the record is closed as AC29 says, and the redirect is what reports it.
+    expect(await repo.listRefundRecordsFor(RESV)).toMatchObject([
+      { state: "short", movedCents: 0, shortReason: "no_payment_intent" },
+    ]);
+    expect(alert).not.toHaveBeenCalled();
   });
 
   it("AC5: a stale token from the form is a refusal too", async () => {
     const repo = await seeded();
     const { tell, calls } = spyTell();
+    const alert = vi.fn(async (_message: string, _href?: string) => {});
 
-    const result = await cancelByOperator(deps(repo, new FakePaymentPort(), tell), input({ expectedRefunded: "500" }));
+    const result = await cancelByOperator(
+      { ...deps(repo, new FakePaymentPort(), tell), alert },
+      input({ expectedRefunded: "500" }),
+    );
 
     expect(result).toEqual({
       params: { cancelled: "operator", refundErr: "stale", told: "sent-sent" },
       draft: "stash",
     });
     expect(calls.map((c) => c.refund)).toEqual([{ kind: "pending" }]);
+    // AC31: the record is closed as AC29 says, and the redirect is what reports it.
+    expect(await repo.listRefundRecordsFor(RESV)).toMatchObject([{ state: "short", movedCents: 0, shortReason: "stale" }]);
+    expect(alert).not.toHaveBeenCalled();
   });
 
-  it("AC5: no published-terms figure because another booking still holds the event", async () => {
+  it("Lead call 3: the terms' figure comes from the booking's own trip, even while another booking still holds it", async () => {
+    // Renamed from "AC5: no published-terms figure because another booking still holds the event".
     const repo = await seeded();
     await repo.saveReservation(reservation(FAR, { id: asId<"ReservationId">("resv-other"), customerName: "Ben" }));
     const fake = new FakePaymentPort();
@@ -489,9 +510,9 @@ describe("cancelByOperator — cancelled, and no money moved when some was expec
 
     const result = await cancelByOperator(deps(repo, fake, tell), input());
 
-    expect(result).toEqual({ params: { cancelled: "operator", told: "sent-sent" }, draft: "clear" });
-    expect(calls.map((c) => c.refund)).toEqual([{ kind: "pending" }]);
-    expect(fake.refunds).toEqual([]);
+    expect(result).toEqual({ params: { cancelled: "operator", refunded: String(PAID), told: "sent-sent" }, draft: "clear" });
+    expect(calls.map((c) => c.refund)).toEqual([{ kind: "issued", cents: PAID }]);
+    expect(fake.refunds).toHaveLength(1);
   });
 
   it("AC5: no published-terms figure because the reads threw — the press still lands", async () => {
@@ -523,15 +544,13 @@ describe("cancelByOperator — cancelled, and no money moved when some was expec
     const { stripePaymentIntentId: _pi, ...noIntent } = payment();
 
     it.each<[string, { typedAmount?: string; expectedRefunded?: string; noStripe?: true; payments?: Payment[] }]>([
-      ["it does not parse", { typedAmount: "50abc" }],
       ["Stripe keys are missing", { noStripe: true }],
       ["there is no token", { expectedRefunded: "" }],
       ["refundReservation refuses it", { payments: [noIntent] }],
-      ["it is more than the booking can give back", { typedAmount: "99999" }],
     ])("AC5: when %s", async (_label, o) => {
       const repo = await seeded({ slot: NEAR, payments: o.payments ?? [payment()] });
       const { tell, calls } = spyTell();
-      const wired = { repo, now: () => NOW, tellCustomer: tell, ...(o.noStripe ? {} : { payments: new FakePaymentPort() }) };
+      const wired = { repo, now: () => NOW, tellCustomer: tell, alert: async () => {}, ...(o.noStripe ? {} : { payments: new FakePaymentPort() }) };
 
       await cancelByOperator(
         wired,
@@ -541,16 +560,33 @@ describe("cancelByOperator — cancelled, and no money moved when some was expec
       expect(calls.map((c) => c.refund)).toEqual([{ kind: "pending" }]);
     });
 
-    it("AC5: when refundReservation throws", async () => {
+    it.each<[string, string, string]>([
+      ["it does not parse", "50abc", "invalid_amount"],
+      ["it is more than the booking can give back", "99999", "exceeds_refundable"],
+    ])("AC3: when %s, nothing is cancelled and nobody is told", async (_label, typedAmount, cancelErr) => {
+      // Renamed from "AC5: when %s": these two rows left the table above, since under AC3 neither cancels.
       const repo = await seeded({ slot: NEAR });
-      repo.acquireRefundLease = async () => {
+      const { tell, calls } = spyTell();
+
+      const result = await cancelByOperator(deps(repo, new FakePaymentPort(), tell), input({ by: "customer", typedAmount }));
+
+      expect(result).toEqual({ params: { cancelErr }, draft: "stash" });
+      expect(calls).toEqual([]);
+      expect(await statusOf(repo)).toBe("booked");
+      expect(await repo.listRefundRecordsFor(RESV)).toEqual([]);
+    });
+
+    it("AC9: when the send throws after the cancel, nobody is told yet", async () => {
+      // Renamed from "AC5: when refundReservation throws".
+      const repo = await seeded({ slot: NEAR });
+      repo.saveRefundLegs = async () => {
         throw new Error("database unreachable");
       };
       const { tell, calls } = spyTell();
 
       await cancelByOperator(deps(repo, new FakePaymentPort(), tell), input({ by: "customer", typedAmount: "100" }));
 
-      expect(calls.map((c) => c.refund)).toEqual([{ kind: "pending" }]);
+      expect(calls).toEqual([]);
     });
 
     it("AC5: when the provider moved nothing", async () => {
@@ -778,5 +814,133 @@ describe("cancelByOperator — a booked booking's balance intent (issue #1254)",
 
     expect(result.params.cancelled).toBe("operator");
     expect(fake.cancelled.map((c) => c.paymentIntentId)).toContain(balance.paymentIntentId);
+  });
+});
+
+describe("cancelByOperator — the cancel and the refund it owes, one write (issue #1278)", () => {
+  /** What the cancel's one write was given as the refund it owes. */
+  function watchWrite(repo: InMemoryRepository): unknown[] {
+    const owed: unknown[] = [];
+    const realWrite = repo.cancelBookingAndRelease.bind(repo);
+    repo.cancelBookingAndRelease = async (...args: Parameters<typeof repo.cancelBookingAndRelease>) => {
+      owed.push((args as unknown[])[4]);
+      return realWrite(...args);
+    };
+    return owed;
+  }
+
+  it.each<[string, Partial<OperatorCancelInput>, number]>([
+    ["a typed figure", { by: "operator", typedAmount: "250.50" }, 25050],
+    ["a blank box, at the terms' figure", { by: "customer", typedAmount: "" }, CUSTOMER_REFUND],
+  ])("AC2: %s is recorded in the cancel's own write, by the operator, with the terms' figure beside it", async (_label, over, asked) => {
+    const repo = await seeded();
+    const owed = watchWrite(repo);
+
+    await cancelByOperator(deps(repo), input(over));
+
+    expect(owed).toMatchObject([
+      {
+        reservationId: RESV,
+        reason: "operator_cancel",
+        actorKind: "admin",
+        actorId: ADMIN,
+        askedCents: asked,
+        quotedCents: over.by === "customer" ? CUSTOMER_REFUND : PAID,
+        expectedRefundedCents: 0,
+      },
+    ]);
+    expect(await repo.listRefundRecordsFor(RESV)).toMatchObject([{ reason: "operator_cancel", askedCents: asked, state: "whole" }]);
+  });
+
+  it("AC3: more than the booking can give back is refused before anything is cancelled", async () => {
+    const repo = await seeded();
+    const fake = new FakePaymentPort();
+    const { tell, calls } = spyTell();
+
+    const result = await cancelByOperator(deps(repo, fake, tell), input({ typedAmount: "644.01" }));
+
+    expect(result).toEqual({ params: { cancelErr: "exceeds_refundable" }, draft: "stash" });
+    expect(await statusOf(repo)).toBe("booked");
+    expect((await repo.getEvent(eventIdOf(FAR)))?.status).toBe("scheduled");
+    expect(await repo.listRefundRecordsFor(RESV)).toEqual([]);
+    expect(fake.refunds).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it("AC9: no answer from Stripe reports unknown — never provider_error — and the customer is told nothing yet", async () => {
+    const repo = await seeded();
+    const fake = new FakePaymentPort();
+    fake.refundError = new PaymentIndeterminateError("timed out");
+    const { tell, calls } = spyTell();
+
+    const result = await cancelByOperator(deps(repo, fake, tell), input());
+
+    expect(result).toEqual({ params: { cancelled: "operator", refundErr: "unknown" }, draft: "clear" });
+    expect(calls).toEqual([]);
+    expect(await statusOf(repo)).toBe("cancelled");
+    expect(await repo.listRefundRecordsFor(RESV)).toMatchObject([{ state: "unfinished" }]);
+  });
+
+  it("AC11: a refund the provider refused on the operator's press is reported by the redirect, never by a text", async () => {
+    const repo = await seeded();
+    const fake = new FakePaymentPort();
+    fake.refundError = new Error("card_declined");
+    const alert = vi.fn(async (_message: string, _href?: string) => {});
+
+    const result = await cancelByOperator({ ...deps(repo, fake), alert }, input());
+
+    expect(result.params).toMatchObject({ cancelled: "operator", refundErr: "provider_error", refunded: "0" });
+    expect(await repo.listRefundRecordsFor(RESV)).toMatchObject([{ state: "short", movedCents: 0, shortReason: "card_declined" }]);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  describe("a booking whose refund is still being checked (AC30)", () => {
+    const inFlight = (repo: InMemoryRepository) =>
+      repo.createRefundRecord({
+        id: asId<"RefundRecordId">("rr-in-flight"),
+        reservationId: RESV,
+        reason: "operator_refund",
+        actorKind: "admin",
+        actorId: ADMIN,
+        askedCents: 10000,
+        expectedRefundedCents: 0,
+        createdAt: NOW,
+      });
+
+    it("AC30: a cancel that would owe a refund is refused — nothing cancelled or released, nothing recorded, nobody told", async () => {
+      const repo = await seeded();
+      await inFlight(repo);
+      const fake = new FakePaymentPort();
+      const { tell, calls } = spyTell();
+
+      const result = await cancelByOperator(deps(repo, fake, tell), input({ typedAmount: "100" }));
+
+      expect(result).toEqual({ params: { cancelErr: "unfinished" }, draft: "stash" });
+      expect(await statusOf(repo)).toBe("booked");
+      expect((await repo.getEvent(eventIdOf(FAR)))?.status).toBe("scheduled");
+      expect(await repo.listRefundRecordsFor(RESV)).toMatchObject([{ id: "rr-in-flight" }]);
+      expect(fake.refunds).toEqual([]);
+      expect(calls).toEqual([]);
+    });
+
+    it("AC30: an amount of 0 still cancels — it writes no record", async () => {
+      const repo = await seeded();
+      await inFlight(repo);
+
+      const result = await cancelByOperator(deps(repo), input({ typedAmount: "0" }));
+
+      expect(result.params.cancelled).toBe("operator");
+      expect(await statusOf(repo)).toBe("cancelled");
+    });
+
+    it("AC30: an exit that writes no record still cancels — Stripe keys missing", async () => {
+      const repo = await seeded();
+      await inFlight(repo);
+
+      const result = await cancelByOperator({ repo, now: () => NOW, alert: async () => {} }, input());
+
+      expect(result.params).toMatchObject({ cancelled: "operator", refundErr: "stripe_not_configured" });
+      expect(await statusOf(repo)).toBe("cancelled");
+    });
   });
 });

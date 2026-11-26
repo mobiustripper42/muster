@@ -6,7 +6,7 @@
  * for the reason `cancel-reservation.test.ts` gives (#797): a payment without them cannot tell
  * "everything back but the $50" from "the fare back but the $50".
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { deliverCancelNotice, type CancelNoticeRefund, type TellCustomer } from "./cancel-notice.js";
 import { FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
@@ -16,6 +16,8 @@ import { asId } from "../domain/ids.js";
 import { seedFleet } from "../import/resource-map.js";
 import type { TrailEvent } from "../domain/reservation-trail.js";
 import type { ChannelPort, OutboundMessage } from "../ports/channel.js";
+import { PaymentIndeterminateError } from "../ports/payment.js";
+import { bookingPanePath, refundAlertText } from "./refund-payment.js";
 import {
   cancelByCustomer,
   cancelledNoticeFrom,
@@ -129,6 +131,7 @@ const deps = (repo: InMemoryRepository, payments = new FakePaymentPort(), relay?
   repo,
   now: () => NOW,
   payments,
+  alert: async (_message: string, _href?: string) => {},
   ...(relay ? { relayFormNotices: relay as never } : {}),
 });
 
@@ -418,39 +421,26 @@ describe("cancelByCustomer", () => {
     await expectUntouched(repo, fake);
   });
 
-  it("AC7: stale because another press refunded it while holding the lease is already_cancelled — no refund_failed row", async () => {
+  it("AC30: an operator's refund still being checked refuses the cancel — nothing cancelled, released or recorded", async () => {
+    // Renamed from "AC7: stale with nothing refunded by anyone ends as a failed refund with a refund_failed row".
     const repo = await seeded();
-    await repo.acquireRefundLease(RESV, "the-other-press", NOW, "2026-08-01T16:01:00.000Z");
-    // The other press, holding the lease, lands its refund for the same figure.
-    const realAcquire = repo.acquireRefundLease.bind(repo);
-    let landed = false;
-    repo.acquireRefundLease = async (...args) => {
-      if (!landed) {
-        landed = true;
-        await repo.markPaymentRefunded(asId<"PaymentId">("pay-full"), FEE_REFUND);
-      }
-      return realAcquire(...args);
-    };
-    const fake = new FakePaymentPort();
-
-    expect(await cancelByCustomer(deps(repo, fake), RESV, posted())).toEqual({ ok: false, reason: "already_cancelled" });
-    expect(fake.refunds).toEqual([]);
-    expect((await trail(repo)).filter((e) => e.type === "refund_failed")).toEqual([]);
-  });
-
-  it("AC7: stale with nothing refunded by anyone ends as a failed refund with a refund_failed row", async () => {
-    const repo = await seeded();
-    await repo.acquireRefundLease(RESV, "an-operator-refund", NOW, "2026-08-01T16:01:00.000Z");
-    const fake = new FakePaymentPort();
-
-    expect(await cancelByCustomer(deps(repo, fake), RESV, posted())).toEqual({
-      ok: true,
-      refund: { kind: "failed", cents: FEE_REFUND, movedCents: 0 },
+    await repo.createRefundRecord({
+      id: asId<"RefundRecordId">("rr-operator"),
+      reservationId: RESV,
+      reason: "operator_refund",
+      actorKind: "admin",
+      actorId: "crew-admin-1",
+      askedCents: 10000,
+      expectedRefundedCents: 0,
+      createdAt: NOW,
     });
-    expect((await repo.getReservation(RESV))?.status).toBe("cancelled");
-    expect((await trail(repo)).filter((e) => e.type === "refund_failed")).toMatchObject([
-      { actorKind: "customer", metadata: { actualCents: 0 } },
-    ]);
+    const fake = new FakePaymentPort();
+
+    expect(await cancelByCustomer(deps(repo, fake), RESV, posted())).toEqual({ ok: false, reason: "refund_unfinished" });
+    expect((await repo.getReservation(RESV))?.status).toBe("booked");
+    expect((await repo.getEvent(eventIdOf(FAR)))?.status).toBe("scheduled");
+    expect(await repo.listRefundRecordsFor(RESV)).toMatchObject([{ id: "rr-operator" }]);
+    expect(fake.refunds).toEqual([]);
   });
 
   it("AC8: a provider error after the cancel leaves it cancelled, reports failed, and writes refund_failed", async () => {
@@ -511,21 +501,20 @@ describe("cancelByCustomer", () => {
     ]);
   });
 
-  it("AC8: refundReservation throwing after the cancel is caught and reported as a failed refund", async () => {
+  it("AC9: a throw inside the send after the cancel reports the refund as being checked — no refund_failed row", async () => {
+    // Renamed from "AC8: refundReservation throwing after the cancel is caught and reported as a failed refund".
     const repo = await seeded();
-    repo.acquireRefundLease = async () => {
+    repo.saveRefundLegs = async () => {
       throw new Error("database unreachable");
     };
     const fake = new FakePaymentPort();
 
     await expect(cancelByCustomer(deps(repo, fake), RESV, posted())).resolves.toEqual({
       ok: true,
-      refund: { kind: "failed", cents: FEE_REFUND, movedCents: 0 },
+      refund: { kind: "checking", cents: FEE_REFUND },
     });
     expect((await repo.getReservation(RESV))?.status).toBe("cancelled");
-    expect((await trail(repo)).filter((e) => e.type === "refund_failed")).toMatchObject([
-      { actorKind: "customer", metadata: { actualCents: 0 } },
-    ]);
+    expect((await trail(repo)).filter((e) => e.type === "refund_failed")).toEqual([]);
   });
 
   it("issue #1228 AC10: the write committing and then throwing carries on — trail row, refund, and no releaseFailed", async () => {
@@ -627,6 +616,65 @@ describe("cancelByCustomer", () => {
 
     expect((await repo.getEvent(eventIdOf(FAR)))?.status).toBe("cancelled");
     expect(relayed).toHaveLength(1);
+  });
+
+  it("AC1: one write cancels the booking, frees its boat and records the refund it owes — the quoted figure, the customer's", async () => {
+    const repo = await seeded();
+    const owed: unknown[] = [];
+    const realWrite = repo.cancelBookingAndRelease.bind(repo);
+    repo.cancelBookingAndRelease = async (...args: Parameters<typeof repo.cancelBookingAndRelease>) => {
+      owed.push((args as unknown[])[4]);
+      return realWrite(...args);
+    };
+
+    await cancelByCustomer(deps(repo), RESV, posted());
+
+    expect(owed).toMatchObject([
+      { reservationId: RESV, reason: "customer_cancel", actorKind: "customer", askedCents: FEE_REFUND, expectedRefundedCents: 0 },
+    ]);
+    expect(await repo.listRefundRecordsFor(RESV)).toMatchObject([
+      { reason: "customer_cancel", askedCents: FEE_REFUND, state: "whole", movedCents: FEE_REFUND },
+    ]);
+  });
+
+  it("AC1: when that write throws, the booking is still booked and no refund is recorded", async () => {
+    const repo = await seeded();
+    repo.cancelBookingAndRelease = async () => {
+      throw new Error("database unreachable");
+    };
+
+    await expect(cancelByCustomer(deps(repo), RESV, posted())).rejects.toThrow("database unreachable");
+    expect((await repo.getReservation(RESV))?.status).toBe("booked");
+    expect(await repo.listRefundRecordsFor(RESV)).toEqual([]);
+  });
+
+  it("AC9: no answer from Stripe reports the refund as being checked — the cancel stands and the record waits for the job", async () => {
+    const repo = await seeded();
+    const fake = new FakePaymentPort();
+    fake.refundError = new PaymentIndeterminateError("timed out");
+
+    expect(await cancelByCustomer(deps(repo, fake), RESV, posted())).toEqual({
+      ok: true,
+      refund: { kind: "checking", cents: FEE_REFUND },
+    });
+    expect((await repo.getReservation(RESV))?.status).toBe("cancelled");
+    expect(await repo.listRefundRecordsFor(RESV)).toMatchObject([{ state: "unfinished" }]);
+    expect((await trail(repo)).filter((e) => e.type === "refund_failed")).toEqual([]);
+  });
+
+  it("AC11: a refund the provider refused texts every active admin, linking the booking", async () => {
+    // A customer's cancel has no operator watching a redirect.
+    const repo = await seeded();
+    const fake = new FakePaymentPort();
+    fake.refundError = new Error("card_declined");
+    const alert = vi.fn(async (_message: string, _href?: string) => {});
+
+    await cancelByCustomer({ ...deps(repo, fake), alert }, RESV, posted());
+
+    const [record] = await repo.listRefundRecordsFor(RESV);
+    expect(record).toMatchObject({ state: "short", movedCents: 0 });
+    const row = (await repo.getReservation(RESV))!;
+    expect(alert.mock.calls).toEqual([[refundAlertText("short", record!, row), bookingPanePath(RESV)]]);
   });
 
   it("issue #1254 correction: the customer's cancel cancels the booking's balance intent, so it can no longer be paid", async () => {
@@ -921,25 +969,43 @@ describe("cancelByCustomer — telling the customer", () => {
     expect(calls).toEqual([]);
   });
 
-  it("AC8: none when another press refunded the same figure in the same moment", async () => {
+  it("AC15: a press whose refund is still being checked takes no notice claim and tells nobody yet", async () => {
     const repo = await world();
-    await repo.acquireRefundLease(RESV, "the-other-press", NOW, "2026-08-01T16:01:00.000Z");
-    const realAcquire = repo.acquireRefundLease.bind(repo);
-    let landed = false;
-    repo.acquireRefundLease = async (...args) => {
-      if (!landed) {
-        landed = true;
-        await repo.markPaymentRefunded(asId<"PaymentId">("pay-full"), REFUND);
-      }
-      return realAcquire(...args);
-    };
+    const fake = new FakePaymentPort();
+    fake.refundError = new PaymentIndeterminateError("timed out");
     const { tell, calls } = spyTell();
 
-    expect(await cancelByCustomer({ ...deps(repo), tellCustomer: tell }, RESV, posted())).toEqual({
-      ok: false,
-      reason: "already_cancelled",
-    });
+    await cancelByCustomer({ ...deps(repo, fake), tellCustomer: tell }, RESV, posted());
+
     expect(calls).toEqual([]);
+    const [record] = await repo.listRefundRecordsFor(RESV);
+    expect(record).toMatchObject({ state: "unfinished" });
+    expect(record?.noticeClaimedAt).toBeUndefined();
+  });
+
+  it("AC15: the notice is claimed on the record before it is sent, and marked sent after", async () => {
+    const repo = await world();
+    let claimedAtSend: string | undefined;
+    const tell: TellCustomer = async () => {
+      claimedAtSend = (await repo.listRefundRecordsFor(RESV))[0]?.noticeClaimedAt;
+      return "sent-sent";
+    };
+
+    await cancelByCustomer({ ...deps(repo), tellCustomer: tell }, RESV, posted());
+
+    expect(claimedAtSend).toEqual(expect.any(String));
+    expect((await repo.listRefundRecordsFor(RESV))[0]?.noticeSentAt).toEqual(expect.any(String));
+  });
+
+  it("AC15: a send that failed is still marked sent — only a claim with no mark is in doubt", async () => {
+    const repo = await world();
+    const tell: TellCustomer = async () => {
+      throw new Error("sender blew up");
+    };
+
+    await cancelByCustomer({ ...deps(repo), tellCustomer: tell }, RESV, posted());
+
+    expect((await repo.listRefundRecordsFor(RESV))[0]?.noticeSentAt).toEqual(expect.any(String));
   });
 
   it("AC10: the sender rejecting leaves the cancel, the refund and the outcome as they were", async () => {
@@ -1144,6 +1210,14 @@ describe("manageRedirectFor", () => {
   it("AC7: already_cancelled goes to the plain booking page, the code encoded into the path", () => {
     expect(to({ ok: false, reason: "already_cancelled" })).toBe(`/b/${CODE}`);
     expect(to({ ok: false, reason: "already_cancelled" }, "AB CD/1")).toBe("/b/AB%20CD%2F1");
+  });
+
+  it("AC9: a refund still being checked lands on the cancelled page with refund=checking — no figure in the URL", () => {
+    expect(to({ ok: true, refund: { kind: "checking", cents: 41240 } })).toBe(`/b/${CODE}?cancelled=1&refund=checking`);
+  });
+
+  it("AC30: a cancel refused because a refund is still being checked is cancel_failed", () => {
+    expect(to({ ok: false, reason: "refund_unfinished" })).toBe(`/b/${CODE}?error=cancel_failed`);
   });
 
   it("AC3: not_offered, and every other refusal, is cancel_failed", () => {

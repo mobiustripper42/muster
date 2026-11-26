@@ -16,7 +16,7 @@ import {
   type ReservationDetailView,
 } from "@core/reservations/calendar-detail.js";
 import { cancelNoticeMessage } from "./payment-link-message";
-import { ReservationDetailPane, type PaneActionState } from "./reservation-detail-pane";
+import { actionMessage, ReservationDetailPane, type PaneActionState } from "./reservation-detail-pane";
 
 const RESV = asId<"ReservationId">("resv-1");
 const EVENT = asId<"EventId">("evt-1");
@@ -279,4 +279,21 @@ describe("ReservationDetailPane — the paid booking's Money card", () => {
 
     expect(chargeRows(html)).toContainEqual(["Service fee · 3%", "$18.00"]);
   });
+});
+
+/**
+ * The pane's refund messages for what a refund record can report (issue #1278, AC9). Compared, never
+ * read for their words — the words are Wording, checked at the hand-back.
+ */
+describe("actionMessage — a refund that may have moved (issue #1278)", () => {
+  it("AC9: a code the pane does not know reads as unknown — never as nothing moved", () => {
+    expect(actionMessage("refundErr", "some_code_from_next_year")).toBe(actionMessage("refundErr", "unknown"));
+  });
+
+  it.each(["unreachable", "reservation_missing", "unfinished"])(
+    "AC9: %s reads differently from unknown",
+    (code) => {
+      expect(actionMessage("refundErr", code)).not.toBe(actionMessage("refundErr", "unknown"));
+    },
+  );
 });

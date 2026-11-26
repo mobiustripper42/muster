@@ -14,6 +14,7 @@ import {
   type PaymentIntentState,
   type PaymentPort,
   type PaymentSucceeded,
+  type ProviderRefund,
   type RefundInput,
   type WebhookEndpointInfo,
 } from "../ports/payment.js";
@@ -97,6 +98,27 @@ export class FakePaymentPort implements PaymentPort {
     this.refunds.push(input);
     this.#refundsByKey.set(input.idempotencyKey, result);
     return result;
+  }
+
+  /**
+   * The refunds this fake has made on a PaymentIntent (issue #1278), as the provider would list
+   * them: each succeeded, carrying the metadata it was sent with. A refund that threw, or that the
+   * fake never received, is not here — which is what "not found" means to the job. A test that wants
+   * the provider to say something else assigns its own `listRefunds`.
+   */
+  async listRefunds(paymentIntentId: string): Promise<ProviderRefund[]> {
+    return this.refunds.flatMap((r, i) =>
+      r.paymentIntentId === paymentIntentId
+        ? [
+            {
+              refundId: `re_fake_${i + 1}`,
+              amountCents: r.amountCents ?? 0,
+              status: "succeeded" as const,
+              metadata: r.metadata ?? {},
+            },
+          ]
+        : [],
+    );
   }
 
   /**
@@ -316,7 +338,8 @@ export class FakePaymentPort implements PaymentPort {
       parsed.type === "dispute_updated" ||
       parsed.type === "payment_failed" ||
       parsed.type === "payment_canceled" ||
-      parsed.type === "payment_processing"
+      parsed.type === "payment_processing" ||
+      parsed.type === "refund_failed"
     ) {
       return { ...parsed, stripeEventId };
     }

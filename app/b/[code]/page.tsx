@@ -39,6 +39,12 @@ import { Textarea } from "../../../components/ui/input";
 import { Card, Well } from "../../../components/ui/card";
 
 export const dynamic = "force-dynamic";
+/**
+ * The longest a press may run, in seconds (issue #1278). The customer's cancel sends its refund from this
+ * page's action, and a record a press is still sending is its own for `REFUND_TAKEOVER_AFTER_MS`
+ * (5 minutes): above this cap, so the job never takes a live press's record.
+ */
+export const maxDuration = 60;
 
 // `payment_intent` is Stripe's own return parameter after the balance form's card (and any 3-D Secure
 // step); it is text in an address bar, so `recordBalanceReturn` asks Stripe before it records anything.

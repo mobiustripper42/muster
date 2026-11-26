@@ -30,7 +30,9 @@ import type {
   PtoWindow,
   TimePunch,
   TimePunchEdit,
+  NewRefundRecord,
   Payment,
+  RefundLeg,
   Reservation,
   RoleType,
   Seat,
@@ -1910,103 +1912,524 @@ export function runRepositoryContract(
       });
     };
 
-    // ── Refund lease (#726) ───────────────────────────────────────────────────
-    // The FK means the reservation must exist first — in Postgres an orphan lease insert fails,
-    // and testing this against the double alone would hide that.
-    const LEASE_RESV = asId<"ReservationId">("resv-leased");
-    const T0 = "2026-08-14T12:00:00.000Z";
-    const T_LATER = "2026-08-14T12:00:30.000Z";
-    const T_AFTER_EXPIRY = "2026-08-14T12:02:00.000Z";
-    const EXPIRES = "2026-08-14T12:01:00.000Z";
-
-    it("refund lease: a fresh acquire wins", async () => {
-      await repo.saveReservation(reservation({ id: LEASE_RESV }));
-      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES)).toEqual({ acquired: true });
+    // ── Refund records (issue #1278) ──────────────────────────────────────────
+    // The record is the lock: one unfinished record per booking, the sold-out reason excepted.
+    // Postgres holds that as a partial unique index and the double as a check, so both must agree.
+    const RR_RESV = rid("resv-refunded");
+    const RR_T0 = "2026-11-20T12:00:00.000Z";
+    const rrId = (s: string) => asId<"RefundRecordId">(s);
+    const newRecord = (over: Partial<NewRefundRecord> = {}): NewRefundRecord => ({
+      id: rrId("rr-1"),
+      reservationId: RR_RESV,
+      reason: "operator_refund",
+      actorKind: "admin",
+      actorId: "crew-admin-1",
+      askedCents: 59400,
+      expectedRefundedCents: 0,
+      createdAt: RR_T0,
+      ...over,
     });
-
-    it("refund lease: a second live acquire LOSES — this is the money guard", async () => {
-      // The whole reason the table exists: two concurrent refunds of different amounts must not
-      // both reach Stripe. Both adapters must agree on which side of this the second call lands.
-      await repo.saveReservation(reservation({ id: LEASE_RESV }));
-      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES)).toEqual({ acquired: true });
-      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-b", T_LATER, EXPIRES)).toEqual({
-        acquired: false,
-      });
+    const leg = (over: Partial<RefundLeg> = {}): RefundLeg => ({
+      paymentIntentId: "pi_full",
+      paymentId: asId<"PaymentId">("pay-rr-1"),
+      cents: 59400,
+      refundedTotalCents: 59400,
+      ...over,
     });
-
-    it("refund lease: releasing lets the next one in, and is idempotent", async () => {
-      await repo.saveReservation(reservation({ id: LEASE_RESV }));
-      await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES);
-      await repo.releaseRefundLease(LEASE_RESV, "tok-a");
-      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-b", T_LATER, EXPIRES)).toEqual({
-        acquired: true,
-      });
-      // Called from a `finally`, so a double release (or one on a lease that already expired)
-      // must be a no-op rather than a throw.
-      await repo.releaseRefundLease(LEASE_RESV, "tok-a");
-      await expect(repo.releaseRefundLease(LEASE_RESV, "tok-a")).resolves.toBeUndefined();
+    const rrPayment = (over: Partial<Payment> = {}): Payment => ({
+      id: asId<"PaymentId">("pay-rr-1"),
+      reservationId: RR_RESV,
+      method: "stripe",
+      kind: "full",
+      amountCents: 64400,
+      taxCents: 4000,
+      currency: "usd",
+      status: "succeeded",
+      stripePaymentIntentId: "pi_full",
+      createdAt: "2026-11-01T10:00:00.000Z",
+      ...over,
     });
+    const seedRefunded = async (): Promise<void> => {
+      await repo.saveReservation(reservation({ id: RR_RESV, source: "muster" }));
+    };
+    const finishWhole = async (id: string, at = RR_T0): Promise<void> => {
+      await repo.finishRefundRecord({ id: rrId(id), state: "whole", movedCents: 59400, at });
+    };
 
-    it("refund lease: an EXPIRED lease is inert — a crashed refund can't strand the booking", async () => {
-      // Without lazy expiry, a process dying mid-refund blocks every future refund on this
-      // booking forever: silent, permanent, and worse than the bug the lease fixes.
-      await repo.saveReservation(reservation({ id: LEASE_RESV }));
-      await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES);
-      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-b", T_AFTER_EXPIRY, EXPIRES)).toEqual({
-        acquired: true,
-      });
-    });
+    describe("refund records (issue #1278)", () => {
+      it("AC10: createRefundRecord inserts an unfinished record — nothing moved, no legs, claimed when written", async () => {
+        await seedRefunded();
 
-    it("refund lease: `now` EXACTLY equal to expires_at counts as expired, on both adapters", async () => {
-      // The boundary, pinned rather than assumed. Postgres deletes on `expires_at <= now` and
-      // the double blocks only while `expiresAt > nowIso` — two different spellings of the same
-      // rule, which is exactly how adapters drift apart without either one looking wrong. An
-      // off-by-one here is a lease that outlives itself by a tick (a refund refused for no
-      // visible reason) or dies a tick early (the double-refund window reopening).
-      await repo.saveReservation(reservation({ id: LEASE_RESV }));
-      await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES);
-      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-b", EXPIRES, EXPIRES)).toEqual({
-        acquired: true,
-      });
-    });
+        expect(await repo.createRefundRecord(newRecord())).toEqual({ created: true });
 
-    it("refund lease: one tick BEFORE expiry still blocks", async () => {
-      // The other side of the same boundary — without this, an adapter that treated every lease
-      // as expired would pass the case above and reopen the exact race #726 closed.
-      await repo.saveReservation(reservation({ id: LEASE_RESV }));
-      await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES);
-      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-b", "2026-08-14T12:00:59.999Z", EXPIRES)).toEqual({
-        acquired: false,
+        const stored = await repo.getRefundRecord(rrId("rr-1"));
+        expect(stored).toMatchObject({
+          id: "rr-1",
+          reservationId: RR_RESV,
+          reason: "operator_refund",
+          actorKind: "admin",
+          actorId: "crew-admin-1",
+          askedCents: 59400,
+          expectedRefundedCents: 0,
+          movedCents: 0,
+          state: "unfinished",
+          createdAt: RR_T0,
+          claimedAt: RR_T0,
+          legs: [],
+        });
+        expect(stored?.finishedAt).toBeUndefined();
+        expect(stored?.noticeClaimedAt).toBeUndefined();
+        expect(await repo.listUnfinishedRefundRecords()).toMatchObject([{ id: "rr-1" }]);
       });
-    });
 
-    it("refund lease: a stale holder's release does NOT kill its successor's live lease", async () => {
-      // The scenario: refund A's lease expires while its Stripe call is still in flight, refund B
-      // legitimately acquires, then A's `finally` fires. Releasing by reservation alone would
-      // delete B's LIVE lease, letting a third refund run alongside B — reopening the race, in
-      // exactly the slow-call case the expiry exists to handle. Release is own-lease-only.
-      await repo.saveReservation(reservation({ id: LEASE_RESV }));
-      await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES);
-      // B acquires after A's lease expired.
-      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-b", T_AFTER_EXPIRY, "2026-08-14T12:03:00.000Z")).toEqual({
-        acquired: true,
-      });
-      // A finally returns and releases with ITS token.
-      await repo.releaseRefundLease(LEASE_RESV, "tok-a");
-      // B still holds it — a third attempt is still refused.
-      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-c", T_AFTER_EXPIRY, EXPIRES)).toEqual({
-        acquired: false,
-      });
-    });
+      it("AC10: getRefundRecord is null for an id never written", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
 
-    it("refund lease: leases are per-reservation, not global", async () => {
-      // A refund on one booking must never block a refund on another.
-      await repo.saveReservation(reservation({ id: LEASE_RESV }));
-      await repo.saveReservation(reservation({ id: asId<"ReservationId">("resv-other-lease") }));
-      await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES);
-      expect(
-        await repo.acquireRefundLease(asId<"ReservationId">("resv-other-lease"), "tok-c", T0, EXPIRES),
-      ).toEqual({ acquired: true });
+        expect(await repo.getRefundRecord(rrId("rr-1"))).not.toBeNull();
+        expect(await repo.getRefundRecord(rrId("rr-nope"))).toBeNull();
+      });
+
+      it("AC10: a second unfinished record on the same booking is refused, and nothing is written", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+
+        expect(await repo.createRefundRecord(newRecord({ id: rrId("rr-2"), askedCents: 100 }))).toEqual({
+          created: false,
+        });
+
+        expect(await repo.getRefundRecord(rrId("rr-2"))).toBeNull();
+        expect(await repo.listRefundRecordsFor(RR_RESV)).toMatchObject([{ id: "rr-1" }]);
+      });
+
+      it("AC10: a finished record does not block the next one", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        await finishWhole("rr-1");
+
+        expect(await repo.createRefundRecord(newRecord({ id: rrId("rr-2"), createdAt: "2026-11-20T13:00:00.000Z" }))).toEqual({
+          created: true,
+        });
+      });
+
+      it("AC10: an unfinished record on one booking does not block another booking", async () => {
+        await seedRefunded();
+        await repo.saveReservation(reservation({ id: rid("resv-other-refund"), source: "muster" }));
+        await repo.createRefundRecord(newRecord());
+
+        expect(
+          await repo.createRefundRecord(newRecord({ id: rrId("rr-2"), reservationId: rid("resv-other-refund") })),
+        ).toEqual({ created: true });
+      });
+
+      it("AC10: a sold-out record is outside the limit — it neither blocks nor is blocked", async () => {
+        await seedRefunded();
+        const soldOut = newRecord({ id: rrId("rr_sold_out_pi_x"), reason: "sold_out", actorKind: "engine" });
+        delete soldOut.actorId;
+
+        expect(await repo.createRefundRecord(soldOut)).toEqual({ created: true });
+        expect(await repo.createRefundRecord(newRecord())).toEqual({ created: true });
+        expect(
+          await repo.createRefundRecord({ ...soldOut, id: rrId("rr_sold_out_pi_y") }),
+        ).toEqual({ created: true });
+      });
+
+      it("AC5: an id that already exists is refused, even once its record is finished", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        await finishWhole("rr-1");
+
+        expect(await repo.createRefundRecord(newRecord({ askedCents: 100 }))).toEqual({ created: false });
+        expect(await repo.getRefundRecord(rrId("rr-1"))).toMatchObject({ askedCents: 59400, state: "whole" });
+      });
+
+      it("AC5: a record given its legs is inserted with them in the same write", async () => {
+        await seedRefunded();
+        const soldOutLeg: RefundLeg = { paymentIntentId: "pi_lost", cents: 53625 };
+
+        await repo.createRefundRecord(
+          newRecord({ id: rrId("rr_sold_out_pi_lost"), reason: "sold_out", actorKind: "engine", legs: [soldOutLeg] }),
+        );
+
+        const stored = await repo.getRefundRecord(rrId("rr_sold_out_pi_lost"));
+        expect(stored?.legs).toEqual([soldOutLeg]);
+      });
+
+      it("AC22: saveRefundLegs saves the planned legs, and the first write wins", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        const first = [
+          leg({ paymentIntentId: "pi_balance", paymentId: asId<"PaymentId">("pay-b"), cents: 20000, refundedTotalCents: 20000 }),
+          leg({ paymentIntentId: "pi_deposit", paymentId: asId<"PaymentId">("pay-d"), cents: 39400, refundedTotalCents: 39400 }),
+        ];
+
+        await repo.saveRefundLegs(rrId("rr-1"), first);
+        await repo.saveRefundLegs(rrId("rr-1"), [leg()]);
+
+        expect((await repo.getRefundRecord(rrId("rr-1")))?.legs).toEqual(first);
+      });
+
+      it("AC12: finishRefundLeg writes a leg's outcome and its refund id, and nothing else on the record", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        await repo.saveRefundLegs(rrId("rr-1"), [
+          leg({ paymentIntentId: "pi_balance", cents: 20000, refundedTotalCents: 20000 }),
+          leg({ paymentIntentId: "pi_deposit", cents: 39400, refundedTotalCents: 39400 }),
+        ]);
+
+        await repo.finishRefundLeg({ recordId: rrId("rr-1"), paymentIntentId: "pi_balance", outcome: "moved", refundId: "re_1" });
+        await repo.finishRefundLeg({ recordId: rrId("rr-1"), paymentIntentId: "pi_deposit", outcome: "refused" });
+
+        const stored = await repo.getRefundRecord(rrId("rr-1"));
+        expect(stored?.legs).toMatchObject([
+          { paymentIntentId: "pi_balance", outcome: "moved", refundId: "re_1" },
+          { paymentIntentId: "pi_deposit", outcome: "refused" },
+        ]);
+        expect(stored).toMatchObject({ state: "unfinished", movedCents: 0 });
+      });
+
+      it("AC8: finishRefundRecord writes the state, what moved, why it is short and when; an unfinished list leaves it out", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        await repo.saveReservation(reservation({ id: rid("resv-other-refund"), source: "muster" }));
+        await repo.createRefundRecord(newRecord({ id: rrId("rr-2"), reservationId: rid("resv-other-refund") }));
+
+        await repo.finishRefundRecord({
+          id: rrId("rr-1"),
+          state: "short",
+          movedCents: 20000,
+          shortReason: "card_declined",
+          at: "2026-11-20T12:01:00.000Z",
+        });
+
+        expect(await repo.getRefundRecord(rrId("rr-1"))).toMatchObject({
+          state: "short",
+          movedCents: 20000,
+          shortReason: "card_declined",
+          finishedAt: "2026-11-20T12:01:00.000Z",
+        });
+        expect((await repo.listUnfinishedRefundRecords()).map((r) => r.id)).toEqual(["rr-2"]);
+      });
+
+      it("AC12: listRefundRecordsFor is one booking's records, oldest first, with their legs", async () => {
+        await seedRefunded();
+        await repo.saveReservation(reservation({ id: rid("resv-other-refund"), source: "muster" }));
+        await repo.createRefundRecord(newRecord({ id: rrId("rr-b"), createdAt: "2026-11-20T12:00:00.000Z" }));
+        await repo.saveRefundLegs(rrId("rr-b"), [leg()]);
+        await finishWhole("rr-b");
+        await repo.createRefundRecord(newRecord({ id: rrId("rr-a"), createdAt: "2026-11-20T13:00:00.000Z" }));
+        await repo.createRefundRecord(newRecord({ id: rrId("rr-other"), reservationId: rid("resv-other-refund") }));
+
+        const records = await repo.listRefundRecordsFor(RR_RESV);
+
+        expect(records.map((r) => r.id)).toEqual(["rr-b", "rr-a"]);
+        expect(records[0]?.legs).toEqual([leg()]);
+      });
+
+      // ── The takeover (AC13) — `claimBalanceAttempt`'s shape (DEC-202) ─────────
+      it("AC13: claimRefundRecord takes a record claimed strictly before staleBefore, and resets its claim", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        const later = "2026-11-20T12:06:00.000Z";
+
+        expect(await repo.claimRefundRecord({ id: rrId("rr-1"), at: later, staleBefore: "2026-11-20T12:00:00.001Z" })).toBe(true);
+
+        expect((await repo.getRefundRecord(rrId("rr-1")))?.claimedAt).toBe(later);
+      });
+
+      it("AC13: a record claimed exactly at staleBefore is not taken", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+
+        expect(await repo.claimRefundRecord({ id: rrId("rr-1"), at: "2026-11-20T12:05:00.000Z", staleBefore: RR_T0 })).toBe(false);
+        expect((await repo.getRefundRecord(rrId("rr-1")))?.claimedAt).toBe(RR_T0);
+        // The other side of the same boundary.
+        expect(
+          await repo.claimRefundRecord({ id: rrId("rr-1"), at: "2026-11-20T12:05:00.001Z", staleBefore: "2026-11-20T12:00:00.001Z" }),
+        ).toBe(true);
+      });
+
+      it("AC13: two claims at the same moment — exactly one takes the record, and the age runs from the last claim", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        const claim = { id: rrId("rr-1"), at: "2026-11-20T12:06:00.000Z", staleBefore: "2026-11-20T12:01:00.000Z" };
+
+        const both = await Promise.all([repo.claimRefundRecord(claim), repo.claimRefundRecord(claim)]);
+
+        expect(both.filter(Boolean)).toHaveLength(1);
+        // Claimed at 12:06: a staleBefore of 12:05 no longer reaches it, though the record is from 12:00.
+        expect(
+          await repo.claimRefundRecord({ id: rrId("rr-1"), at: "2026-11-20T12:10:00.000Z", staleBefore: "2026-11-20T12:05:00.000Z" }),
+        ).toBe(false);
+      });
+
+      it("AC13: a finished record is never claimed, and an unknown id is false", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        await finishWhole("rr-1");
+        const stale = { at: "2026-11-21T12:00:00.000Z", staleBefore: "2026-11-21T11:00:00.000Z" };
+
+        expect(await repo.claimRefundRecord({ id: rrId("rr-1"), ...stale })).toBe(false);
+        expect(await repo.claimRefundRecord({ id: rrId("rr-nope"), ...stale })).toBe(false);
+      });
+
+      // ── The notice and the alerts (AC15, AC11) ──────────────────────────────
+      it("AC15: claimRefundNotice is true once; markRefundNoticeSent records when it went", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        const at = "2026-11-20T12:00:05.000Z";
+
+        expect(await repo.claimRefundNotice(rrId("rr-1"), at)).toBe(true);
+        expect(await repo.claimRefundNotice(rrId("rr-1"), "2026-11-20T12:07:00.000Z")).toBe(false);
+        expect(await repo.getRefundRecord(rrId("rr-1"))).toMatchObject({ noticeClaimedAt: at });
+        expect((await repo.getRefundRecord(rrId("rr-1")))?.noticeSentAt).toBeUndefined();
+
+        await repo.markRefundNoticeSent(rrId("rr-1"), "2026-11-20T12:00:06.000Z");
+        expect(await repo.getRefundRecord(rrId("rr-1"))).toMatchObject({ noticeSentAt: "2026-11-20T12:00:06.000Z" });
+      });
+
+      it("AC11: claimRefundAlert is true once per kind per record", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        await repo.saveReservation(reservation({ id: rid("resv-other-refund"), source: "muster" }));
+        await repo.createRefundRecord(newRecord({ id: rrId("rr-2"), reservationId: rid("resv-other-refund") }));
+        const at = "2026-11-20T12:00:05.000Z";
+
+        expect(await repo.claimRefundAlert(rrId("rr-1"), "short", at)).toBe(true);
+        expect(await repo.claimRefundAlert(rrId("rr-1"), "short", at)).toBe(false);
+        expect(await repo.claimRefundAlert(rrId("rr-1"), "gave_up", at)).toBe(true);
+        expect(await repo.claimRefundAlert(rrId("rr-1"), "notice_in_doubt", at)).toBe(true);
+        expect(await repo.claimRefundAlert(rrId("rr-1"), "sold_out_unknown", at)).toBe(true);
+        expect(await repo.claimRefundAlert(rrId("rr-1"), "gave_up", at)).toBe(false);
+        expect(await repo.claimRefundAlert(rrId("rr-2"), "short", at)).toBe(true);
+      });
+
+      // ── A refund that failed at the bank (AC24) ─────────────────────────────
+      const movedTwoLegs = async (): Promise<void> => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        await repo.saveRefundLegs(rrId("rr-1"), [
+          leg({ paymentIntentId: "pi_balance", cents: 20000, refundedTotalCents: 20000 }),
+          leg({ paymentIntentId: "pi_deposit", cents: 39400, refundedTotalCents: 39400 }),
+        ]);
+        await repo.finishRefundLeg({ recordId: rrId("rr-1"), paymentIntentId: "pi_balance", outcome: "moved", refundId: "re_b" });
+        await repo.finishRefundLeg({ recordId: rrId("rr-1"), paymentIntentId: "pi_deposit", outcome: "moved", refundId: "re_d" });
+        await finishWhole("rr-1");
+      };
+
+      it("AC24: markRefundLegFailedLater marks a moved leg failed, and the record short by that leg's cents", async () => {
+        await movedTwoLegs();
+        const at = "2026-11-23T09:00:00.000Z";
+
+        expect(await repo.markRefundLegFailedLater({ recordId: rrId("rr-1"), paymentIntentId: "pi_deposit", at })).toBe(true);
+
+        const stored = await repo.getRefundRecord(rrId("rr-1"));
+        expect(stored).toMatchObject({ state: "short", movedCents: 20000, shortReason: "failed_later" });
+        expect(stored?.legs).toMatchObject([
+          { paymentIntentId: "pi_balance", outcome: "moved" },
+          { paymentIntentId: "pi_deposit", outcome: "failed_later", failedAt: at },
+        ]);
+      });
+
+      it("AC24: a record already short keeps its shortReason when a moved leg fails later", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        await repo.saveRefundLegs(rrId("rr-1"), [
+          leg({ paymentIntentId: "pi_balance", cents: 20000, refundedTotalCents: 20000 }),
+          leg({ paymentIntentId: "pi_deposit", cents: 39400, refundedTotalCents: 39400 }),
+        ]);
+        await repo.finishRefundLeg({ recordId: rrId("rr-1"), paymentIntentId: "pi_balance", outcome: "moved" });
+        await repo.finishRefundLeg({ recordId: rrId("rr-1"), paymentIntentId: "pi_deposit", outcome: "refused" });
+        await repo.finishRefundRecord({ id: rrId("rr-1"), state: "short", movedCents: 20000, shortReason: "card_declined", at: RR_T0 });
+
+        expect(
+          await repo.markRefundLegFailedLater({ recordId: rrId("rr-1"), paymentIntentId: "pi_balance", at: "2026-11-23T09:00:00.000Z" }),
+        ).toBe(true);
+
+        expect(await repo.getRefundRecord(rrId("rr-1"))).toMatchObject({
+          state: "short",
+          movedCents: 0,
+          shortReason: "card_declined",
+        });
+      });
+
+      it("AC24: true only the first time, and only for a moved leg — every other call writes nothing", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        await repo.saveRefundLegs(rrId("rr-1"), [
+          leg({ paymentIntentId: "pi_balance", cents: 20000, refundedTotalCents: 20000 }),
+          leg({ paymentIntentId: "pi_deposit", cents: 39400, refundedTotalCents: 39400 }),
+        ]);
+        await repo.finishRefundLeg({ recordId: rrId("rr-1"), paymentIntentId: "pi_balance", outcome: "moved" });
+        await repo.finishRefundLeg({ recordId: rrId("rr-1"), paymentIntentId: "pi_deposit", outcome: "refused" });
+        await repo.finishRefundRecord({ id: rrId("rr-1"), state: "short", movedCents: 20000, shortReason: "card_declined", at: RR_T0 });
+        const at = "2026-11-23T09:00:00.000Z";
+
+        expect(await repo.markRefundLegFailedLater({ recordId: rrId("rr-1"), paymentIntentId: "pi_balance", at })).toBe(true);
+        const after = await repo.getRefundRecord(rrId("rr-1"));
+
+        expect(await repo.markRefundLegFailedLater({ recordId: rrId("rr-1"), paymentIntentId: "pi_balance", at })).toBe(false);
+        expect(await repo.markRefundLegFailedLater({ recordId: rrId("rr-1"), paymentIntentId: "pi_deposit", at })).toBe(false);
+        expect(await repo.markRefundLegFailedLater({ recordId: rrId("rr-1"), paymentIntentId: "pi_nope", at })).toBe(false);
+        expect(await repo.markRefundLegFailedLater({ recordId: rrId("rr-nope"), paymentIntentId: "pi_balance", at })).toBe(false);
+        expect(after).not.toBeNull();
+        expect(await repo.getRefundRecord(rrId("rr-1"))).toEqual(after);
+      });
+
+      it("AC24: a leg with no outcome yet is not failed later", async () => {
+        await seedRefunded();
+        await repo.createRefundRecord(newRecord());
+        await repo.saveRefundLegs(rrId("rr-1"), [leg()]);
+        const before = await repo.getRefundRecord(rrId("rr-1"));
+
+        expect(
+          await repo.markRefundLegFailedLater({ recordId: rrId("rr-1"), paymentIntentId: "pi_full", at: "2026-11-23T09:00:00.000Z" }),
+        ).toBe(false);
+        expect(before).not.toBeNull();
+        expect(await repo.getRefundRecord(rrId("rr-1"))).toEqual(before);
+      });
+
+      it("AC24: lowerPaymentRefunded lowers the total and moves the status with it, never below 0", async () => {
+        // The status rule is written in each adapter, as `markPaymentRefunded`'s is; this is what
+        // checks the two agree.
+        await seedRefunded();
+        await repo.savePayment(rrPayment());
+        const id = asId<"PaymentId">("pay-rr-1");
+        await repo.markPaymentRefunded(id, 64400);
+
+        await repo.lowerPaymentRefunded(id, 20000);
+        expect(await repo.getPayment(id)).toMatchObject({ refundedCents: 44400, status: "partially_refunded" });
+
+        await repo.lowerPaymentRefunded(id, 44400);
+        expect(await repo.getPayment(id)).toMatchObject({ refundedCents: 0, status: "succeeded" });
+
+        await repo.markPaymentRefunded(id, 1000);
+        await repo.lowerPaymentRefunded(id, 5000);
+        expect(await repo.getPayment(id)).toMatchObject({ refundedCents: 0, status: "succeeded" });
+        expect((await repo.getPayment(id))!.amountCents).toBe(64400);
+      });
+
+      it("AC24: lowerPaymentRefunded changes only a refunded or partly refunded row, and no-ops on an unknown id", async () => {
+        await seedRefunded();
+        await repo.savePayment(rrPayment());
+        await repo.savePayment(rrPayment({ id: asId<"PaymentId">("pay-rr-disputed"), stripePaymentIntentId: "pi_disputed" }));
+        await repo.markPaymentDisputed(asId<"PaymentId">("pay-rr-disputed"), "disputed");
+        await repo.savePayment(rrPayment({ id: asId<"PaymentId">("pay-rr-refunded"), stripePaymentIntentId: "pi_refunded" }));
+        await repo.markPaymentRefunded(asId<"PaymentId">("pay-rr-refunded"), 64400);
+        const untouched = await repo.getPayment(asId<"PaymentId">("pay-rr-1"));
+        const disputed = await repo.getPayment(asId<"PaymentId">("pay-rr-disputed"));
+
+        await repo.lowerPaymentRefunded(asId<"PaymentId">("pay-rr-1"), 1000);
+        await repo.lowerPaymentRefunded(asId<"PaymentId">("pay-rr-disputed"), 1000);
+        await repo.lowerPaymentRefunded(asId<"PaymentId">("pay-rr-refunded"), 1000);
+        await repo.lowerPaymentRefunded(asId<"PaymentId">("pay-nope"), 1000);
+
+        expect(await repo.getPayment(asId<"PaymentId">("pay-rr-1"))).toEqual(untouched);
+        expect(await repo.getPayment(asId<"PaymentId">("pay-rr-disputed"))).toEqual(disputed);
+        expect(await repo.getPayment(asId<"PaymentId">("pay-rr-refunded"))).toMatchObject({
+          refundedCents: 63400,
+          status: "partially_refunded",
+        });
+      });
+
+      // ── The cancel and the refund it owes, one write (AC1, AC30) ─────────────
+      const owed = (over: Partial<NewRefundRecord> = {}): NewRefundRecord =>
+        newRecord({
+          id: rrId("rr-cancel"),
+          reservationId: rid("resv-ann"),
+          reason: "customer_cancel",
+          actorKind: "customer",
+          askedCents: 59400,
+          createdAt: CANCEL_AT,
+          ...over,
+        });
+      const withoutActorId = (r: NewRefundRecord): NewRefundRecord => {
+        const { actorId: _a, ...rest } = r;
+        return rest;
+      };
+
+      it("AC1: given the refund it owes, the write cancels, releases and inserts the record — unfinished", async () => {
+        await repo.saveEvent(cancelEvent());
+        await repo.saveReservation(bookedRow());
+
+        expect(
+          await repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "customer", CANCEL_AT, withoutActorId(owed())),
+        ).toMatchObject({ cancelled: true, released: true });
+
+        expect((await repo.getReservation(rid("resv-ann")))?.status).toBe("cancelled");
+        expect((await repo.getEvent(CANCEL_EVENT))?.status).toBe("cancelled");
+        expect(await repo.getRefundRecord(rrId("rr-cancel"))).toMatchObject({
+          reservationId: "resv-ann",
+          reason: "customer_cancel",
+          actorKind: "customer",
+          askedCents: 59400,
+          state: "unfinished",
+          movedCents: 0,
+          claimedAt: CANCEL_AT,
+          legs: [],
+        });
+      });
+
+      it("AC1: a press that cancels nothing inserts nothing — already cancelled is answered first, with no refusal", async () => {
+        await repo.saveEvent(cancelEvent());
+        await repo.saveReservation(bookedRow({ status: "cancelled", cancelledBy: "customer", updatedAt: CANCEL_AT }));
+
+        const written = await repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "operator", LATER, withoutActorId(owed()));
+
+        expect(written).toEqual({ cancelled: false, released: false });
+        expect(await repo.getRefundRecord(rrId("rr-cancel"))).toBeNull();
+      });
+
+      it("AC30: a booking with an unfinished record refuses the write — nothing cancelled, released or inserted", async () => {
+        await repo.saveEvent(cancelEvent());
+        await repo.saveReservation(bookedRow());
+        await repo.createRefundRecord(newRecord({ id: rrId("rr-in-flight"), reservationId: rid("resv-ann") }));
+
+        expect(
+          await repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "customer", CANCEL_AT, withoutActorId(owed())),
+        ).toEqual({ cancelled: false, released: false, refused: "refund_unfinished" });
+
+        expect((await repo.getReservation(rid("resv-ann")))?.status).toBe("booked");
+        expect((await repo.getEvent(CANCEL_EVENT))?.status).toBe("scheduled");
+        expect(await repo.getRefundRecord(rrId("rr-cancel"))).toBeNull();
+      });
+
+      it("AC30: an already-cancelled booking with an unfinished record still reads already cancelled, not refused", async () => {
+        await repo.saveEvent(cancelEvent());
+        await repo.saveReservation(bookedRow({ status: "cancelled", cancelledBy: "customer", updatedAt: CANCEL_AT }));
+        await repo.createRefundRecord(newRecord({ id: rrId("rr-in-flight"), reservationId: rid("resv-ann") }));
+
+        expect(
+          await repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "operator", LATER, withoutActorId(owed())),
+        ).toEqual({ cancelled: false, released: false });
+      });
+
+      it("AC30: a write that owes no refund still cancels a booking with an unfinished record", async () => {
+        await repo.saveEvent(cancelEvent());
+        await repo.saveReservation(bookedRow());
+        await repo.createRefundRecord(newRecord({ id: rrId("rr-in-flight"), reservationId: rid("resv-ann") }));
+
+        expect(await repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "operator", CANCEL_AT)).toEqual({
+          cancelled: true,
+          released: true,
+        });
+      });
+
+      it("AC30: when the record's insert fails inside the write, the write throws and cancels nothing", async () => {
+        // An id that already exists makes the insert fail; the cancel must go with it.
+        await repo.saveEvent(cancelEvent());
+        await repo.saveReservation(bookedRow());
+        await repo.createRefundRecord(newRecord({ id: rrId("rr-cancel"), reservationId: rid("resv-ann") }));
+        await repo.finishRefundRecord({ id: rrId("rr-cancel"), state: "whole", movedCents: 59400, at: CANCEL_AT });
+        expect(await repo.getRefundRecord(rrId("rr-cancel"))).not.toBeNull();
+
+        await expect(
+          repo.cancelBookingAndRelease(rid("resv-ann"), CANCEL_EVENT, "customer", CANCEL_AT, withoutActorId(owed())),
+        ).rejects.toThrow();
+
+        expect((await repo.getReservation(rid("resv-ann")))?.status).toBe("booked");
+        expect((await repo.getEvent(CANCEL_EVENT))?.status).toBe("scheduled");
+      });
     });
 
     // ── Recovery throttle (issue #460) ────────────────────────────────────────

@@ -79,6 +79,10 @@ if (!isLocal && !args.includes("--force")) {
 const today = vesselDateOf(new Date());
 const demo = reservationDemo(today);
 const now = () => new Date().toISOString();
+/** A seed texts nobody: a refund that fell short here prints rather than reaching an admin (issue #1278). */
+const alert = async (message: string): Promise<void> => {
+  console.log(`  ALERT     ${message}`);
+};
 const repo = PostgresRepository.fromConnectionString(url);
 const payments = new FakePaymentPort();
 
@@ -205,7 +209,7 @@ try {
       if (!quote) {
         console.error("  ALERT     Pell Ostrander's booking is not cancellable by the customer — nothing to seed");
       } else {
-        const outcome = await cancelByCustomer({ repo, now, payments }, pell.row.id, {
+        const outcome = await cancelByCustomer({ repo, now, payments, alert }, pell.row.id, {
           quotedCents: quote.refundCents,
           expectedRefundedCents: quote.expectedRefundedCents,
         });
@@ -247,7 +251,10 @@ try {
   // null on a held slot, so a re-run books nothing and refunds nothing — never twice.
   const wren = await bookPaid(addDays(today, 21), "13:30", "Wren Calloway", "216-555-0841");
   if (wren) {
-    const outcome = await refundReservation({ repo, payments, now }, wren.row.id, 20000, 0);
+    const outcome = await refundReservation({ repo, payments, now, alert }, wren.row.id, 20000, 0, {
+      reason: "operator_refund",
+      actorKind: "admin",
+    });
     console.log(`  refunded  ${addDays(today, 21)} 13:30  Wren Calloway — ${JSON.stringify(outcome)}`);
     console.log(
       `            /b/${wren.code}   Payment reads "Paid in full", then "Refunded −$200.00", no "Balance · due before your trip"; ` +

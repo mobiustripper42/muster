@@ -8,9 +8,11 @@
  * operator's goodwill refund is a person's call (operator, 2026-10-23).
  *
  * **Cancel first, then refund** — the order the admin `cancelBooking` uses. The cancel frees the
- * boat and tells the crew; money that did not move can be sent by a person from the booking. A
- * cancel that ends unrefunded is never silent: it writes a `refund_failed` row and the caller emails
- * the operator.
+ * boat and tells the crew; money that did not move can be sent by a person from the booking. **The
+ * refund it owes is written in the cancel's own write** (issue #1278), so a cancel never commits with
+ * its refund lost, and the press then sends that record. A cancel that ends unrefunded is never
+ * silent: it writes a `refund_failed` row, texts the admins, and the caller emails the operator. A
+ * refund that may or may not have moved reads `checking`, and the job finishes it.
  *
  * **Refused by name, never silently re-quoted** (DEC-197's posture). The page posts the figure it
  * showed (`quotedCents`) and the refunded-so-far token (`expectedRefundedCents`); if either no longer
@@ -23,7 +25,7 @@
 import { randomUUID } from "node:crypto";
 import { zonedWallClockToInstant } from "../config/tenant.js";
 import type { FormResult } from "../builder/form-shifts.js";
-import { isBooked, type Event, type Payment, type Reservation } from "../domain/entities.js";
+import { isBooked, type Event, type NewRefundRecord, type Payment, type Reservation } from "../domain/entities.js";
 import { asId, type ReservationId } from "../domain/ids.js";
 import type { TrailEvent } from "../domain/reservation-trail.js";
 import { logSwallowed } from "../log.js";
@@ -31,9 +33,9 @@ import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { hasDeparted } from "./availability.js";
 import { insuranceOf } from "./booking-invoice.js";
-import { noticeRefundOf, tellSafely, type TellCustomer } from "./cancel-notice.js";
+import type { TellCustomer } from "./cancel-notice.js";
 import { cancelReservation, quoteCancelRefund, type CancelOutcome } from "./cancel-reservation.js";
-import { refundedTotalFor, refundReservation, type RefundOutcome } from "./refund-payment.js";
+import { refundedTotalFor, sendRefundRecord } from "./refund-payment.js";
 import { CANCELLATION_FEE_CENTS } from "./refund-terms.js";
 import { recordTrail } from "./trail.js";
 
@@ -56,13 +58,21 @@ export interface CustomerCancelQuote {
 
 export type CancelRefund =
   | { kind: "issued"; cents: number }
-  | { kind: "failed"; cents: number; movedCents: number };
+  | { kind: "failed"; cents: number; movedCents: number }
+  /** Whether the refund moved is not known yet (issue #1278): the job is asking Stripe. */
+  | { kind: "checking"; cents: number };
 
 export type CustomerCancelOutcome =
   | { ok: true; refund: CancelRefund }
   | {
       ok: false;
-      reason: "not_offered" | "already_cancelled" | "quote_changed" | "reservation_missing";
+      reason:
+        | "not_offered"
+        | "already_cancelled"
+        | "quote_changed"
+        | "reservation_missing"
+        /** The booking has a refund still being checked, so nothing was cancelled (AC30). */
+        | "refund_unfinished";
       /** On `quote_changed`: above 0 re-confirms at the new figure, 0 means Cancel is closed. */
       newRefundCents?: number;
     };
@@ -110,6 +120,8 @@ export interface CustomerCancelDeps {
   /** Tell the customer it is cancelled and what is coming back (issue #1212). Optional, like
    *  `relayFormNotices`; absent tells nobody. */
   tellCustomer?: TellCustomer;
+  /** Text every active admin, with a link when there is one (issue #1278): a refund that fell short. */
+  alert: (message: string, href?: string) => Promise<void>;
 }
 
 const CANCEL_REASON = "cancelled by the customer from the booking page";
@@ -117,9 +129,9 @@ const CANCEL_REASON = "cancelled by the customer from the booking page";
 /**
  * Cancel the booking for its customer and refund what the terms owe.
  *
- * `posted` is what the confirm screen showed. Order: read, quote, compare, cancel, trail, refund,
- * trail on a failed refund — each trail write after the thing it records has committed and outside
- * the refund lease (`trail.ts`).
+ * `posted` is what the confirm screen showed. Order: read, quote, compare, cancel (which writes the
+ * refund record in the same save), trail, send the record. The record's own history row and the
+ * customer's notice are written by the send (issue #1278).
  */
 export async function cancelByCustomer(
   deps: CustomerCancelDeps,
@@ -153,6 +165,17 @@ export async function cancelByCustomer(
     return { ok: false, reason: "quote_changed", newRefundCents: quote.refundCents };
   }
 
+  // The refund this cancel owes, written in the cancel's own write (issue #1278, AC1).
+  const owedRefund: NewRefundRecord = {
+    id: asId<"RefundRecordId">(`rr_${randomUUID()}`),
+    reservationId,
+    reason: "customer_cancel",
+    actorKind: "customer",
+    askedCents: quote.refundCents,
+    expectedRefundedCents: posted.expectedRefundedCents,
+    createdAt: deps.now(),
+  };
+
   let cancelled: CancelOutcome;
   try {
     cancelled = await cancelReservation(
@@ -165,6 +188,7 @@ export async function cancelByCustomer(
       },
       reservationId,
       "customer",
+      owedRefund,
     );
   } catch (e) {
     // A throw comes from the one write that cancels the booking and frees its boat, which can still
@@ -183,6 +207,7 @@ export async function cancelByCustomer(
     cancelled = { ok: true, alreadyCancelled: false };
   }
   if (!cancelled.ok) {
+    if (cancelled.reason === "refund_unfinished") return { ok: false, reason: "refund_unfinished" };
     return { ok: false, reason: cancelled.reason === "reservation_missing" ? "reservation_missing" : "not_offered" };
   }
   if (cancelled.alreadyCancelled) return { ok: false, reason: "already_cancelled" };
@@ -197,87 +222,29 @@ export async function cancelByCustomer(
     metadata: { reason: CANCEL_REASON, quotedCents: quote.refundCents },
   });
 
-  const refunded = await refundAfterCancel(deps, reservationId, quote, posted.expectedRefundedCents);
-  if (refunded.kind === "issued") {
-    await tell(deps, reservationId, refunded);
-    return { ok: true, refund: refunded };
-  }
-  if (refunded.kind === "other_press") return { ok: false, reason: "already_cancelled" };
-
-  await recordTrail(deps, {
-    // A fresh id per attempt: an operator or customer press has no redelivery, and two failures are
-    // two facts.
-    id: asId<"TrailEventId">(`refund_failed:${reservationId}:${randomUUID()}`),
-    reservationId,
-    actorKind: "customer",
-    type: "refund_failed",
-    metadata: { actualCents: refunded.movedCents, reason: refunded.reason },
-  });
-  const failed: CancelRefund = { kind: "failed", cents: quote.refundCents, movedCents: refunded.movedCents };
-  await tell(deps, reservationId, failed);
-  return { ok: true, refund: failed };
-}
-
-/** The notice, as the customer. Never throws (`tellSafely`): the cancel and refund stand. */
-async function tell(deps: CustomerCancelDeps, reservationId: ReservationId, refund: CancelRefund): Promise<void> {
-  await tellSafely(deps.tellCustomer, reservationId, "customer", noticeRefundOf(refund), { kind: "customer" });
-}
-
-type RefundAttempt =
-  | { kind: "issued"; cents: number }
-  | { kind: "failed"; movedCents: number; reason: string }
-  /** `stale`, and another press had already refunded the figure while this one waited. */
-  | { kind: "other_press" };
-
-/**
- * The refund leg. Never throws: the cancel has committed, so a thrown error is a failed refund —
- * the action's `cancel_failed` copy says "Nothing changed", which would be false now.
- */
-async function refundAfterCancel(
-  deps: CustomerCancelDeps,
-  reservationId: ReservationId,
-  quote: CustomerCancelQuote,
-  expectedRefundedCents: number,
-): Promise<RefundAttempt> {
-  let result: RefundOutcome;
-  try {
-    result = await refundReservation(
-      { repo: deps.repo, payments: deps.payments, now: deps.now },
-      reservationId,
-      quote.refundCents,
-      expectedRefundedCents,
-    );
-  } catch (e) {
-    logSwallowed("reservations:cancelByCustomer", e, `${reservationId} is cancelled but its refund threw`);
-    return { kind: "failed", movedCents: 0, reason: e instanceof Error ? e.message : String(e) };
-  }
-  if (result.ok) return { kind: "issued", cents: quote.refundCents };
-
-  if (result.reason === "stale" && (await refundedSince(deps, reservationId, expectedRefundedCents)) >= quote.refundCents) {
-    return { kind: "other_press" };
-  }
-  if (result.reason === "provider_error") {
+  // Send the record the cancel wrote. The send writes the history row, tells the customer once and
+  // texts the admins when it falls short; what is left here is what the page and the email say.
+  const sent = await sendRefundRecord(
+    {
+      repo: deps.repo,
+      payments: deps.payments,
+      now: deps.now,
+      alert: deps.alert,
+      ...(deps.tellCustomer ? { tellCustomer: deps.tellCustomer } : {}),
+    },
+    owedRefund.id,
+    "press",
+  );
+  if (sent.state === "whole") return { ok: true, refund: { kind: "issued", cents: quote.refundCents } };
+  if (sent.state === "short") {
     console.error(
-      `[reservations] customer refund of ${quote.refundCents}c on ${reservationId} failed partway ` +
-        `(${result.refundedCents}c did move): ${result.message}`,
+      `[reservations] customer refund of ${quote.refundCents}c on ${reservationId} fell short ` +
+        `(${sent.movedCents}c did move): ${sent.reason}`,
     );
-    return { kind: "failed", movedCents: result.refundedCents, reason: result.message };
+    return { ok: true, refund: { kind: "failed", cents: quote.refundCents, movedCents: sent.movedCents } };
   }
-  return { kind: "failed", movedCents: 0, reason: result.reason };
-}
-
-/** How much has gone back on this booking since `expectedRefundedCents`; 0 when it can't be read. */
-async function refundedSince(
-  deps: CustomerCancelDeps,
-  reservationId: ReservationId,
-  expectedRefundedCents: number,
-): Promise<number> {
-  try {
-    return refundedTotalFor(await deps.repo.listPaymentsForReservation(reservationId)) - expectedRefundedCents;
-  } catch (e) {
-    logSwallowed("reservations:cancelByCustomer", e, `could not re-read ${reservationId}'s payments after a stale refund`);
-    return 0;
-  }
+  // Unknown: the refund may have moved, so the customer is told nothing yet and the job decides.
+  return { ok: true, refund: { kind: "checking", cents: quote.refundCents } };
 }
 
 /**

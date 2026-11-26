@@ -28,7 +28,10 @@ import type {
   CalendarFeed,
   CancelledBy,
   Offering,
+  NewRefundRecord,
   Payment,
+  RefundLeg,
+  RefundRecord,
   SmsConsent,
   GuestContact,
   PtoWindow,
@@ -56,6 +59,7 @@ import type {
   OfferingId,
   PaymentId,
   PtoWindowId,
+  RefundRecordId,
   TimePunchId,
   ReservationId,
   RoleTypeId,
@@ -151,11 +155,6 @@ export class InMemoryRepository implements Repository {
   readonly #locations = new Map<LocationId, Location>();
   readonly #blocks = new Map<BlockId, Block>();
   /** Transient checkout-holds (12.1, DEC-109), keyed by id. */
-  /** Refund mutex (#726), keyed by reservation id — one refund in flight per booking. */
-  readonly #refundLeases = new Map<
-    string,
-    { token: string; acquiredAt: string; expiresAt: string }
-  >();
   /** Recovery throttle (issue #460): canonical contact key → ISO cooldown expiry. */
   readonly #recoveryThrottle = new Map<string, string>();
   /** Collected gratuities (12.3, DEC-124), keyed by id. */
@@ -863,11 +862,23 @@ export class InMemoryRepository implements Repository {
     eventId: EventId,
     by: CancelledBy,
     at: string,
-  ): Promise<{ cancelled: boolean; released: boolean }> {
+    owedRefund?: NewRefundRecord,
+  ): Promise<{ cancelled: boolean; released: boolean; refused?: "refund_unfinished" }> {
     // Single-threaded ⇒ atomic as one block; Postgres gets the same from one transaction under the
     // hull-day advisory lock.
     const row = this.#reservations.get(reservationId);
     if (!row || row.status !== "booked") return { cancelled: false, released: false };
+    // The refund it owes goes in with it (issue #1278): refused when a record is in flight, thrown
+    // BEFORE anything is written when the insert would fail, so nothing is cancelled either way.
+    if (owedRefund) {
+      if (this.#hasUnfinishedRefund(reservationId)) {
+        return { cancelled: false, released: false, refused: "refund_unfinished" };
+      }
+      if (this.#refundRecords.has(owedRefund.id)) {
+        throw new Error(`cancelBookingAndRelease: refund record ${owedRefund.id} already exists`);
+      }
+      this.#refundRecords.set(owedRefund.id, this.#newRefundRecord(owedRefund));
+    }
     this.#reservations.set(reservationId, { ...row, status: "cancelled", cancelledBy: by, updatedAt: at });
     const event = this.#events.get(eventId);
     if (!event || event.source !== "muster" || event.status !== "scheduled") {
@@ -1062,26 +1073,148 @@ export class InMemoryRepository implements Repository {
     this.#reservations.set(reservationId, clone(rest));
   }
 
-  // ── Refund lease (#726) ───────────────────────────────────────────────────
-  // Lazy expiry against the caller's `nowIso`, then a presence check. The double enforces this one (unlike the phone/display-code uniques it
-  // deliberately ignores) because the RESULT is semantic — `refundReservation` branches on
-  // `acquired` to decide whether real money moves.
-  async acquireRefundLease(
-    reservationId: ReservationId,
-    token: string,
-    nowIso: string,
-    expiresAtIso: string,
-  ): Promise<{ acquired: boolean }> {
-    const held = this.#refundLeases.get(String(reservationId));
-    // An expired row is dead, not blocking — otherwise a crashed refund strands the booking.
-    if (held && held.expiresAt > nowIso) return { acquired: false };
-    this.#refundLeases.set(String(reservationId), { token, acquiredAt: nowIso, expiresAt: expiresAtIso });
-    return { acquired: true };
+  // ── Refund records (issue #1278) ───────────────────────────────────────────
+  // The double holds the same rule the partial unique index holds in Postgres: one unfinished
+  // record per booking, the sold-out reason excepted. A leg's result is written in place.
+  #refundRecords = new Map<string, RefundRecord>();
+
+  #hasUnfinishedRefund(reservationId: ReservationId): boolean {
+    return [...this.#refundRecords.values()].some(
+      (r) => r.reservationId === reservationId && r.state === "unfinished" && r.reason !== "sold_out",
+    );
   }
-  async releaseRefundLease(reservationId: ReservationId, token: string): Promise<void> {
-    // Own-lease-only: a holder whose lease expired must NOT delete its successor's live one.
-    const held = this.#refundLeases.get(String(reservationId));
-    if (held?.token === token) this.#refundLeases.delete(String(reservationId));
+  #newRefundRecord(record: NewRefundRecord): RefundRecord {
+    const { legs, ...rest } = record;
+    return clone({ ...rest, movedCents: 0, state: "unfinished", claimedAt: record.createdAt, legs: legs ?? [] });
+  }
+
+  async createRefundRecord(record: NewRefundRecord): Promise<{ created: boolean }> {
+    if (!this.#reservations.has(record.reservationId)) {
+      throw new Error(`createRefundRecord: reservation ${record.reservationId} does not exist`);
+    }
+    if (this.#refundRecords.has(record.id)) return { created: false };
+    if (record.reason !== "sold_out" && this.#hasUnfinishedRefund(record.reservationId)) return { created: false };
+    this.#refundRecords.set(record.id, this.#newRefundRecord(record));
+    return { created: true };
+  }
+  async getRefundRecord(id: RefundRecordId): Promise<RefundRecord | null> {
+    const r = this.#refundRecords.get(id);
+    return r ? clone(r) : null;
+  }
+  async saveRefundLegs(recordId: RefundRecordId, legs: RefundLeg[]): Promise<void> {
+    const r = this.#refundRecords.get(recordId);
+    // First write wins, as Postgres's "no legs yet" check does.
+    if (!r || r.legs.length > 0) return;
+    this.#refundRecords.set(recordId, { ...r, legs: clone(legs) });
+  }
+  async claimRefundRecord(input: { id: RefundRecordId; at: string; staleBefore: string }): Promise<boolean> {
+    const r = this.#refundRecords.get(input.id);
+    if (!r || r.state !== "unfinished") return false;
+    if (!(Date.parse(r.claimedAt) < Date.parse(input.staleBefore))) return false;
+    this.#refundRecords.set(input.id, { ...r, claimedAt: input.at });
+    return true;
+  }
+  async finishRefundLeg(input: {
+    recordId: RefundRecordId;
+    paymentIntentId: string;
+    outcome: "moved" | "refused";
+    refundId?: string;
+  }): Promise<void> {
+    const r = this.#refundRecords.get(input.recordId);
+    if (!r) return;
+    this.#refundRecords.set(input.recordId, {
+      ...r,
+      legs: r.legs.map((l) =>
+        l.paymentIntentId !== input.paymentIntentId || l.outcome === "failed_later"
+          ? l
+          : {
+              ...l,
+              outcome: input.outcome,
+              ...(input.refundId !== undefined ? { refundId: input.refundId } : {}),
+            },
+      ),
+    });
+  }
+  async markRefundLegFailedLater(input: {
+    recordId: RefundRecordId;
+    paymentIntentId: string;
+    at: string;
+  }): Promise<boolean> {
+    const r = this.#refundRecords.get(input.recordId);
+    const failed = r?.legs.find((l) => l.paymentIntentId === input.paymentIntentId);
+    if (!r || !failed || failed.outcome !== "moved") return false;
+    const shortReason = r.state === "short" ? r.shortReason : "failed_later";
+    const { shortReason: _was, ...rest } = r;
+    this.#refundRecords.set(input.recordId, {
+      ...rest,
+      legs: r.legs.map((l) =>
+        l === failed ? { ...l, outcome: "failed_later" as const, failedAt: input.at } : l,
+      ),
+      movedCents: Math.max(0, r.movedCents - failed.cents),
+      state: "short",
+      ...(shortReason !== undefined ? { shortReason } : {}),
+    });
+    return true;
+  }
+  async finishRefundRecord(input: {
+    id: RefundRecordId;
+    state: "whole" | "short";
+    movedCents: number;
+    shortReason?: string;
+    at: string;
+  }): Promise<void> {
+    const r = this.#refundRecords.get(input.id);
+    if (!r) return;
+    const { shortReason: _cleared, ...rest } = r;
+    this.#refundRecords.set(input.id, {
+      ...rest,
+      state: input.state,
+      movedCents: input.movedCents,
+      finishedAt: input.at,
+      ...(input.shortReason !== undefined ? { shortReason: input.shortReason } : {}),
+    });
+  }
+  async listUnfinishedRefundRecords(): Promise<RefundRecord[]> {
+    return [...this.#refundRecords.values()]
+      .filter((r) => r.state === "unfinished")
+      // Stable: records written at the same instant keep the order they were inserted in.
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .map(clone);
+  }
+  async listRefundRecordsFor(reservationId: ReservationId): Promise<RefundRecord[]> {
+    return [...this.#refundRecords.values()]
+      .filter((r) => r.reservationId === reservationId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .map(clone);
+  }
+  async claimRefundNotice(id: RefundRecordId, at: string): Promise<boolean> {
+    const r = this.#refundRecords.get(id);
+    if (!r || r.noticeClaimedAt !== undefined) return false;
+    this.#refundRecords.set(id, { ...r, noticeClaimedAt: at });
+    return true;
+  }
+  async markRefundNoticeSent(id: RefundRecordId, at: string): Promise<void> {
+    const r = this.#refundRecords.get(id);
+    if (r) this.#refundRecords.set(id, { ...r, noticeSentAt: at });
+  }
+  #refundAlerts = new Set<string>();
+  async claimRefundAlert(
+    id: RefundRecordId,
+    kind: "short" | "gave_up" | "notice_in_doubt" | "sold_out_unknown",
+    _at: string,
+  ): Promise<boolean> {
+    const key = `${id}:${kind}`;
+    if (!this.#refundRecords.has(id) || this.#refundAlerts.has(key)) return false;
+    this.#refundAlerts.add(key);
+    return true;
+  }
+  async lowerPaymentRefunded(id: PaymentId, byCents: number): Promise<void> {
+    // Mirrors the postgres `where status in ('refunded','partially_refunded')`, with the status
+    // moving with the total the way `markPaymentRefunded`'s does.
+    const p = this.#payments.get(id);
+    if (!p || (p.status !== "refunded" && p.status !== "partially_refunded")) return;
+    const total = Math.max(0, (p.refundedCents ?? 0) - byCents);
+    this.#payments.set(id, { ...clone(p), refundedCents: total, status: total > 0 ? "partially_refunded" : "succeeded" });
   }
 
   // ── Recovery throttle (issue #460) ────────────────────────────────────────

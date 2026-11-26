@@ -119,6 +119,8 @@ export function cancelNoticeBody(input: {
 /** The customer's own cancel: what its refund leg did, as the notice says it. */
 export function noticeRefundOf(refund: CancelRefund): CancelNoticeRefund {
   if (refund.kind === "issued") return { kind: "issued", cents: refund.cents };
+  // Still being checked: the notice waits for the job, so this is only ever the "we'll be in touch" line.
+  if (refund.kind === "checking") return { kind: "pending" };
   return refund.movedCents > 0
     ? { kind: "partial", movedCents: refund.movedCents, cents: refund.cents }
     : { kind: "pending" };

@@ -451,13 +451,24 @@ describe("the races (issue #1082)", () => {
     const res = await confirmBookingFromIntent(deps, (await payments.getSucceededPaymentIntent("pi_fake_1"))!);
 
     expect(res).toEqual({ handled: true, outcome: "lost" });
-    expect(payments.refunds).toEqual([{ paymentIntentId: "pi_fake_1", idempotencyKey: "refund_pi_fake_1" }]);
+    // Refunded under the sold-out record (issue #1278 AC5, AC6): the whole charge, keyed and named by the record.
+    expect(payments.refunds).toEqual([
+      {
+        paymentIntentId: "pi_fake_1",
+        amountCents: amount,
+        idempotencyKey: expect.any(String),
+        metadata: { refund_record: "rr_sold_out_pi_fake_1" },
+      },
+    ]);
     expect(soldOut).toHaveBeenCalledTimes(1);
     expect(alert.mock.calls[0]![0]).toContain("SOLD OUT WHILE PAYING - charge pi_fake_1");
     const trail = await repo.listTrailEventsFor(row.id, []);
     expect(trail.map((e) => e.type)).toContain("auto_refunded");
     // Never booked: still the operator's unpaid row, holding nothing new.
     expect(await repo.getReservation(row.id)).toMatchObject({ source: "admin", status: "pending" });
+    // A second delivery of the same charge still makes one refund.
+    await confirmBookingFromIntent(deps, (await payments.getSucceededPaymentIntent("pi_fake_1"))!);
+    expect(payments.refunds).toHaveLength(1);
   });
 });
 

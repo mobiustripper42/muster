@@ -454,11 +454,10 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     const second = await processBookingWebhook(deps, piEvent("pi_fake_2", 27570, m), FAKE_SIGNATURE);
     expect(first).toEqual({ handled: true, outcome: "booked" });
     expect(second).toEqual({ handled: true, outcome: "lost" });
+    // Refunded under the sold-out record (issue #1278 AC5, AC6): the charge's amount, the record's id as metadata.
     expect(payments.refunds).toHaveLength(1);
-    expect(payments.refunds[0]).toMatchObject({
-      paymentIntentId: "pi_fake_2",
-      idempotencyKey: "refund_pi_fake_2",
-    });
+    expect(payments.refunds[0]).toMatchObject({ paymentIntentId: "pi_fake_2", amountCents: 27570 });
+    expect(payments.refunds[0]!.metadata).toEqual({ refund_record: "rr_sold_out_pi_fake_2" });
     expect(soldOut).toHaveBeenCalledOnce();
     // The office hears about it too (15.5) — informational, since the refund already ran. The
     // amount is the one the loser was actually charged, read off the charge.
@@ -490,10 +489,11 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     const again = await processBookingWebhook(deps, piEvent("pi_fake_2", 27570, m), FAKE_SIGNATURE);
 
     expect(again).toEqual({ handled: true, outcome: "lost" });
-    // Same key both times ⇒ Stripe returns the first refund rather than making a second.
-    const keys = pay.refunds.map((r) => r.idempotencyKey);
-    expect(keys).toEqual(keys.map(() => "refund_pi_fake_2"));
-    expect(new Set(keys).size).toBe(1);
+    // One refund however often the charge is delivered: the second delivery finds the sold-out
+    // record the first wrote (issue #1278 AC5, AC6).
+    expect(pay.refunds).toHaveLength(1);
+    expect(pay.refunds[0]).toMatchObject({ paymentIntentId: "pi_fake_2", amountCents: 27570 });
+    expect(pay.refunds[0]!.metadata).toEqual({ refund_record: "rr_sold_out_pi_fake_2" });
     // And still no orphan payment row.
     expect(await repo.getPayment(asId<"PaymentId">("pay_pi_fake_2"))).toBeNull();
   });

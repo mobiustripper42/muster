@@ -24,7 +24,10 @@ import type {
   GustoIdentity,
   Location,
   Offering,
+  NewRefundRecord,
   Payment,
+  RefundLeg,
+  RefundRecord,
   Credential,
   CrewMember,
   CrewStatus,
@@ -56,6 +59,7 @@ import type {
   EventId,
   PaymentId,
   PtoWindowId,
+  RefundRecordId,
   ReservationId,
   RoleTypeId,
   SeatId,
@@ -410,13 +414,22 @@ export interface Repository {
    * frees the slot at once, so a new buyer can win it between two separate writes, and an
    * unconditional Event write would cancel their live, paid booking. Postgres takes the SAME
    * hull-day advisory lock `bookPendingIfHullFree` takes, first, so the two serialize.
+   *
+   * **`owedRefund` (issue #1278)** is the refund this cancel owes, inserted unfinished in the SAME
+   * write, iff `cancelled` is true: a cancel never commits with its refund lost, and a refund
+   * record is never written for a cancel that did not happen. A booking that already has an
+   * unfinished record (a sold-out record excepted) refuses it: nothing is cancelled, released or
+   * inserted, and the result is `{ cancelled: false, released: false, refused: "refund_unfinished" }`.
+   * An already-cancelled booking is answered first, with no `refused`. An insert that fails for any
+   * other reason throws and cancels nothing.
    */
   cancelBookingAndRelease(
     reservationId: ReservationId,
     eventId: EventId,
     by: CancelledBy,
     at: string,
-  ): Promise<{ cancelled: boolean; released: boolean }>;
+    owedRefund?: NewRefundRecord,
+  ): Promise<{ cancelled: boolean; released: boolean; refused?: "refund_unfinished" }>;
 
   /**
    * The row carrying this Stripe PaymentIntent id in its `paymentIntentIds`, or null. How confirm
@@ -517,7 +530,7 @@ export interface Repository {
    * atomic flip, so the database guaranteed one. This restores that guarantee at the send.
    *
    * The send is not idempotent, so the claim must be atomic: one statement, conditional on the
-   * column still being null. Same shape as `acquireRefundLease`, for the same reason.
+   * column still being null. Same shape as the refund record's claim, for the same reason.
    *
    * **Claim BEFORE sending, and `releaseConfirmationSend` on failure.** Claiming after would be
    * the race above; claiming without releasing would record a send that never happened, which is
@@ -543,38 +556,44 @@ export interface Repository {
    */
   releaseConfirmationSend(reservationId: ReservationId): Promise<void>;
 
-  // ── Refund lease — the refund mutex (#726) ─────────────────────────────────
-  /**
-   * Claim the exclusive right to refund this reservation, or report that someone else holds it.
-   *
-   * **Why a lease rather than a lock.** The refund makes a Stripe network call, and a Postgres
-   * transaction must not be held open across one — so the mutex is a row taken before the call
-   * and released after, not a lock spanning it. `cancelBookingAndRelease` can use an advisory
-   * lock because everything it touches is in the database; this cannot.
-   *
-   * **Lazily expired**, the same lazy-on-read rule the pending row uses (§2.8.1): an existing row whose `expiresAt` is
-   * at or before `nowIso` is dead and gets replaced. Without that, a process dying mid-refund
-   * would block every future refund on the booking forever — silently and permanently, which is
-   * worse than the double-refund this exists to prevent.
-   *
-   * `{ acquired: false }` is a normal outcome the caller renders, never an error.
-   */
-  acquireRefundLease(
-    reservationId: ReservationId,
-    token: string,
-    nowIso: string,
-    expiresAtIso: string,
-  ): Promise<{ acquired: boolean }>;
-  /**
-   * Release the lease **held under `token`**. Idempotent — a no-op if it already expired, was
-   * never taken, or now belongs to someone else. Called from a `finally`, so it must not throw.
-   *
-   * **The token is what makes this safe, and it is not optional.** Deleting by reservation alone
-   * means a holder whose lease expired mid-Stripe-call deletes its SUCCESSOR's live lease on the
-   * way out — so a third refund acquires alongside one already in flight, reopening the exact
-   * race the table exists to close, in precisely the slow-call case expiry was added for.
-   */
-  releaseRefundLease(reservationId: ReservationId, token: string): Promise<void>;
+  // ── Refund records (issue #1278) ───────────────────────────────────────────
+  /** Insert an unfinished record. False when the booking already has an unfinished record (a
+   *  `sold_out` record excepted), or the id exists. */
+  createRefundRecord(record: NewRefundRecord): Promise<{ created: boolean }>;
+  /** One record by id, with its legs. */
+  getRefundRecord(id: RefundRecordId): Promise<RefundRecord | null>;
+  /** Save a record's planned legs. First write wins. */
+  saveRefundLegs(recordId: RefundRecordId, legs: RefundLeg[]): Promise<void>;
+  /** Take over a record claimed strictly before `staleBefore`, resetting its claim to `at`. */
+  claimRefundRecord(input: { id: RefundRecordId; at: string; staleBefore: string }): Promise<boolean>;
+  finishRefundLeg(input: {
+    recordId: RefundRecordId;
+    paymentIntentId: string;
+    outcome: "moved" | "refused";
+    refundId?: string;
+  }): Promise<void>;
+  /** A moved leg failed at the bank. True only the first time, and only for a moved leg. */
+  markRefundLegFailedLater(input: { recordId: RefundRecordId; paymentIntentId: string; at: string }): Promise<boolean>;
+  finishRefundRecord(input: {
+    id: RefundRecordId;
+    state: "whole" | "short";
+    movedCents: number;
+    shortReason?: string;
+    at: string;
+  }): Promise<void>;
+  listUnfinishedRefundRecords(): Promise<RefundRecord[]>;
+  /** Oldest first, with legs. */
+  listRefundRecordsFor(reservationId: ReservationId): Promise<RefundRecord[]>;
+  claimRefundNotice(id: RefundRecordId, at: string): Promise<boolean>;
+  markRefundNoticeSent(id: RefundRecordId, at: string): Promise<void>;
+  claimRefundAlert(
+    id: RefundRecordId,
+    kind: "short" | "gave_up" | "notice_in_doubt" | "sold_out_unknown",
+    at: string,
+  ): Promise<boolean>;
+  /** Lower a payment's refunded total — `markPaymentRefunded` only ever raises it. */
+  lowerPaymentRefunded(id: PaymentId, byCents: number): Promise<void>;
+
   // ── Recovery throttle — the public "lost your link?" bound (issue #460) ────
   /**
    * Claim the right to process one recovery request for `contactKey`, or report that a recent
@@ -586,7 +605,7 @@ export interface Repository {
    * answers identically either way by design, so nothing on screen would ever show it being
    * hammered.
    *
-   * Same lazy-expiry mechanics as `acquireRefundLease`: an existing row whose `cooldownUntil` is
+   * Lazily expired: an existing row whose `cooldownUntil` is
    * at or before `nowIso` is dead and replaced. `{ claimed: false }` is a normal outcome the
    * caller renders as the same confirmation it renders for everything else.
    */

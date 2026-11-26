@@ -38,8 +38,11 @@ import type {
   CancelledBy,
   Offering,
   OfferingSchedule,
+  NewRefundRecord,
   Payment,
   PriceVariation,
+  RefundLeg,
+  RefundRecord,
   SmsConsent,
   GuestContact,
   PtoWindow,
@@ -67,6 +70,7 @@ import type {
   OfferingId,
   PaymentId,
   PtoWindowId,
+  RefundRecordId,
   TimePunchId,
   ReservationId,
   RoleTypeId,
@@ -496,6 +500,71 @@ const toBalanceAttempt = (r: any): BalanceChargeAttempt => ({
   ...opt("outcome", r.outcome),
   ...opt("declineCode", r.decline_code),
 });
+
+const toRefundLeg = (r: any): RefundLeg => ({
+  paymentIntentId: r.payment_intent_id,
+  cents: r.cents,
+  ...opt("paymentId", r.payment_id === null ? null : asId<"PaymentId">(r.payment_id)),
+  ...opt("refundedTotalCents", r.refunded_total_cents),
+  ...opt("refundId", r.refund_id),
+  ...opt("outcome", r.outcome as NonNullable<RefundLeg["outcome"]> | null),
+  ...opt("failedAt", r.failed_at),
+});
+
+const toRefundRecord = (r: any, legs: RefundLeg[]): RefundRecord => ({
+  id: asId<"RefundRecordId">(r.id),
+  reservationId: asId<"ReservationId">(r.reservation_id),
+  reason: r.reason,
+  actorKind: r.actor_kind,
+  askedCents: r.asked_cents,
+  movedCents: r.moved_cents,
+  state: r.state,
+  createdAt: r.created_at,
+  claimedAt: r.claimed_at,
+  legs,
+  ...opt("actorId", r.actor_id),
+  ...opt("quotedCents", r.quoted_cents),
+  ...opt("expectedRefundedCents", r.expected_refunded_cents),
+  ...opt("shortReason", r.short_reason),
+  ...opt("finishedAt", r.finished_at),
+  ...opt("noticeClaimedAt", r.notice_claimed_at),
+  ...opt("noticeSentAt", r.notice_sent_at),
+});
+
+/** The bind values of `insert into refund_records`, in column order (`$9` is also `claimed_at`). */
+const refundRecordValues = (r: NewRefundRecord): unknown[] => [
+  r.id,
+  r.reservationId,
+  r.reason,
+  r.actorKind,
+  r.actorId ?? null,
+  r.askedCents,
+  r.quotedCents ?? null,
+  r.expectedRefundedCents ?? null,
+  r.createdAt,
+];
+
+/** Insert a record's legs in order, on the caller's transaction. */
+async function insertRefundLegs(client: pg.PoolClient, recordId: RefundRecordId, legs: RefundLeg[]): Promise<void> {
+  for (const [position, l] of legs.entries()) {
+    await client.query(
+      `insert into refund_legs
+         (record_id, payment_intent_id, position, payment_id, cents, refunded_total_cents, refund_id, outcome, failed_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        recordId,
+        l.paymentIntentId,
+        position,
+        l.paymentId ?? null,
+        l.cents,
+        l.refundedTotalCents ?? null,
+        l.refundId ?? null,
+        l.outcome ?? null,
+        l.failedAt ?? null,
+      ],
+    );
+  }
+}
 
 const toPayment = (r: any): Payment => ({
   id: asId<"PaymentId">(r.id),
@@ -1840,8 +1909,10 @@ export class PostgresRepository implements Repository {
     eventId: EventId,
     by: CancelledBy,
     at: string,
-  ): Promise<{ cancelled: boolean; released: boolean }> {
-    // The booking's cancel and its boat's release are ONE transaction (issue #1228): both land or
+    owedRefund?: NewRefundRecord,
+  ): Promise<{ cancelled: boolean; released: boolean; refused?: "refund_unfinished" }> {
+    // The booking's cancel and its boat's release are ONE transaction (issue #1228), and so is the
+    // refund record it owes (issue #1278): both land or
     // neither does. It takes the SAME hull-day advisory lock `bookPendingIfHullFree` takes, so a
     // cancel and a confirm of the slot it frees serialize instead of merely being atomic apiece —
     // without it, a buyer who wins the freed slot between the two writes has their live, paid
@@ -1876,6 +1947,38 @@ export class PostgresRepository implements Repository {
       if ((cancelled.rowCount ?? 0) === 0) {
         await client.query("rollback");
         return { cancelled: false, released: false };
+      }
+      // The refund this cancel owes goes in the same write (issue #1278). A booking with an unfinished
+      // record refuses it, and the cancel goes with it. An insert that fails for any other reason
+      // throws, which rolls the cancel back: a cancel never commits with its refund lost.
+      if (owedRefund) {
+        const inFlight = await client.query(
+          `select 1 from refund_records
+            where reservation_id = $1 and state = 'unfinished' and reason <> 'sold_out' limit 1`,
+          [reservationId],
+        );
+        if ((inFlight.rowCount ?? 0) > 0) {
+          await client.query("rollback");
+          return { cancelled: false, released: false, refused: "refund_unfinished" };
+        }
+        try {
+          await client.query(
+            `insert into refund_records
+               (id, reservation_id, reason, actor_kind, actor_id, asked_cents, quoted_cents,
+                expected_refunded_cents, created_at, claimed_at)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)`,
+            refundRecordValues(owedRefund),
+          );
+          await insertRefundLegs(client, owedRefund.id, owedRefund.legs ?? []);
+        } catch (e) {
+          // A rival press inserted its unfinished record between the read above and this insert: the
+          // partial unique index says so. That is the refusal, not a failure.
+          if ((e as { constraint?: string }).constraint === "refund_records_one_unfinished_per_booking") {
+            await client.query("rollback");
+            return { cancelled: false, released: false, refused: "refund_unfinished" };
+          }
+          throw e;
+        }
       }
       // An Event that is gone, not Muster's or already cancelled releases nothing — and does NOT
       // roll the cancel back, or the caller would read a lost press and send no refund.
@@ -2090,38 +2193,30 @@ export class PostgresRepository implements Repository {
     );
   }
 
-  // ── Refund lease (#726) ───────────────────────────────────────────────────
-  /**
-   * Delete-if-expired then insert, in ONE transaction, because `now()` is not immutable so
-   * liveness can't live in an index predicate.
-   * The primary key on `reservation_id` is the mutex; `on conflict do nothing` + `returning`
-   * decides the winner without raising.
-   *
-   * The transaction is short and contains no network call — that is the whole point of a lease.
-   * The Stripe round-trip happens *outside* it, between acquire and release.
-   */
-  async acquireRefundLease(
-    reservationId: ReservationId,
-    token: string,
-    nowIso: string,
-    expiresAtIso: string,
-  ): Promise<{ acquired: boolean }> {
+  // ── Refund records (issue #1278, migration 20261126041707) ──────────────────────────────────
+  // The record is the lock: the partial unique index `refund_records_one_unfinished_per_booking`
+  // allows one unfinished record per booking, the sold-out reason excepted.
+  async createRefundRecord(record: NewRefundRecord): Promise<{ created: boolean }> {
     const client = await this.#pool.connect();
     try {
       await client.query("begin");
-      await client.query(
-        "delete from refund_leases where reservation_id=$1 and expires_at <= $2",
-        [reservationId, nowIso],
+      // No conflict target, so both the primary key (the id exists) and the partial unique index (the
+      // booking already has an unfinished record) answer `created: false` rather than throwing.
+      const { rowCount } = await client.query(
+        `insert into refund_records
+           (id, reservation_id, reason, actor_kind, actor_id, asked_cents, quoted_cents,
+            expected_refunded_cents, created_at, claimed_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)
+         on conflict do nothing`,
+        refundRecordValues(record),
       );
-      const { rows } = await client.query(
-        `insert into refund_leases (reservation_id, token, acquired_at, expires_at)
-         values ($1,$2,$3,$4)
-         on conflict do nothing
-         returning reservation_id`,
-        [reservationId, token, nowIso, expiresAtIso],
-      );
+      if ((rowCount ?? 0) === 0) {
+        await client.query("rollback");
+        return { created: false };
+      }
+      await insertRefundLegs(client, record.id, record.legs ?? []);
       await client.query("commit");
-      return { acquired: rows.length > 0 };
+      return { created: true };
     } catch (e) {
       await client.query("rollback");
       throw e;
@@ -2129,13 +2224,162 @@ export class PostgresRepository implements Repository {
       client.release();
     }
   }
-  /** `and token=$2` is the own-lease-only guard — see the port's note on why deleting by
-   *  reservation alone reopens the race it closes. */
-  async releaseRefundLease(reservationId: ReservationId, token: string): Promise<void> {
-    await this.#pool.query("delete from refund_leases where reservation_id=$1 and token=$2", [
-      reservationId,
-      token,
-    ]);
+  async getRefundRecord(id: RefundRecordId): Promise<RefundRecord | null> {
+    const { rows } = await this.#pool.query("select * from refund_records where id = $1", [id]);
+    if (!rows[0]) return null;
+    return (await this.#withRefundLegs(rows))[0] ?? null;
+  }
+  async saveRefundLegs(recordId: RefundRecordId, legs: RefundLeg[]): Promise<void> {
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      // First write wins. The record row is the lock, so two savers cannot both see "no legs".
+      const locked = await client.query("select id from refund_records where id = $1 for update", [recordId]);
+      const existing = await client.query("select 1 from refund_legs where record_id = $1 limit 1", [recordId]);
+      if ((locked.rowCount ?? 0) > 0 && (existing.rowCount ?? 0) === 0) {
+        await insertRefundLegs(client, recordId, legs);
+      }
+      await client.query("commit");
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+  async claimRefundRecord(input: { id: RefundRecordId; at: string; staleBefore: string }): Promise<boolean> {
+    // One statement: of two claimers, the second re-evaluates the `where` against the reset claim and
+    // gets nothing. Strictly before `staleBefore`, the test `claimBalanceAttempt` uses.
+    const { rowCount } = await this.#pool.query(
+      `update refund_records set claimed_at = $2
+        where id = $1 and state = 'unfinished' and claimed_at::timestamptz < $3::timestamptz`,
+      [input.id, input.at, input.staleBefore],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+  async finishRefundLeg(input: {
+    recordId: RefundRecordId;
+    paymentIntentId: string;
+    outcome: "moved" | "refused";
+    refundId?: string;
+  }): Promise<void> {
+    // A bank failure is the last word on a leg: a late write of the send's own result never undoes it.
+    await this.#pool.query(
+      `update refund_legs set outcome = $3, refund_id = coalesce($4, refund_id)
+        where record_id = $1 and payment_intent_id = $2 and outcome is distinct from 'failed_later'`,
+      [input.recordId, input.paymentIntentId, input.outcome, input.refundId ?? null],
+    );
+  }
+  async markRefundLegFailedLater(input: {
+    recordId: RefundRecordId;
+    paymentIntentId: string;
+    at: string;
+  }): Promise<boolean> {
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      // The leg row is the lock: two deliveries of the same event serialize here, and the second
+      // re-reads a leg that is no longer `moved`.
+      const found = await client.query(
+        `select cents from refund_legs
+          where record_id = $1 and payment_intent_id = $2 and outcome = 'moved' for update`,
+        [input.recordId, input.paymentIntentId],
+      );
+      const cents = found.rows[0]?.cents as number | undefined;
+      if (cents === undefined) {
+        await client.query("rollback");
+        return false;
+      }
+      await client.query(
+        `update refund_legs set outcome = 'failed_later', failed_at = $3
+          where record_id = $1 and payment_intent_id = $2`,
+        [input.recordId, input.paymentIntentId, input.at],
+      );
+      await client.query(
+        `update refund_records
+            set moved_cents = greatest(moved_cents - $2, 0),
+                short_reason = case when state = 'short' then short_reason else 'failed_later' end,
+                state = 'short'
+          where id = $1`,
+        [input.recordId, cents],
+      );
+      await client.query("commit");
+      return true;
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+  async finishRefundRecord(input: {
+    id: RefundRecordId;
+    state: "whole" | "short";
+    movedCents: number;
+    shortReason?: string;
+    at: string;
+  }): Promise<void> {
+    await this.#pool.query(
+      `update refund_records
+          set state = $2, moved_cents = $3, short_reason = $4, finished_at = $5
+        where id = $1`,
+      [input.id, input.state, input.movedCents, input.shortReason ?? null, input.at],
+    );
+  }
+  async listUnfinishedRefundRecords(): Promise<RefundRecord[]> {
+    const { rows } = await this.#pool.query(
+      "select * from refund_records where state = 'unfinished' order by created_at, id",
+    );
+    return this.#withRefundLegs(rows);
+  }
+  async listRefundRecordsFor(reservationId: ReservationId): Promise<RefundRecord[]> {
+    const { rows } = await this.#pool.query(
+      "select * from refund_records where reservation_id = $1 order by created_at, id",
+      [reservationId],
+    );
+    return this.#withRefundLegs(rows);
+  }
+  async claimRefundNotice(id: RefundRecordId, at: string): Promise<boolean> {
+    const { rowCount } = await this.#pool.query(
+      "update refund_records set notice_claimed_at = $2 where id = $1 and notice_claimed_at is null",
+      [id, at],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+  async markRefundNoticeSent(id: RefundRecordId, at: string): Promise<void> {
+    await this.#pool.query("update refund_records set notice_sent_at = $2 where id = $1", [id, at]);
+  }
+  async claimRefundAlert(
+    id: RefundRecordId,
+    kind: "short" | "gave_up" | "notice_in_doubt" | "sold_out_unknown",
+    _at: string,
+  ): Promise<boolean> {
+    const { rowCount } = await this.#pool.query(
+      `update refund_records set alerts_claimed = array_append(alerts_claimed, $2::text)
+        where id = $1 and not ($2::text = any(alerts_claimed))`,
+      [id, kind],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+  async lowerPaymentRefunded(id: PaymentId, byCents: number): Promise<void> {
+    // The status moves with the total, as `markPaymentRefunded`'s does, and only on a row that is
+    // refunded or partly refunded: a disputed or plain succeeded row has nothing to lower.
+    await this.#pool.query(
+      `update payments
+          set refunded_cents = greatest(coalesce(refunded_cents, 0) - $2, 0),
+              status = case when greatest(coalesce(refunded_cents, 0) - $2, 0) > 0
+                            then 'partially_refunded' else 'succeeded' end
+        where id = $1 and status in ('refunded', 'partially_refunded')`,
+      [id, byCents],
+    );
+  }
+  async #withRefundLegs(records: any[]): Promise<RefundRecord[]> {
+    if (records.length === 0) return [];
+    const { rows } = await this.#pool.query(
+      "select * from refund_legs where record_id = any($1::text[]) order by record_id, position",
+      [records.map((r) => r.id)],
+    );
+    return records.map((r) => toRefundRecord(r, rows.filter((l) => l.record_id === r.id).map(toRefundLeg)));
   }
 
   // ── Recovery throttle (issue #460) ────────────────────────────────────────

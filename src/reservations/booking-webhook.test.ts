@@ -4,12 +4,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { FAKE_SIGNATURE, FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import type { BookingInvoice, Event, Reservation } from "../domain/entities.js";
+import type { BookingInvoice, Event, RefundRecord, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
-import { PaymentSignatureError, type CheckoutCompleted } from "../ports/payment.js";
+import { PaymentIndeterminateError, PaymentSignatureError, type CheckoutCompleted, type RefundInput } from "../ports/payment.js";
 import { eventIdForSlot } from "./availability.js";
 import { alertThatNeverThrows, processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
 import { confirmPendingRow } from "./write-booking.js";
+import { bookingPanePath, finishUnfinishedRefunds, refundAlertText, refundReservation } from "./refund-payment.js";
 import { balanceOwedCents } from "./payment-config.js";
 import { formAllVesselDaysForTest } from "../builder/form-all-test-support.js";
 
@@ -283,9 +284,11 @@ describe("processBookingWebhook", () => {
 
     const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "lost" });
-    // Refunded once, keyed on the PI so a redelivery cannot double-refund (DEC-107 amended).
+    // Refunded once, under the sold-out record (issue #1278 AC5, AC6): the whole charge, and the
+    // record's id as the refund's metadata.
     expect(payments.refunds).toHaveLength(1);
-    expect(payments.refunds[0]!.idempotencyKey).toBe("refund_pi_1");
+    expect(payments.refunds[0]).toMatchObject({ paymentIntentId: PI, amountCents: 53625 });
+    expect(payments.refunds[0]!.metadata).toEqual({ refund_record: "rr_sold_out_pi_1" });
     expect(soldOut).toHaveBeenCalledOnce();
     // The operator IS told, as of 15.5 — the path resolves itself, but a customer was still
     // charged for a trip they did not get. Asserted properly in its own case below; here it is
@@ -296,6 +299,9 @@ describe("processBookingWebhook", () => {
     expect(await repo.listPaymentsForReservation(PEND)).toHaveLength(0);
     // The row is not booked — it stayed pending.
     expect((await repo.getReservation(PEND))!.status).toBe("pending");
+    // A second delivery of the same charge still makes one refund.
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    expect(payments.refunds).toHaveLength(1);
   });
 
   /**
@@ -372,13 +378,17 @@ describe("processBookingWebhook", () => {
     // "The refund and the message are one path: a refund nobody was told about reads as a silent
     // failed payment." Both, or this row is not satisfied.
     expect(payments.refunds).toHaveLength(1);
-    expect(payments.refunds[0]!.idempotencyKey).toBe("refund_pi_1");
+    expect(payments.refunds[0]).toMatchObject({ paymentIntentId: PI, amountCents: 53625 });
+    expect(payments.refunds[0]!.metadata).toEqual({ refund_record: "rr_sold_out_pi_1" });
     expect(soldOut).toHaveBeenCalledOnce();
     // "And the office is told every time, with no action asked for."
     expect(alert).toHaveBeenCalledOnce();
     expect(String(alert.mock.calls[0]![0])).not.toMatch(/REFUND MANUALLY/);
     expect(confirm).not.toHaveBeenCalled();
     expect((await repo.getReservation(PEND))!.status).toBe("pending");
+    // A second delivery of the same charge still makes one refund.
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    expect(payments.refunds).toHaveLength(1);
   });
 
   it("retires the loser's OTHER intents — this row will never book (15.10)", async () => {
@@ -2315,6 +2325,315 @@ describe("processBookingWebhook — the trail's spine (issue #1048)", () => {
 });
 
 /**
+ * The sold-out refund is a refund record (issue #1278, AC5): written before Stripe is asked, its id
+ * taken from the PaymentIntent so a second delivery finds the same record.
+ */
+describe("processBookingWebhook — the sold-out refund is a refund record (issue #1278)", () => {
+  const SOLD_OUT = asId<"RefundRecordId">("rr_sold_out_pi_1");
+  /** Job time: six minutes after the webhook's clock, past the takeover age. */
+  const LATER = "2026-07-12T00:06:00.000Z";
+
+  async function lostWorld(over: Partial<Reservation> = {}): Promise<InMemoryRepository> {
+    const repo = new InMemoryRepository();
+    await seedPending(repo, over);
+    await repo.saveEvent(musterEvent({ id: SLOT }));
+    await repo.saveReservation({
+      id: asId<"ReservationId">("r-rival"),
+      eventId: SLOT,
+      source: "muster",
+      customerName: "Rival",
+      partySize: 4,
+      status: "booked",
+    });
+    return repo;
+  }
+
+  /** Every call the port's `refund` receives, deduped by the fake or not. */
+  function countCalls(payments: FakePaymentPort): RefundInput[] {
+    const calls: RefundInput[] = [];
+    const real = payments.refund.bind(payments);
+    payments.refund = async (input) => {
+      calls.push(input);
+      return real(input);
+    };
+    return calls;
+  }
+
+  /** The record a first delivery left behind when it died right after the insert. */
+  const leftUnfinished = (repo: InMemoryRepository) =>
+    repo.createRefundRecord({
+      id: SOLD_OUT,
+      reservationId: PEND,
+      reason: "sold_out",
+      actorKind: "engine",
+      askedCents: 53625,
+      createdAt: NOW(),
+      legs: [{ paymentIntentId: PI, cents: 53625 }],
+    });
+
+  it("AC5: the record is written before the port is called — the whole charge, by the engine, one leg with no payment", async () => {
+    const repo = await lostWorld();
+    const payments = new FakePaymentPort();
+    let atCall: RefundRecord | null | undefined;
+    const real = payments.refund.bind(payments);
+    payments.refund = async (input) => {
+      atCall ??= await repo.getRefundRecord(SOLD_OUT);
+      return real(input);
+    };
+    const { deps } = makeDeps(repo, payments);
+
+    expect(await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE)).toEqual({ handled: true, outcome: "lost" });
+
+    expect(atCall).toMatchObject({
+      reservationId: PEND,
+      reason: "sold_out",
+      actorKind: "engine",
+      askedCents: 53625,
+      state: "unfinished",
+      legs: [{ paymentIntentId: PI, cents: 53625 }],
+    });
+    expect(atCall?.legs[0]?.paymentId).toBeUndefined();
+    expect(await repo.getRefundRecord(SOLD_OUT)).toMatchObject({ state: "whole", movedCents: 53625 });
+  });
+
+  it("AC5: a second delivery finds the same record — one record, one call at the port, and the customer and office told again", async () => {
+    const repo = await lostWorld();
+    const payments = new FakePaymentPort();
+    const calls = countCalls(payments);
+    const { deps, alert, soldOut } = makeDeps(repo, payments);
+
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    expect(await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE)).toEqual({ handled: true, outcome: "lost" });
+
+    expect(calls).toHaveLength(1);
+    expect(await repo.listRefundRecordsFor(PEND)).toHaveLength(1);
+    expect(soldOut).toHaveBeenCalledTimes(2);
+    expect(alert).toHaveBeenCalledTimes(2);
+  });
+
+  it("AC5: a delivery that finds the record unfinished calls no port, tells the customer nothing, and still retires the row's other intents", async () => {
+    const repo = await lostWorld({ paymentIntentIds: ["pi_earlier", PI] });
+    await leftUnfinished(repo);
+    const payments = new FakePaymentPort();
+    const calls = countCalls(payments);
+    const { deps, soldOut } = makeDeps(repo, payments);
+
+    expect(await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE)).toEqual({ handled: true, outcome: "lost" });
+
+    expect(calls).toEqual([]);
+    expect(soldOut).not.toHaveBeenCalled();
+    expect(await repo.getRefundRecord(SOLD_OUT)).toMatchObject({ state: "unfinished" });
+    expect(payments.cancelled.map((c) => c.paymentIntentId)).toContain("pi_earlier");
+    expect(payments.cancelled.map((c) => c.paymentIntentId)).not.toContain(PI);
+  });
+
+  it("AC5: the not-confirmed alert is sent once per record — by whichever delivery finds no delivery sent it", async () => {
+    const repo = await lostWorld();
+    await leftUnfinished(repo);
+    const { deps, alert } = makeDeps(repo);
+
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    const record = await repo.getRefundRecord(SOLD_OUT);
+    const row = await repo.getReservation(PEND);
+    expect(record).not.toBeNull();
+    expect(alert.mock.calls.map((c) => c[0])).toEqual([refundAlertText("sold_out_unknown", record!, row!)]);
+  });
+
+  it("AC5: no answer from Stripe tells the customer nothing and every active admin once, with no link — the row's other intents retired", async () => {
+    const repo = await lostWorld({ paymentIntentIds: ["pi_earlier", PI] });
+    const payments = new FakePaymentPort();
+    payments.refundError = new PaymentIndeterminateError("timed out");
+    const { deps, alert, soldOut } = makeDeps(repo, payments);
+
+    expect(await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE)).toEqual({ handled: true, outcome: "lost" });
+
+    expect(soldOut).not.toHaveBeenCalled();
+    const record = await repo.getRefundRecord(SOLD_OUT);
+    expect(record).toMatchObject({ state: "unfinished" });
+    const row = await repo.getReservation(PEND);
+    expect(alert.mock.calls.map((c) => c[0])).toEqual([refundAlertText("sold_out_unknown", record!, row!)]);
+    expect(alert.mock.calls.map((c) => (c as unknown[])[1])).toEqual([undefined]);
+    expect(payments.cancelled.map((c) => c.paymentIntentId)).toContain("pi_earlier");
+  });
+
+  it("AC5: the job finishes that record — whole, it tells nobody", async () => {
+    const repo = await lostWorld();
+    const payments = new FakePaymentPort();
+    payments.refundError = new PaymentIndeterminateError("timed out");
+    const { deps } = makeDeps(repo, payments);
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    payments.refundError = null;
+    payments.listRefunds = async () => [
+      { refundId: "re_1", amountCents: 53625, status: "succeeded", metadata: { refund_record: SOLD_OUT } },
+    ];
+    const alert = vi.fn(async (_message: string, _href?: string) => {});
+
+    await finishUnfinishedRefunds({ repo, payments, now: () => LATER, alert });
+
+    expect(await repo.getRefundRecord(SOLD_OUT)).toMatchObject({ state: "whole", movedCents: 53625 });
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it("AC5: the job finishes that record — short, it sends the sold-out short text, with no link", async () => {
+    const repo = await lostWorld();
+    const payments = new FakePaymentPort();
+    payments.refundError = new PaymentIndeterminateError("timed out");
+    const { deps } = makeDeps(repo, payments);
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    payments.refundError = null;
+    payments.listRefunds = async () => [
+      { refundId: "re_1", amountCents: 53625, status: "failed", metadata: { refund_record: SOLD_OUT } },
+    ];
+    const alert = vi.fn(async (_message: string, _href?: string) => {});
+
+    await finishUnfinishedRefunds({ repo, payments, now: () => LATER, alert });
+
+    const record = await repo.getRefundRecord(SOLD_OUT);
+    expect(record).toMatchObject({ state: "short", movedCents: 0 });
+    const row = await repo.getReservation(PEND);
+    expect(alert.mock.calls.map((c) => c[0])).toEqual([refundAlertText("sold_out_short", record!, row!)]);
+    expect(alert.mock.calls.map((c) => c[1])).toEqual([undefined]);
+  });
+
+  it("AC11: a sold-out refund the provider refuses sends the sold-out short text once; a second delivery sends nothing more", async () => {
+    const repo = await lostWorld();
+    const payments = new FakePaymentPort();
+    payments.refundError = new Error("charge_already_refunded");
+    const { deps, alert, soldOut } = makeDeps(repo, payments);
+
+    expect(await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE)).toEqual({ handled: true, outcome: "lost" });
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    const record = await repo.getRefundRecord(SOLD_OUT);
+    expect(record).toMatchObject({ state: "short", movedCents: 0, shortReason: "charge_already_refunded" });
+    const row = await repo.getReservation(PEND);
+    expect(alert.mock.calls.map((c) => c[0])).toEqual([refundAlertText("sold_out_short", record!, row!)]);
+    expect(soldOut).not.toHaveBeenCalled();
+    expect((await repo.listTrailEventsFor(PEND, [])).filter((e) => e.type === "refund_failed")).toMatchObject([
+      { actorKind: "engine", metadata: { actualCents: 0 } },
+    ]);
+  });
+
+  it("AC32: a whole sold-out record writes auto_refunded once — by the engine, with the charge, named for its record", async () => {
+    const repo = await lostWorld();
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+
+    const rows = (await repo.listTrailEventsFor(PEND, [])).filter((e) => e.type === "auto_refunded");
+    expect(rows).toMatchObject([{ actorKind: "engine", paymentIntentId: PI, metadata: { reason: "residual-race loss" } }]);
+    expect(rows[0]?.id).toContain(SOLD_OUT);
+  });
+});
+
+/**
+ * A refund that failed at the customer's bank (issue #1278, AC24): `refund.failed` names the record
+ * in the refund's metadata, and Muster lowers its own refunded total without waiting for Stripe's.
+ */
+describe("processBookingWebhook — refund.failed marks the leg failed later (issue #1278)", () => {
+  const BOOKED = asId<"ReservationId">("resv-booked");
+  const PAID_PI = "pi_paid";
+  const PAY = asId<"PaymentId">("pay-booked");
+
+  /** A booking with $100 already given back by hand, then a $200 refund from the box. */
+  async function refundedWorld() {
+    const repo = new InMemoryRepository();
+    await repo.saveReservation({
+      id: BOOKED,
+      eventId: EVENT,
+      source: "muster",
+      status: "booked",
+      customerName: "Mary",
+      partySize: 6,
+    });
+    await repo.savePayment({
+      id: PAY,
+      reservationId: BOOKED,
+      method: "stripe",
+      kind: "full",
+      amountCents: 53625,
+      taxCents: 3625,
+      currency: "usd",
+      status: "succeeded",
+      stripePaymentIntentId: PAID_PI,
+      createdAt: "2026-07-01T00:00:00.000Z",
+    });
+    await repo.markPaymentRefunded(PAY, 10000);
+    const payments = new FakePaymentPort();
+    await refundReservation(
+      { repo, payments, now: NOW, alert: async () => {} },
+      BOOKED,
+      20000,
+      10000,
+      { reason: "operator_refund", actorKind: "admin", actorId: "crew-admin-1" },
+    );
+    const [record] = await repo.listRefundRecordsFor(BOOKED);
+    return { repo, payments, recordId: String(record?.id) };
+  }
+
+  const failedEvent = (metadata: Record<string, string>) =>
+    JSON.stringify({
+      type: "refund_failed",
+      data: { refundId: "re_fake_1", paymentIntentId: PAID_PI, amountCents: 20000, metadata },
+    });
+
+  it("AC24: the leg is marked failed later, the record short by its cents, the payment lowered, and every active admin told once — no refund sent", async () => {
+    const { repo, payments, recordId } = await refundedWorld();
+    const sent = payments.refunds.length;
+    const { deps, alert } = makeDeps(repo, payments);
+
+    expect(await processBookingWebhook(deps, failedEvent({ refund_record: recordId }), FAKE_SIGNATURE)).toEqual({
+      handled: true,
+      outcome: "refund_failed_recorded",
+    });
+
+    const record = await repo.getRefundRecord(asId<"RefundRecordId">(recordId));
+    expect(record).toMatchObject({ state: "short", movedCents: 0, shortReason: "failed_later" });
+    expect(record?.legs).toMatchObject([{ paymentIntentId: PAID_PI, outcome: "failed_later", failedAt: NOW() }]);
+    expect(await repo.getPayment(PAY)).toMatchObject({ refundedCents: 10000, status: "partially_refunded" });
+    expect(payments.refunds).toHaveLength(sent);
+    const row = await repo.getReservation(BOOKED);
+    expect(alert.mock.calls).toEqual([
+      [refundAlertText("failed_later", record!, row!, record!.legs[0]), bookingPanePath(BOOKED)],
+    ]);
+    expect((await repo.listTrailEventsFor(BOOKED, [])).filter((e) => e.type === "refund_failed")).toMatchObject([
+      { actorKind: "stripe", metadata: { actualCents: 0, reason: "failed at the bank" } },
+    ]);
+  });
+
+  it("AC24: a second delivery changes nothing and alerts nobody", async () => {
+    const { repo, payments, recordId } = await refundedWorld();
+    const { deps, alert } = makeDeps(repo, payments);
+
+    await processBookingWebhook(deps, failedEvent({ refund_record: recordId }), FAKE_SIGNATURE);
+    expect(await processBookingWebhook(deps, failedEvent({ refund_record: recordId }), FAKE_SIGNATURE)).toEqual({
+      handled: true,
+      outcome: "refund_failed_recorded",
+    });
+
+    expect(alert).toHaveBeenCalledTimes(1);
+    expect(await repo.getPayment(PAY)).toMatchObject({ refundedCents: 10000 });
+    expect((await repo.listTrailEventsFor(BOOKED, [])).filter((e) => e.type === "refund_failed")).toHaveLength(1);
+  });
+
+  it.each<[string, Record<string, string>]>([
+    ["names no record", {}],
+    ["names a record that does not exist", { refund_record: "rr-nope" }],
+  ])("AC24: an event whose metadata %s is ignored", async (_label, metadata) => {
+    const { repo, payments } = await refundedWorld();
+    const { deps, alert } = makeDeps(repo, payments);
+
+    expect(await processBookingWebhook(deps, failedEvent(metadata), FAKE_SIGNATURE)).toEqual({ handled: true, outcome: "ignored" });
+
+    expect(alert).not.toHaveBeenCalled();
+    expect(await repo.getPayment(PAY)).toMatchObject({ refundedCents: 30000 });
+  });
+});
+
+/**
  * `alertThatNeverThrows` (15.17, issue #985) — the wrapper that keeps a notification failure from
  * becoming a delivery failure.
  *
@@ -2378,5 +2697,13 @@ describe("alertThatNeverThrows — a failed alert must not 500 the webhook", () 
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it("AC11: passes the link through to the lane", async () => {
+    const inner = vi.fn(async (_message: string, _href?: string) => {});
+
+    await alertThatNeverThrows(inner)("money moved", "/admin/calendar/resv-1");
+
+    expect(inner).toHaveBeenCalledWith("money moved", "/admin/calendar/resv-1");
   });
 });

@@ -241,6 +241,14 @@ export function actionMessage(
           return "That reservation no longer exists.";
         case "not_booked":
           return "This checkout hasn’t been paid, so there is nothing to cancel. It lapses on its own.";
+        // Refused BEFORE the cancel (issue #1278): the figure was not money, or more than the booking
+        // can give back, or the booking has a refund still being checked. Nothing was cancelled.
+        case "invalid_amount":
+          return "Enter an amount like 50 or 536.25. Nothing was cancelled.";
+        case "exceeds_refundable":
+          return "That’s more than this booking can give back. Nothing was cancelled.";
+        case "unfinished":
+          return "A refund on this booking is still being checked. Nothing was cancelled.";
         default:
           return "Couldn’t cancel just now. Try again in a moment.";
       }
@@ -264,8 +272,17 @@ export function actionMessage(
           return "This checkout hasn’t been paid — no money was taken, so there is nothing to refund.";
         case "stripe_not_configured":
           return "Stripe isn’t configured on this deployment, so nothing can be refunded from here.";
-        default:
+        // Reported before any record exists, so "nothing moved" is still true of both.
+        case "unreachable":
+        case "reservation_missing":
           return "Couldn’t refund just now. Nothing moved. Try again in a moment.";
+        case "unfinished":
+          return "A refund on this booking is still being checked, so nothing was sent.";
+        // Whether it moved is not known (issue #1278): never "nothing moved". A code this pane does
+        // not know reads the same, because it is not known to have moved nothing either.
+        case "unknown":
+        default:
+          return "We don’t know yet whether that refund went through. Muster is checking with Stripe and will finish it within about 20 minutes. Don’t refund again until this booking shows the result.";
       }
     case "resendErr":
       switch (value) {

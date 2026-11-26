@@ -49,13 +49,20 @@ import {
   type PaymentId,
   type ReservationId,
 } from "../domain/ids.js";
-import type { DisputeUpdated, PaymentPort } from "../ports/payment.js";
+import type { DisputeUpdated, PaymentPort, RefundFailed } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { recordBalancePayment } from "./balance-charge.js";
 import { hasBalance } from "./booking-invoice.js";
 import { flexCarveOutCents } from "./discount.js";
 import type { SoldOutContact } from "./sold-out-notice.js";
 import { confirmPendingRow, type ConfirmResult } from "./write-booking.js";
+import {
+  bookingPanePath,
+  refundAlertText,
+  sendRefundRecord,
+  soldOutWho,
+  type RefundDeps,
+} from "./refund-payment.js";
 import { recordTrail } from "./trail.js";
 import type { EmittedTrailType } from "../domain/reservation-trail.js";
 
@@ -81,7 +88,7 @@ export interface WebhookDeps {
    * and retries for three days. Wrap yours in `alertThatNeverThrows` below — the type cannot state
    * the requirement, so the wrapper is how it is kept.
    */
-  alertPaidButUnbooked: (message: string) => Promise<void>;
+  alertPaidButUnbooked: (message: string, href?: string) => Promise<void>;
   /**
    * Tell the customer their departure sold out while they were paying and they've been fully
    * refunded (DEC-109 residual race). Best-effort — a notify failure must never 500 the
@@ -153,11 +160,12 @@ export interface WebhookDeps {
  * reason (that call runs after irreversible customer-facing work), and that reason outlives this.
  */
 export function alertThatNeverThrows(
-  alert: (message: string) => Promise<void>,
-): (message: string) => Promise<void> {
-  return async (message: string): Promise<void> => {
+  alert: (message: string, href?: string) => Promise<void>,
+): (message: string, href?: string) => Promise<void> {
+  return async (message: string, href?: string): Promise<void> => {
     try {
-      await alert(message);
+      // The link goes through (issue #1278): dropping it would send every refund alert to Purchases.
+      await (href === undefined ? alert(message) : alert(message, href));
     } catch (e) {
       // **The whole message, not just the failure.** Swallowing quietly would turn "the office was
       // never told money moved" into an event with no artifact anywhere. An operator reading
@@ -179,6 +187,7 @@ export type WebhookResult =
         | "unbookable"
         | "balance_paid"
         | "refund_recorded"
+        | "refund_failed_recorded"
         | "dispute_recorded"
         | "ignored";
     };
@@ -289,6 +298,10 @@ async function routeVerifiedEvent(
   // `stripeEventId` is threaded in because a charge can be refunded more than once and the
   // cumulative field cannot tell the deliveries apart — see `recordChargeUnmatched`.
   if (event.type === "refund_recorded") return recordRefund(deps, event.data, event.stripeEventId);
+
+  // A refund FAILED at the customer's bank (issue #1278): the money is back in Stripe, and the
+  // booking's refunded total and its record have to say so.
+  if (event.type === "refund_failed") return recordFailedRefund(deps, event.data);
 
   // A CHARGEBACK moved (issue #723) — same posture as the refund above: money that has already
   // left the account is recorded, full stop.
@@ -659,7 +672,7 @@ async function compensateResidualRaceLoss(
     ...(row.email !== undefined ? { email: row.email } : {}),
     ...(row.phone !== undefined ? { phone: row.phone } : {}),
   };
-  const who = `${safeForAlert(row.customerName)} party of ${row.partySize ?? "?"}`;
+  const who = soldOutWho(row);
   const amount = `$${(charge.amountCents / 100).toFixed(2)}`;
 
   if (opts.notifyOnResidualRaceLoss === false) {
@@ -667,44 +680,47 @@ async function compensateResidualRaceLoss(
     // see `confirmBookingByPaymentIntent`. Reported, not acted on.
     return { handled: true, outcome: "lost" };
   }
+
+  // **The refund is a refund record (issue #1278)**, written before Stripe is asked, and its id is
+  // taken from the PaymentIntent: a redelivered losing-charge webhook finds the same record, so one
+  // charge is one record and one refund at the port, whoever delivers it and however often (DEC-107
+  // amended). The refund's key and metadata come from the record, not from the charge key.
+  const recordId = asId<"RefundRecordId">(`rr_sold_out_${charge.paymentIntentId}`);
+  const refundDeps: RefundDeps = {
+    repo: deps.repo,
+    payments: deps.payments,
+    now: deps.now,
+    alert: deps.alertPaidButUnbooked,
+  };
+  let result: "whole" | "short" | "unknown" | "short_before";
   try {
-    // Keyed on the charge key (session id / PI id — DEC-134) ⇒ a redelivered losing-charge
-    // webhook re-calls with the same key and Stripe returns the same refund (no double
-    // refund, DEC-107 amended).
-    await deps.payments.refund({
-      paymentIntentId: charge.paymentIntentId,
-      idempotencyKey: `refund_${charge.key}`,
-    });
-    // The one refund no human authorised (issue #1050). Actor `engine`, deliberately: an
-    // operator refund and this must never read alike in the trail. Emitted after the
-    // provider call returns, so a trail outage cannot stop the money going back.
-    //
-    // **`reservationId` was missing until issue #1051, and the module header is why.** It said a
-    // `lost` outcome means no row exists; `row` is right here, still `pending`, and its name and
-    // phone are what the alert below interpolates. Without this key the auto-refund never appears
-    // on the trail of the booking it refunded.
-    await recordTrail(deps, {
-      id: asId<"TrailEventId">(`auto_refunded:${charge.key}`),
+    const { created } = await deps.repo.createRefundRecord({
+      id: recordId,
       reservationId: row.id,
-      paymentIntentId: asId<"PaymentIntentId">(charge.paymentIntentId),
+      reason: "sold_out",
       actorKind: "engine",
-      type: "auto_refunded",
-      metadata: { reason: "residual-race loss" },
+      askedCents: charge.amountCents,
+      createdAt: deps.now(),
+      // Inserted with its one leg in the same write, so the record is never without legs.
+      legs: [{ paymentIntentId: charge.paymentIntentId, cents: charge.amountCents }],
     });
-    // No ledger write here, and that is the #613 change. #522 sweep 1 added a
-    // `markPaymentRefunded` call so a refunded loser wasn't left reading `succeeded` — the
-    // right goal, reached the wrong way: the row it marked could never exist, because its
-    // reservation never existed (the comment there said as much: "it doesn't reach the
-    // purchases list"). Not writing the row achieves the same goal more completely — nothing
-    // to inflate a `listAllPayments` rollup and nothing to reconcile. Stripe holds the record
-    // of money that never became a booking, which is what it is.
+    if (created) {
+      result = (await sendRefundRecord(refundDeps, recordId, "press")).state;
+    } else {
+      // A delivery that finds the record already there. Whole: the customer and the office are
+      // told again, as a redelivery always has. Short: the short alert is claimed once, so nothing
+      // more. Unfinished: no port call, and the customer is told nothing — but the office hears
+      // once, from whichever delivery finds no delivery has sent it.
+      const existing = await deps.repo.getRefundRecord(recordId);
+      if (existing?.state === "whole") result = "whole";
+      else if (existing?.state === "short") result = "short_before";
+      else result = "unknown";
+    }
   } catch (e) {
-    // The alert reaches a person now; the trail is what answers "how often does this
-    // happen" three months later, which no alert can.
+    // The record could not be written, so nothing was asked of Stripe and nothing is owed to a
+    // retry: say so, loudly, and have a person refund it (the catch-all still reaches an admin).
     await recordTrail(deps, {
       id: asId<"TrailEventId">(`refund_failed:${charge.key}`),
-      // Same correction as its sibling above (issue #1051). This is the worse of the two to have
-      // had unkeyed: a customer charged, not refunded, and their booking's trail silent about it.
       reservationId: row.id,
       paymentIntentId: asId<"PaymentIntentId">(charge.paymentIntentId),
       actorKind: "engine",
@@ -712,12 +728,14 @@ async function compensateResidualRaceLoss(
       metadata: { reason: e instanceof Error ? e.message : "unknown error" },
     });
     await deps.alertPaidButUnbooked(
-      `Residual-race loss AND the auto-refund FAILED (${e instanceof Error ? e.message : "unknown error"}) - ` +
+      `Residual-race loss AND the auto-refund could not be recorded (${e instanceof Error ? e.message : "unknown error"}) - ` +
         `Stripe charge ${charge.key}. REFUND MANUALLY in Stripe. Customer: ${who}`,
     );
     return { handled: true, outcome: "lost" };
   }
-  // **This row will never book, so nothing on it may stay payable (15.10, `@code-review`).**
+
+  // **This row will never book, so nothing on it may stay payable (15.10, `@code-review`) — whichever
+  // way the refund ends.**
   //
   // The first cut retired siblings only on the BOOKED path, and missed the one row class where an
   // un-retired intent is payable *forever* rather than for a window. A residual-race loser lost the
@@ -730,8 +748,26 @@ async function compensateResidualRaceLoss(
   // it succeeded, so a cancel would be refused anyway.
   await retireSiblingIntents(deps, row, charge.paymentIntentId);
 
+  if (result === "unknown") {
+    // The refund may or may not have moved. The customer is told nothing, and every active admin
+    // once (AC5): the job asks Stripe and texts again only if it fails. Guarded like the alert
+    // below, for the reason it gives.
+    try {
+      const record = await deps.repo.getRefundRecord(recordId);
+      if (record && (await deps.repo.claimRefundAlert(recordId, "sold_out_unknown", deps.now()))) {
+        await deps.alertPaidButUnbooked(refundAlertText("sold_out_unknown", record, row));
+      }
+    } catch (e) {
+      logSwallowed("reservations:soldOutRefund", e, `the office was not told that the refund of charge ${charge.key} is unconfirmed`);
+    }
+    return { handled: true, outcome: "lost" };
+  }
+  // Short: `sendRefundRecord` already texted the office, once, in place of the text below, and the
+  // customer is not told a refund went back that did not.
+  if (result !== "whole") return { handled: true, outcome: "lost" };
+
   // Refunded — tell the customer. Best-effort: a notify failure must not 500 (a retry would
-  // re-run this path, and the keyed refund would no-op, but re-notify needlessly).
+  // re-run this path, and the record would no-op, but re-notify needlessly).
   try {
     await deps.notifyCustomerSoldOut({ chargeRef: charge.key, contact });
   } catch (e) {
@@ -1232,6 +1268,72 @@ async function recordPayment(
     createdAt: deps.now(),
   };
   await deps.repo.savePayment(payment);
+}
+
+/**
+ * A refund Muster sent failed at the customer's bank (issue #1278, AC24): the provider took it, said
+ * so, and later gave the money back to the account. `refund.failed` names the record in the refund's
+ * metadata, so the leg is marked failed later, the record becomes short by that leg's cents, the
+ * payment's refunded total is lowered by the same cents — Muster does not wait for Stripe's own
+ * `amount_refunded` to drop, which its docs do not promise — and every active admin is told once.
+ * No refund is sent: this is the provider reporting, not Muster deciding.
+ *
+ * **A second delivery changes nothing and alerts nobody**: `markRefundLegFailedLater` is true only
+ * the first time, and only for a leg that moved. An event naming no record, or one that does not
+ * exist, is a refund made in the dashboard or by someone else's code: ignored.
+ */
+async function recordFailedRefund(deps: WebhookDeps, failed: RefundFailed): Promise<WebhookResult> {
+  const named = failed.metadata["refund_record"];
+  if (!named) return { handled: true, outcome: "ignored" };
+  const recordId = asId<"RefundRecordId">(named);
+  const record = await deps.repo.getRefundRecord(recordId);
+  if (!record) return { handled: true, outcome: "ignored" };
+
+  const marked = await deps.repo.markRefundLegFailedLater({
+    recordId,
+    paymentIntentId: failed.paymentIntentId,
+    at: deps.now(),
+  });
+  if (!marked) return { handled: true, outcome: "refund_failed_recorded" };
+
+  const leg = record.legs.find((l) => l.paymentIntentId === failed.paymentIntentId);
+  if (leg?.paymentId !== undefined) {
+    try {
+      await deps.repo.lowerPaymentRefunded(leg.paymentId, leg.cents);
+    } catch (e) {
+      // The leg is marked and a redelivery will not mark it again, so a throw here would be lost.
+      // The alert below still goes, and it is what tells a person the money is back in Stripe.
+      logSwallowed(
+        "reservations:refundFailed",
+        e,
+        `payment ${leg.paymentId} still counts ${leg.cents} cents as refunded after the bank failed it`,
+      );
+    }
+  }
+  await recordTrail(deps, {
+    id: asId<"TrailEventId">(`refund_failed:${recordId}:${failed.paymentIntentId}`),
+    reservationId: record.reservationId,
+    paymentIntentId: asId<"PaymentIntentId">(failed.paymentIntentId),
+    actorKind: "stripe",
+    type: "refund_failed",
+    metadata: { actualCents: 0, reason: "failed at the bank" },
+  });
+  const [after, reservation] = await Promise.all([
+    deps.repo.getRefundRecord(recordId),
+    deps.repo.getReservation(record.reservationId),
+  ]);
+  if (after && reservation) {
+    await deps.alertPaidButUnbooked(
+      refundAlertText(
+        "failed_later",
+        after,
+        reservation,
+        after.legs.find((l) => l.paymentIntentId === failed.paymentIntentId),
+      ),
+      bookingPanePath(record.reservationId),
+    );
+  }
+  return { handled: true, outcome: "refund_failed_recorded" };
 }
 
 /**

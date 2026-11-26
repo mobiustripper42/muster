@@ -64,7 +64,11 @@ import {
   type RefundDeps,
 } from "./refund-payment.js";
 import { recordTrail } from "./trail.js";
+import { safeForAlert } from "./alert-text.js";
 import type { EmittedTrailType } from "../domain/reservation-trail.js";
+
+// It lived here before it moved to a leaf module (the import cycle with `refund-payment.ts`); callers import it from here still.
+export { safeForAlert };
 
 export interface WebhookDeps {
   // No feature-flag dependency (issue #1093). The `RESERVATIONS` switch and its gate here are gone:
@@ -578,28 +582,6 @@ export interface ConfirmOptions {
  * somebody else's. Before 15.5 this read `charge.metadata`, so a missing key silently degraded
  * the operator's text to "customer party of ?" — and 15.7 deletes those keys outright.
  */
-/**
- * A customer-supplied name, made safe to interpolate into an operator's SMS (`/security-review`
- * on 15.5).
- *
- * **This is the first path on which a customer's own typed text reaches an admin's phone, and the
- * customer can trigger it on demand** — start a checkout, let its hold lapse, take the freed slot
- * with a second checkout, pay the second, then pay the first. The failure-path alerts below carry
- * the same string but need a refund outage, which nobody can induce. `customerName` is trimmed and
- * checked non-empty at the edge (`app/(public)/book/checkout/actions.ts`) and nothing else: no
- * length cap, no charset.
- *
- * Without this, a name reading "…PAID but NOT booked - charge pi_VICTIM. REFUND MANUALLY in
- * Stripe." forges an instruction to refund a real, unrelated charge, and the genuine
- * "no action needed" tail is pushed past where a phone truncates the preview.
- *
- * Conservative by design: names that legitimately carry other characters are degraded, not
- * rejected, and the operator still has the charge id, which is the part they act on.
- */
-export function safeForAlert(name: string): string {
-  const cleaned = name.replace(/[^A-Za-z0-9 .,'-]/g, " ").replace(/\s+/g, " ").trim();
-  return (cleaned.length > 40 ? `${cleaned.slice(0, 40)}...` : cleaned) || "customer";
-}
 
 /**
  * Cancel every intent on a booked row except the one that paid for it (15.10, issue #978).
@@ -1289,6 +1271,10 @@ async function recordFailedRefund(deps: WebhookDeps, failed: RefundFailed): Prom
   const record = await deps.repo.getRefundRecord(recordId);
   if (!record) return { handled: true, outcome: "ignored" };
 
+  // Everything the alert needs is read BEFORE the mark: a read that throws after it would leave a
+  // redelivery finding the leg already marked, and no admin would ever be told. A throw here is
+  // retried whole by Stripe. After the mark, nothing before the alert can stop it.
+  const reservation = await deps.repo.getReservation(record.reservationId);
   const marked = await deps.repo.markRefundLegFailedLater({
     recordId,
     paymentIntentId: failed.paymentIntentId,
@@ -1318,20 +1304,10 @@ async function recordFailedRefund(deps: WebhookDeps, failed: RefundFailed): Prom
     type: "refund_failed",
     metadata: { actualCents: 0, reason: "failed at the bank" },
   });
-  const [after, reservation] = await Promise.all([
-    deps.repo.getRefundRecord(recordId),
-    deps.repo.getReservation(record.reservationId),
-  ]);
-  if (after && reservation) {
-    await deps.alertPaidButUnbooked(
-      refundAlertText(
-        "failed_later",
-        after,
-        reservation,
-        after.legs.find((l) => l.paymentIntentId === failed.paymentIntentId),
-      ),
-      bookingPanePath(record.reservationId),
-    );
+  // The text is made from what was read before the mark: it names the leg's own cents, the
+  // customer and the booking, none of which the mark changes.
+  if (reservation) {
+    await deps.alertPaidButUnbooked(refundAlertText("failed_later", record, reservation, leg), bookingPanePath(record.reservationId));
   }
   return { handled: true, outcome: "refund_failed_recorded" };
 }

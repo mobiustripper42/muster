@@ -41,7 +41,7 @@ import { asId, type ReservationId, type RefundRecordId } from "../domain/ids.js"
 import { logSwallowed } from "../log.js";
 import { PaymentIndeterminateError, type PaymentPort, type ProviderRefund } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
-import { safeForAlert } from "./booking-webhook.js";
+import { safeForAlert } from "./alert-text.js";
 import { formatCents } from "./calendar-detail.js";
 import { noticeRefundOf, tellSafely, type TellCustomer } from "./cancel-notice.js";
 import { countsAsPaid } from "./payment-config.js";
@@ -375,6 +375,13 @@ async function send(deps: RefundDeps, recordId: RefundRecordId, from: "press" | 
   for (const leg of current) {
     // A refused leg stops the send, now and on every run after it.
     if (leg.outcome === "refused") return conclude(deps, from, record, reservation, current, refusal("refused earlier"));
+    if (leg.outcome === "moved") {
+      // A leg written as moved by a run that broke before raising its payment: raise it now, or the
+      // box would offer the same money again. `markPaymentRefunded` only raises, so this is safe on
+      // every send that sees the leg as moved.
+      await raiseForMovedLeg(deps, leg);
+      continue;
+    }
     if (leg.outcome !== undefined) continue;
 
     let result: { outcome: "moved" | "refused"; refundId?: string; reason?: string };
@@ -415,16 +422,20 @@ async function send(deps: RefundDeps, recordId: RefundRecordId, from: "press" | 
     leg.outcome = result.outcome;
     if (result.refundId !== undefined) leg.refundId = result.refundId;
     if (result.outcome === "moved") {
-      // `markPaymentRefunded` only raises the total, so a second write of this leg, or a
-      // `charge.refunded` event that landed first, counts it once.
-      if (leg.paymentId !== undefined && leg.refundedTotalCents !== undefined) {
-        await deps.repo.markPaymentRefunded(leg.paymentId, leg.refundedTotalCents);
-      }
+      await raiseForMovedLeg(deps, leg);
     } else {
       return conclude(deps, from, record, reservation, current, refusal(result.reason ?? "refused"));
     }
   }
   return conclude(deps, from, record, reservation, current, { state: "whole" });
+}
+
+/** Raise a moved leg's payment total. `markPaymentRefunded` only raises, so a second write of this
+ *  leg, or a `charge.refunded` event that landed first, counts it once. */
+async function raiseForMovedLeg(deps: RefundDeps, leg: RefundLeg): Promise<void> {
+  if (leg.paymentId !== undefined && leg.refundedTotalCents !== undefined) {
+    await deps.repo.markPaymentRefunded(leg.paymentId, leg.refundedTotalCents);
+  }
 }
 
 const refusal = (reason: string): Conclusion => ({ state: "short", cause: "provider_refused", reason });
@@ -548,7 +559,9 @@ async function alertShort(
   const operators = record.reason === "operator_refund" || record.reason === "operator_cancel";
   if (from === "press" && operators && cause !== "gave_up") return;
   const gaveUp = cause === "gave_up";
-  if (!(await deps.repo.claimRefundAlert(record.id, gaveUp ? "gave_up" : "short", at))) return;
+  // The catch-all takes no claim: every run that finds the record unfinished at 24 hours sends it and
+  // then finishes the record, so a break between the two can repeat the text and cannot lose it.
+  if (!gaveUp && !(await deps.repo.claimRefundAlert(record.id, "short", at))) return;
   if (record.reason === "sold_out") {
     await alertSafely(deps, refundAlertText("sold_out_short", record, reservation));
     return;

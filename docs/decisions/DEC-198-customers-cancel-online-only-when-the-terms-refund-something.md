@@ -36,6 +36,7 @@ Supersedes DEC-135, whose condition (insurance being sellable) fired. Issue #107
   with a `refund_failed` row and an operator email; refund-first leaves a refunded customer holding a boat.
 - **Refused by name, never re-quoted silently** (DEC-197's posture): if the confirm's figure moved,
   nothing is cancelled.
-- **Who refunds:** the press that cancelled, and the job when that press could not (DEC-204).
+- **One press moves money once:** only the press that cancelled refunds.
 - **Tax is the operator's.** The refund is everything paid less the one published deduction.
-- **Other trips are rows, never links:** one code would open every booking of the contact (#1213).
+- **Other trips are rows, never links.** A link carries the booking's code, so one code would
+  open every booking of the contact (issue #1213).

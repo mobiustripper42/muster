@@ -371,10 +371,11 @@ Nothing in the repo can verify the subscription list (#544). It has to be read o
 
 **Not subscribed, deliberately: `charge.refund.updated`.** A card refund can fail at the bank days
 later, at which point Stripe *decrements* `amount_refunded` and emits that event. Muster's
-`markPaymentRefunded` only ever ratchets upward (`greatest()`), so a reversed refund would be
-recorded permanently as money returned that in fact came back. Low likelihood on cards and
-deliberately out of scope for #616 — but if a reversal ever happens, the payment row needs
-correcting by hand.
+`markPaymentRefunded` only ever ratchets upward (`greatest()`), so that event could never lower a
+total. Muster's own refunds do not need it: they are covered by `refund.failed` above, which names the
+refund record and lowers the total itself. What stays by hand is a refund made in the Stripe
+dashboard: it carries no record, so `refund.failed` ignores it, and if the bank reverses it the
+payment row needs correcting by hand.
 
 ### Test it once in production, with real money
 

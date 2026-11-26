@@ -2619,6 +2619,56 @@ describe("processBookingWebhook — refund.failed marks the leg failed later (is
     expect((await repo.listTrailEventsFor(BOOKED, [])).filter((e) => e.type === "refund_failed")).toHaveLength(1);
   });
 
+  it("AC24: a read for the alert that fails on the first delivery is retried by the second — the admins told once, the payment lowered once", async () => {
+    const { repo, payments, recordId } = await refundedWorld();
+    const { deps, alert } = makeDeps(repo, payments);
+    const realRead = repo.getReservation.bind(repo);
+    let breakOnce = true;
+    repo.getReservation = async (id) => {
+      if (breakOnce) {
+        breakOnce = false;
+        throw new Error("connection reset");
+      }
+      return realRead(id);
+    };
+
+    // The first delivery may fail and be redelivered by Stripe; whether it rejects is not the point.
+    await processBookingWebhook(deps, failedEvent({ refund_record: recordId }), FAKE_SIGNATURE).catch(() => undefined);
+    await processBookingWebhook(deps, failedEvent({ refund_record: recordId }), FAKE_SIGNATURE).catch(() => undefined);
+
+    const record = await repo.getRefundRecord(asId<"RefundRecordId">(recordId));
+    expect(record?.legs).toMatchObject([{ paymentIntentId: PAID_PI, outcome: "failed_later" }]);
+    expect(await repo.getPayment(PAY)).toMatchObject({ refundedCents: 10000 });
+    const row = await repo.getReservation(BOOKED);
+    expect(alert.mock.calls).toEqual([
+      [refundAlertText("failed_later", record!, row!, record!.legs[0]), bookingPanePath(BOOKED)],
+    ]);
+  });
+
+  it("AC24: a lowering that throws does not stop the alert on that delivery", async () => {
+    const { repo, payments, recordId } = await refundedWorld();
+    const { deps, alert } = makeDeps(repo, payments);
+    repo.lowerPaymentRefunded = async () => {
+      throw new Error("connection reset");
+    };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await processBookingWebhook(deps, failedEvent({ refund_record: recordId }), FAKE_SIGNATURE)).toEqual({
+        handled: true,
+        outcome: "refund_failed_recorded",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+
+    const record = await repo.getRefundRecord(asId<"RefundRecordId">(recordId));
+    expect(record?.legs).toMatchObject([{ paymentIntentId: PAID_PI, outcome: "failed_later" }]);
+    const row = await repo.getReservation(BOOKED);
+    expect(alert.mock.calls).toEqual([
+      [refundAlertText("failed_later", record!, row!, record!.legs[0]), bookingPanePath(BOOKED)],
+    ]);
+  });
+
   it.each<[string, Record<string, string>]>([
     ["names no record", {}],
     ["names a record that does not exist", { refund_record: "rr-nope" }],

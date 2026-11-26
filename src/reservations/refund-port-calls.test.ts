@@ -15,6 +15,9 @@ import { describe, expect, it } from "vitest";
 const ROOT = process.cwd();
 const SOURCE_DIRS = ["src", "app", "components", "db"];
 const THE_ONE = "src/reservations/refund-payment.ts";
+/** A call of `.refund(`, allowing whitespace and a line break between the dot and `refund` and
+ *  before the bracket, so `payments\n  .refund(` is caught too. */
+const CALLS_REFUND = /\.\s*refund\s*\(/;
 
 /** Every non-test `.ts`/`.tsx` under a directory, recursively. */
 function sourcesUnder(dir: string): string[] {
@@ -37,10 +40,20 @@ describe("the payment port's refund is called from one module (issue #1278)", ()
 
   it("AC19: no source file but refund-payment.ts calls .refund(", () => {
     const callers = files
-      .filter((f) => /\.refund\(/.test(readFileSync(f, "utf8")))
+      .filter((f) => CALLS_REFUND.test(readFileSync(f, "utf8")))
       .map((f) => relative(ROOT, f))
       .filter((f) => f !== THE_ONE);
 
     expect(callers).toEqual([]);
+  });
+
+  it("AC19: the search catches a call spaced out or split across lines, and not a definition", () => {
+    // The search above is only as good as this matcher: a call written over two lines must not
+    // pass it, and an adapter defining `refund` must not fail it.
+    const calls = ["payments.refund(input)", "deps.payments\n    .refund({ amountCents })", "payments. refund (input)", "payments.\n  refund\n  (input)"];
+    const notCalls = ["async refund(input: RefundInput) {", "repo.refundReservation(id)", "payment.refunded(x)", "refund(input)"];
+
+    expect(calls.filter((s) => !CALLS_REFUND.test(s))).toEqual([]);
+    expect(notCalls.filter((s) => CALLS_REFUND.test(s))).toEqual([]);
   });
 });

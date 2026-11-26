@@ -853,6 +853,30 @@ describe("finishUnfinishedRefunds — the job (issue #1278)", () => {
     expect(await repo.getRefundRecord(RR)).toMatchObject({ state: "whole", movedCents: 50000 });
   });
 
+  it("AC8: a break between writing a moved leg and raising its payment does not leave the total low — the job's send raises it", async () => {
+    const repo = await twoCharges();
+    const realRaise = repo.markPaymentRefunded.bind(repo);
+    let breakOnce = true;
+    repo.markPaymentRefunded = async (id, total) => {
+      if (breakOnce) {
+        breakOnce = false;
+        throw new Error("connection reset");
+      }
+      return realRaise(id, total);
+    };
+    const payments = new FakePaymentPort();
+    listing(payments);
+
+    expect(await refundReservation(deps(repo, payments), RESV, 20000, 0, BY)).toEqual({ ok: false, reason: "unknown" });
+    // The leg's result was written before the break: the money moved and the record says so.
+    expect(await recordsOf(repo)).toMatchObject([{ state: "unfinished", legs: [{ paymentIntentId: "pi_balance", outcome: "moved" }] }]);
+
+    await job(repo, payments, after(6 * MIN));
+
+    expect(await recordsOf(repo)).toMatchObject([{ state: "whole", movedCents: 20000 }]);
+    expect((await repo.getPayment(asId<"PaymentId">("pay-balance")))?.refundedCents).toBe(20000);
+  });
+
   it("AC13: a record claimed more recently than the takeover age is left alone; past it, the job takes it", async () => {
     // A press's fresh record is its own: its claim starts when it was written.
     const repo = await twoCharges();
@@ -1102,6 +1126,25 @@ describe("finishUnfinishedRefunds — the job (issue #1278)", () => {
     const row = (await repo.getReservation(LOST))!;
     expect(alert.mock.calls.map((c) => c[0])).toEqual([refundAlertText("sold_out_short", record, row)]);
     expect(alert.mock.calls.map((c) => c[1])).toEqual([undefined]);
+  });
+
+  it("AC23: an earlier run that took the gave-up claim and died before sending does not silence the catch-all — this run sends it and finishes short", async () => {
+    const repo = await twoCharges();
+    await repo.createRefundRecord(newRecord());
+    // An earlier run, past 24 hours, claimed the record and the gave-up alert, then died before
+    // sending the text or finishing the record.
+    expect(await repo.claimRefundRecord({ id: RR, at: after(24 * HOUR), staleBefore: after(24 * HOUR) })).toBe(true);
+    expect(await repo.claimRefundAlert(RR, "gave_up", after(24 * HOUR))).toBe(true);
+    const payments = new FakePaymentPort();
+    listing(payments);
+    const alert = alertSpy();
+
+    await job(repo, payments, after(25 * HOUR), { alert });
+
+    const record = (await repo.getRefundRecord(RR))!;
+    expect(record).toMatchObject({ state: "short", movedCents: 0, shortReason: "not_confirmed_in_24_hours" });
+    const row = (await repo.getReservation(RESV))!;
+    expect(alert.mock.calls).toEqual([[refundAlertText("gave_up", record, row), bookingPanePath(RESV)]]);
   });
 
   // ── The cancel's notice (AC15) ─────────────────────────────────────────────────────────

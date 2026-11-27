@@ -338,8 +338,8 @@ and texts every active admin when it cannot. Messages Stripe could not deliver i
 replayed by Muster (DEC-205). What to do:
 
 1. In Stripe, open the endpoint (Developers, Webhooks) and fix its address, or switch it back on.
-2. Open **Developers, Events**, find each `payment_intent.succeeded`, `charge.refunded` and
-   `charge.dispute.*` event from the outage window, and press **Resend**.
+2. Open **Developers, Events**, find each event from the outage window of a type Muster handles
+   (`HANDLED_EVENT_TYPES` in `src/adapters/stripe-payment.ts`), and press **Resend**.
 3. A customer who paid and closed the tab is booked by the reconciler on its own, within about 15
    minutes of their payment window running out. If an admin text says Muster could not confirm a payment
    for a customer, find that name in Stripe, then book or refund by hand.

@@ -364,6 +364,8 @@ const toReservation = (r: any): Reservation => ({
   ...opt("tripMinutes", r.trip_minutes),
   ...opt("invoice", r.booking_invoice),
   ...opt("confirmationSentAt", r.confirmation_sent_at),
+  // The reconciler is done with this checkout (issue #1236): written only by `markPaymentChecked`.
+  ...opt("paymentCheckedAt", r.payment_checked_at),
   // The deposit (issue #1250): null on every row with no balance.
   ...opt("balanceDueAt", r.balance_due_at),
   ...opt("balanceReleaseAt", r.balance_release_at),
@@ -381,7 +383,8 @@ const toReservation = (r: any): Reservation => ({
  * load-bearing: the pending-write insert and the flip both refer to it as `$1`.
  *
  * **Not here, by design:** `checkout_attempts` (15.9), and `stripe_customer_id` and
- * `stripe_payment_method_id` (issue #1250), and `balance_payment_intent_id` (issue #1254). The customer
+ * `stripe_payment_method_id` (issue #1250), and `balance_payment_intent_id` (issue #1254), and
+ * `payment_checked_at` (issue #1236, written only by `markPaymentChecked`). The customer
  * is written once by `recordCheckoutAttempt`, the saved card by the confirm flip and the balance intent
  * by `saveBalancePaymentIntentId`, so no whole-row upsert of a stale copy can clear any of them.
  * The balance dates ARE here: they are frozen with the invoice and re-frozen with it.
@@ -2076,6 +2079,31 @@ export class PostgresRepository implements Repository {
     await this.#pool.query(
       `update reservations set stripe_customer_id = coalesce(stripe_customer_id, $2) where id = $1`,
       [reservationId, customerId],
+    );
+  }
+
+  // ── The reconciler (issue #1236, migration 20261127162343) ─────────────────────────────────
+  async listCheckoutsToCheck(liveSince: string): Promise<Reservation[]> {
+    // "Timed out" is `isLivePending` being false, in SQL: a public (`muster`) pending row reserved at
+    // or before `liveSince`. An admin-source row never times out (DEC-163), and a row with no
+    // `reserved_at` is off the list. Compared as instants, like `listBalancesDue`.
+    const { rows } = await this.#pool.query(
+      `select * from reservations
+        where status = 'pending'
+          and source = 'muster'
+          and reserved_at is not null
+          and reserved_at::timestamptz <= $1::timestamptz
+          and coalesce(array_length(payment_intent_ids, 1), 0) > 0
+          and payment_checked_at is null
+        order by reserved_at::timestamptz, id`,
+      [liveSince],
+    );
+    return rows.map(toReservation);
+  }
+  async markPaymentChecked(reservationId: ReservationId, at: string): Promise<void> {
+    await this.#pool.query(
+      `update reservations set payment_checked_at = $2 where id = $1 and payment_checked_at is null`,
+      [reservationId, at],
     );
   }
 

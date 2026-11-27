@@ -788,6 +788,8 @@ export interface Reservation {
    * residual §2.8.9 reports.
    */
   confirmationSentAt?: string;
+  /** When the reconciler finished with this checkout and will not look at it again (issue #1236). */
+  paymentCheckedAt?: string;
   /**
    * How long the hull is committed for this departure, FROZEN from `Offering.holdMinutes` at
    * write time (DEC-161). This is what the row occupies the hull for (§2.8.3). Not the payment

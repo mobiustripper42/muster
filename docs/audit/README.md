@@ -115,7 +115,7 @@ The patterns behind the findings, worst first (issue #1230). Patterns 1 and 2 ar
 3. Write down the result. Until it is written, the record is unfinished, and no screen says what happened unless it is known.
 4. A job finds unfinished records, asks Stripe what happened, and finishes them.
 
-**Where it exists:** the balance charge, all four (`src/reservations/balance-charge.ts`, DEC-202). Refunds, all four, since build 1a (issue #1278, DEC-204): the refund record, the one send, the job and the alerts. Booking payments have the first three; the fourth is the reconciler (`docs/SPEC.md` §2.8.9), not built: build 2, issue #1236. The screens were not moved onto the refund records: issue #1295 was closed without a build (operator, 2026-11-26).
+**Where it exists:** the balance charge, all four (`src/reservations/balance-charge.ts`, DEC-202). Refunds, all four, since build 1a (issue #1278, DEC-204): the refund record, the one send, the job and the alerts. Booking payments have all four since build 2 (issue #1236, DEC-205): the reconciler, `src/reservations/reconciler.ts` (`docs/SPEC.md` §2.8.9). The screens were not moved onto the refund records: issue #1295 was closed without a build (operator, 2026-11-26).
 
 **Keeping it plugged (built in build 1a):** `src/reservations/refund-port-calls.test.ts` fails when any source file other than `src/reservations/refund-payment.ts` calls the payment port's `refund`, so a new refund path cannot skip the steps. The same check for the other Stripe methods that move money is proposed, not in the codebase.
 
@@ -173,7 +173,7 @@ Statuses are `open` unless a row says otherwise. A "same finding as" or "overlap
 |---|---|---|---|---|
 | F1 | S1 | A booked trip blocks its hull for its trip time, not its hold minutes | Feb 1 | issue #1238 — confirmed real (operator, 2026-11-03) |
 | F2 | S1 | A superseded PaymentIntent that succeeds late is a second payment and tip; no refund, nobody told | Feb 1 | issue #1279 (was #1237) — confirmed real (operator, 2026-11-03) |
-| F3 | S1 | The reconciler is not built; `docs/PROJECT_PLAN.md` marks it shipped | Feb 1 | issue #1278 (was #1236) — confirmed real (operator, 2026-11-03) |
+| F3 | S1 | The reconciler is not built; `docs/PROJECT_PLAN.md` marks it shipped | Feb 1 | issue #1236 — confirmed real (operator, 2026-11-03); **built in build 2 (issue #1236):** each timed-out public checkout with a payment started is asked about once, booked through the one confirm if paid, and an admin is texted if Muster cannot tell 2 hours past the window |
 | F4 | S2 | A failed confirmation send keeps the claim; the customer is booked, charged and never told | Feb 1 | issue #1239 |
 | F5 | S2 | A failed self-service refund leaves no work item; the operator email is best-effort | Feb 1 | issue #1278 (was #1240) — **built in build 1a (issue #1278):** a refund that falls short is finished short on its record and texts every active admin; the record is the work item |
 | F6 | S3 | Booked-row readers recompute tax and balance from the live tax rate (latent S1) | Feb 1 | fixed — issue #1241: the five readers read the tax and balance frozen on the booking's invoice |
@@ -190,7 +190,7 @@ Statuses are `open` unless a row says otherwise. A "same finding as" or "overlap
 | F17 | S4 | The cutoff's settings-page control is not built | May 1 | open |
 | F18 | S4 | An override `Event` at the asker's slot: the read exempts it, the write does not (latent S1) | after release | issue #945 (deferred) — unreachable until a per-trip override exists: issue #1228 stops a cancel leaving an unbooked Event |
 | F19 | S4 | Slots under a live pending row are hidden on the operator grid, not drawn busy | May 1 | open |
-| F20 | S4 | A `payment_intent.succeeded` that matches no row is acked silently | Feb 1 | issue #1278 (was #1236) |
+| F20 | S4 | A `payment_intent.succeeded` that matches no row is acked silently | Feb 1 | issue #1236 — not built: no cause can be named, because the checkout's row and the payment's id are written before the customer can pay (rarity case 10 in that issue) |
 | F21 | S4 | The customer record is created before the flip, not in step 6 | after release | open |
 | F22 | S4 | Stale docstrings state the pre-DEC-196 fee base and an untaxed insurance | Feb 1 | issue #1244 |
 | F23 | S4 | "Nothing else is created at checkout" is broader than the code | Feb 1 | issue #1244 |
@@ -585,7 +585,7 @@ Added by issue #1230. The report has 15 criteria short of `BUILT`; criterion 24 
 | C5 | S3 | `docs/SPEC.md:1633` says the step-3 refusals run holding the hull lock; the grid, season, departed and cutoff checks run before it (`src/reservations/claim.ts:316-354`) | after release | duplicate of operator OR-16 |
 | C7 | S4 | No test asserts that an abandoned checkout sends nothing; the Event, customer and booking-code halves are tested | after release | open — proposed; no behaviour, nobody, small; agent-checked on `main` at `c280379`: The abandoned-checkout test names no message but never checks that nothing was sent; it asserts only no Event, customer or booking code. src/reservations/create-departure-payment-intent.test.ts:1133-1153. |
 | C12 | S1 | A superseded payment that succeeds late resolves to its row and is never refunded | Feb 1 | duplicate of money F2 |
-| C15 | S1 | The reconciler is not built | Feb 1 | duplicate of money F3 |
+| C15 | S1 | The reconciler is not built | Feb 1 | duplicate of money F3 — closed with it (issue #1236) |
 | C19 | S4 | A succeeded payment that matches no row (`no_row`) sends no alert (`src/reservations/booking-webhook.ts:812-827`) | Feb 1 | duplicate of money F20 |
 | C19b | S4 | No test reads the amount out of an unmatched-charge alert | after release | open — proposed; no behaviour, nobody, small; agent-checked on `main` at `c280379`: No test checks the amount inside a paid-but-unbooked alert text; and the no-row charge alert no longer exists (ignored silently by design). src/reservations/booking-webhook.ts:840-851; src/reservations/booking-webhook.test.ts alert assertions check names and keywords only. |
 | C19e | S4 | No test calls `alertMoneyProblem` with text messaging unconfigured | after release | open — proposed; no behaviour, nobody, small; agent-checked on `main` at `c280379`: No test runs alertMoneyProblem with text messaging unconfigured; there is no test file for it. app/lib/alert.ts (no alert.test.ts); app/lib/booking-deps.test.ts only checks the wrapper identity. |

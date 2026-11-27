@@ -480,6 +480,14 @@ export interface Repository {
    */
   saveStripeCustomerId(reservationId: ReservationId, customerId: string): Promise<void>;
 
+  // ── The reconciler (issue #1236) ───────────────────────────────────────────────────
+  /** Timed-out public checkouts with a payment started and not yet checked: status `pending`,
+   *  source `muster`, `reservedAt` at or before `liveSince`, at least one id in
+   *  `paymentIntentIds`, `paymentCheckedAt` empty; oldest reserved first. */
+  listCheckoutsToCheck(liveSince: string): Promise<Reservation[]>;
+  /** Mark a checkout checked; writes only while `paymentCheckedAt` is empty. */
+  markPaymentChecked(reservationId: ReservationId, at: string): Promise<void>;
+
   // ── The scheduled balance charge (issue #1254) ─────────────────────────────────────
   /** Booked reservations with `balanceDueAt <= now` and `now < balanceReleaseAt`, ordered by
    *  `balanceDueAt` then `id`. */

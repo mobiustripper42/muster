@@ -175,6 +175,18 @@ export class FakePaymentPort implements PaymentPort {
     return this.succeededIntents.get(paymentIntentId) ?? null;
   }
 
+  /**
+   * The lookup that tells "not paid" from "no answer" (issue #1236): the stored value for an id in
+   * `succeededIntents`, `null` for any other id this fake minted, a throw for an id it never minted.
+   * Tests make "no answer" by spying on this and rejecting.
+   */
+  async readPaymentIntentSucceeded(paymentIntentId: string): Promise<PaymentSucceeded | null> {
+    const paid = this.succeededIntents.get(paymentIntentId);
+    if (paid) return paid;
+    if (this.#minted.has(paymentIntentId)) return null;
+    throw new Error(`FakePaymentPort: no such PaymentIntent ${paymentIntentId}`);
+  }
+
   async getPaymentIntentState(paymentIntentId: string): Promise<PaymentIntentState> {
     if (this.intentStateError) throw this.intentStateError;
     // Anything this fake minted is reusable unless a test says otherwise, because that is the

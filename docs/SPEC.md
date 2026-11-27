@@ -2262,7 +2262,7 @@ rows that turn on one — abandonment, and a payment landing after expiry — do
 | Customer abandons checkout | The window passes and the boat returns to the calendar (2.8.8). |
 | Webhook is late | The success page already confirmed it. Nothing to do. |
 | Webhook never arrives and the customer closed the tab | The reconciler confirms it (2.8.9). |
-| Our write fails after the card was charged | The reservation exists as `pending` with a payment against it; the reconciler finds and confirms it. If even the reservation write failed, no row exists — 2.8.6's alert path, and 2.8.9's fallback. |
+| Our write fails after the card was charged | The reservation exists as `pending` with a payment against it; the reconciler finds and confirms it. If even the reservation write failed, no row exists — 2.8.6's alert path; 2.8.9 says why the reconciler does not look for it. |
 | A superseded payment succeeds late — stale tab, old client secret | Its id still resolves to the reservation (2.8.5). If that reservation is already `booked`, this is a second charge for one sale: **refund it and tell the customer**, same path as the row below. |
 | Payment succeeds after the window expired, and the boat has been taken | Refund the full amount automatically — no operator action required — and tell the customer on the channel a confirmation would have used (the phone on the reservation; phone is required, email is not). The message says the trip sold out while they were paying, and says plainly that they **were** charged and then refunded: the money really was captured, the refund takes days to settle, and a message claiming they were not charged is contradicted by their own statement for that whole window. It does not state the amount — the figure adds nothing to a message whose point is that all of it is coming back. **The refund and the message are one path:** a refund nobody was told about reads as a silent failed payment. **And the office is told every time**, with no action asked for: this is a customer charged for a trip they did not get, and the count of how often it happens is the only evidence that decides whether the payment flow moves to separate authorization and capture. **The refund is a refund record** written before Stripe is asked, its id taken from the PaymentIntent so one charge is one refund however often the event arrives (DEC-204). When Stripe gives no answer the customer is told nothing and every active admin is texted once; the job finishes the record and texts again only if it falls short. |
 | A refund fails at the customer's bank | The leg's cents come off the booking's refunded total at once, the refund record reads short by them, and every active admin is told once (DEC-204). Nothing is sent again without a person. |
@@ -2328,15 +2328,27 @@ mid-swap, Stripe retries on a backoff and eventually stops. Unwatched, that leav
 reservation that quietly lapses: money taken, no booking, nobody told. **The reconciler exists so that
 no human is ever the one who notices.**
 
-It finds the problem two ways:
+It finds the problem in our own table. Any public checkout still `pending` past its window with a
+payment started is a work list: one indexed query against our own database. For each, ask Stripe once
+about the payments recorded against it and confirm any that succeeded, through the one confirm of 2.8.6;
+a checkout whose boat was sold meanwhile is refunded in full and the customer told, as 2.8.7 says. This
+works during a total webhook outage. Once the job has finished with a checkout it does not look at it
+again (`reservations.payment_checked_at`): Stripe said nothing was paid, the booking or the refund went
+through, or the admin text below went out. If Muster cannot get an answer from Stripe for a checkout, it
+asks again on each run; **2 hours past the end of its window, every active admin is texted once**, naming
+the customer, to check Stripe and book or refund by hand, and the job stops asking about it. The text
+links to the abandoned checkouts list, which shows a checkout by date, boat and party size, so the admin
+finds the payment in Stripe by the name.
 
-- **Primary — our own table.** Any reservation still `pending` past its window is a work list: one
-  indexed query against our own database. For each, ask Stripe about the payments recorded against it
-  and confirm any that succeeded. This works during a total webhook outage.
-- **Fallback — Stripe's undelivered-event feed.** For the case where the payment exists and our
-  reservation write did not, so there is no row to find. Stripe's documented mechanism is the event log
-  filtered to undelivered events; **polling payment objects is explicitly discouraged and
-  rate-limited.** A payment here that matches no reservation is 2.8.6's alert, not a booking.
+**What it does not catch is a person's to catch.** The job does not replay the messages Stripe could not
+deliver, and it does not look for a payment with no checkout row, because the row and the payment's id are
+written before the customer can pay. A message lost in the outage for anything but a booking payment is
+caught by the admin who gets the "WEBHOOK NOT DELIVERING" text, who fixes the address and resends from
+Stripe (`docs/DEPLOY.md`). A phone booking paid by link is caught by the operator who made it. A job
+killed between the booking and its payment row leaves a deposit booking with no payment row: Stripe's
+message repairs it if it arrives, and past that the customer's statement shows the charge. A customer who
+finishes their bank's approval screen after the job's one look is caught only by the resend. DEC-205 holds
+the reasons.
 
 **Cadence: minutes, not hours.** Detection latency *is* the schedule — nightly means a customer can sit
 unbooked overnight holding a receipt.

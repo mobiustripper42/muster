@@ -408,19 +408,12 @@ export class StripePaymentPort implements PaymentPort {
    */
   async getSucceededPaymentIntent(paymentIntentId: string): Promise<PaymentSucceeded | null> {
     try {
-      const pi = await this.#stripe.paymentIntents.retrieve(paymentIntentId);
-      if (pi.status !== "succeeded") return null;
-      return {
-        paymentIntentId: pi.id,
-        amountReceivedCents: pi.amount_received,
-        currency: pi.currency,
-        metadata: pi.metadata ?? {},
-        ...paymentMethodOf(pi),
-      };
+      return await this.readPaymentIntentSucceeded(paymentIntentId);
     } catch (e) {
       // `null` reads as "not a succeeded payment", and a Stripe outage produces the same
       // answer as a genuinely unpaid intent. The caller cannot tell those apart and does
-      // not need to; this line is the only thing that ever will.
+      // not need to; this line is the only thing that ever will. (The reconciler needs to,
+      // and asks `readPaymentIntentSucceeded` instead.)
       logSwallowed(
         "stripe:getSucceededPaymentIntent",
         e,
@@ -428,6 +421,23 @@ export class StripePaymentPort implements PaymentPort {
       );
       return null;
     }
+  }
+
+  /**
+   * The read behind `getSucceededPaymentIntent`, with the catch left off (issue #1236): `null` only
+   * when Stripe answered and the intent has not succeeded; a failed retrieve, or an id Stripe does
+   * not know, throws.
+   */
+  async readPaymentIntentSucceeded(paymentIntentId: string): Promise<PaymentSucceeded | null> {
+    const pi = await this.#stripe.paymentIntents.retrieve(paymentIntentId);
+    if (pi.status !== "succeeded") return null;
+    return {
+      paymentIntentId: pi.id,
+      amountReceivedCents: pi.amount_received,
+      currency: pi.currency,
+      metadata: pi.metadata ?? {},
+      ...paymentMethodOf(pi),
+    };
   }
 
   async getPaymentIntentState(paymentIntentId: string): Promise<PaymentIntentState> {

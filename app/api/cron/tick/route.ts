@@ -5,6 +5,7 @@ import { tick, type TickResult } from "@core/builder/tick.js";
 import { HANDLED_EVENT_TYPES, StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { chargeDueBalances } from "@core/reservations/balance-charge.js";
 import { finishUnfinishedRefunds } from "@core/reservations/refund-payment.js";
+import { reconcileLapsedCheckouts } from "@core/reservations/reconciler.js";
 import { alertThatNeverThrows } from "@core/reservations/booking-webhook.js";
 import { monitorWebhookEndpoint } from "@core/reservations/webhook-health.js";
 import { getRepo } from "../../../lib/repo";
@@ -13,6 +14,7 @@ import { tellCustomerOfCancel } from "../../../lib/cancel-notice";
 import { forwardFormNotices, relayAsks } from "../../../lib/channel";
 import { alertMoneyProblem, forwardBoardAlerts, forwardFormationFailures } from "../../../lib/alert";
 import { appBaseUrl } from "../../../lib/base-url";
+import { bookingDeps } from "../../../lib/booking-deps";
 import { runWaiverReminders } from "../../../lib/waiver-reminders";
 
 /**
@@ -240,6 +242,30 @@ export async function GET(req: Request) {
     console.error("tick: the refund pass could not run — no unfinished refund was finished this tick", e);
   }
 
+  // **The reconciler (issue #1236)** — each timed-out public checkout with a payment started is asked
+  // about once; a paid one is booked through the one confirm, and one Muster cannot get an answer for
+  // 2 hours past its window is texted to every admin. `reconcileLapsedCheckouts` holds the rules.
+  //
+  // ABOVE the pause gate, beside the refund pass, for the same reason: pausing the engine means "stop
+  // asking people to work", never "leave a customer who paid unbooked". Dark without Stripe keys, its
+  // four counts 0. Best-effort like every leg here, and the job counts each checkout it could not
+  // finish.
+  let checkouts = { confirmed: 0, nothingPaid: 0, alerted: 0, errors: 0 };
+  try {
+    const secretKey = process.env.STRIPE_SECRET_KEY;
+    if (secretKey) {
+      checkouts = await reconcileLapsedCheckouts(bookingDeps(secretKey, process.env.STRIPE_WEBHOOK_SECRET ?? ""));
+    }
+  } catch (e) {
+    console.error("tick: the reconciler could not run — no timed-out checkout was looked at this tick", e);
+  }
+  const checkoutCounts = {
+    checkoutsConfirmed: checkouts.confirmed,
+    checkoutsNothingPaid: checkouts.nothingPaid,
+    checkoutsAlerted: checkouts.alerted,
+    checkoutErrors: checkouts.errors,
+  };
+
   if (await repo.isEnginePaused()) {
     return NextResponse.json({
       ok: true,
@@ -253,6 +279,7 @@ export async function GET(req: Request) {
       refundsShort: refunds.short,
       refundsAlerted: refunds.alerted,
       refundErrors: refunds.errors,
+      ...checkoutCounts,
       webhookChecked,
       webhookHealthy,
       remindersSent,
@@ -344,6 +371,7 @@ export async function GET(req: Request) {
     refundsShort: refunds.short,
     refundsAlerted: refunds.alerted,
     refundErrors: refunds.errors,
+    ...checkoutCounts,
     shiftsFormed,
     formFailures,
     formFailuresAlerted,

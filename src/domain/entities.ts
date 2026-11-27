@@ -25,6 +25,7 @@ import type {
   OfferingId,
   PaymentId,
   PtoWindowId,
+  RefundRecordId,
   ReservationId,
   SmsConsentId,
   RoleTypeId,
@@ -972,6 +973,59 @@ export interface Payment {
   refundedCents?: number;
   /** ISO-8601 UTC. */
   createdAt: string;
+}
+
+// ── Refund records (issue #1278) ────────────────────────────────────────────
+
+/** One leg of a refund record: which PaymentIntent gives back how many cents. */
+export interface RefundLeg {
+  paymentIntentId: string;
+  /** Absent on a sold-out leg, whose charge has no payment row. */
+  paymentId?: PaymentId;
+  cents: number;
+  /** The payment's refunded total after this leg. Fixed when the legs are planned; absent on a
+   *  sold-out leg. */
+  refundedTotalCents?: number;
+  refundId?: string;
+  outcome?: "moved" | "refused" | "failed_later";
+  failedAt?: string;
+}
+
+/** The row written before Stripe is asked for a refund (issue #1278). */
+export interface RefundRecord {
+  id: RefundRecordId;
+  reservationId: ReservationId;
+  reason: "customer_cancel" | "operator_cancel" | "operator_refund" | "sold_out";
+  actorKind: "customer" | "admin" | "engine";
+  actorId?: string;
+  askedCents: number;
+  /** The terms' figure on an operator cancel. */
+  quotedCents?: number;
+  expectedRefundedCents?: number;
+  movedCents: number;
+  state: "unfinished" | "whole" | "short";
+  shortReason?: string;
+  createdAt: string;
+  claimedAt: string;
+  finishedAt?: string;
+  noticeClaimedAt?: string;
+  noticeSentAt?: string;
+  legs: RefundLeg[];
+}
+
+/** What a caller gives to insert a refund record; the repository fills the rest. */
+export interface NewRefundRecord {
+  id: RefundRecordId;
+  reservationId: ReservationId;
+  reason: RefundRecord["reason"];
+  actorKind: RefundRecord["actorKind"];
+  actorId?: string;
+  askedCents: number;
+  quotedCents?: number;
+  expectedRefundedCents?: number;
+  createdAt: string;
+  /** Given only by the sold-out path, which inserts the record and its one leg in one write. */
+  legs?: RefundLeg[];
 }
 
 // ── Shift + Seat ────────────────────────────────────────────────────────────

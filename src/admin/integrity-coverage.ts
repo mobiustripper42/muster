@@ -92,7 +92,10 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   // ── Foreign-keyed: Postgres will not let these dangle ────────────────────
   payments: { kind: "fk", refs: ["reservation_id"] },
   gratuity: { kind: "fk", refs: ["reservation_id", "event_id"] },
-  refund_leases: { kind: "fk", refs: ["reservation_id"] },
+  // The refund record and its legs (issue #1278). A leg's `payment_id` is deliberately un-FK'd: a sold-out
+  // leg has none, and the PaymentIntent id beside it is what Stripe is asked about.
+  refund_records: { kind: "fk", refs: ["reservation_id"] },
+  refund_legs: { kind: "fk", refs: ["record_id"] },
   offerings: { kind: "fk", refs: ["location_id"] },
   blocks: { kind: "fk", refs: ["vessel_id", "location_id"] },
   customers: { kind: "exempt", reason: "parent table — no outgoing references. It is the target of reservations_customer_id_fkey, not the holder of one." },

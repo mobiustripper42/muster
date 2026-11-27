@@ -114,4 +114,15 @@ describe("customerCancelledEmail — the customer cancelled a paid booking from 
     expect(mail.text).not.toContain("NOT released");
     expect(mail.subject).toBe(`Cancelled by the customer — ${base.customerName} (${base.tripLabel})`);
   });
+
+  it("issue #1278 AC9: a refund still being checked keeps the whole refund's subject, and states the figure in a line of its own", () => {
+    const checking = customerCancelledEmail({ ...base, refund: { kind: "checking", cents: 41240 } });
+    const issued = customerCancelledEmail({ ...base, refund: { kind: "issued", cents: 41240 } });
+    const failed = customerCancelledEmail({ ...base, refund: { kind: "failed", cents: 41240, movedCents: 0 } });
+
+    expect(checking.subject).toBe(issued.subject);
+    expect(checking.text).toContain(formatCents(41240));
+    expect(checking.text).not.toBe(issued.text);
+    expect(checking.text).not.toBe(failed.text);
+  });
 });

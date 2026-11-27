@@ -107,7 +107,7 @@ export async function forwardFormationFailures(
  * not. The log line is written first and unconditionally for exactly this reason, and it was
  * already the floor for a Twilio-dark deploy and a repo outage.
  */
-export async function alertMoneyProblem(message: string): Promise<void> {
+export async function alertMoneyProblem(message: string, href?: string): Promise<void> {
   console.error(`[reservations] ${message}`);
   try {
     const repo = getRepo();
@@ -116,7 +116,9 @@ export async function alertMoneyProblem(message: string): Promise<void> {
     // floor, written first and unconditionally — but the message itself now also reaches the
     // console with its recipients and body, rather than only the summary line.
     const { channel } = makeSmsChannel(linkBase);
-    const sent = await forwardMoneyAlert(repo, channel, message, `${linkBase}/admin/purchases`);
+    // Where the text points. A refund alert passes its booking's page (issue #1278); everything else
+    // reaches Purchases, as it always has.
+    const sent = await forwardMoneyAlert(repo, channel, message, `${linkBase}${href ?? "/admin/purchases"}`);
     if (sent === 0) console.error("[reservations] money alert reached NO admin (none reachable)");
   } catch (e) {
     console.error("[reservations] money alert failed to send", e);

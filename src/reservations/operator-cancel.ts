@@ -10,7 +10,7 @@
 import { randomUUID } from "node:crypto";
 import { zonedWallClockToInstant } from "../config/tenant.js";
 import type { FormResult } from "../builder/form-shifts.js";
-import type { CancelledBy } from "../domain/entities.js";
+import type { CancelledBy, NewRefundRecord, Payment } from "../domain/entities.js";
 import { asId, type ReservationId } from "../domain/ids.js";
 import { logSwallowed } from "../log.js";
 import type { PaymentPort } from "../ports/payment.js";
@@ -25,7 +25,7 @@ import {
 } from "./cancel-notice.js";
 import { cancelReservation, quoteCancelRefund, type CancelQuote } from "./cancel-reservation.js";
 import { parseDollarsToCents } from "./dollars.js";
-import { refundReservation } from "./refund-payment.js";
+import { refundableTotalFor, sendRefundRecord } from "./refund-payment.js";
 import { recordTrail } from "./trail.js";
 
 export interface OperatorCancelDeps {
@@ -36,6 +36,9 @@ export interface OperatorCancelDeps {
   /** A cancel collapses the shift, and the crew on it have to be TOLD (DEC-084/#244). */
   relayFormNotices?: (f: FormResult) => Promise<void>;
   tellCustomer?: TellCustomer;
+  /** Text every active admin, with a link when there is one (issue #1278): a refund that fell short
+   *  or was never confirmed, when no redirect is there to say so. */
+  alert: (message: string, href?: string) => Promise<void>;
 }
 
 export interface OperatorCancelInput {
@@ -59,7 +62,15 @@ export interface OperatorCancelResult {
  * confirm's box holds, or the published-terms figure for the reason posted when it is blank.
  *
  * Writes the reservation AND its event to `cancelled`, in one save, which is what actually frees the boat. See
- * `cancelReservation` for why both. Never rejects.
+ * `cancelReservation` for why both. **The same save writes the refund it owes** (issue #1278): a record,
+ * unfinished, so a cancel never commits with its refund lost. The press then sends that record. Never
+ * rejects.
+ *
+ * **The figure is settled BEFORE the cancel.** A typed amount that is not money, or more than the
+ * booking can give back, is refused with nothing cancelled (AC3), because the record cannot be written
+ * for it. Everything else cancels (AC31): when the refund then cannot be sent — a stale token, a
+ * charge with no PaymentIntent — the record is closed short and the redirect says why, and an admin
+ * refunds by hand.
  */
 export async function cancelByOperator(
   deps: OperatorCancelDeps,
@@ -80,6 +91,81 @@ export async function cancelByOperator(
     return { params: told ? { ...params, told } : params, draft };
   };
 
+  // ── The figure, settled before anything is cancelled (issue #1278, AC3) ─────────
+  //
+  // **The amount is computed HERE when the box is blank**, from the reason actually posted. That
+  // is not a convenience, it is the correctness argument for the whole design: with no client JS
+  // a prefilled box cannot follow the radio, so a prefill would let "We cancelled" refund at the
+  // customer rate whenever the operator didn't retype. A blank box has no wrong value to carry.
+  //
+  // The published-terms figure is computed on BOTH paths. It is the refund amount when the operator
+  // typed nothing, and the COMPARISON when they did — the record carries it so the delta is readable
+  // later without recomputing terms that may since have changed (issue #1050).
+  //
+  // **Read from the booking's own trip**, not from the trip the cancel freed: the cancel's write now
+  // carries the record, so the figure has to exist before it, and a trip another booking still holds
+  // used to read as "no figure" and refund nothing.
+  //
+  // No event ⇒ no departure instant ⇒ no notice window, so the figure cannot be derived at all.
+  // Cancel stands; the operator refunds by hand from the box, and the record simply has no
+  // `quotedCents` — which means "there was no policy figure", not "it matched". A failed read is
+  // the same answer: `null`. The quote is kept whole so the notice can read what was paid.
+  const typed = input.typedAmount.trim();
+  let quote: CancelQuote | null = null;
+  let payments: Payment[] | null = null;
+  try {
+    payments = await deps.repo.listPaymentsForReservation(reservationId);
+    const row = await deps.repo.getReservation(reservationId);
+    const event = row?.eventId ? await deps.repo.getEvent(row.eventId) : null;
+    if (event) {
+      quote = quoteCancelRefund({
+        by,
+        payments,
+        departureAt: zonedWallClockToInstant(event.date, event.time),
+        now: new Date(deps.now()),
+        // What the customer bought (16.8): insurance makes it 72 hours and no $50, keeping itself.
+        insurance: insuranceOf(row?.invoice),
+      });
+    }
+  } catch (e) {
+    logSwallowed("reservations:cancelByOperator", e, "no published-terms figure; the operator refunds by hand");
+  }
+  const quotedCents = quote ? quote.refundCents : null;
+
+  let refundCents: number | null;
+  if (typed === "") {
+    refundCents = quotedCents;
+  } else {
+    const parsed = parseDollarsToCents(typed);
+    // Nothing is cancelled for an amount that is not money, or that no record could ask for: the
+    // confirm screen comes back with what was typed, and the customer is told nothing.
+    if (parsed === null) return { params: { cancelErr: "invalid_amount" }, draft: "stash" };
+    // The ceiling is the number the plan is checked against.
+    if (payments !== null && parsed > refundableTotalFor(payments)) {
+      return { params: { cancelErr: "exceeds_refundable" }, draft: "stash" };
+    }
+    refundCents = parsed;
+  }
+
+  // The record this cancel owes. Zero is a legitimate outcome, not a failure: inside the 14-day window
+  // the published terms owe nothing, and the operator can type 0 to cancel without refunding. The
+  // exits with no Stripe keys or no usable token write no record and cancel all the same (AC31).
+  const expectedRaw = input.expectedRefunded;
+  const owedRefund: NewRefundRecord | null =
+    refundCents !== null && refundCents > 0 && deps.payments && /^\d+$/.test(expectedRaw)
+      ? {
+          id: asId<"RefundRecordId">(`rr_${randomUUID()}`),
+          reservationId,
+          reason: "operator_cancel",
+          actorKind: "admin",
+          actorId: adminId,
+          askedCents: refundCents,
+          ...(quotedCents !== null ? { quotedCents } : {}),
+          expectedRefundedCents: Number(expectedRaw),
+          createdAt: deps.now(),
+        }
+      : null;
+
   let result: Awaited<ReturnType<typeof cancelReservation>>;
   try {
     // `by` is what the confirm asked and what the refund branched on; since #724 it is also
@@ -98,6 +184,7 @@ export async function cancelByOperator(
       },
       reservationId,
       by,
+      ...(owedRefund ? [owedRefund] : []),
     );
   } catch (e) {
     // The write that cancels the booking and frees its boat is one transaction, and everything after
@@ -109,8 +196,13 @@ export async function cancelByOperator(
 
   if (!result.ok) {
     // Nothing was cancelled, so the confirm screen comes back — with `by` reset to its first
-    // option, which is a different refund quote than the one the operator picked.
-    return { params: { cancelErr: result.reason }, draft: "stash" };
+    // option, which is a different refund quote than the one the operator picked. A booking with a
+    // refund still being checked is refused by name (AC30): the record the cancel would owe is the
+    // one thing the write cannot add.
+    return {
+      params: { cancelErr: result.reason === "refund_unfinished" ? "unfinished" : result.reason },
+      draft: "stash",
+    };
   }
 
   // **This press cancelled nothing** (PR #1214 review): the booking already was. It lost a race to
@@ -143,159 +235,62 @@ export async function cancelByOperator(
 
   // ── and refund, in the same press (operator, 2026-08-10) ────────────────────
   //
-  // **The amount is computed HERE when the box is blank**, from the reason actually posted. That
-  // is not a convenience, it is the correctness argument for the whole design: with no client JS
-  // a prefilled box cannot follow the radio, so a prefill would let "We cancelled" refund at the
-  // customer rate whenever the operator didn't retype. A blank box has no wrong value to carry.
-  //
   // Ordering is deliberate: the cancellation is already committed above and is NOT rolled back if
   // the refund fails. Freeing the boat and telling the crew is the urgent half and it is correct
   // on its own; money that did not move can be moved on the next press, from a page that now
   // shows what is still owed. The reverse — refunding and then failing to cancel — would leave a
   // refunded customer holding a boat.
-  const typed = input.typedAmount.trim();
-
-  // The published-terms figure, computed on BOTH paths. It is the refund amount when the operator
-  // typed nothing, and the COMPARISON when they did — `refund_issued_by_operator` carries it so the
-  // delta is readable later without recomputing terms that may since have changed (issue #1050).
-  //
-  // No event ⇒ no departure instant ⇒ no notice window, so the figure cannot be derived at all.
-  // Cancel stands; the operator refunds by hand from the box, and the trail row simply has no
-  // `quotedCents` — which means "there was no policy figure", not "it matched". A failed read is
-  // the same answer: `null`. The quote is kept whole so the notice can read what was paid.
-  let quote: CancelQuote | null = null;
-  try {
-    const payments = await deps.repo.listPaymentsForReservation(reservationId);
-    const event = result.freedEventId ? await deps.repo.getEvent(result.freedEventId) : null;
-    const row = await deps.repo.getReservation(reservationId);
-    if (event) {
-      quote = quoteCancelRefund({
-        by,
-        payments,
-        departureAt: zonedWallClockToInstant(event.date, event.time),
-        now: new Date(deps.now()),
-        // What the customer bought (16.8): insurance makes it 72 hours and no $50, keeping itself.
-        insurance: insuranceOf(row?.invoice),
-      });
+  if (!owedRefund) {
+    if (refundCents === null || refundCents <= 0) {
+      return cancelled({ cancelled: by }, "clear", noRefundSentNotice(quote));
     }
-  } catch (e) {
-    logSwallowed("reservations:cancelByOperator", e, "no published-terms figure; the operator refunds by hand");
-  }
-  const quotedCents = quote ? quote.refundCents : null;
-
-  let refundCents: number | null = null;
-  if (typed === "") {
-    refundCents = quotedCents;
-  } else {
-    const parsed = parseDollarsToCents(typed);
-    // The cancel HAPPENED. A bad amount cannot undo it, so this reports the cancel as done and
-    // the refund as not attempted — never a bare `invalid_amount` that reads like nothing ran.
-    if (parsed === null) {
-      // The cancel already COMMITTED, so the confirm screen this was typed on is gone — the
-      // figure has to survive into the standalone refund box or it is lost. That box prefills,
-      // so losing it shows a plausible WRONG number rather than an empty field (#780).
-      return cancelled({ cancelled: by, refundErr: "invalid_amount" }, "stash", { kind: "pending" });
+    if (!deps.payments) {
+      return cancelled({ cancelled: by, refundErr: "stripe_not_configured" }, "stash", { kind: "pending" });
     }
-    refundCents = parsed;
-  }
-
-  // Zero is a legitimate outcome, not a failure: inside the 14-day window the published terms owe
-  // nothing, and the operator can type 0 to cancel without refunding.
-  if (refundCents === null || refundCents <= 0) {
-    return cancelled({ cancelled: by }, "clear", noRefundSentNotice(quote));
-  }
-
-  if (!deps.payments) {
-    return cancelled({ cancelled: by, refundErr: "stripe_not_configured" }, "stash", { kind: "pending" });
-  }
-  const expectedRaw = input.expectedRefunded;
-  if (!/^\d+$/.test(expectedRaw)) {
     return cancelled({ cancelled: by, refundErr: "stale" }, "stash", { kind: "pending" });
   }
+  // (`deps.payments` is present: it is what let the record be owed.)
 
-  let refund: Awaited<ReturnType<typeof refundReservation>>;
-  try {
-    refund = await refundReservation(
-      { repo: deps.repo, payments: deps.payments, now: deps.now },
-      reservationId,
-      refundCents,
-      Number(expectedRaw),
-    );
-  } catch (e) {
-    // Money path, and the ambiguous half: the booking may already be cancelled
-    // while the refund is not, which is exactly what `cancelled: by` in the
-    // redirect is admitting.
-    logSwallowed("reservations:cancelByOperator", e, "the refund leg of cancel-and-refund did not complete");
-    return cancelled({ cancelled: by, refundErr: "unreachable" }, "leave", { kind: "pending" });
-  }
-
-  if (!refund.ok) {
-    if (refund.reason === "provider_error") {
-      console.error(
-        `[reservations] cancel+refund of ${refundCents}c on ${reservationId} failed partway ` +
-          `(${refund.refundedCents}c did move): ${refund.message}`,
-      );
-      // The partial failure, recorded where the lease is already released (issue #1050).
-      // `payments.refunded_cents` will show what moved and nothing else would ever say the
-      // operator asked for more and did not get it.
-      await recordTrail(trailDeps, {
-        // **A fresh id per attempt, not a derived one** (`/security-review`). The CAS token
-        // is the refunded TOTAL, and a `provider_error` that moved zero cents leaves it
-        // unchanged — so two consecutive zero-movement failures derived the same id and the
-        // second was dropped by `on conflict do nothing`. "It failed twice" is exactly the
-        // fact an operator needs and it was the one being discarded.
-        //
-        // Determinism is a WEBHOOK property: it exists so a Stripe redelivery collides
-        // instead of duplicating. An operator action has no redelivery, and a double-submit
-        // writing two audit rows is the right failure direction for a log.
-        id: asId<"TrailEventId">(`refund_failed:${reservationId}:${randomUUID()}`),
-        reservationId,
-        actorKind: "admin",
-        actorId: adminId,
-        type: "refund_failed",
-        metadata: { actualCents: refund.refundedCents, reason: refund.message },
-      });
-      // CLEAR, not stash — the opposite of every other refusal here, and deliberately (#780).
-      // Money PARTIALLY moved. Re-offering the figure the operator typed is the one thing this
-      // screen's own copy tells them not to do ("retrying the full amount would refund that
-      // {moved} twice"). Dropping the draft falls the box back to the recomputed refundable,
-      // which already accounts for what went through.
-      return cancelled(
-        { cancelled: by, refundErr: "provider_error", refunded: String(refund.refundedCents) },
-        "clear",
-        refund.refundedCents > 0
-          ? { kind: "partial", movedCents: refund.refundedCents, cents: refundCents }
-          : { kind: "pending" },
-      );
-    }
-    // Nothing moved on these (`no_payment_intent`, `not_muster`, …), so the operator's figure
-    // still stands and is worth keeping.
-    return cancelled({ cancelled: by, refundErr: refund.reason }, "stash", { kind: "pending" });
-  }
-
-  // The trail, AFTER the money moved and after the cancel committed — never before either
-  // (issue #1050). `quotedCents` is present here and absent on the standalone refund box,
-  // which is the whole reason this event is named for what the operator did rather than for
-  // a comparison: on this path there IS a published-terms figure to compare against.
-  await recordTrail(trailDeps, {
-    // `expectedRaw` is the compare-and-swap token — the refunded total this screen was
-    // rendered against — so it is stable across a retry of THIS operation and different for
-    // every subsequent one. Keying on the amount alone collided: two $50 goodwill refunds on
-    // one booking produced the same id and `on conflict do nothing` silently dropped the
-    // second row, which is the one thing this table exists to prevent (`@code-review`).
-    id: asId<"TrailEventId">(`refund_issued_by_operator:${reservationId}:${expectedRaw}`),
-    reservationId,
-    actorKind: "admin",
-    actorId: adminId,
-    type: "refund_issued_by_operator",
-    metadata: {
-      actualCents: refund.refundedCents,
-      ...(quotedCents !== null ? { quotedCents } : {}),
-      reason: "cancel-and-refund",
+  // The send tells the customer itself, once, claimed on the record (AC15): the notice carries the
+  // outcome, and a press whose refund may or may not have moved tells nobody yet.
+  const sent = await sendRefundRecord(
+    {
+      repo: deps.repo,
+      payments: deps.payments!,
+      now: deps.now,
+      alert: deps.alert,
+      ...(deps.tellCustomer ? { tellCustomer: deps.tellCustomer } : {}),
     },
-  });
-  return cancelled({ cancelled: by, refunded: String(refund.refundedCents) }, "clear", {
-    kind: "issued",
-    cents: refund.refundedCents,
-  });
+    owedRefund.id,
+    "press",
+  );
+  const withTold = (params: Record<string, string>): Record<string, string> =>
+    "told" in sent && sent.told ? { ...params, told: sent.told } : params;
+
+  if (sent.state === "whole") {
+    return { params: withTold({ cancelled: by, refunded: String(sent.movedCents) }), draft: "clear" };
+  }
+  if (sent.state === "unknown") {
+    // Whether it moved is not known, so this is never `unreachable` or `provider_error`: the record
+    // is unfinished and the job asks Stripe.
+    return { params: { cancelled: by, refundErr: "unknown" }, draft: "clear" };
+  }
+  if (sent.cause === "plan_refused") {
+    // Nothing moved on these (`no_payment_intent`, a stale token), so the operator's figure still
+    // stands and is worth keeping.
+    return { params: withTold({ cancelled: by, refundErr: sent.reason }), draft: "stash" };
+  }
+  console.error(
+    `[reservations] cancel+refund of ${owedRefund.askedCents}c on ${reservationId} failed partway ` +
+      `(${sent.movedCents}c did move): ${sent.reason}`,
+  );
+  // CLEAR, not stash — the opposite of every other refusal here, and deliberately (#780).
+  // Money may have PARTIALLY moved. Re-offering the figure the operator typed is the one thing this
+  // screen's own copy tells them not to do ("retrying the full amount would refund that
+  // {moved} twice"). Dropping the draft falls the box back to the recomputed refundable,
+  // which already accounts for what went through.
+  return {
+    params: withTold({ cancelled: by, refundErr: "provider_error", refunded: String(sent.movedCents) }),
+    draft: "clear",
+  };
 }

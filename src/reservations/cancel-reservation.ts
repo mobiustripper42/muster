@@ -27,7 +27,7 @@ import { formShifts, type FormResult } from "../builder/form-shifts.js";
 import { logFormAudit } from "../oracle/audit-log.js";
 import { logSwallowed } from "../log.js";
 import { eventIdOfBooked, isBooked } from "../domain/entities.js";
-import type { CancelledBy, Payment } from "../domain/entities.js";
+import type { CancelledBy, NewRefundRecord, Payment } from "../domain/entities.js";
 import { asId, type EventId, type ReservationId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
@@ -131,6 +131,9 @@ export type CancelOutcome =
         | "reservation_missing"
         | "not_muster"
         | "not_booked"
+        /** The booking has an unfinished refund (issue #1278, AC30): the cancel would owe another,
+         *  so nothing was cancelled, released or recorded. */
+        | "refund_unfinished"
         /** An operator's unpaid booking that the customer paid for while the cancel was in
          *  flight (16.1). It is an ordinary booking now; cancelling it is the booked path's job,
          *  with its refund, and the operator has to choose that knowingly. */
@@ -253,6 +256,9 @@ export async function cancelReservation(
   deps: CancelDeps,
   reservationId: ReservationId,
   by: CancelledBy,
+  /** The refund this cancel owes (issue #1278): inserted unfinished in the same write as the cancel,
+   *  so a cancel never commits with its refund lost. Absent for a cancel that owes none. */
+  owedRefund?: NewRefundRecord,
 ): Promise<CancelOutcome> {
   const reservation = await deps.repo.getReservation(reservationId);
   if (!reservation) return { ok: false, reason: "reservation_missing" };
@@ -283,7 +289,12 @@ export async function cancelReservation(
   // **A throw is thrown.** The write is one transaction, so a throw means neither row changed and
   // the caller can say so. (A connection that dropped after the commit is the caller's to read
   // back; `cancelByCustomer` does.)
-  const written = await deps.repo.cancelBookingAndRelease(reservationId, eventId, by, deps.now());
+  const written = owedRefund
+    ? await deps.repo.cancelBookingAndRelease(reservationId, eventId, by, deps.now(), owedRefund)
+    : await deps.repo.cancelBookingAndRelease(reservationId, eventId, by, deps.now());
+  // A booking with an unfinished refund refuses a cancel that would owe another (issue #1278, AC30).
+  // Nothing was written; an already-cancelled booking carries no `refused` and is answered below.
+  if (written.refused) return { ok: false, reason: "refund_unfinished" };
   if (!written.cancelled) return { ok: true, alreadyCancelled: true };
   const freedEventId: EventId | undefined = written.released ? eventId : undefined;
 

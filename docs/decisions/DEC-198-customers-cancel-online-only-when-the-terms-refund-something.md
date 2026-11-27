@@ -3,7 +3,7 @@ schema: 1
 id: DEC-198
 title: "Customers cancel online only when the terms refund something"
 topic: "Reservations & payments"
-status: "active"
+status: "superseded"
 date: "2026-10-31"
 ruling: "A customer may cancel from the booking page only when the published terms would refund them something; the cancel and the refund happen in one press. Otherwise it stays a request to the operator."
 claims:
@@ -17,6 +17,7 @@ claims:
     target: "app/b/[code]/actions.ts"
 supersedes:
   - DEC-135
+superseded_by: DEC-204
 revisit_if: "The operator wants cancels inside the window handled online, or Xola or unpaid phone bookings get a self-service cancel"
 amends_spec:
   - section: "2.8"
@@ -37,5 +38,5 @@ Supersedes DEC-135, whose condition (insurance being sellable) fired. Issue #107
   nothing is cancelled.
 - **One press moves money once:** only the press that cancelled refunds.
 - **Tax is the operator's.** The refund is everything paid less the one published deduction.
-- **Other trips are rows, never links.** A link carries that booking's own code, so one code would
+- **Other trips are rows, never links.** A link carries the booking's code, so one code would
   open every booking of the contact (issue #1213).

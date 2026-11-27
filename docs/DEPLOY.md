@@ -343,6 +343,7 @@ Muster's webhook handles these event types:
 | `charge.dispute.created` | **a chargeback or an inquiry opened (issue #723)** |
 | `charge.dispute.updated` | **its status moved — including an inquiry BECOMING a real dispute** |
 | `charge.dispute.closed` | **won or lost** |
+| `refund.failed` | **a refund failed at the customer's bank (issue #1278, DEC-204)** |
 
 The **local** listener (`stripe listen`) forwards everything, so all of this reconciles in dev
 whether or not anyone thought about it. **A production endpoint subscribes to an explicit list**,
@@ -359,14 +360,22 @@ dispute can open as a `warning_*` inquiry where no money has moved and only late
 that transition arrives on `updated`. Subscribe to `created` and `closed` alone and Muster records
 the harmless inquiry and never learns the funds actually left.
 
+**`refund.failed` is not optional either, in test and in live.** A refund Muster sent can fail at the
+customer's bank days later and the money comes back to the account. Muster names the refund record in
+the refund's metadata, and this event is how it learns: it marks that leg failed, lowers its own
+refunded total by the failed cents, and texts every active admin. Without it the booking keeps reading
+refunded for money that is not. The endpoint check (`src/reservations/webhook-health.ts`) texts the
+admins when it is missing from the endpoint.
+
 Nothing in the repo can verify the subscription list (#544). It has to be read off the dashboard.
 
 **Not subscribed, deliberately: `charge.refund.updated`.** A card refund can fail at the bank days
 later, at which point Stripe *decrements* `amount_refunded` and emits that event. Muster's
-`markPaymentRefunded` only ever ratchets upward (`greatest()`), so a reversed refund would be
-recorded permanently as money returned that in fact came back. Low likelihood on cards and
-deliberately out of scope for #616 — but if a reversal ever happens, the payment row needs
-correcting by hand.
+`markPaymentRefunded` only ever ratchets upward (`greatest()`), so that event could never lower a
+total. Muster's own refunds do not need it: they are covered by `refund.failed` above, which names the
+refund record and lowers the total itself. What stays by hand is a refund made in the Stripe
+dashboard: it carries no record, so `refund.failed` ignores it, and if the bank reverses it the
+payment row needs correcting by hand.
 
 ### Test it once in production, with real money
 

@@ -14,6 +14,7 @@ import Stripe from "stripe";
 import { logSwallowed } from "../log.js";
 import { ALLOWED_PAYMENT_METHOD_TYPES } from "../reservations/payment-config.js";
 import {
+  PaymentIndeterminateError,
   PaymentSignatureError,
   type CancelReason,
   type CheckoutSession,
@@ -24,6 +25,7 @@ import {
   type PaymentIntentState,
   type PaymentPort,
   type PaymentSucceeded,
+  type ProviderRefund,
   type RefundInput,
   type WebhookEndpointInfo,
 } from "../ports/payment.js";
@@ -37,7 +39,7 @@ import {
  * adding the string here is a discrepancy visible in one file, by anyone already looking at the
  * code they just changed. Across two files it is invisible.
  *
- * Nine, and the seven beyond the two a booking needs are not decoration — each has a handler in
+ * Ten, and the eight beyond the two a booking needs are not decoration — each has a handler in
  * `booking-webhook.ts`. An endpoint subscribed only to the booking pair would take payments
  * correctly and silently stop recording refunds and disputes.
  */
@@ -51,6 +53,8 @@ export const HANDLED_EVENT_TYPES = [
   "payment_intent.payment_failed",
   "payment_intent.processing",
   "payment_intent.canceled",
+  // A refund that failed at the customer's bank (issue #1278). The operator enables it on the endpoint.
+  "refund.failed",
 ] as const;
 
 /**
@@ -235,6 +239,38 @@ function disputeState(status: Stripe.Dispute.Status): DisputeState {
   return (DISPUTE_STATE as Record<string, DisputeState>)[status] ?? "unknown";
 }
 
+/**
+ * True for the library's `StripeConnectionError` and `StripeAPIError` — the provider gave no answer,
+ * so a refund sent just now may or may not have moved — and for nothing else (issue #1278, AC9).
+ *
+ * A card error, an invalid request (a charge already refunded) and a rate limit are answers: the
+ * provider read the request and refused it, so nothing moved. A rate limit is refused before the
+ * request is acted on, so it is not "no answer" either.
+ * https://docs.stripe.com/error-handling?lang=node
+ */
+export function isIndeterminateStripeError(e: unknown): boolean {
+  return e instanceof Stripe.errors.StripeConnectionError || e instanceof Stripe.errors.StripeAPIError;
+}
+
+const REFUND_STATUSES: readonly ProviderRefund["status"][] = [
+  "pending",
+  "requires_action",
+  "succeeded",
+  "failed",
+  "canceled",
+];
+
+/** A Stripe refund, normalized (issue #1278, AC12). A status Stripe has not named reads `pending`. */
+export function toProviderRefund(refund: Stripe.Refund): ProviderRefund {
+  const status = REFUND_STATUSES.find((s) => s === refund.status) ?? "pending";
+  return {
+    refundId: refund.id,
+    amountCents: refund.amount,
+    status,
+    metadata: (refund.metadata ?? {}) as Record<string, string>,
+  };
+}
+
 export class StripePaymentPort implements PaymentPort {
   readonly #stripe: Stripe;
   readonly #webhookSecret: string;
@@ -300,14 +336,32 @@ export class StripePaymentPort implements PaymentPort {
     // Keyed-idempotent (DEC-107 amended): Stripe dedupes on `idempotencyKey`, so a
     // re-delivered losing-session webhook re-calls with `refund_${sessionId}` and gets the
     // SAME refund back — never a second one. Omit `amount` for a full refund.
-    const refund = await this.#stripe.refunds.create(
-      {
-        payment_intent: input.paymentIntentId,
-        ...(input.amountCents !== undefined ? { amount: input.amountCents } : {}),
-      },
-      { idempotencyKey: input.idempotencyKey },
-    );
+    let refund: Stripe.Refund;
+    try {
+      refund = await this.#stripe.refunds.create(
+        {
+          payment_intent: input.paymentIntentId,
+          ...(input.amountCents !== undefined ? { amount: input.amountCents } : {}),
+          ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+        },
+        { idempotencyKey: input.idempotencyKey },
+      );
+    } catch (e) {
+      // No answer is not "nothing moved" (issue #1278, AC9): the caller must not report it as a
+      // refusal. Everything else is an answer the provider gave, and rethrows as it came.
+      if (isIndeterminateStripeError(e)) {
+        throw new PaymentIndeterminateError(e instanceof Error ? e.message : "no answer from Stripe", { cause: e });
+      }
+      throw e;
+    }
     return { refundId: refund.id };
+  }
+
+  async listRefunds(paymentIntentId: string): Promise<ProviderRefund[]> {
+    const refunds = await this.#stripe.refunds
+      .list({ payment_intent: paymentIntentId, limit: 100 })
+      .autoPagingToArray({ limit: 1000 });
+    return refunds.map(toProviderRefund);
   }
 
   async createPaymentIntent(
@@ -587,6 +641,24 @@ export class StripePaymentPort implements PaymentPort {
           paymentIntentId,
           amountRefundedCents: c.amount_refunded ?? 0,
           currency: c.currency ?? "usd",
+        },
+      };
+    }
+    if (event.type === "refund.failed") {
+      // A refund that failed at the customer's bank (issue #1278, AC24). The metadata is what Muster
+      // put on the refund when it sent it: the record's id. A refund made in the dashboard carries
+      // none, and the handler ignores it.
+      const r = event.data.object as Stripe.Refund;
+      const paymentIntentId = typeof r.payment_intent === "string" ? r.payment_intent : undefined;
+      if (paymentIntentId === undefined) return null;
+      return {
+        stripeEventId: event.id,
+        type: "refund_failed",
+        data: {
+          refundId: r.id,
+          paymentIntentId,
+          amountCents: r.amount,
+          metadata: (r.metadata ?? {}) as Record<string, string>,
         },
       };
     }

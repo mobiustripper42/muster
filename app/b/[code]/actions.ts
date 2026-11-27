@@ -145,6 +145,8 @@ export async function cancelFromManagePage(formData: FormData): Promise<void> {
         relayFormNotices: forwardFormNotices,
         // Tell the customer it is cancelled and what is coming back (issue #1212).
         tellCustomer: tellCustomerOfCancel,
+        // A refund that falls short or is never confirmed is texted to every admin (issue #1278).
+        alert: alertThatNeverThrows(alertMoneyProblem),
       },
       booking.reservation.id,
       { quotedCents: postedCents(formData, "quotedCents"), expectedRefundedCents: postedCents(formData, "expectedRefunded") },

@@ -29,6 +29,12 @@ import { processBookingWebhook } from "@core/reservations/booking-webhook.js";
  * events. `nodejs` runtime — it writes through `pg`.
  */
 export const runtime = "nodejs";
+/**
+ * The longest a delivery may run, in seconds (issue #1278). The sold-out refund is sent from here, and a
+ * refund record a press is still sending is its own for `REFUND_TAKEOVER_AFTER_MS` (5 minutes), which
+ * is above this cap: a delivery is dead 60 seconds after it starts, before the job can take its record.
+ */
+export const maxDuration = 60;
 
 export async function POST(req: Request): Promise<Response> {
   const signature = req.headers.get("stripe-signature");

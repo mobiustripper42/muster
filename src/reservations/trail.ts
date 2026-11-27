@@ -25,12 +25,12 @@
  * throwing is not the same as not interfering.*
  *
  * **Nothing here checks that, and the first draft got it wrong.** `refund_failed` was emitted
- * inside `executeRefundPlan`'s catch, which runs inside the `try` whose `finally` releases the
- * refund lease — so a slow trail write held the lease, and a concurrent refund on the same
- * booking would be refused as `stale` for that extra duration. `@code-review` caught it. The
- * operator-side emit moved to the action layer, where the lease is already released; the
- * engine-side ones in `booking-webhook.ts` were always outside any lock. If you add a call
- * site, this placement is on you — the helper cannot tell you where it was called from.
+ * inside the refund's lock, so a slow trail write held it and a concurrent refund on the same
+ * booking was refused for that extra duration. `@code-review` caught it. Since issue #1278 the
+ * refund's rows are written by `sendRefundRecord` after the legs' results are written and before the
+ * record is finished, with no lock held; the engine-side ones in `booking-webhook.ts` were always
+ * outside any lock. If you add a call site, this placement is on you — the helper cannot tell you
+ * where it was called from.
  *
  * ## The id is the caller's, and it must be deterministic
  *

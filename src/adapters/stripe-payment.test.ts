@@ -18,7 +18,7 @@
 import Stripe from "stripe";
 import { describe, expect, it } from "vitest";
 import { PaymentSignatureError } from "../ports/payment.js";
-import { StripePaymentPort } from "./stripe-payment.js";
+import { HANDLED_EVENT_TYPES, StripePaymentPort, isIndeterminateStripeError, toProviderRefund } from "./stripe-payment.js";
 
 const SECRET = "whsec_test_secret_for_signing_only_not_a_real_key";
 const port = new StripePaymentPort("sk_test_not_a_real_key", SECRET);
@@ -209,5 +209,77 @@ describe("parseEvent — verification (15.12)", () => {
   it("throws on a payload that does not match its signature", () => {
     const [, header] = signed("payment_intent.succeeded", { id: "pi_8" });
     expect(() => port.parseEvent('{"tampered":true}', header)).toThrow(PaymentSignatureError);
+  });
+});
+
+/**
+ * The refund path's pure halves (issue #1278). `refund` and `listRefunds` are network calls, checked
+ * by hand against test mode (AC20, AC21); what they map is checked here.
+ */
+describe("refunds — which errors mean no answer (issue #1278)", () => {
+  it("AC9: a connection error and a Stripe-side error are no answer — the refund may have moved", () => {
+    expect(isIndeterminateStripeError(new Stripe.errors.StripeConnectionError({ message: "socket hang up" }))).toBe(true);
+    expect(isIndeterminateStripeError(new Stripe.errors.StripeAPIError({ message: "internal error" }))).toBe(true);
+  });
+
+  it("AC9: a refusal Stripe answered, and anything that is not a Stripe error, is not", () => {
+    expect(isIndeterminateStripeError(new Stripe.errors.StripeCardError({ message: "declined", code: "card_declined" }))).toBe(false);
+    expect(
+      isIndeterminateStripeError(new Stripe.errors.StripeInvalidRequestError({ message: "charge_already_refunded" })),
+    ).toBe(false);
+    expect(isIndeterminateStripeError(new Stripe.errors.StripeRateLimitError({ message: "slow down" }))).toBe(false);
+    expect(isIndeterminateStripeError(new Error("socket hang up"))).toBe(false);
+    expect(isIndeterminateStripeError("timeout")).toBe(false);
+  });
+});
+
+describe("refunds — a Stripe refund, normalized (issue #1278)", () => {
+  const stripeRefund = (over: Record<string, unknown> = {}) =>
+    ({
+      id: "re_1",
+      object: "refund",
+      amount: 20000,
+      currency: "usd",
+      payment_intent: "pi_1",
+      status: "succeeded",
+      metadata: { refund_record: "rr-1" },
+      ...over,
+    }) as unknown as Stripe.Refund;
+
+  it("AC12: carries the refund's id, amount, status and metadata", () => {
+    expect(toProviderRefund(stripeRefund())).toEqual({
+      refundId: "re_1",
+      amountCents: 20000,
+      status: "succeeded",
+      metadata: { refund_record: "rr-1" },
+    });
+  });
+
+  it.each(["pending", "requires_action", "failed", "canceled"])("AC12: carries the status %s through", (status) => {
+    expect(toProviderRefund(stripeRefund({ status }))).toMatchObject({ status });
+  });
+});
+
+describe("parseEvent — refund.failed (issue #1278)", () => {
+  it("AC24: maps refund.failed with the refund, its intent, its amount and the record its metadata names", () => {
+    expect(
+      parse("refund.failed", {
+        id: "re_9",
+        object: "refund",
+        amount: 20000,
+        currency: "usd",
+        payment_intent: "pi_9",
+        status: "failed",
+        metadata: { refund_record: "rr-9" },
+      }),
+    ).toEqual({
+      stripeEventId: "evt_test",
+      type: "refund_failed",
+      data: { refundId: "re_9", paymentIntentId: "pi_9", amountCents: 20000, metadata: { refund_record: "rr-9" } },
+    });
+  });
+
+  it("AC24: refund.failed is an event the endpoint must be subscribed to", () => {
+    expect(HANDLED_EVENT_TYPES).toContain("refund.failed");
   });
 });

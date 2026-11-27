@@ -207,6 +207,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-201 — Deposits return, with the balance collected automatically
 - DEC-202 — An unfinished balance attempt is reclaimed, under the same key
 - DEC-203 — Cards only: no bank payment, no wallets, no Link
+- DEC-204 — A refund is owed by its record, and the job may send it
 
 ### Check-in & waivers
 - DEC-187 — Check-in & waivers is in scope, specced in its own files that SPEC.md indexes

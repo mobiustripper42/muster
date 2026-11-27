@@ -71,6 +71,12 @@ import {
  */
 
 export const dynamic = "force-dynamic";
+/**
+ * The longest a press may run, in seconds (issue #1278). The refund box and the cancel send their
+ * refund from this page's actions, and a record a press is still sending is its own for
+ * `REFUND_TAKEOVER_AFTER_MS` (5 minutes): above this cap, so the job never takes a live press's record.
+ */
+export const maxDuration = 60;
 
 /**
  * Where the standalone refund box starts (#616), lifted out of the page (#928). In order: right after

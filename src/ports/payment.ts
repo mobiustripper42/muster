@@ -18,6 +18,13 @@
  */
 export class PaymentSignatureError extends Error {}
 
+/**
+ * Thrown by `refund` when the provider gave no answer (issue #1278): a connection failure or a
+ * provider-side error. The refund may or may not have moved. Any other throw from `refund` is a
+ * refusal the provider actually answered.
+ */
+export class PaymentIndeterminateError extends Error {}
+
 export interface CreateCheckoutInput {
   /** Amount to charge now, integer cents (deposit or full — computed by the caller). */
   amountCents: number;
@@ -307,7 +314,24 @@ export type PaymentEvent = {
   | { type: "payment_processing"; data: PaymentProcessing }
   | { type: "refund_recorded"; data: RefundRecorded }
   | { type: "dispute_updated"; data: DisputeUpdated }
+  | { type: "refund_failed"; data: RefundFailed }
 );
+
+/** A verified `refund.failed` event (issue #1278): a refund that failed at the customer's bank. */
+export interface RefundFailed {
+  refundId: string;
+  paymentIntentId: string;
+  amountCents: number;
+  metadata: Record<string, string>;
+}
+
+/** One refund on a PaymentIntent, as the provider reports it (issue #1278). */
+export interface ProviderRefund {
+  refundId: string;
+  amountCents: number;
+  status: "pending" | "requires_action" | "succeeded" | "failed" | "canceled";
+  metadata: Record<string, string>;
+}
 
 export interface RefundInput {
   /** The PaymentIntent to refund (from `CheckoutCompleted.paymentIntentId`). */
@@ -318,6 +342,8 @@ export interface RefundInput {
    *  webhook passes `refund_${sessionId}` (hosted) / `refund_${paymentIntentId}` (Elements)
    *  so a Stripe redelivery of the losing charge is a no-op refund. */
   idempotencyKey: string;
+  /** Carried on the refund at the provider: `{ refund_record: <record id> }` (issue #1278). */
+  metadata?: Record<string, string>;
 }
 
 export interface PaymentPort {
@@ -338,6 +364,8 @@ export interface PaymentPort {
    * (the caller falls back to a loud manual-refund alert — never a silent unrefunded loss).
    */
   refund(input: RefundInput): Promise<{ refundId: string }>;
+  /** Every refund on a PaymentIntent (issue #1278), so the job can find one made under a record. */
+  listRefunds(paymentIntentId: string): Promise<ProviderRefund[]>;
   /**
    * The provider's HOSTED RECEIPT url for a settled payment (#679) — a guest-safe page, not a
    * dashboard link, so it can be shown on `/b/<code>`.

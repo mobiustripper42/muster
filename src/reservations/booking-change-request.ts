@@ -102,6 +102,8 @@ export function customerCancelledUnpaidEmail(input: CustomerCancelledInput): Ope
  *  only that, never the full figure again. */
 function refundLine(refund: CancelRefund, figure: string): string {
   if (refund.kind === "issued") return `Refunded ${figure} to their card.`;
+  // Whether it moved is not known yet (issue #1278): the job is asking Stripe and texts if it fails.
+  if (refund.kind === "checking") return `The refund of ${figure} is still being checked. You’ll get a text if it doesn’t go through.`;
   if (refund.movedCents <= 0) return `The refund of ${figure} did not go through — refund it from the booking.`;
   return (
     `${formatCents(refund.movedCents)} of the ${figure} refund went through; ` +
@@ -119,7 +121,9 @@ export function customerCancelledEmail(
   input: CustomerCancelledInput & { refund: CancelRefund },
 ): OperatorEmail {
   const figure = formatCents(input.refund.cents);
-  const issued = input.refund.kind === "issued";
+  // A refund still being checked keeps the whole refund's subject: nothing needs doing yet, and the
+  // body says what to expect.
+  const issued = input.refund.kind === "issued" || input.refund.kind === "checking";
   const lines = [
     `${input.customerName} cancelled their booking from the booking page.`,
     refundLine(input.refund, figure),

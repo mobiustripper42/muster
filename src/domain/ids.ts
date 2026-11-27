@@ -24,6 +24,8 @@ export type GratuityId = Brand<string, "GratuityId">;
 export type AddOnId = Brand<string, "AddOnId">;
 export type CustomerId = Brand<string, "CustomerId">;
 export type PaymentId = Brand<string, "PaymentId">;
+/** A refund record (issue #1278): the row written before Stripe is asked for a refund. */
+export type RefundRecordId = Brand<string, "RefundRecordId">;
 export type ShiftId = Brand<string, "ShiftId">;
 export type SeatId = Brand<string, "SeatId">;
 export type SmsConsentId = Brand<string, "SmsConsentId">;

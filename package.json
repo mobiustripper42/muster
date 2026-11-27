@@ -28,6 +28,7 @@
     "db:seed:reservation": "tsx db/seed-reservation-dev.ts",
     "db:seed:insurance": "tsx db/seed-insurance-dev.ts",
     "db:seed:self-cancel": "tsx db/seed-self-cancel-dev.ts",
+    "db:seed:refund-states": "tsx db/seed-refund-states-dev.ts",
     "db:seed:past-due": "tsx db/seed-past-due-dev.ts",
     "db:seed:pay-link": "tsx db/seed-pay-link-dev.ts",
     "db:seed:booking-cutoff": "tsx db/seed-booking-cutoff-dev.ts",

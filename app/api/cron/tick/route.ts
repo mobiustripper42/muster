@@ -4,10 +4,12 @@ import { logFormAudit } from "@core/oracle/audit-log.js";
 import { tick, type TickResult } from "@core/builder/tick.js";
 import { HANDLED_EVENT_TYPES, StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { chargeDueBalances } from "@core/reservations/balance-charge.js";
+import { finishUnfinishedRefunds } from "@core/reservations/refund-payment.js";
 import { alertThatNeverThrows } from "@core/reservations/booking-webhook.js";
 import { monitorWebhookEndpoint } from "@core/reservations/webhook-health.js";
 import { getRepo } from "../../../lib/repo";
 import { tellCustomerOfBalanceFailure } from "../../../lib/balance-notice";
+import { tellCustomerOfCancel } from "../../../lib/cancel-notice";
 import { forwardFormNotices, relayAsks } from "../../../lib/channel";
 import { alertMoneyProblem, forwardBoardAlerts, forwardFormationFailures } from "../../../lib/alert";
 import { appBaseUrl } from "../../../lib/base-url";
@@ -214,6 +216,30 @@ export async function GET(req: Request) {
     console.error("tick: the balance charge could not run — no balance was charged this tick", e);
   }
 
+  // **The refund pass (issue #1278)** — every unfinished refund record, asked of Stripe and finished,
+  // or given up after 24 hours with an admin told which booking and how much. `finishUnfinishedRefunds`
+  // holds the rules.
+  //
+  // ABOVE the pause gate, beside the balance charge, for the same reason: pausing the engine means
+  // "stop asking people to work", never "stop finishing a customer's refund". Dark without Stripe keys.
+  // Best-effort like every leg here, and the job counts each record it could not finish. Its alerts and
+  // the customer's cancel notice go through the same lanes a press uses.
+  let refunds = { finished: 0, short: 0, alerted: 0, errors: 0 };
+  try {
+    const secretKey = process.env.STRIPE_SECRET_KEY;
+    if (secretKey) {
+      refunds = await finishUnfinishedRefunds({
+        repo,
+        payments: new StripePaymentPort(secretKey, process.env.STRIPE_WEBHOOK_SECRET ?? ""),
+        now: () => new Date().toISOString(),
+        alert: alertThatNeverThrows(alertMoneyProblem),
+        tellCustomer: tellCustomerOfCancel,
+      });
+    }
+  } catch (e) {
+    console.error("tick: the refund pass could not run — no unfinished refund was finished this tick", e);
+  }
+
   if (await repo.isEnginePaused()) {
     return NextResponse.json({
       ok: true,
@@ -223,6 +249,10 @@ export async function GET(req: Request) {
       balancesDeclined: balances.declined,
       balancesNeedingApproval: balances.needsApproval,
       balanceErrors: balances.errors,
+      refundsFinished: refunds.finished,
+      refundsShort: refunds.short,
+      refundsAlerted: refunds.alerted,
+      refundErrors: refunds.errors,
       webhookChecked,
       webhookHealthy,
       remindersSent,
@@ -310,6 +340,10 @@ export async function GET(req: Request) {
     balancesDeclined: balances.declined,
     balancesNeedingApproval: balances.needsApproval,
     balanceErrors: balances.errors,
+    refundsFinished: refunds.finished,
+    refundsShort: refunds.short,
+    refundsAlerted: refunds.alerted,
+    refundErrors: refunds.errors,
     shiftsFormed,
     formFailures,
     formFailuresAlerted,

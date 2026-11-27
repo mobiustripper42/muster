@@ -7,6 +7,7 @@ import { asId } from "@core/domain/ids.js";
 import { payLinkState } from "@core/reservations/pay-by-link.js";
 import { recordTrail } from "@core/reservations/trail.js";
 import { cancelUnpaidPhoneBooking, type CancelledBy } from "@core/reservations/cancel-reservation.js";
+import { alertThatNeverThrows } from "@core/reservations/booking-webhook.js";
 import { cancelByOperator } from "@core/reservations/operator-cancel.js";
 import {
   parseDollarsToCents,
@@ -19,6 +20,7 @@ import { forwardFormNotices } from "../../../../lib/channel";
 import { reissueBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { resendReservationLink } from "../../../../lib/booking-confirmation";
 import { deliverPaymentLink } from "../../../../lib/payment-link";
+import { alertMoneyProblem } from "../../../../lib/alert";
 import { readSubject } from "../../../../lib/auth";
 import { clearFormDraft, stashFormDraft } from "../../../../lib/form-draft";
 import { getRepo } from "../../../../lib/repo";
@@ -74,7 +76,9 @@ function stripeIfConfigured(): StripePaymentPort | undefined {
 
 /** Every code `cancelPhoneBooking` can put in `?cancelErr=` — the pane's copy table is keyed on it. */
 export type PhoneCancelErr =
-  | Extract<Awaited<ReturnType<typeof cancelUnpaidPhoneBooking>>, { ok: false }>["reason"]
+  // `refund_unfinished` is a booked booking's refusal (issue #1278); an unpaid phone booking owes no
+  // refund, so this entry never produces it.
+  | Exclude<Extract<Awaited<ReturnType<typeof cancelUnpaidPhoneBooking>>, { ok: false }>["reason"], "refund_unfinished">
   | "unreachable";
 
 /**
@@ -194,6 +198,7 @@ export async function cancelBooking(formData: FormData): Promise<void> {
       // A cancel collapses the shift, and the crew on it have to be TOLD (DEC-084/#244).
       relayFormNotices: forwardFormNotices,
       tellCustomer: tellCustomerOfCancel,
+      alert: alertThatNeverThrows(alertMoneyProblem),
     },
     {
       reservationId: asId<"ReservationId">(reservationId),
@@ -282,14 +287,16 @@ export async function refundBooking(formData: FormData): Promise<void> {
         repo: getRepo(),
         payments: new StripePaymentPort(secretKey, webhookSecret),
         now: () => new Date().toISOString(),
+        alert: alertThatNeverThrows(alertMoneyProblem),
       },
       asId<"ReservationId">(reservationId),
       amountCents,
       Number(expectedRaw),
+      { reason: "operator_refund", actorKind: "admin", actorId: subject.id },
     );
   } catch (e) {
-    // Reaching here means the call threw OUTSIDE the provider loop (the loop returns
-    // `provider_error` rather than throwing), so no refund was issued.
+    // Reaching here means the record could not be written, so nothing was sent to the provider
+    // (issue #1278): the send itself never throws, it answers `unknown`. Nothing moved.
     logSwallowed("admin/reservation:refundBooking", e, "no refund was issued");
     redirect(back({ refundErr: "unreachable" }));
   }
@@ -306,49 +313,17 @@ export async function refundBooking(formData: FormData): Promise<void> {
         `[reservations] refund of ${amountCents}c on ${reservationId} failed partway ` +
           `(${result.refundedCents}c did move): ${result.message}`,
       );
-      // The partial failure, recorded where the lease is already released (issue #1050).
-      // `payments.refunded_cents` will show what moved and nothing else would ever say the
-      // operator asked for more and did not get it.
-      await recordTrail(
-        { repo: getRepo(), now: () => new Date().toISOString() },
-        {
-          // **A fresh id per attempt, not a derived one** (`/security-review`). The CAS token
-          // is the refunded TOTAL, and a `provider_error` that moved zero cents leaves it
-          // unchanged — so two consecutive zero-movement failures derived the same id and the
-          // second was dropped by `on conflict do nothing`. "It failed twice" is exactly the
-          // fact an operator needs and it was the one being discarded.
-          //
-          // Determinism is a WEBHOOK property: it exists so a Stripe redelivery collides
-          // instead of duplicating. An operator action has no redelivery, and a double-submit
-          // writing two audit rows is the right failure direction for a log.
-          id: asId<"TrailEventId">(`refund_failed:${reservationId}:${randomUUID()}`),
-          reservationId: asId<"ReservationId">(reservationId),
-          actorKind: "admin",
-          actorId: subject.id,
-          type: "refund_failed",
-          metadata: { actualCents: result.refundedCents, reason: result.message },
-        },
-      );
+      // The history row for it was written by the send (issue #1278), with what moved and why.
       redirect(back({ refundErr: "provider_error", refunded: String(result.refundedCents) }));
     }
+    // Includes `unknown` (it may have moved: the job is asking Stripe) and `unfinished` (the booking's
+    // earlier refund is still being checked, so nothing was sent).
     redirect(back({ refundErr: result.reason }));
   }
-  // **No `quotedCents` here, and that is the point of the rename** (issue #1050). This box is
-  // reached on a booking that may not be cancelled at all, so there is no `CancelledBy` and no
-  // notice window — `quoteCancelRefund` has nothing to compute from. An absent quote means
-  // "there was no policy figure to compare against", never "the operator matched it".
-  await recordTrail(
-    { repo: getRepo(), now: () => new Date().toISOString() },
-    {
-      // Keyed on the CAS token, not the amount — see the cancel path for the collision.
-      id: asId<"TrailEventId">(`refund_issued_by_operator:${reservationId}:${expectedRaw}`),
-      reservationId: asId<"ReservationId">(reservationId),
-      actorKind: "admin",
-      actorId: subject.id,
-      type: "refund_issued_by_operator",
-      metadata: { actualCents: result.refundedCents, reason: "standalone refund" },
-    },
-  );
+  // No `quotedCents` on the history row the send wrote, and that is the point of the rename (issue
+  // #1050). This box is reached on a booking that may not be cancelled at all, so there is no
+  // `CancelledBy` and no notice window — an absent quote means "there was no policy figure to compare
+  // against", never "the operator matched it".
   redirect(back({ refunded: String(result.refundedCents) }));
 }
 

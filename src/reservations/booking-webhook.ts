@@ -362,15 +362,13 @@ async function routeVerifiedEvent(
   // indistinguishable from an event type we have never heard of.
   if (event.type === "payment_canceled") return { handled: true, outcome: "ignored" };
 
-  // **A delayed payment method is settling (15.12) — acked, and the one ignored event that TELLS
-  // somebody.** The two above are silent for good reasons that do not apply here: a decline leaves
-  // a customer still holding a second card, and a cancel is something Muster did itself. This is a
-  // booking in flight for days, with no screen anywhere showing it.
+  // **A payment is processing (15.12, reworked by issue #1288) — acked, and the one ignored event that
+  // TELLS somebody.** The two above are silent for good reasons that do not apply here: a decline
+  // leaves a customer still holding a second card, and a cancel is something Muster did itself.
   //
-  // It also cannot arrive at all unless somebody enabled a delayed payment method in the Stripe
-  // Dashboard — `/book` sends `automatic_payment_methods: { enabled: true }`, so method selection
-  // lives there, and a change there leaves no diff in this repository. Reading the account on
-  // 2026-09-19 showed every delayed method off. This alert is how anyone finds out that changed.
+  // Every intent allows cards alone in code (`ALLOWED_PAYMENT_METHOD_TYPES`, DEC-203), and Stripe's
+  // lifecycle page ties `processing` to bank debits. So this should mean the card lock failed, with
+  // a booking in flight and no screen showing it. This alert is the one thing that would say so.
   //
   // Deliberately NOT "REFUND MANUALLY": no money is at risk and there is nothing to undo. It
   // shares a channel with the paid-but-unbooked alerts and must not read like one — the same call
@@ -381,20 +379,15 @@ async function routeVerifiedEvent(
   // Every other side effect in this file is built for Stripe's at-least-once redelivery; this one
   // is not, so a redelivered `processing` pages every admin again — which is the same crying-wolf
   // noise the paragraph above argues against. It ships that way on the operator's call (2026-09-19)
-  // because **this branch cannot execute today**: reading the account showed every delayed payment
-  // method `off`, and only a Dashboard toggle can produce this event. Building a dedupe for an
-  // unreachable path is machinery ahead of need.
-  //
-  // **Whoever enables a delayed method owes this a dedupe first.** The cheap one needs no
-  // migration: `claimRecoverySend` (`ports/repository.ts`) is already a keyed claim with lazy
-  // expiry — `"processing:" + paymentIntentId` gives exactly one alert per intent, at the cost of a
-  // table named for the recovery bound doing double duty. Recorded on issue #712.
+  // because **this branch should not execute**: with cards locked in code, only a failed lock can
+  // produce this event. Building a dedupe for a path that should never run is machinery ahead of
+  // need (issue #712).
   if (event.type === "payment_processing") {
     await deps.alertPaidButUnbooked(
-      `Payment ${event.data.paymentIntentId} is PROCESSING - a delayed payment method is ` +
-        `settling and will confirm in a few days. Nothing to do and no money at risk. Worth ` +
-        `knowing because /book takes whatever methods the Stripe Dashboard has enabled, and this ` +
-        `event means one of the delayed ones is now on. No screen shows an in-flight payment.`,
+      `Payment ${event.data.paymentIntentId} is PROCESSING - Stripe says it has not settled and ` +
+        `may take days to confirm. Muster takes cards only, so this should not happen. No money ` +
+        `is at risk. Look at this payment in Stripe to see what it was paid with. No screen in ` +
+        `Muster shows a payment in flight.`,
     );
     return { handled: true, outcome: "ignored" };
   }

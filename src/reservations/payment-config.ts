@@ -60,6 +60,13 @@ export const PAYMENT_CONFIG_DEFAULTS: PaymentConfig = {
   balanceRetryDaysAfterDue: [3, 6],
 };
 
+/**
+ * The payment methods every payment allows (issue #1288, DEC-203): cards only, said once. The
+ * intent's `allowed_payment_method_types` and the form's `allowedPaymentMethodTypes` both read it, so
+ * the Stripe Dashboard decides nothing.
+ */
+export const ALLOWED_PAYMENT_METHOD_TYPES = ["card"] as const;
+
 /** The `app_settings` key for the balance retry days. */
 export const BALANCE_RETRY_DAYS_KEY = "payment.balance_retry_days";
 

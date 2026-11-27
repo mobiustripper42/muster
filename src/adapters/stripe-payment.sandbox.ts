@@ -29,8 +29,9 @@
  *
  * **Not in `npm test` or `verify`**: the default include is `*.test.ts` and this is `*.sandbox.ts`.
  * It needs the network, it is rate-limited, and every run leaves objects in the sandbox account —
- * three paid test charges (one booking, one $50 bare intent, one $1 intent paid to read its card
- * back), one $1 off-session balance charge and four cancelled $1 intents. The provider customers
+ * four paid test charges (one booking, one $50 bare intent, one $1 intent paid to read its card
+ * back, one $1 deposit paid to save its card), two $1 off-session balance charges and six cancelled
+ * $1 intents. The provider customers
  * the deposit and balance cases create are deleted at the end of each case (issues #1250, #1254).
  * `vitest.sandbox.config.ts` runs it. Folded in from the standalone `db:stripe:cancel` script.
  *
@@ -111,9 +112,10 @@ function makeDeps(repo: InMemoryRepository, payments: StripePaymentPort) {
 /**
  * Pay an intent the way the customer's browser would, minus the browser.
  *
- * `return_url` because our intents carry `automatic_payment_methods: { enabled: true }`, and Stripe
- * refuses a server-side confirm on those without one — some enabled method might redirect. A test
- * card never does, so the url is never visited.
+ * `return_url` was added while our intents carried `automatic_payment_methods: { enabled: true }`,
+ * on which Stripe refuses a server-side confirm without one. Every intent now allows cards alone
+ * (issue #1288); nothing here shows whether Stripe still asks for it, so it stays. A test card never
+ * redirects, so the url is never visited.
  */
 async function payWithTestCard(stripe: Stripe, paymentIntentId: string): Promise<void> {
   const paid = await stripe.paymentIntents.confirm(paymentIntentId, {
@@ -182,6 +184,17 @@ if (!haveKeys) {
 } else {
   const stripe = new Stripe(secretKey);
   const payments = new StripePaymentPort(secretKey, webhookSecret);
+
+  /** A $1 intent, never confirmed unless the case pays it. */
+  const mintDollar = (extra: { customerId?: string; setupFutureUsage?: "off_session" } = {}) =>
+    payments.createPaymentIntent({
+      amountCents: 100,
+      currency: "usd",
+      description: "muster test:stripe — deposit verification",
+      metadata: {},
+      idempotencyKey: `sandbox_deposit_${randomUUID()}`,
+      ...extra,
+    });
 
   describe("Stripe sandbox — the booking round trip (issue #1021)", () => {
     it("a booking paid by card books: the row flips, the Payment is written, the charge carries no metadata", async () => {
@@ -322,17 +335,6 @@ if (!haveKeys) {
    * an intent asked to keep the card, and the card read back off a succeeded intent.
    */
   describe("Stripe sandbox — the deposit's saved card (issue #1250)", () => {
-    /** A $1 intent, never confirmed unless the case pays it. */
-    const mintDollar = (extra: { customerId?: string; setupFutureUsage?: "off_session" } = {}) =>
-      payments.createPaymentIntent({
-        amountCents: 100,
-        currency: "usd",
-        description: "muster test:stripe — deposit verification",
-        metadata: {},
-        idempotencyKey: `sandbox_deposit_${randomUUID()}`,
-        ...extra,
-      });
-
     it("AC9: createCustomer creates one customer under its idempotency key — the same key returns the same customer", async () => {
       const key = `customer_sandbox_${randomUUID()}`;
       const input = { idempotencyKey: key, name: "Deposit Sandbox", metadata: {} };
@@ -416,7 +418,6 @@ if (!haveKeys) {
         metadata: { purpose: "balance" },
         idempotencyKey: `sandbox_balance_${randomUUID()}`,
         customerId,
-        cardsOnly: true,
       });
       return {
         customerId,
@@ -490,15 +491,59 @@ if (!haveKeys) {
       }
     });
 
-    it("AC14: the balance intent is cards only and saves nothing", async () => {
+    /** Issue #1288: all three payments name cards on `allowed_payment_method_types`, and Stripe reads
+     *  the same list back on the old field. */
+    it("issue #1288 AC5: the pay-in-full, deposit and balance intents each allow cards alone, and the balance intent saves nothing", async () => {
       const w = await setup("pm_card_visa", true);
+      const full = await mintDollar();
+      const deposit = await mintDollar({ customerId: w.customerId, setupFutureUsage: "off_session" });
       try {
+        for (const [label, id] of [
+          ["pay in full", full.paymentIntentId],
+          ["deposit", deposit.paymentIntentId],
+          ["balance", w.paymentIntentId],
+        ] as const) {
+          const read = await stripe.paymentIntents.retrieve(id);
+          expect(read.allowed_payment_method_types, `${label}: allowed_payment_method_types`).toEqual(["card"]);
+          expect(read.payment_method_types, `${label}: payment_method_types`).toEqual(["card"]);
+        }
+
         const intent = await stripe.paymentIntents.retrieve(w.paymentIntentId);
-        expect(intent.payment_method_types).toEqual(["card"]);
         expect(intent.customer).toBe(w.customerId);
         expect(intent.setup_future_usage).toBeNull();
       } finally {
+        await payments.cancelPaymentIntent(full.paymentIntentId, "abandoned");
+        await payments.cancelPaymentIntent(deposit.paymentIntentId, "abandoned");
         await w.finish();
+      }
+    });
+
+    it("issue #1288 AC6: a deposit paid by card saves the card to its customer, and an off-session balance charge of that card succeeds", async () => {
+      const { customerId } = await payments.createCustomer({
+        idempotencyKey: `customer_sandbox_${randomUUID()}`,
+        name: "Deposit Sandbox",
+        metadata: {},
+      });
+      try {
+        const deposit = await mintDollar({ customerId, setupFutureUsage: "off_session" });
+        await payWithTestCard(stripe, deposit.paymentIntentId);
+
+        const paymentMethodId = (await payments.getSucceededPaymentIntent(deposit.paymentIntentId))?.paymentMethodId;
+        expect(paymentMethodId).toMatch(/^pm_/);
+        if (paymentMethodId === undefined) return;
+        const card = await stripe.paymentMethods.retrieve(paymentMethodId);
+        expect(card.customer, "the deposit did not save the card to the customer").toBe(customerId);
+
+        const balance = await mintDollar({ customerId });
+        const charged = await payments.confirmOffSession({
+          paymentIntentId: balance.paymentIntentId,
+          customerId,
+          paymentMethodId,
+          idempotencyKey: `sandbox_balance_confirm_${randomUUID()}`,
+        });
+        expect(charged.outcome).toBe("succeeded");
+      } finally {
+        await stripe.customers.del(customerId);
       }
     });
   });

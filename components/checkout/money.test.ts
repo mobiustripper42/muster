@@ -15,7 +15,14 @@ import { createDeparturePaymentIntent } from "@core/reservations/create-departur
 import { applyDiscount } from "@core/reservations/discount.js";
 import { payLinkMoney } from "@core/reservations/pay-by-link.js";
 import { PAYMENT_CONFIG_DEFAULTS, type PaymentConfig } from "@core/reservations/payment-config.js";
-import { depositCopy, elementsOptions, splitFrozen, totalsFor, type ScreenTotals } from "./money";
+import {
+  depositCopy,
+  elementsOptions,
+  paymentElementOptions,
+  splitFrozen,
+  totalsFor,
+  type ScreenTotals,
+} from "./money";
 
 const V = asId<"VesselId">("v");
 const vessel: Vessel = { id: V, name: "Boat", coiMaxPax: 12, manning: [] };
@@ -283,7 +290,8 @@ describe("the payment link's choice reads as the checkout's", () => {
  * The payment form's options (issue #1250, from review 2026-11-10) — one home, so the `<Elements>`
  * the form mounts and the intent the server mints agree. Stripe's deferred Elements docs:
  * `setupFutureUsage` "should match the setup_future_usage provided on the Intent used when
- * confirming payment". With the deposit the form offers cards only; pay in full keeps today's methods.
+ * confirming payment". Every payment allows cards alone, through `allowedPaymentMethodTypes`
+ * (issue #1288, DEC-203); only the deposit saves the card.
  */
 describe("elementsOptions", () => {
   it("AC9: with the deposit chosen the form saves the card for later and offers cards only", () => {
@@ -292,12 +300,17 @@ describe("elementsOptions", () => {
       amount: 10000,
       currency: "usd",
       setupFutureUsage: "off_session",
-      paymentMethodTypes: ["card"],
+      allowedPaymentMethodTypes: ["card"],
     });
   });
 
-  it("AC15: with pay in full the form saves nothing and keeps the methods it shows today", () => {
-    expect(elementsOptions(65294, "full")).toEqual({ mode: "payment", amount: 65294, currency: "usd" });
+  it("AC15: with pay in full the form saves nothing and offers cards only", () => {
+    expect(elementsOptions(65294, "full")).toEqual({
+      mode: "payment",
+      amount: 65294,
+      currency: "usd",
+      allowedPaymentMethodTypes: ["card"],
+    });
   });
 
   // Issue #1254: the balance form confirms the intent `ensureBalanceIntent` creates — cards only, and
@@ -307,7 +320,29 @@ describe("elementsOptions", () => {
       mode: "payment",
       amount: 55294,
       currency: "usd",
-      paymentMethodTypes: ["card"],
+      allowedPaymentMethodTypes: ["card"],
     });
+  });
+});
+
+/**
+ * The card box's own options (issue #1288, DEC-203): Apple Pay, Google Pay and Link are off on every
+ * payment. The checkout's card box also leaves name and phone to the contact fields above it (#679);
+ * the balance form has no contact fields and sets no `fields`.
+ */
+describe("paymentElementOptions", () => {
+  const NO_WALLETS = { applePay: "never", googlePay: "never", link: "never" };
+
+  for (const mode of ["full", "deposit"] as const) {
+    it(`issue #1288 AC3: paying ${mode === "full" ? "in full" : "the deposit"}, the card box turns off Apple Pay, Google Pay and Link and asks for no name or phone`, () => {
+      expect(paymentElementOptions(mode)).toEqual({
+        wallets: NO_WALLETS,
+        fields: { billingDetails: { name: "never", phone: "never" } },
+      });
+    });
+  }
+
+  it("issue #1288 AC3: paying the balance, the card box turns off Apple Pay, Google Pay and Link and sets no fields", () => {
+    expect(paymentElementOptions("balance")).toEqual({ wallets: NO_WALLETS });
   });
 });

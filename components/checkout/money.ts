@@ -5,9 +5,10 @@
  * Type-only imports from the core for the shapes; `chargeTotals`, `dueNowCents` and
  * `depositOffered` are the runtime imports, and they are pure.
  */
+import type { StripePaymentElementOptions } from "@stripe/stripe-js";
 import type { CheckoutQuote, ScreenTotals } from "@core/reservations/checkout-quote.js";
 import { chargeTotals } from "@core/reservations/discount.js";
-import { depositOffered, dueNowCents } from "@core/reservations/payment-config.js";
+import { ALLOWED_PAYMENT_METHOD_TYPES, depositOffered, dueNowCents } from "@core/reservations/payment-config.js";
 
 export type CheckoutMoney = Omit<CheckoutQuote, "tiers" | "defaultBps">;
 export type TipTier = CheckoutQuote["tiers"][number];
@@ -31,29 +32,43 @@ export interface ElementsOptions {
   amount: number;
   currency: "usd";
   setupFutureUsage?: "off_session";
-  paymentMethodTypes?: string[];
+  allowedPaymentMethodTypes: string[];
 }
 
 /** Which payment the form takes: the whole quote, the deposit (saves the card), or the balance. */
 export type ElementsMode = "full" | "deposit" | "balance";
 
 /**
- * The one home for the payment form's options (issue #1250). With the deposit chosen the form saves
- * the card for the balance and offers cards only; pay in full keeps the methods it shows today. The
- * balance (issue #1254) offers cards only and saves nothing — the card is being charged now, matching
- * the intent `ensureBalanceIntent` creates (`cardsOnly`, no `setupFutureUsage`).
+ * The one home for the payment form's options (issue #1250). Every payment offers cards only, from
+ * `ALLOWED_PAYMENT_METHOD_TYPES` (issue #1288, DEC-203). With the deposit chosen the form also saves
+ * the card for the balance. Pay in full and the balance (issue #1254) save nothing — the card is
+ * being charged now, matching the intents `createPaymentIntent` makes.
  *
  * Stripe's deferred Elements docs: `setupFutureUsage` "should match the setup_future_usage provided on
  * the Intent used when confirming payment" — so the form is remounted on the choice, not
- * `elements.update`d, to change the saving or the method types.
+ * `elements.update`d, to change the saving.
  */
 export function elementsOptions(amountCents: number, mode: ElementsMode): ElementsOptions {
   return {
     mode: "payment",
     amount: amountCents,
     currency: "usd",
-    ...(mode === "deposit" ? { setupFutureUsage: "off_session" as const, paymentMethodTypes: ["card"] } : {}),
-    ...(mode === "balance" ? { paymentMethodTypes: ["card"] } : {}),
+    allowedPaymentMethodTypes: [...ALLOWED_PAYMENT_METHOD_TYPES],
+    ...(mode === "deposit" ? { setupFutureUsage: "off_session" as const } : {}),
+  };
+}
+
+/**
+ * The card box's own options, for both `<PaymentElement>` mounts (issue #1288, DEC-203): Apple Pay,
+ * Google Pay and Link are off on every payment. The checkout (full, deposit) also leaves name and
+ * phone to the contact fields above the box (#679); the balance form has no contact fields, so it
+ * sets no `fields`. Name and phone only — a field disabled here becomes REQUIRED at confirm, and
+ * email is optional at `/book`.
+ */
+export function paymentElementOptions(mode: ElementsMode): StripePaymentElementOptions {
+  return {
+    wallets: { applePay: "never", googlePay: "never", link: "never" },
+    ...(mode === "balance" ? {} : { fields: { billingDetails: { name: "never", phone: "never" } } }),
   };
 }
 

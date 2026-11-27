@@ -12,6 +12,7 @@
  */
 import Stripe from "stripe";
 import { logSwallowed } from "../log.js";
+import { ALLOWED_PAYMENT_METHOD_TYPES } from "../reservations/payment-config.js";
 import {
   PaymentSignatureError,
   type CancelReason,
@@ -312,21 +313,15 @@ export class StripePaymentPort implements PaymentPort {
   async createPaymentIntent(
     input: CreatePaymentIntentInput,
   ): Promise<{ clientSecret: string; paymentIntentId: string }> {
-    // The inline-Elements charge (12.5, DEC-134). `automatic_payment_methods` mirrors the
-    // deferred `Elements` mount client-side; the metadata (incl. `purpose`) is what the
-    // `payment_intent.succeeded` webhook books from.
-    //
-    // A deposit (`setupFutureUsage` given, issue #1250) is card-only: the form offers cards only
-    // (`elementsOptions`), so the intent names `payment_method_types: ["card"]` instead — Stripe takes
-    // either that or `automatic_payment_methods`, not both (`PaymentIntentCreateParams` in the pinned SDK).
-    // The balance intent (issue #1254) is card-only too, and saves nothing: `cardsOnly` says so alone.
+    // The inline-Elements charge (12.5, DEC-134). Every intent allows cards alone, in code
+    // (issue #1288, DEC-203): `allowed_payment_method_types` mirrors the deferred `Elements` mount
+    // client-side (`elementsOptions`), and the Dashboard decides nothing. The metadata (incl.
+    // `purpose`) is what the `payment_intent.succeeded` webhook books from.
     const intent = await this.#stripe.paymentIntents.create({
       amount: input.amountCents,
       currency: input.currency,
       metadata: input.metadata,
-      ...(input.setupFutureUsage !== undefined || input.cardsOnly === true
-        ? { payment_method_types: ["card"] }
-        : { automatic_payment_methods: { enabled: true } }),
+      allowed_payment_method_types: [...ALLOWED_PAYMENT_METHOD_TYPES],
       // #679. `description` is the only human-readable field on a raw PaymentIntent — hosted
       // Checkout gets a line item, this path does not. `receipt_email` is what makes Stripe
       // send the guest a receipt at all; in live mode it sends regardless of the account's
@@ -657,7 +652,8 @@ export class StripePaymentPort implements PaymentPort {
       };
     }
     if (event.type === "payment_intent.processing") {
-      // A delayed payment method settling (15.12). Named rather than left to fall through to
+      // A delayed payment method settling (15.12), which cards only should rule out (issue #1288).
+      // Named rather than left to fall through to
       // `null`, which is where it went until now — so an event that means "a booking is in flight
       // for days" was indistinguishable from an event type we have never heard of. The handler
       // acks it and alerts; see `PaymentProcessing` for why it alerts where its neighbours do not.

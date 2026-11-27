@@ -61,9 +61,8 @@ describe("parseEvent — every named member is reachable from a signed payload (
     // `payment_failed` and `payment_canceled` both carry named members for exactly this reason:
     // ignored-on-purpose and unrecognised must not be the same signal.
     //
-    // It matters on `/book` specifically. That path sends `automatic_payment_methods: {enabled:true}`,
-    // so method selection lives in the Dashboard — a delayed method is one toggle away with no code
-    // change, and the day it is flipped, `processing` is what arrives.
+    // Every intent allows cards alone in code (issue #1288, DEC-203), so `processing` should never
+    // arrive. If it does, the card lock failed, and this event is the one thing that says so.
     expect(parse("payment_intent.processing", { id: "pi_1" })).toEqual({
       stripeEventId: "evt_test",
       type: "payment_processing",

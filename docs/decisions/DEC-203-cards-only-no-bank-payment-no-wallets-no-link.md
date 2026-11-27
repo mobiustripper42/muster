@@ -3,7 +3,7 @@ schema: 1
 id: DEC-203
 title: "Cards only: no bank payment, no wallets, no Link"
 topic: "Reservations & payments"
-status: "draft"
+status: "active"
 date: "2026-11-25"
 ruling: "Every payment Muster takes (pay in full, deposit, balance) is a card typed into the form, set in code rather than in the Stripe Dashboard. Bank payment, Apple Pay, Google Pay and Link are off."
 claims:

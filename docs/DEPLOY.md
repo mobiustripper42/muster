@@ -331,6 +331,19 @@ missed. The **env vars** now live above under *Required for reservations + payme
 the full go-live runbook — seeding the catalog, verifying the dashboard, guarding test-vs-live keys —
 is still its own task (issue #623).
 
+### When the "WEBHOOK NOT DELIVERING" text arrives
+
+Every four hours Muster checks that Stripe can reach its webhook address (`src/reservations/webhook-health.ts`)
+and texts every active admin when it cannot. Messages Stripe could not deliver in the meantime are not
+replayed by Muster (DEC-205). What to do:
+
+1. In Stripe, open the endpoint (Developers, Webhooks) and fix its address, or switch it back on.
+2. Open **Developers, Events**, find each `payment_intent.succeeded`, `charge.refunded` and
+   `charge.dispute.*` event from the outage window, and press **Resend**.
+3. A customer who paid and closed the tab is booked by the reconciler on its own, within about 15
+   minutes of their payment window running out. If an admin text says Muster could not confirm a payment
+   for a customer, find that name in Stripe, then book or refund by hand.
+
 ### The endpoint must subscribe to `charge.refunded` and `charge.dispute.*`
 
 Muster's webhook handles these event types:

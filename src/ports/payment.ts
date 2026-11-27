@@ -390,6 +390,12 @@ export interface PaymentPort {
    */
   getSucceededPaymentIntent(paymentIntentId: string): Promise<PaymentSucceeded | null>;
   /**
+   * Read a PaymentIntent back, telling "not paid" from "no answer" (issue #1236): `null` only when
+   * the provider answered and the intent has not succeeded; throws when the provider gave no
+   * answer or does not know the id.
+   */
+  readPaymentIntentSucceeded(paymentIntentId: string): Promise<PaymentSucceeded | null>;
+  /**
    * What state is this PaymentIntent in, normalized (15.8)? Read before a retry decides whether to
    * reuse the intent it already minted or start a new one.
    *

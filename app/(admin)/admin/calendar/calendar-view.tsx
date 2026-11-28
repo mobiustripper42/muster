@@ -730,7 +730,7 @@ const ERR_COPY: Record<CalendarErr, string> = {
   bad_date: "Couldn’t read that date — try the slot again from the grid.",
   bad_time: "Couldn’t read that departure time — try the slot again from the grid.",
   already_held: "That departure was already blocked.",
-  slot_taken: "Someone booked that departure — it’s a trip now, so it can’t be blocked.",
+  slot_taken: "That departure has a booking on it, paid or awaiting payment, so it can’t be blocked.",
   not_found: "That block was already lifted.",
   not_a_hold: "That’s a boat out of service or a closure, not one departure — open it on Blocks to change it.",
   error: "Couldn’t do that just now — try again in a moment.",

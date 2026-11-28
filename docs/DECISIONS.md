@@ -209,6 +209,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-203 — Cards only: no bank payment, no wallets, no Link
 - DEC-204 — A refund is owed by its record, and the job may send it
 - DEC-205 — Each timed-out checkout is asked about once, and a person catches the rest
+- DEC-206 — Money that lands on a booking that cannot take it is refunded by hand
 
 ### Check-in & waivers
 - DEC-187 — Check-in & waivers is in scope, specced in its own files that SPEC.md indexes

@@ -18,10 +18,11 @@ import type { Event, Reservation } from "../domain/entities.js";
 import { asId, type ReservationId } from "../domain/ids.js";
 import { safeForAlert } from "./alert-text.js";
 import { eventIdForSlot } from "./availability.js";
-import { paymentIdFor, type WebhookDeps } from "./booking-webhook.js";
+import { paymentIdFor, secondPaymentAlertText, type WebhookDeps } from "./booking-webhook.js";
 import { confirmBookingByPaymentIntent } from "./confirm-booking.js";
 import { PAYMENT_WINDOW_MINUTES } from "./pending.js";
 import { reconcileLapsedCheckouts, uncheckedAlertText } from "./reconciler.js";
+import { bookingPanePath } from "./refund-payment.js";
 
 const V = asId<"VesselId">("v");
 const DATE = "2026-07-04";
@@ -288,8 +289,11 @@ describe("reconcileLapsedCheckouts — paid, so booked (issue #1236, AC2)", () =
     w.paid(second);
     await w.repo.saveReservation(checkout("r1", [unpaid, first, second]));
 
-    expect(await w.run()).toEqual({ confirmed: 1, nothingPaid: 0, alerted: 0, errors: 0 });
+    expect(await w.run()).toEqual({ confirmed: 1, nothingPaid: 0, alerted: 1, errors: 0 });
     const after = await w.row("r1");
+    // The second paid id is a second payment on the booking the first one made (issue #1279 AC8):
+    // every admin is texted once, with the booking's link.
+    expect(w.alert).toHaveBeenCalledExactlyOnceWith(secondPaymentAlertText(after, AMOUNT), bookingPanePath(after.id));
     // The oldest succeeded id is the one that flipped the row.
     const trail = await bookedTrail(w.repo, after.id);
     expect(trail).toHaveLength(1);

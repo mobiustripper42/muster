@@ -90,7 +90,12 @@ describe("confirmCompedRow — the second lookup into the one flip", () => {
 
   it("refuses a cancelled row, and says there is no row for an unknown id", async () => {
     const repo = await seeded(row({ status: "cancelled" }));
-    expect(await confirmCompedRow(repo, RESV, NOW)).toEqual({ outcome: "unconfirmable", reason: "not_pending" });
+    // Carrying the cancelled row (issue #1279).
+    expect(await confirmCompedRow(repo, RESV, NOW)).toEqual({
+      outcome: "unconfirmable",
+      reason: "not_pending",
+      reservation: await repo.getReservation(RESV),
+    });
     expect(await confirmCompedRow(repo, asId<"ReservationId">("nope"), NOW)).toEqual({
       outcome: "unconfirmable",
       reason: "no_row",

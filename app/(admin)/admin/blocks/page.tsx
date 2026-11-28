@@ -76,6 +76,13 @@ function offCalendarLine(n: number): string {
   return `Blocked. ${n} ${n === 1 ? "departure is" : "departures are"} off the calendar.`;
 }
 
+/** The notice after a save (issue #1279): how many unpaid phone bookings sit under the block. */
+function unpaidNoticeLine(n: number): string {
+  return n === 1
+    ? "1 unpaid phone booking is under this block. Its payment link won’t take a payment while the block is here."
+    : `${n} unpaid phone bookings are under this block. Their payment links won’t take a payment while the block is here.`;
+}
+
 /**
  * The Which column's second line: what the block reaches beyond the name above it. A boat out
  * needs nothing — the badge and the boat already say it.
@@ -224,7 +231,7 @@ export default async function AdminBlocks({
       const span = blockDateSpan(b);
       const past = span.end < today;
       const impact = past
-        ? { removedSlots: 0, conflictCount: 0, conflictCents: 0 }
+        ? { removedSlots: 0, conflictCount: 0, conflictCents: 0, unpaidCount: 0 }
         : computeBlockImpact(b, impactInput);
       const vessel = "vesselId" in b ? vesselById.get(String(b.vesselId)) : undefined;
       const location = b.kind === "location" ? locationById.get(String(b.locationId)) : undefined;
@@ -239,6 +246,7 @@ export default async function AdminBlocks({
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const selectedRow = selected ? rows.find((r) => r.block === selected) : undefined;
   const offSale = selectedRow?.impact.removedSlots ?? 0;
+  const unpaidUnder = selectedRow?.impact.unpaidCount ?? 0;
 
   return (
     <Shell width="6xl">
@@ -252,6 +260,11 @@ export default async function AdminBlocks({
       {!errCopy && sp.saved === "1" && selectedRow && (
         <Notice tone="ok">
           <span data-testid="blocked-notice">{offCalendarLine(offSale)}</span>
+        </Notice>
+      )}
+      {!errCopy && sp.saved === "1" && selectedRow && unpaidUnder > 0 && (
+        <Notice tone="warn">
+          <span data-testid="unpaid-notice">{unpaidNoticeLine(unpaidUnder)}</span>
         </Notice>
       )}
 
@@ -366,6 +379,11 @@ export default async function AdminBlocks({
                     {!past && impact.conflictCount > 0 && (
                       <Tag tone="warn" className="mt-1">
                         ⚠ {impact.conflictCount} booked ({formatMoney(impact.conflictCents)}) conflict
+                      </Tag>
+                    )}
+                    {!past && impact.unpaidCount > 0 && (
+                      <Tag tone="warn" className="mt-1" data-testid="unpaid-tag">
+                        ⚠ {impact.unpaidCount} unpaid {impact.unpaidCount === 1 ? "booking" : "bookings"}
                       </Tag>
                     )}
                   </div>

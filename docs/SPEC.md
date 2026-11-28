@@ -1545,6 +1545,7 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > **Amended by DEC-201 — 2.8.4d: a deposit at booking and an automatic balance; 2.8.4a, 2.8.10 and the open questions point at it**
 > **Amended by DEC-203 — 2.8.14: bank payment and Link join wallets as methods this surface does not take**
 > **Amended by DEC-204 — 2.8.4c: the cancel and its refund are one write, finished by the job; 2.8.7: the sold-out refund is a record**
+> **Amended by DEC-206 — 2.8.7: a payment on a cancelled booking, and a second payment on a paid one, are texted and refunded by hand**
 <!-- /amended-by-dec -->
 
 > **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
@@ -2252,7 +2253,7 @@ card succeeded is booked. An offering edited mid-window does not retroactively r
 
 Every row below describes a **public checkout**. An operator's booking has no window, so the three
 rows that turn on one — abandonment, and a payment landing after expiry — do not apply to it
-(§2.10.6).
+(§2.10.6). The two rows about a payment landing on a booking that cannot take it apply to both.
 
 | What happens | What we do |
 |---|---|
@@ -2263,7 +2264,8 @@ rows that turn on one — abandonment, and a payment landing after expiry — do
 | Webhook is late | The success page already confirmed it. Nothing to do. |
 | Webhook never arrives and the customer closed the tab | The reconciler confirms it (2.8.9). |
 | Our write fails after the card was charged | The reservation exists as `pending` with a payment against it; the reconciler finds and confirms it. If even the reservation write failed, no row exists — 2.8.6's alert path; 2.8.9 says why the reconciler does not look for it. |
-| A superseded payment succeeds late — stale tab, old client secret | Its id still resolves to the reservation (2.8.5). If that reservation is already `booked`, this is a second charge for one sale: **refund it and tell the customer**, same path as the row below. |
+| A superseded payment succeeds late — stale tab, old client secret | Its id still resolves to the reservation (2.8.5). If that reservation is already `booked` and holds a payment for another intent, this is a second charge for one sale. **It is recorded as a payment on the booking, so the Refund box can send it back, but it counts no second tip,** and every active admin is texted the customer, the amount and a link to the booking. **A person refunds it** (DEC-206). A second delivery of the same payment finds it recorded and sends no second text. |
+| Payment succeeds on a booking that was cancelled — the customer was on their bank's approval screen when the cancel landed, or Stripe would not cancel the open payment | **Nothing is booked, recorded or refunded.** The booking stays cancelled and no payment or history row is written. Every active admin is texted the customer, the amount and a link to the booking, and **a person refunds it in Stripe** and tells the customer (DEC-206). The page after payment says the trip could not be booked and that the office has been told — never "You're booked!". Reloading that page texts the admins again. |
 | Payment succeeds after the window expired, and the boat has been taken | Refund the full amount automatically — no operator action required — and tell the customer on the channel a confirmation would have used (the phone on the reservation; phone is required, email is not). The message says the trip sold out while they were paying, and says plainly that they **were** charged and then refunded: the money really was captured, the refund takes days to settle, and a message claiming they were not charged is contradicted by their own statement for that whole window. It does not state the amount — the figure adds nothing to a message whose point is that all of it is coming back. **The refund and the message are one path:** a refund nobody was told about reads as a silent failed payment. **And the office is told every time**, with no action asked for: this is a customer charged for a trip they did not get, and the count of how often it happens is the only evidence that decides whether the payment flow moves to separate authorization and capture. **The refund is a refund record** written before Stripe is asked, its id taken from the PaymentIntent so one charge is one refund however often the event arrives (DEC-204). When Stripe gives no answer the customer is told nothing and every active admin is texted once; the job finishes the record and texts again only if it falls short. |
 | A refund fails at the customer's bank | The leg's cents come off the booking's refunded total at once, the refund record reads short by them, and every active admin is told once (DEC-204). Nothing is sent again without a person. |
 | Payment succeeds after the window expired, and the boat is still free | Book it. Nobody lost anything and the customer paid. Re-check overlap under the hull-day lock first; if it now fails, the row above applies. |
@@ -2855,6 +2857,7 @@ your hours, and setting it on your own correction would make the surface lie abo
 > **Amended by DEC-193 — 2.10.2 gains the cutoff state; 2.10.6 points at it**
 > **Amended by DEC-194 — 2.10.6 gains the discount box on an unpaid operator booking**
 > **Amended by DEC-201 — 2.10.6: the payment link takes the deposit and saves the card**
+> **Amended by DEC-206 — 2.10.6: the payment link refuses a trip that has left or a blocked slot; a block over an unpaid phone booking says so**
 <!-- /amended-by-dec -->
 
 §2.8 is the customer's ninety seconds. This is the other side of it: the catalog the boats are
@@ -3040,6 +3043,24 @@ deposit, or the whole quote inside the balance window. Paying it saves the card 
 from there a phone booking's balance is collected like any other. The link is never used for a
 balance; §2.8.10's balance charge is a separate mechanism that must never create or confirm a
 reservation.
+
+**The link takes money only for a trip that can still be sold** (DEC-206). The page, and every press of
+Pay, ask one check: the booking is still unpaid and not cancelled, its trip has not started, and its
+slot is not under a block — a boat out, a closure the trip would be on the water during, or a hold on its
+departure. A trip that has left reads "This trip has already left, so it can't be paid for here. Nothing
+was charged." and a blocked one "This trip can't be paid for right now. Nothing was charged. Please
+contact BrewBoat before you try again." — a notice and no card form. The check runs **before Stripe is
+asked and again after it answers, before the customer is handed the card form**: if the booking stopped
+being payable in between, the payment Stripe just made is cancelled and the customer gets no form. The
+operator's own booking page is not held to it: it still offers and sends a link for a booking that is
+blocked or whose trip has left. A payment that lands anyway is 2.8.7's.
+
+**A block over an unpaid phone booking says so, and a hold is refused.** Saving a boat out or a closure
+still saves it, and the blocks page says how many unpaid phone bookings are under it — after the save,
+and on the block's row while the block is not past. An unpaid phone booking is an operator's reservation
+still `pending`, a comp waiting to confirm included. A hold on the exact departure of one is refused,
+as it already is for a departure that has a trip on it, and a cancelled one does not refuse it. A hold over a
+customer who is at the web checkout right now is not refused.
 
 **The payment link is not the booking link.** §2.8.11's `/b/<code>` is the customer's durable
 credential for managing their booking, and it is minted at confirm like any other. The payment link

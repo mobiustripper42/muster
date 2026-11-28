@@ -344,6 +344,22 @@ replayed by Muster (DEC-205). What to do:
    minutes of their payment window running out. If an admin text says Muster could not confirm a payment
    for a customer, find that name in Stripe, then book or refund by hand.
 
+### When a "paid on a cancelled booking" or "paid twice" text arrives
+
+Muster does not refund these itself (DEC-206). Every active admin gets a text naming the customer and
+the amount, with a link to the booking. Both are rare; the second one is told apart by its wording.
+
+- **"…paid $X on a booking that was already cancelled."** Nothing was booked, recorded or refunded, and
+  the booking has no payment on it, so the Refund box cannot send it back. In Stripe, find the customer's
+  payment, refund it in full from the dashboard, and message the customer. The page they saw after paying
+  said the trip could not be booked and the office had been told.
+- **"…paid twice for one booking. The second payment is $X."** The second payment is on the booking and
+  counts no second tip. Open the booking from the link and refund the second payment from the Refund
+  box, the amount of the text.
+
+For a cancelled booking, the customer reloading the page after payment sends the text again: the same name
+and amount twice is one payment. Two of these in a season is the point where an automatic refund is worth building again.
+
 ### The endpoint must subscribe to `charge.refunded` and `charge.dispute.*`
 
 Muster's webhook handles these event types:

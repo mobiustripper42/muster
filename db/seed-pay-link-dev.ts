@@ -9,6 +9,14 @@
  *   - **Kit Almeida, a quote at or below the deposit** — the whole quote, no choice, even outside
  *     the window.
  *
+ * Two more, for the link's check (issue #1279), each opening on its no-form page:
+ *
+ *   - **Mina Ostrowski, whose trip has left** — booked for a future day through the real path, then
+ *     moved to yesterday with a direct write, because the real path refuses a trip that has left
+ *     (DEC-184).
+ *   - **Noor Castellanos, under a boat out** — booked first and blocked second, both through the real
+ *     paths, on a day no other seeded booking uses. `/admin/blocks` shows the unpaid tag on that block.
+ *
  * The bookings go through the real path, `bookForCustomer`, so each is written due in full with the
  * invoice the operator would have frozen; only paying the link sets a split (issue #1251).
  *
@@ -22,6 +30,7 @@
  */
 import { existsSync } from "node:fs";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
+import { saveBlockAdmin } from "../src/admin/block-admin.js";
 import { stripTrailingSlashes } from "../src/config/base-url.js";
 import { addDays, vesselDateOf } from "../src/config/tenant.js";
 import { asId } from "../src/domain/ids.js";
@@ -136,6 +145,33 @@ try {
     if (kit.invoice!.totalCents > 10000) {
       console.error(`  ALERT     Kit Almeida's quote is above the $100 deposit — the demo's pricing has moved; adjust the discount`);
     }
+  }
+
+  // ── Its trip has left (issue #1279): booked for a future day, then moved to yesterday ──
+  const yesterday = addDays(today, -1);
+  const mina =
+    (await repo.listAllReservations()).find(
+      (r) => r.customerName === "Mina Ostrowski" && r.date === yesterday && r.status === "pending",
+    ) ?? (await phoneBook(addDays(today, 10), "13:30", "Mina Ostrowski", "216-555-1279", { guestCount: 2 }));
+  if (mina) {
+    const departed = mina.date === yesterday ? mina : { ...mina, date: yesterday };
+    if (departed !== mina) await repo.saveReservation(departed);
+    show(departed, `its trip has left: a notice, no card form`);
+  }
+
+  // ── Under a boat out (issue #1279): booked, then the boat is taken out for the day ──
+  const blockedDate = addDays(today, 25);
+  const noor = await phoneBook(blockedDate, "13:30", "Noor Castellanos", "440-555-1279", { guestCount: 2 });
+  if (noor) {
+    await saveBlockAdmin(repo, {
+      id: `blk-seed-pay-link-${blockedDate}`,
+      kind: "vessel",
+      vesselId: demo.vesselId,
+      startDate: blockedDate,
+      endDate: blockedDate,
+      note: "pay-link seed",
+    });
+    show(noor, `under a boat out: a notice, no card form; /admin/blocks shows ⚠ 1 unpaid booking on that block`);
   }
 } finally {
   await repo.close();

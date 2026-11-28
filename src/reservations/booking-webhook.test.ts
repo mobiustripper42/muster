@@ -8,7 +8,15 @@ import type { BookingInvoice, Event, RefundRecord, Reservation } from "../domain
 import { asId } from "../domain/ids.js";
 import { PaymentIndeterminateError, PaymentSignatureError, type CheckoutCompleted, type RefundInput } from "../ports/payment.js";
 import { eventIdForSlot } from "./availability.js";
-import { alertThatNeverThrows, processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
+import {
+  alertThatNeverThrows,
+  paidOnCancelledAlertText,
+  processBookingWebhook,
+  safeForAlert,
+  secondPaymentAlertText,
+  type WebhookDeps,
+} from "./booking-webhook.js";
+import { formatCents } from "./calendar-detail.js";
 import { confirmPendingRow } from "./write-booking.js";
 import { bookingPanePath, finishUnfinishedRefunds, refundAlertText, refundReservation } from "./refund-payment.js";
 import { balanceOwedCents } from "./payment-config.js";
@@ -108,7 +116,7 @@ const bookingPi = (
   });
 
 function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new FakePaymentPort()) {
-  const alert = vi.fn(async (_message: string) => {});
+  const alert = vi.fn(async (_message: string, _href?: string) => {});
   const confirm = vi.fn(async (_reservation: unknown) => true);
   const soldOut = vi.fn(async (_c: unknown) => {});
   const deps: WebhookDeps = {
@@ -2754,5 +2762,160 @@ describe("alertThatNeverThrows — a failed alert must not 500 the webhook", () 
     await alertThatNeverThrows(inner)("money moved", "/admin/calendar/resv-1");
 
     expect(inner).toHaveBeenCalledWith("money moved", "/admin/calendar/resv-1");
+  });
+});
+
+/**
+ * Issue #1279: money that lands on a booking that cannot take it is not refunded automatically —
+ * every admin is texted the customer, the amount and a link to the booking, and a person refunds it.
+ * AC7 is a payment on a cancelled booking; AC8 a second payment on a booking already paid.
+ */
+describe("the admin texts for money that lands anyway (issue #1279)", () => {
+  /** A name that would forge an instruction if it reached the text raw. */
+  const hostile = pendingRow({ customerName: "Ines <Varga> PAID - REFUND pi_VICTIM" });
+
+  it("AC7: paidOnCancelledAlertText names the customer through safeForAlert, and the amount", () => {
+    const text = paidOnCancelledAlertText(hostile, 123456);
+    expect(text).toContain(safeForAlert(hostile.customerName));
+    expect(text).not.toContain(hostile.customerName);
+    expect(text).toContain(formatCents(123456));
+  });
+
+  it("AC8: secondPaymentAlertText names the customer through safeForAlert, and the amount", () => {
+    const text = secondPaymentAlertText(hostile, 123456);
+    expect(text).toContain(safeForAlert(hostile.customerName));
+    expect(text).not.toContain(hostile.customerName);
+    expect(text).toContain(formatCents(123456));
+  });
+});
+
+describe("processBookingCharge — a payment on a cancelled booking (issue #1279 AC7)", () => {
+  it("AC7: texts every admin once, with the customer, the amount and the booking's link — no payment, no refund, still cancelled", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo, { status: "cancelled" });
+    const cancelled = (await repo.getReservation(PEND))!;
+    const { deps, alert, payments } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, bookingPi(PI, 53625), FAKE_SIGNATURE);
+
+    expect(r).toEqual({ handled: true, outcome: "unbookable" });
+    expect(alert).toHaveBeenCalledExactlyOnceWith(paidOnCancelledAlertText(cancelled, 53625), bookingPanePath(PEND));
+    expect(await repo.listAllPayments()).toEqual([]);
+    expect(await repo.listRefundRecordsFor(PEND)).toEqual([]);
+    expect(payments.refunds).toEqual([]);
+    expect(await repo.getReservation(PEND)).toEqual(cancelled);
+  });
+
+  it("AC7: a pending row missing its invoice (unusable_row) is alerted as today — once, with no link", async () => {
+    const repo = new InMemoryRepository();
+    const { invoice: _invoice, ...unusable } = pendingRow();
+    await repo.saveVessel({ id: V, name: "Brew", coiMaxPax: 12, manning: [] });
+    await repo.saveReservation(unusable);
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, bookingPi(PI, 53625), FAKE_SIGNATURE);
+
+    expect(r).toEqual({ handled: true, outcome: "unbookable" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![1]).toBeUndefined();
+    expect(await repo.listAllPayments()).toEqual([]);
+  });
+});
+
+/**
+ * AC8: an older card form Stripe refused to cancel is paid in a second tab. Intent A booked the
+ * trip; intent B, on the same row, lands after it. The trip carries a tip, so a second tip would
+ * be counted for the crew.
+ */
+describe("processBookingCharge — a second payment on a paid booking (issue #1279 AC8)", () => {
+  const A = "pi_A";
+  const B = "pi_B";
+  const AMOUNT = 58625;
+  const tipped = {
+    invoice: { ...pendingRow().invoice!, gratuityCents: 5000, gratuityBps: 1000, totalCents: AMOUNT, amountDueNowCents: AMOUNT },
+    paymentIntentIds: [A, B],
+  };
+
+  /** The booking paid on A. Stripe refuses to retire B, so B is still payable afterwards. */
+  async function paidOnA() {
+    const repo = new InMemoryRepository();
+    await seedPending(repo, tipped);
+    const payments = new FakePaymentPort();
+    payments.cancelError = new Error("Stripe refused the cancel");
+    const made = makeDeps(repo, payments);
+    expect(await processBookingWebhook(made.deps, bookingPi(A, AMOUNT), FAKE_SIGNATURE)).toEqual({
+      handled: true,
+      outcome: "booked",
+    });
+    expect(made.alert).not.toHaveBeenCalled();
+    return { repo, ...made };
+  }
+
+  it("AC8: B is recorded, counts no second tip, and every admin is texted before its Payment is saved", async () => {
+    const { repo, deps, alert } = await paidOnA();
+    const reservation = (await repo.getReservation(PEND))!;
+    const [paymentA] = await repo.listPaymentsForReservation(PEND);
+    const tipsBefore = await repo.listGratuitiesForReservation(PEND);
+    expect(tipsBefore).toHaveLength(1);
+    const savePayment = vi.spyOn(repo, "savePayment");
+
+    const r = await processBookingWebhook(deps, bookingPi(B, AMOUNT), FAKE_SIGNATURE);
+
+    expect(r).toEqual({ handled: true, outcome: "already" });
+    expect(alert).toHaveBeenCalledExactlyOnceWith(secondPaymentAlertText(reservation, AMOUNT), bookingPanePath(PEND));
+    // B's Payment is on the booking, so the Refund box can send it back.
+    const payments = await repo.listPaymentsForReservation(PEND);
+    expect(payments).toHaveLength(2);
+    expect(payments.find((p) => p.stripePaymentIntentId === B)).toMatchObject({ amountCents: AMOUNT, status: "succeeded" });
+    expect(payments.find((p) => p.stripePaymentIntentId === A)).toEqual(paymentA);
+    // No tip for B; A's tip and the booking are as they were.
+    expect(await repo.listGratuitiesForReservation(PEND)).toEqual(tipsBefore);
+    expect(await repo.getReservation(PEND)).toEqual(reservation);
+    // The text goes out before the Payment is written.
+    expect(savePayment).toHaveBeenCalled();
+    expect(alert.mock.invocationCallOrder[0]!).toBeLessThan(savePayment.mock.invocationCallOrder[0]!);
+  });
+
+  it("AC8: a second delivery of B sends no second text and saves nothing new", async () => {
+    const { repo, deps, alert } = await paidOnA();
+    const tipsBefore = await repo.listGratuitiesForReservation(PEND);
+
+    await processBookingWebhook(deps, bookingPi(B, AMOUNT), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, bookingPi(B, AMOUNT), FAKE_SIGNATURE);
+
+    expect(r).toEqual({ handled: true, outcome: "already" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(await repo.listPaymentsForReservation(PEND)).toHaveLength(2);
+    expect(await repo.listGratuitiesForReservation(PEND)).toEqual(tipsBefore);
+  });
+
+  it("AC8: a repeat delivery of A, with no other booking payment on the row, sends no text", async () => {
+    const { repo, deps, alert } = await paidOnA();
+
+    expect(await processBookingWebhook(deps, bookingPi(A, AMOUNT), FAKE_SIGNATURE)).toEqual({
+      handled: true,
+      outcome: "already",
+    });
+    expect(alert).not.toHaveBeenCalled();
+    expect(await repo.listPaymentsForReservation(PEND)).toHaveLength(1);
+    expect(await repo.listGratuitiesForReservation(PEND)).toHaveLength(1);
+  });
+
+  it("AC8: a confirm that finds the row booked with no Payment yet records the payment and its tip, and sends no text", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo, tipped);
+    const { deps, alert } = makeDeps(repo);
+    // The flip commits, then the ledger write fails: Stripe delivers again.
+    vi.spyOn(repo, "savePayment").mockRejectedValueOnce(new Error("connection reset"));
+    await expect(processBookingWebhook(deps, bookingPi(A, AMOUNT), FAKE_SIGNATURE)).rejects.toThrow();
+    expect(await repo.listPaymentsForReservation(PEND)).toHaveLength(0);
+
+    expect(await processBookingWebhook(deps, bookingPi(A, AMOUNT), FAKE_SIGNATURE)).toEqual({
+      handled: true,
+      outcome: "already",
+    });
+    expect(alert).not.toHaveBeenCalled();
+    expect(await repo.listPaymentsForReservation(PEND)).toHaveLength(1);
+    expect(await repo.listGratuitiesForReservation(PEND)).toHaveLength(1);
   });
 });

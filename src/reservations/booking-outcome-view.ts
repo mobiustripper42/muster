@@ -24,6 +24,9 @@ export type BookingOutcomeView =
   | { kind: "booked" }
   /** The residual race: they paid, the boat went to someone else, the money is coming back. */
   | { kind: "sold_out" }
+  /** They paid and the booking could not be made — a cancelled booking, or one with no usable
+   *  slot — and the office has been texted (issue #1279). Their money is not being refunded. */
+  | { kind: "not_booked" }
   /**
    * We do not know yet. The confirm was skipped, the id was absent or unresolvable, or Stripe is
    * unconfigured — all cases where the webhook is still coming and the booking is probably fine.
@@ -43,6 +46,7 @@ export type BookingOutcomeView =
  */
 export function bookingOutcomeView(outcome: BookingOutcome | undefined): BookingOutcomeView {
   if (outcome === "lost") return { kind: "sold_out" };
+  if (outcome === "unbookable") return { kind: "not_booked" };
   if (outcome === "booked" || outcome === "already") return { kind: "booked" };
   return { kind: "pending" };
 }
@@ -61,5 +65,21 @@ export const SOLD_OUT_VIEW_COPY = {
   body:
     "Your card was charged and refunded in full right away. Refunds usually take a few days to " +
     "show up on a statement. You have not lost any money, and there is nothing you need to do.",
+  action: "Find another trip",
+} as const;
+
+/**
+ * The not-booked card (issue #1279 AC9): the payment went through and the booking could not be
+ * confirmed, so the admins were texted and a person will put it right. Never the booked card — its
+ * every word is false here. The body names the business, which core has only as the edge's
+ * `TENANT_NAME`, so it is built from the name the page passes in; its first sentence is the bold one.
+ */
+export const NOT_BOOKED_VIEW_COPY = {
+  heading: "We couldn't book this trip",
+  lead: "Your payment went through, but the booking could not be confirmed.",
+  body: (tenantName: string) => ({
+    bold: `Your card was charged, and ${tenantName} has been told.`,
+    rest: "They'll be in touch to put it right. There is nothing you need to do.",
+  }),
   action: "Find another trip",
 } as const;

@@ -18,6 +18,10 @@ describe("bookingOutcomeView", () => {
     expect(bookingOutcomeView("lost")).toEqual({ kind: "sold_out" });
   });
 
+  it("issue #1279 AC9: a payment that could not be booked is not booked — never the booked card", () => {
+    expect(bookingOutcomeView("unbookable")).toEqual({ kind: "not_booked" });
+  });
+
   it("booked and already are both a booking", () => {
     // `already` is a redelivered webhook or a reloaded success page on a real sale.
     expect(bookingOutcomeView("booked")).toEqual({ kind: "booked" });
@@ -34,7 +38,6 @@ describe("bookingOutcomeView", () => {
     const rest: Exclude<BookingOutcome, "lost" | "booked" | "already">[] = [
       "refund_recorded",
       "ignored",
-      "unbookable",
       "balance_paid",
       "dispute_recorded",
     ];

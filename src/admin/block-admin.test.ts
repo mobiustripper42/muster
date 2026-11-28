@@ -4,9 +4,9 @@
  * cross-entity existence). Only the two scoped kinds are creatable here; vesselHold is a
  * calendar concern → `bad_kind`.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import type { Event, Location, Vessel } from "../domain/entities.js";
+import type { Event, Location, Reservation, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import {
   releaseVesselHoldAdmin,
@@ -336,6 +336,68 @@ describe("releaseVesselHoldAdmin — lifting from the calendar", () => {
       ok: false,
       code: "not_a_hold",
     });
+    expect(await repo.listBlocks()).toHaveLength(1);
+  });
+});
+
+/**
+ * Issue #1279: a block over an unpaid phone booking. A hold on its exact departure is refused (AC6);
+ * a boat out or a closure is still saved, and the page says how many are under it (AC5). Whether a
+ * booking is unpaid is `isUnpaidPhoneBooking`'s (`pay-by-link.test.ts`); here one case each way.
+ */
+const phoneBooking = (over: Partial<Reservation> = {}): Reservation => ({
+  id: asId<"ReservationId">("resv-phone"),
+  eventId: null,
+  source: "admin",
+  status: "pending",
+  customerName: "Phone Caller",
+  partySize: 2,
+  vesselId: VESSEL,
+  date: "2026-08-12",
+  time: "13:30",
+  offeringId: asId<"OfferingId">("off-1"),
+  tripMinutes: 100,
+  ...over,
+});
+
+describe("saveVesselHoldAdmin — a departure with an unpaid phone booking (issue #1279)", () => {
+  const base = { id: "hold-1", vesselId: "vessel-1", date: "2026-08-12", time: "13:30" };
+
+  it("AC6: a hold on the exact departure of an unpaid phone booking is refused, and no hold is saved", async () => {
+    const repo = await repoWithEntities();
+    await repo.saveReservation(phoneBooking());
+    const saveBlock = vi.spyOn(repo, "saveBlock");
+
+    expect(await saveVesselHoldAdmin(repo, base)).toEqual({ ok: false, code: "slot_taken" });
+    expect(saveBlock).not.toHaveBeenCalled();
+    expect(await repo.listBlocks()).toHaveLength(0);
+  });
+
+  it("AC6: a cancelled phone booking on the departure does not refuse the hold", async () => {
+    const repo = await repoWithEntities();
+    await repo.saveReservation(phoneBooking({ status: "cancelled" }));
+    expect(await saveVesselHoldAdmin(repo, base)).toEqual({ ok: true, id: "hold-1" });
+  });
+
+  it("AC6: an unpaid phone booking at another time on that boat and day does not refuse the hold", async () => {
+    const repo = await repoWithEntities();
+    await repo.saveReservation(phoneBooking({ time: "15:30" }));
+    expect(await saveVesselHoldAdmin(repo, base)).toEqual({ ok: true, id: "hold-1" });
+  });
+});
+
+describe("saveBlockAdmin — a block over an unpaid phone booking is still saved (issue #1279)", () => {
+  it("AC5: a boat out over an unpaid phone booking is saved", async () => {
+    const repo = await repoWithEntities();
+    await repo.saveReservation(phoneBooking());
+    const r = await saveBlockAdmin(repo, {
+      id: "blk-ves",
+      kind: "vessel",
+      vesselId: "vessel-1",
+      startDate: "2026-08-12",
+      endDate: "2026-08-12",
+    });
+    expect(r).toEqual({ ok: true, id: "blk-ves" });
     expect(await repo.listBlocks()).toHaveLength(1);
   });
 });

@@ -26,6 +26,7 @@ import {
 } from "./fixtures.js";
 import { TEST_DATABASE_URL } from "../db/reset-test.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
+import { addDays } from "../src/config/tenant.js";
 import {
   BALANCE_DUE_ON,
   BOOKED,
@@ -33,6 +34,7 @@ import {
   INSIDE_BALANCE_WINDOW,
   OPEN_TIME,
   OUTSIDE_BALANCE_WINDOW,
+  TODAY,
   extendSeasonThrough,
   formatShortDay,
   payBar,
@@ -147,6 +149,37 @@ async function markCancelled(reservationId: string): Promise<void> {
     await repo.close();
   }
 }
+
+/** The trip moved to yesterday, written straight to the test DB: the real booking path refuses a trip
+ *  that has left (DEC-184), so the booking is made for a future day and moved (issue #1279). */
+async function moveToYesterday(reservationId: string): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const r = (await repo.getReservation(reservationId as never))!;
+    await repo.saveReservation({ ...r, date: addDays(TODAY, -1) });
+  } finally {
+    await repo.close();
+  }
+}
+
+/** A boat out over the demo boat on `date`, written through the port (issue #1279). */
+async function boatOutOn(date: string): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    await repo.saveBlock({
+      id: `blk-e2e-out-${date}` as never,
+      kind: "vessel",
+      vesselId: DEMO.vesselId as never,
+      startDate: date,
+      endDate: date,
+    });
+  } finally {
+    await repo.close();
+  }
+}
+
+/** The booking the operator's pane is showing, by its id in the address. */
+const paneReservationId = (page: Page) => decodeURIComponent(page.url().split("?")[0]!.split("/admin/calendar/")[1]!);
 
 /** The customer's own browser: no admin session behind them, at the viewport this project runs. */
 async function asCustomer(browser: Browser, like: Page, baseURL: string | undefined, path: string): Promise<Page> {
@@ -317,6 +350,26 @@ test.describe("the payment link", () => {
     const live = signPaymentLink(id, new Date(), SECRET);
     await page.goto(`/p/${live.slice(0, -2)}xx`);
     await expect(page.getByTestId("pay-state")).toHaveText("This payment link has expired. Ask BrewBoat for a new one.");
+  });
+
+  test("issue #1279 AC1: a phone booking whose trip has left: the link shows its state and offers no form", async ({ page, browser, baseURL }) => {
+    await bookByPhone(page);
+    const path = await copiedLink(page);
+    await moveToYesterday(paneReservationId(page));
+
+    const customer = await asCustomer(browser, page, baseURL, path);
+    await expect(customer.getByTestId("pay-state")).toBeVisible();
+    await expect(customer.getByTestId("pay-now")).toHaveCount(0);
+  });
+
+  test("issue #1279 AC2: a phone booking under a boat out: the link shows its state and offers no form", async ({ page, browser, baseURL }) => {
+    await bookByPhone(page);
+    const path = await copiedLink(page);
+    await boatOutOn(BOOKED.date);
+
+    const customer = await asCustomer(browser, page, baseURL, path);
+    await expect(customer.getByTestId("pay-state")).toBeVisible();
+    await expect(customer.getByTestId("pay-now")).toHaveCount(0);
   });
 
   test("a paid trip says so and points at Find your booking — never at the booking link itself", async ({ page, browser, baseURL }) => {

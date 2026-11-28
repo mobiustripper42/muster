@@ -65,10 +65,28 @@ import {
 } from "./refund-payment.js";
 import { recordTrail } from "./trail.js";
 import { safeForAlert } from "./alert-text.js";
+import { formatCents } from "./calendar-detail.js";
 import type { EmittedTrailType } from "../domain/reservation-trail.js";
 
 // It lived here before it moved to a leaf module (the import cycle with `refund-payment.ts`); callers import it from here still.
 export { safeForAlert };
+
+/** The admin text for a payment that landed on a booking that was already cancelled (issue #1279
+ *  AC7). The text is the only trace in Muster: nothing is booked, recorded or refunded. */
+export function paidOnCancelledAlertText(reservation: Reservation, amountCents: number): string {
+  return (
+    `${safeForAlert(reservation.customerName)} paid ${formatCents(amountCents)} on a booking that was ` +
+    `already cancelled. Muster booked nothing and refunded nothing. Refund it in Stripe and message them.`
+  );
+}
+
+/** The admin text for a second payment on a booking that is already paid (issue #1279 AC8). */
+export function secondPaymentAlertText(reservation: Reservation, amountCents: number): string {
+  return (
+    `${safeForAlert(reservation.customerName)} paid twice for one booking. The second payment is ` +
+    `${formatCents(amountCents)}. Refund it from the booking.`
+  );
+}
 
 export interface WebhookDeps {
   // No feature-flag dependency (issue #1093). The `RESERVATIONS` switch and its gate here are gone:
@@ -852,7 +870,21 @@ export async function processBookingCharge(
     return { handled: false };
   }
   // `not_pending` IS a problem: the row exists and is not bookable, so a payment landed against a
-  // cancelled reservation. Money moved and a human has to decide what happens to it.
+  // cancelled reservation. Money moved and a human has to decide what happens to it (issue #1279
+  // AC7): every admin is texted the customer, the amount and the booking's link, and refunds it by
+  // hand. Nothing is booked, recorded or refunded here — the text is the only trace.
+  if (result.outcome === "unconfirmable" && result.reason === "not_pending") {
+    // **Not this case if this payment is already on the booking** (issue #1279 AC7): a booking that
+    // was paid, booked and cancelled later holds this intent's Payment. The money has its own record
+    // and its refund is the cancel's, so there is nothing to text and nothing to write.
+    const held = await deps.repo.listPaymentsForReservation(result.reservation.id);
+    if (held.some((p) => p.id === paymentIdFor(charge.key))) return { handled: true, outcome: "ignored" };
+    await deps.alertPaidButUnbooked(
+      paidOnCancelledAlertText(result.reservation, charge.amountCents),
+      bookingPanePath(result.reservation.id),
+    );
+    return { handled: true, outcome: "unbookable" };
+  }
   if (result.outcome === "unconfirmable") {
     await deps.alertPaidButUnbooked(
       `PAID but NOT booked - charge ${charge.key} (${charge.amountCents} ${charge.currency}) ` +
@@ -924,6 +956,27 @@ export async function processBookingCharge(
 
     await formAndConfirm(deps, result.reservation);
 
+    // **A second payment on a paid booking (issue #1279 AC8).** `already` with a `full` or `deposit`
+    // Payment on the row for ANOTHER intent: an older card form Stripe would not cancel, paid in a
+    // second tab. It is still recorded below, so the Refund box can send it back, but it carries no
+    // tip (the crew is not paid twice) — and, when this intent has no Payment yet, every admin is
+    // texted before that Payment is written. A redelivery of the same intent finds its Payment and
+    // sends nothing. The tip and the text are decided separately: the tip is skipped on the first
+    // half alone.
+    let secondPayment = false;
+    if (result.outcome === "already") {
+      const onRow = await deps.repo.listPaymentsForReservation(reservationId);
+      secondPayment = onRow.some(
+        (p) => (p.kind === "full" || p.kind === "deposit") && p.stripePaymentIntentId !== charge.paymentIntentId,
+      );
+      if (secondPayment && !onRow.some((p) => p.stripePaymentIntentId === charge.paymentIntentId)) {
+        await deps.alertPaidButUnbooked(
+          secondPaymentAlertText(result.reservation, charge.amountCents),
+          bookingPanePath(reservationId),
+        );
+      }
+    }
+
     // Record the PRE-gratuity (DEC-124) — crew money, keyed to the event pool. Slot
     // bookings only carry a tip.
     //
@@ -943,7 +996,7 @@ export async function processBookingCharge(
     // outside to decide what the crew is paid.
     const invoice = result.reservation.invoice;
     const gratuityCents = invoice?.gratuityCents ?? 0;
-    if (gratuityCents > 0) {
+    if (gratuityCents > 0 && !secondPayment) {
       await deps.repo.saveGratuity({
         id: asId<"GratuityId">(`grat_pre_${charge.key}`),
         // Just flipped to `booked` by `confirmPendingRow`, so its event exists (§2.8.2).

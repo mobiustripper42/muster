@@ -1203,6 +1203,73 @@ export function runRepositoryContract(
       });
     });
 
+    // ── The reconciler's list and its mark (issue #1236) ────────────────────────────────
+    // The list's rule is tested here and only here; the job's tests check that it uses the list.
+    describe("the reconciler's checkouts to check (issue #1236)", () => {
+      const at = (ms: number) => new Date(Date.parse(SINCE) + ms).toISOString();
+      const ids = async () => (await repo.listCheckoutsToCheck(SINCE)).map((r) => String(r.id));
+
+      it("AC1: listCheckoutsToCheck returns timed-out public checkouts with a payment started, oldest reserved first", async () => {
+        await repo.saveReservation(pendingRow({ id: rid("old"), reservedAt: at(-45 * 60_000), paymentIntentIds: ["pi_a"] }));
+        await repo.saveReservation(pendingRow({ id: rid("edge"), reservedAt: SINCE, paymentIntentIds: ["pi_b"] }));
+        await repo.saveReservation(
+          pendingRow({ id: rid("oldest"), reservedAt: at(-90 * 60_000), paymentIntentIds: ["pi_c", "pi_d"] }),
+        );
+        // Still inside its window by one millisecond.
+        await repo.saveReservation(pendingRow({ id: rid("live"), reservedAt: at(1), paymentIntentIds: ["pi_e"] }));
+        // An operator's pending row has no payment window and never times out (DEC-163).
+        await repo.saveReservation(
+          pendingRow({ id: rid("admin"), source: "admin", reservedAt: at(-60 * 60_000), paymentIntentIds: ["pi_f"] }),
+        );
+        // No payment started.
+        await repo.saveReservation(pendingRow({ id: rid("empty-ids"), reservedAt: at(-60 * 60_000), paymentIntentIds: [] }));
+        await repo.saveReservation(pendingRow({ id: rid("no-ids"), reservedAt: at(-60 * 60_000) }));
+        // No `reservedAt` at all: off the list, though `isLivePending` alone would call it timed out.
+        const { reservedAt: _gone, ...unreserved } = pendingRow({ id: rid("no-reserved-at"), paymentIntentIds: ["pi_g"] });
+        await repo.saveReservation(unreserved);
+        await repo.saveReservation(
+          pendingRow({ id: rid("cancelled"), status: "cancelled", reservedAt: at(-60 * 60_000), paymentIntentIds: ["pi_h"] }),
+        );
+
+        expect(await ids()).toEqual(["oldest", "old", "edge"]);
+      });
+
+      it("AC4: listCheckoutsToCheck leaves out a booked row, however old, with its payment ids", async () => {
+        await repo.saveReservation(
+          pendingRow({
+            id: rid("booked"),
+            status: "booked",
+            eventId: asId<"EventId">("evt-booked"),
+            reservedAt: at(-60 * 60_000),
+            paymentIntentIds: ["pi_paid"],
+          }),
+        );
+        await repo.saveReservation(pendingRow({ id: rid("open"), reservedAt: at(-60 * 60_000), paymentIntentIds: ["pi_open"] }));
+
+        expect(await ids()).toEqual(["open"]);
+      });
+
+      it("AC1: markPaymentChecked records when, and takes the checkout off the list", async () => {
+        await repo.saveReservation(pendingRow({ id: rid("a"), reservedAt: at(-60 * 60_000), paymentIntentIds: ["pi_a"] }));
+        await repo.saveReservation(pendingRow({ id: rid("b"), reservedAt: at(-30 * 60_000), paymentIntentIds: ["pi_b"] }));
+
+        await repo.markPaymentChecked(rid("a"), NOW);
+
+        expect((await repo.getReservation(rid("a")))!.paymentCheckedAt).toBe(NOW);
+        expect((await repo.getReservation(rid("b")))!.paymentCheckedAt).toBeUndefined();
+        expect(await ids()).toEqual(["b"]);
+      });
+
+      it("AC1: markPaymentChecked writes only while the column is empty", async () => {
+        await repo.saveReservation(pendingRow({ id: rid("a"), reservedAt: at(-60 * 60_000), paymentIntentIds: ["pi_a"] }));
+
+        await repo.markPaymentChecked(rid("a"), NOW);
+        await repo.markPaymentChecked(rid("a"), "2026-06-01T13:00:00.000Z");
+
+        expect((await repo.getReservation(rid("a")))!.paymentCheckedAt).toBe(NOW);
+      });
+    });
+
     // ── checkout_attempts — the count the screen actually claims to show (15.9, issue #977) ──
     // `/admin/abandonment` has always said "Card form counts payment attempts" while deriving that
     // number from `paymentIntentIds.length`. 15.8 made the two disagree: a retry that reuses its

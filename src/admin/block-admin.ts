@@ -24,6 +24,7 @@ import type { Block } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { BlockId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
+import { isUnpaidPhoneBooking } from "../reservations/pay-by-link.js";
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -173,6 +174,8 @@ export type VesselHoldSaveError =
  *    blocks, so the hold loses rather than drawing a blackout over a sold trip. Checked on the
  *    EXACT slot, not overlap: a hold subtracts one enumerable departure, so a neighbouring trip
  *    running long is not this row's business (that is `hull-busy.ts`, on the sell path).
+ *    An unpaid phone booking on the exact slot refuses it the same way (issue #1279): its payment
+ *    link would stop taking money under the hold.
  * Neither is a race-proof guarantee — nothing here is transactional — but a hold subtracts
  * availability rather than committing money, and the sell path has its own CAS (DEC-109/#691).
  */
@@ -206,6 +209,18 @@ export async function saveVesselHoldAdmin(
       e.time === time,
   );
   if (occupied) return { ok: false, code: "slot_taken" };
+
+  // An unpaid phone booking on this exact departure holds the boat the same way (issue #1279): its
+  // customer has a payment link that a hold would stop taking money, so the hold is refused.
+  const phoneBooked = (await repo.listAllReservations()).some(
+    (r) =>
+      isUnpaidPhoneBooking(r) &&
+      r.vesselId !== undefined &&
+      String(r.vesselId) === vesselId &&
+      r.date === date &&
+      r.time === time,
+  );
+  if (phoneBooked) return { ok: false, code: "slot_taken" };
 
   const block: Block = {
     id: asId<"BlockId">(input.id),

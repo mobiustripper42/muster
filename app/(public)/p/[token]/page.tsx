@@ -9,8 +9,8 @@
  * shown rather than asked, and the money is the invoice frozen at booking with its tip fixed.
  *
  * **Every state but "payable" is a sentence and a way on**, never the form: an expired or tampered
- * link, a paid trip, a cancelled one. None of them creates a payment intent — only the pay action
- * does, and it re-verifies the link itself.
+ * link, a paid trip, a cancelled one, a trip that has left, a slot under a block (issue #1279). None
+ * of them creates a payment intent — only the pay action does, and it re-verifies the link itself.
  *
  * **A paid trip does NOT redirect to `/b/<code>`** (operator, 2026-09-29). The payment link is a
  * 72-hour address that may have been forwarded; the booking link is the durable credential. So a
@@ -19,10 +19,10 @@
  * The cancel is a no-JS two-step like the operator's pane: `?cancel=1` opens the confirm, and a form
  * post ends the booking. The cancelled card is the same right after and on any later visit.
  */
-import type { Location, Offering, Reservation } from "@core/domain/entities.js";
+import type { Block, Location, Offering, Reservation } from "@core/domain/entities.js";
 import { formatPhoneForDisplay, type CanonicalPhone } from "@core/customers/identity.js";
 import { formatClock, formatDuration, formatShortDay } from "@core/reservations/availability-screen.js";
-import { cancelledWasCharged, maskedPhone, payLinkMoney, payLinkState } from "@core/reservations/pay-by-link.js";
+import { cancelledWasCharged, maskedPhone, payLinkMoney, payLinkStateAt } from "@core/reservations/pay-by-link.js";
 import type { PaymentConfig } from "@core/reservations/payment-config.js";
 import { cancellationTerms, REFUND_TIMING_LINE } from "@core/reservations/refund-terms.js";
 import { hasFlex } from "@core/reservations/booking-invoice.js";
@@ -37,6 +37,7 @@ import { TENANT_NAME } from "../../../lib/tenant";
 import { logSwallowed } from "../../../lib/swallowed";
 import { CheckoutForm } from "../../book/checkout/checkout-form";
 import { cancelFromPaymentLink } from "./actions";
+import { REFUSAL } from "./refusal";
 import { Card } from "../../../../components/ui/card";
 import { Recap } from "../../../../components/checkout/recap";
 
@@ -72,12 +73,14 @@ export default async function PayPage({
   let offering: Offering | null = null;
   let location: Location | null = null;
   let config: PaymentConfig;
+  let blocks: Block[];
   try {
     const repo = getRepo();
     config = await repo.getPaymentConfig();
     reservation = await repo.getReservation(link.reservationId);
     offering = reservation?.offeringId ? await repo.getOffering(reservation.offeringId) : null;
     location = offering?.locationId ? await repo.getLocation(offering.locationId) : null;
+    blocks = await repo.listBlocks();
   } catch (e) {
     // The last screen before money moves, for a customer the operator is waiting on.
     logSwallowed("pay", e, "the payment page did not load — the customer could not pay");
@@ -88,10 +91,13 @@ export default async function PayPage({
     );
   }
 
-  const state = payLinkState(reservation);
+  // The check (issue #1279): payable only while the trip has not left and its slot is clear.
+  const state = payLinkStateAt(reservation, { asOf: new Date().toISOString(), blocks, offering });
   if (state.kind === "missing") return <Expired />;
   if (state.kind === "cancelled") return <Cancelled reservation={state.reservation} />;
   if (state.kind === "paid") return <Paid reservation={state.reservation} />;
+  if (state.kind === "departed") return <NotPayable words={REFUSAL.departed} />;
+  if (state.kind === "blocked") return <NotPayable words={REFUSAL.blocked} />;
 
   const r = state.reservation;
   const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
@@ -277,6 +283,17 @@ function Expired() {
     <Shell>
       <div data-testid="pay-state">
         <Notice>This payment link has expired. Ask {TENANT_NAME} for a new one.</Notice>
+      </div>
+    </Shell>
+  );
+}
+
+/** A trip that has left, or whose slot is blocked (issue #1279): a sentence and no form. */
+function NotPayable({ words }: { words: string }) {
+  return (
+    <Shell>
+      <div data-testid="pay-state">
+        <Notice>{words}</Notice>
       </div>
     </Shell>
   );

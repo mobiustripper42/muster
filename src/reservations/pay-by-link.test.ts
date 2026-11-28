@@ -9,14 +9,25 @@
 import { describe, expect, it, vi } from "vitest";
 import { FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import type { Offering, Reservation, Vessel } from "../domain/entities.js";
+import type { Block, Offering, Reservation, Vessel } from "../domain/entities.js";
 import { asId, type ReservationId } from "../domain/ids.js";
-import type { WebhookDeps } from "./booking-webhook.js";
+import { hasDeparted } from "./availability.js";
+import { paidOnCancelledAlertText, type WebhookDeps } from "./booking-webhook.js";
 import { cancelReservation, cancelUnpaidPhoneBooking } from "./cancel-reservation.js";
 import { confirmBookingFromIntent } from "./confirm-booking.js";
 import { bookForCustomer } from "./operator-booking.js";
-import { cancelledWasCharged, maskedPhone, payLinkMoney, payLinkState, startPayByLink } from "./pay-by-link.js";
+import {
+  cancelledWasCharged,
+  isUnpaidPhoneBooking,
+  maskedPhone,
+  payLinkMoney,
+  payLinkState,
+  payLinkStateAt,
+  slotBlockedFor,
+  startPayByLink,
+} from "./pay-by-link.js";
 import { PAYMENT_CONFIG_DEFAULTS, type PaymentConfig } from "./payment-config.js";
+import { bookingPanePath } from "./refund-payment.js";
 import { confirmCompedRow } from "./write-booking.js";
 
 const BOAT = asId<"VesselId">("v-boat");
@@ -392,13 +403,18 @@ describe("the races (issue #1082)", () => {
 
     // The customer is on the card screen; the operator cancels; then the card goes through.
     await cancelUnpaidPhoneBooking({ repo, now }, row.id, "operator");
+    const cancelled = (await repo.getReservation(row.id))!;
     pay(payments, "pi_fake_1", row.invoice!.amountDueNowCents);
     const { deps, alert } = webhookDeps(repo, payments);
     const res = await confirmBookingFromIntent(deps, (await payments.getSucceededPaymentIntent("pi_fake_1"))!);
 
     expect(res).toEqual({ handled: true, outcome: "unbookable" });
     expect(alert).toHaveBeenCalledTimes(1);
-    expect(alert.mock.calls[0]![0]).toContain("PAID but NOT booked - charge pi_fake_1");
+    // Issue #1279 AC7: the customer and the amount, with a link to the booking.
+    expect(alert).toHaveBeenCalledWith(
+      paidOnCancelledAlertText(cancelled, row.invoice!.amountDueNowCents),
+      bookingPanePath(row.id),
+    );
     expect(await repo.getReservation(row.id)).toMatchObject({ status: "cancelled", eventId: null });
     expect(await repo.listEvents()).toHaveLength(0);
   });
@@ -862,5 +878,373 @@ describe("the payment link takes the deposit (issue #1251)", () => {
     expect(dueBefore).toBe(QUOTE);
     expect(dueAfter).toBe(DEPOSIT);
     expect(priceAfter).toEqual(priceBefore);
+  });
+});
+
+/**
+ * Issue #1279: the pay link stops taking money for a trip that can no longer be sold — one that has
+ * left, or whose slot is blocked — checked before Stripe is asked and again before the customer is
+ * handed the card form.
+ *
+ * The departure is 13:30 on Sat Jul 4 in the vessel zone, EDT: 17:30Z.
+ */
+const DEPARTS = "2026-07-04T17:30:00.000Z";
+const JUST_BEFORE = "2026-07-04T17:29:59.999Z";
+const AFTER = "2026-07-04T18:00:00.000Z";
+const OTHER_LOC = asId<"LocationId">("loc-2");
+
+const boatOut = (date = DATE): Block => ({
+  id: asId<"BlockId">(`blk-out-${date}`),
+  kind: "vessel",
+  vesselId: BOAT,
+  startDate: date,
+  endDate: date,
+});
+const closure = (startTime: string, endTime: string, locationId = offering.locationId): Block => ({
+  id: asId<"BlockId">(`blk-close-${locationId}-${startTime}`),
+  kind: "location",
+  locationId,
+  date: DATE,
+  startTime,
+  endTime,
+});
+const hold = (time = TIME): Block => ({
+  id: asId<"BlockId">(`blk-hold-${time}`),
+  kind: "vesselHold",
+  vesselId: BOAT,
+  date: DATE,
+  time,
+});
+
+describe("payLinkStateAt — the check (issue #1279)", () => {
+  const clear = { blocks: [] as Block[], offering };
+
+  it("AC1: a payable booking whose trip has left is departed", async () => {
+    const { row } = await phoneBooked();
+    expect(payLinkState(row).kind).toBe("payable");
+    expect(payLinkStateAt(row, { asOf: AFTER, ...clear })).toEqual({ kind: "departed", reservation: row });
+  });
+
+  it("AC1: at the exact departure instant the answer is departed; a millisecond before, payable", async () => {
+    const { row } = await phoneBooked();
+    // The instants are the ones `hasDeparted` draws the line between.
+    expect(hasDeparted(DATE, TIME, DEPARTS)).toBe(true);
+    expect(hasDeparted(DATE, TIME, JUST_BEFORE)).toBe(false);
+
+    expect(payLinkStateAt(row, { asOf: DEPARTS, ...clear })).toEqual({ kind: "departed", reservation: row });
+    expect(payLinkStateAt(row, { asOf: JUST_BEFORE, ...clear })).toEqual({ kind: "payable", reservation: row });
+  });
+
+  it("AC1: a booked booking whose trip has left is still paid, and a cancelled one still cancelled", async () => {
+    const { row } = await phoneBooked();
+    const booked: Reservation = { ...row, source: "muster", status: "booked" };
+    const cancelled: Reservation = { ...row, status: "cancelled" };
+    expect(payLinkStateAt(booked, { asOf: AFTER, ...clear })).toEqual({ kind: "paid", reservation: booked });
+    expect(payLinkStateAt(cancelled, { asOf: AFTER, ...clear })).toEqual({ kind: "cancelled", reservation: cancelled });
+  });
+
+  it("AC1: no row is missing, and a row payLinkState does not call payable keeps that answer after its trip left", async () => {
+    const { row } = await phoneBooked();
+    const comp = { ...row, invoice: { ...row.invoice!, totalCents: 0, amountDueNowCents: 0 } };
+    expect(payLinkStateAt(null, { asOf: AFTER, ...clear })).toEqual({ kind: "missing" });
+    expect(payLinkStateAt(comp, { asOf: AFTER, ...clear })).toEqual({ kind: "missing" });
+  });
+
+  it("AC2: a payable booking whose trip has not left, under a block, is blocked", async () => {
+    const { row } = await phoneBooked();
+    expect(payLinkStateAt(row, { asOf: NOW, blocks: [boatOut()], offering })).toEqual({
+      kind: "blocked",
+      reservation: row,
+    });
+  });
+
+  it("AC2: a block on another day leaves it payable", async () => {
+    const { row } = await phoneBooked();
+    expect(payLinkStateAt(row, { asOf: NOW, blocks: [boatOut("2026-07-05")], offering })).toEqual({
+      kind: "payable",
+      reservation: row,
+    });
+  });
+
+  it("AC2: a booking both departed and blocked is departed", async () => {
+    const { row } = await phoneBooked();
+    expect(payLinkStateAt(row, { asOf: AFTER, blocks: [boatOut()], offering })).toEqual({
+      kind: "departed",
+      reservation: row,
+    });
+  });
+});
+
+/**
+ * The one home of "is this booking's slot under these blocks" (issue #1279 AC2, Interfaces call 11).
+ * The 13:30 departure is 810 minutes past midnight; a closure counts when the trip runs into it.
+ */
+describe("slotBlockedFor — the booking's slot under the blocks (issue #1279)", () => {
+  const withTrip = (r: Reservation, tripMinutes: number): Reservation => ({ ...r, tripMinutes });
+  const noTrip = (r: Reservation): Reservation => {
+    const { tripMinutes: _t, ...rest } = r;
+    return rest;
+  };
+
+  it("AC2: true under a boat out, under a closure at the offering's location, and under a hold on its departure", async () => {
+    const { row } = await phoneBooked();
+    expect(slotBlockedFor([boatOut()], row, offering)).toBe(true);
+    expect(slotBlockedFor([closure("13:00", "16:00")], row, offering)).toBe(true);
+    expect(slotBlockedFor([hold()], row, offering)).toBe(true);
+  });
+
+  it("AC2: false for a reservation with no vessel, no date or no time", async () => {
+    const { row } = await phoneBooked();
+    const all = [boatOut(), closure("13:00", "16:00"), hold()];
+    const { vesselId: _v, ...noVessel } = row;
+    const { date: _d, ...noDate } = row;
+    const { time: _tm, ...noTime } = row;
+    expect(slotBlockedFor(all, noVessel, offering)).toBe(false);
+    expect(slotBlockedFor(all, noDate, offering)).toBe(false);
+    expect(slotBlockedFor(all, noTime, offering)).toBe(false);
+  });
+
+  it("AC2: the closure's location is the offering's, and with the offering gone there is none", async () => {
+    const { row } = await phoneBooked();
+    expect(slotBlockedFor([closure("13:00", "16:00", OTHER_LOC)], row, offering)).toBe(false);
+    expect(slotBlockedFor([closure("13:00", "16:00", OTHER_LOC)], row, { ...offering, locationId: OTHER_LOC })).toBe(true);
+    expect(slotBlockedFor([closure("13:00", "16:00")], row, null)).toBe(false);
+    expect(slotBlockedFor([closure("13:00", "16:00")], row, undefined)).toBe(false);
+    // A boat out needs no location.
+    expect(slotBlockedFor([boatOut()], row, null)).toBe(true);
+  });
+
+  it("AC2: the trip length is the reservation's own before the offering's", async () => {
+    const { row } = await phoneBooked();
+    // 150 minutes is out until 16:00, into a 15:31 closure; 100 is back at 15:10, clear of it.
+    const late = [closure("15:31", "18:00")];
+    expect(slotBlockedFor(late, withTrip(row, 150), { ...offering, tripLengthMinutes: 100 })).toBe(true);
+    expect(slotBlockedFor(late, withTrip(row, 100), { ...offering, tripLengthMinutes: 150 })).toBe(false);
+  });
+
+  it("AC2: with none on the reservation, the offering's trip length; with none on either, 100 minutes", async () => {
+    const { row } = await phoneBooked();
+    const r = noTrip(row);
+    expect(slotBlockedFor([closure("15:31", "18:00")], r, { locationId: offering.locationId, tripLengthMinutes: 150 })).toBe(true);
+    expect(slotBlockedFor([closure("15:31", "18:00")], r, { locationId: offering.locationId, tripLengthMinutes: 100 })).toBe(false);
+    // XOLA_TRIP_MINUTES (100): back at 15:10 — into a 15:05 closure, clear of a 15:15 one.
+    const bare = { locationId: offering.locationId };
+    expect(slotBlockedFor([closure("15:05", "18:00")], r, bare)).toBe(true);
+    expect(slotBlockedFor([closure("15:15", "18:00")], r, bare)).toBe(false);
+  });
+});
+
+describe("isUnpaidPhoneBooking — the one home of an unpaid phone booking (issue #1279)", () => {
+  it("AC5: an operator's pending booking is one, a $0 comp still waiting to confirm included", async () => {
+    const { row } = await phoneBooked();
+    expect(isUnpaidPhoneBooking(row)).toBe(true);
+    expect(isUnpaidPhoneBooking({ ...row, invoice: { ...row.invoice!, totalCents: 0, amountDueNowCents: 0 } })).toBe(true);
+  });
+
+  it("AC5: a booked or cancelled one is not, nor a web checkout's pending row", async () => {
+    const { row } = await phoneBooked();
+    expect(isUnpaidPhoneBooking({ ...row, status: "booked" })).toBe(false);
+    expect(isUnpaidPhoneBooking({ ...row, status: "cancelled" })).toBe(false);
+    expect(isUnpaidPhoneBooking({ ...row, source: "muster" })).toBe(false);
+  });
+});
+
+describe("startPayByLink — Pay on a form opened earlier (issue #1279 AC3)", () => {
+  const payAt = (repo: InMemoryRepository, payments: FakePaymentPort, id: ReservationId, at: string, payDeposit = false) =>
+    startPayByLink({ repo, payments, now: () => at }, id, { payDeposit });
+
+  /** The phone booking, written 40 days out, so a later Pay with the deposit would make a provider customer. */
+  async function bookedFar(): Promise<{ repo: InMemoryRepository; row: Reservation }> {
+    const repo = new InMemoryRepository();
+    await repo.saveOffering(offering);
+    await repo.saveVessel(vessel);
+    const res = await bookForCustomer(
+      repo,
+      {
+        offeringId: OFF,
+        vesselId: BOAT,
+        date: DATE,
+        time: TIME,
+        guestCount: 2,
+        gratuityBps: 2000,
+        customerName: "Phone Caller",
+        phone: "216-555-0199",
+      },
+      () => FAR,
+    );
+    if (!res.ok) throw new Error(`fixture refused: ${res.reason}`);
+    return { repo, row: res.reservation };
+  }
+
+  it("AC3: the trip has left since the form opened: refused as departed — Stripe not asked, the row unchanged", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    expect(await start(repo, payments, row.id)).toMatchObject({ ok: true, paymentIntentId: "pi_fake_1" });
+    const before = await repo.getReservation(row.id);
+
+    expect(await payAt(repo, payments, row.id, AFTER)).toEqual({ ok: false, reason: "departed" });
+    expect(payments.intents).toHaveLength(1);
+    expect(payments.amountUpdates).toEqual([]);
+    expect(payments.createdCustomers).toEqual([]);
+    expect(payments.cancelled).toEqual([]);
+    expect(await repo.getReservation(row.id)).toEqual(before);
+  });
+
+  it("AC3: the slot has been blocked since the form opened: refused as blocked — Stripe not asked, the row unchanged", async () => {
+    const { repo, row } = await bookedFar();
+    const payments = new FakePaymentPort();
+    // The form opened on Pay in full; the press asks for the deposit, which would make a customer.
+    expect(await payAt(repo, payments, row.id, FAR)).toMatchObject({ ok: true, paymentIntentId: "pi_fake_1" });
+    await repo.saveBlock(boatOut());
+    const before = await repo.getReservation(row.id);
+
+    expect(await payAt(repo, payments, row.id, FAR, true)).toEqual({ ok: false, reason: "blocked" });
+    expect(payments.intents).toHaveLength(1);
+    expect(payments.amountUpdates).toEqual([]);
+    expect(payments.createdCustomers).toEqual([]);
+    expect(payments.cancelled).toEqual([]);
+    expect(await repo.getReservation(row.id)).toEqual(before);
+  });
+
+  it("AC3: cancelled since the form opened: refused as cancelled — Stripe not asked, the row unchanged", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    await start(repo, payments, row.id);
+    await cancelUnpaidPhoneBooking({ repo, now }, row.id, "operator");
+    const before = await repo.getReservation(row.id);
+
+    expect(await start(repo, payments, row.id)).toEqual({ ok: false, reason: "cancelled" });
+    expect(payments.intents).toHaveLength(1);
+    expect(payments.amountUpdates).toEqual([]);
+    expect(payments.createdCustomers).toEqual([]);
+    expect(await repo.getReservation(row.id)).toEqual(before);
+  });
+
+  it("AC2: a block on another day does not stop the payment", async () => {
+    const { repo, row } = await phoneBooked();
+    await repo.saveBlock(boatOut("2026-07-05"));
+    expect(await start(repo, new FakePaymentPort(), row.id)).toMatchObject({ ok: true, paymentIntentId: "pi_fake_1" });
+  });
+});
+
+/**
+ * The second check (issue #1279 AC4): the booking stops being payable while Stripe is setting the
+ * payment up. Stripe's answer is held open here and the change made inside it, so it lands after the
+ * first check and before `attachPaymentIntent` returns.
+ */
+describe("startPayByLink — the second check, after Stripe answers (issue #1279 AC4)", () => {
+  /** `meanwhile` runs once Stripe has made the intent and before its answer is returned. */
+  function duringMint(payments: FakePaymentPort, meanwhile: () => Promise<void>): void {
+    const mint = payments.createPaymentIntent.bind(payments);
+    payments.createPaymentIntent = async (...args: Parameters<typeof mint>) => {
+      const made = await mint(...args);
+      await meanwhile();
+      return made;
+    };
+  }
+
+  /** The same, on the reuse path: Stripe has raised the existing intent. */
+  function duringRaise(payments: FakePaymentPort, meanwhile: () => Promise<void>): void {
+    const raise = payments.updatePaymentIntentAmount.bind(payments);
+    payments.updatePaymentIntentAmount = async (...args: Parameters<typeof raise>) => {
+      const raised = await raise(...args);
+      await meanwhile();
+      return raised;
+    };
+  }
+
+  const superseded = async (repo: InMemoryRepository, id: ReservationId, intent: string) =>
+    (await repo.listTrailEventsFor(id, [intent])).filter(
+      (e) => String(e.id) === `payment_superseded:${intent}` && e.type === "payment_superseded",
+    );
+
+  it("AC4: cancelled while Stripe made the payment: that payment is cancelled at Stripe, no card form, and the history says so", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    duringMint(payments, async () => {
+      await cancelUnpaidPhoneBooking({ repo, now }, row.id, "operator");
+    });
+
+    expect(await start(repo, payments, row.id)).toEqual({ ok: false, reason: "cancelled" });
+    expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+    expect(await superseded(repo, row.id, "pi_fake_1")).toHaveLength(1);
+  });
+
+  it("AC4: Stripe refusing that cancel still refuses the customer, and writes no payment_superseded", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    duringMint(payments, async () => {
+      await cancelUnpaidPhoneBooking({ repo, now }, row.id, "operator");
+      payments.cancelError = new Error("stripe refused");
+    });
+
+    expect(await start(repo, payments, row.id)).toEqual({ ok: false, reason: "cancelled" });
+    expect(await superseded(repo, row.id, "pi_fake_1")).toHaveLength(0);
+  });
+
+  it("AC4: an attempt that reused and raised its intent: the raised intent is cancelled", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    expect(await start(repo, payments, row.id)).toMatchObject({ ok: true, paymentIntentId: "pi_fake_1" });
+    duringRaise(payments, async () => {
+      await cancelUnpaidPhoneBooking({ repo, now }, row.id, "operator");
+    });
+
+    expect(await start(repo, payments, row.id)).toEqual({ ok: false, reason: "cancelled" });
+    expect(payments.amountUpdates).toHaveLength(1);
+    expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+    expect(await superseded(repo, row.id, "pi_fake_1")).toHaveLength(1);
+  });
+
+  it("AC4: blocked while Stripe made the payment — the blocks are read again", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    duringMint(payments, async () => {
+      await repo.saveBlock(boatOut());
+    });
+
+    expect(await start(repo, payments, row.id)).toEqual({ ok: false, reason: "blocked" });
+    expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+  });
+
+  it("AC4: the trip left while Stripe made the payment — the clock is read again", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    let at = NOW;
+    duringMint(payments, async () => {
+      at = AFTER;
+    });
+
+    expect(await startPayByLink({ repo, payments, now: () => at }, row.id, { payDeposit: false })).toEqual({
+      ok: false,
+      reason: "departed",
+    });
+    expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+  });
+
+  it("AC4: paid in another tab while Stripe made the payment", async () => {
+    const { repo, row } = await phoneBooked();
+    const payments = new FakePaymentPort();
+    duringMint(payments, async () => {
+      const stored = (await repo.getReservation(row.id))!;
+      await repo.saveReservation({ ...stored, source: "muster", status: "booked" });
+    });
+
+    expect(await start(repo, payments, row.id)).toEqual({ ok: false, reason: "paid" });
+    expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
+  });
+
+  it("AC4: the offering moved under a closure while Stripe made the payment — the offering is read again", async () => {
+    const { repo, row } = await phoneBooked();
+    // A closure at the other dock all along; the booking's offering leaves from this one until the
+    // operator moves it.
+    await repo.saveBlock(closure("13:00", "16:00", OTHER_LOC));
+    const payments = new FakePaymentPort();
+    duringMint(payments, async () => {
+      await repo.saveOffering({ ...offering, locationId: OTHER_LOC });
+    });
+
+    expect(await start(repo, payments, row.id)).toEqual({ ok: false, reason: "blocked" });
+    expect(payments.cancelled).toEqual([{ paymentIntentId: "pi_fake_1", reason: "abandoned" }]);
   });
 });

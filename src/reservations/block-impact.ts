@@ -18,6 +18,7 @@
 import type { Block, Event, Offering, Reservation, Vessel } from "../domain/entities.js";
 import { deriveVirtualAvailability, isSlotBlocked } from "./availability.js";
 import { candidateTripMinutes, XOLA_TRIP_MINUTES } from "./hull-busy.js";
+import { isUnpaidPhoneBooking, slotBlockedFor } from "./pay-by-link.js";
 
 export interface BlockImpactInput {
   offerings: readonly Offering[];
@@ -33,6 +34,9 @@ export interface BlockImpact {
   conflictCount: number;
   /** Summed fare (integer cents) of the conflicting bookings — the "$X" in the badge. */
   conflictCents: number;
+  /** Unpaid phone bookings the block covers (issue #1279) — their pay links stop taking a payment
+   *  while the block is here. The block is still saved; this is only said. */
+  unpaidCount: number;
 }
 
 /** The inclusive ISO-day window a block covers — the range the deriver enumerates over. */
@@ -101,5 +105,14 @@ export function computeBlockImpact(block: Block, input: BlockImpactInput): Block
     // A block landing on a day an imported charter runs is still worth telling the operator
     // about; that is a different number than either of these, and it is #700's territory.
   }
-  return { removedSlots, conflictCount, conflictCents };
+
+  // Unpaid phone bookings (issue #1279): pending operator rows, which the deriver does not list as
+  // booked, whose slot this block covers — decided by the same `slotBlockedFor` the pay link asks.
+  let unpaidCount = 0;
+  for (const r of input.reservations) {
+    if (!isUnpaidPhoneBooking(r)) continue;
+    const offering = r.offeringId ? offeringById.get(String(r.offeringId)) : undefined;
+    if (slotBlockedFor([block], r, offering)) unpaidCount += 1;
+  }
+  return { removedSlots, conflictCount, conflictCents, unpaidCount };
 }

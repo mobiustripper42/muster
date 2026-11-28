@@ -165,7 +165,7 @@ describe("computeBlockImpact", () => {
       endDate: "2027-01-02",
     };
     const impact = computeBlockImpact(block, inputWith([]));
-    expect(impact).toEqual({ removedSlots: 0, conflictCount: 0, conflictCents: 0 });
+    expect(impact).toEqual({ removedSlots: 0, conflictCount: 0, conflictCents: 0, unpaidCount: 0 });
   });
 
   it("a PENDING row is neither a conflict nor money — nobody has paid (14.3, SPEC §2.8.10)", () => {
@@ -188,7 +188,7 @@ describe("computeBlockImpact", () => {
       endDate: "2026-08-12",
     };
     const impact = computeBlockImpact(block, { ...inputWith([]), reservations: [pending] });
-    expect(impact).toEqual({ removedSlots: TIMES.length, conflictCount: 0, conflictCents: 0 });
+    expect(impact).toEqual({ removedSlots: TIMES.length, conflictCount: 0, conflictCents: 0, unpaidCount: 0 });
   });
 });
 
@@ -239,3 +239,56 @@ describe("computeBlockImpact — a hull already out on another trip (#615, #691)
   });
 });
 
+
+/**
+ * Issue #1279 AC5: a block saved over an unpaid phone booking says how many are under it. Whether a
+ * booking is one is `isUnpaidPhoneBooking`'s, and whether its slot is under the block is
+ * `slotBlockedFor`'s (both in `pay-by-link.ts`, tested there); here one case each way.
+ */
+describe("computeBlockImpact — unpaid phone bookings under the block (issue #1279)", () => {
+  /** An operator's phone booking on `date`/`time`, unpaid unless `over` says otherwise. */
+  const phone = (date: string, time: string, over: Partial<Reservation> = {}): Reservation => ({
+    id: asId<"ReservationId">(`resv-phone-${date}-${time}`),
+    eventId: null,
+    source: "admin",
+    status: "pending",
+    customerName: "Phone Caller",
+    partySize: 2,
+    vesselId: VESSEL,
+    date,
+    time,
+    offeringId: offering.id,
+    tripMinutes: 100,
+    ...over,
+  });
+
+  const boatOut: Block = {
+    id: asId<"BlockId">("blk-unpaid"),
+    kind: "vessel",
+    vesselId: VESSEL,
+    startDate: "2026-08-11",
+    endDate: "2026-08-14",
+  };
+
+  it("AC5: counts the unpaid phone bookings the block covers", () => {
+    const reservations = [phone("2026-08-12", "13:30"), phone("2026-08-13", "15:30")];
+    expect(computeBlockImpact(boatOut, { ...inputWith([]), reservations }).unpaidCount).toBe(2);
+  });
+
+  it("AC5: a cancelled or booked reservation under the block is not counted", () => {
+    const paid = booking("2026-08-12", "15:30", 54900);
+    const reservations = [
+      phone("2026-08-12", "13:30"),
+      phone("2026-08-13", "13:30", { status: "cancelled" }),
+      phone("2026-08-13", "15:30", { status: "booked" }),
+      paid.reservation,
+    ];
+    const impact = computeBlockImpact(boatOut, { ...inputWith([paid]), reservations });
+    expect(impact.unpaidCount).toBe(1);
+  });
+
+  it("AC5: an unpaid phone booking outside the block is not counted", () => {
+    const reservations = [phone("2026-08-15", "13:30")];
+    expect(computeBlockImpact(boatOut, { ...inputWith([]), reservations }).unpaidCount).toBe(0);
+  });
+});

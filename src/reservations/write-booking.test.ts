@@ -165,10 +165,12 @@ describe("confirmPendingRow — the pending row becomes the booking (§2.8.6)", 
 
   it("a cancelled row carrying the intent id is unconfirmable (not_pending) — never resurrected by a payment", async () => {
     const repo = await world(pendingRow({ status: "cancelled" }));
+    const cancelled = await repo.getReservation(PEND);
 
     const r = await confirm(repo);
 
-    expect(r).toEqual({ outcome: "unconfirmable", reason: "not_pending" });
+    // Carrying the cancelled row (issue #1279): the admin text names its customer.
+    expect(r).toEqual({ outcome: "unconfirmable", reason: "not_pending", reservation: cancelled });
     expect((await repo.getReservation(PEND))!.status).toBe("cancelled");
   });
 });

@@ -8,12 +8,55 @@
  * vessel-brew-3 at the dates the seed derives for today (#646), so the conflict count is real.
  */
 import type { Page } from "@playwright/test";
-import { DEMO } from "./reservation-demo.js";
+import { TEST_DATABASE_URL } from "../db/reset-test.js";
+import { PostgresRepository } from "../src/adapters/postgres-repository.js";
+import { addDays } from "../src/config/tenant.js";
+import { asId } from "../src/domain/ids.js";
+import { bookForCustomer } from "../src/reservations/operator-booking.js";
+import { DEMO, INSIDE_BALANCE_WINDOW, TODAY } from "./reservation-demo.js";
 import { test, expect, resetAndSeed, signInAsAdmin, clickHydrated } from "./fixtures.js";
 
 const BOAT_OUT = /A boat is out of service/;
 const CLOSURE = /A dock or the river is closed/;
 const ONE_DEPARTURE = /Hold one departure/;
+
+/**
+ * An operator's phone booking on the demo boat, unpaid, through the real path (issue #1279). Written
+ * through the port rather than the calendar's form: what is under test is the blocks page.
+ * `movedTo` moves its day afterwards, for a day the real path refuses (DEC-184).
+ */
+async function unpaidPhoneBooking(date: string, time: string, movedTo?: string): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const res = await bookForCustomer(
+      repo,
+      {
+        offeringId: asId<"OfferingId">(DEMO.offeringId),
+        vesselId: asId<"VesselId">(DEMO.vesselId),
+        date,
+        time,
+        guestCount: 2,
+        gratuityBps: 2000,
+        customerName: `Phone Caller ${time}`,
+        phone: "216-555-0199",
+      },
+      () => new Date().toISOString(),
+    );
+    if (!res.ok) throw new Error(`phone booking refused: ${res.reason}`);
+    if (movedTo) await repo.saveReservation({ ...res.reservation, date: movedTo });
+  } finally {
+    await repo.close();
+  }
+}
+
+/** Take the demo boat out on `date` (To left blank: the one day), through the editor. */
+async function boatOutOn(page: Page, date: string): Promise<void> {
+  await choose(page, BOAT_OUT);
+  await page.getByLabel("Which boat").selectOption({ label: DEMO.vesselName });
+  await page.getByLabel("From", { exact: true }).fill(date);
+  await page.getByRole("button", { name: "Block it", exact: true }).click();
+  await page.waitForURL(/sel=/);
+}
 
 /** The editor's three answers to "What's happening?" — present only while nothing is chosen. */
 async function choose(page: Page, answer: RegExp): Promise<void> {
@@ -180,5 +223,56 @@ test.describe("admin /admin/blocks", () => {
     await page.getByRole("link", { name: "+ New block" }).click();
     await page.waitForURL((url) => !url.searchParams.has("sel"));
     await expect(page.getByRole("button", { name: CLOSURE })).toBeVisible();
+  });
+
+  /**
+   * Issue #1279 AC5: a block saved over unpaid phone bookings is still saved, and the page says how
+   * many are under it — after the save, and on the block's row while it is not past.
+   */
+  test("issue #1279 AC5: a boat out over two unpaid phone bookings: the notice and the row's tag carry the count", async ({ page }) => {
+    await unpaidPhoneBooking(INSIDE_BALANCE_WINDOW, DEMO.departureTimes[0]!);
+    await unpaidPhoneBooking(INSIDE_BALANCE_WINDOW, DEMO.departureTimes[1]!);
+    await signInAsAdmin(page, "eric");
+    await page.goto("/admin/blocks");
+
+    await boatOutOn(page, INSIDE_BALANCE_WINDOW);
+
+    await expect(page.getByTestId("blocked-notice")).toBeVisible();
+    await expect(page.getByTestId("unpaid-notice")).toHaveText(/\b2\b/);
+    const row = page.getByTestId("block-row").filter({ hasText: "Boat out" });
+    await expect(row.getByTestId("unpaid-tag")).toHaveText(/\b2\b/);
+  });
+
+  test("issue #1279 AC5: a boat out with no unpaid phone booking under it shows neither the notice nor the tag", async ({ page }) => {
+    await signInAsAdmin(page, "eric");
+    await page.goto("/admin/blocks");
+
+    await boatOutOn(page, INSIDE_BALANCE_WINDOW);
+
+    await expect(page.getByTestId("blocked-notice")).toBeVisible();
+    await expect(page.getByTestId("unpaid-notice")).toHaveCount(0);
+    await expect(page.getByTestId("unpaid-tag")).toHaveCount(0);
+  });
+
+  test("issue #1279 AC5: a past block over an unpaid phone booking carries no tag", async ({ page }) => {
+    const yesterday = addDays(TODAY, -1);
+    await unpaidPhoneBooking(INSIDE_BALANCE_WINDOW, DEMO.departureTimes[0]!, yesterday);
+    const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+    try {
+      await repo.saveBlock({
+        id: asId<"BlockId">("blk-e2e-past"),
+        kind: "vessel",
+        vesselId: asId<"VesselId">(DEMO.vesselId),
+        startDate: yesterday,
+        endDate: yesterday,
+      });
+    } finally {
+      await repo.close();
+    }
+    await signInAsAdmin(page, "eric");
+    await page.goto("/admin/blocks?past=1");
+
+    await expect(page.getByTestId("block-row").filter({ hasText: "Boat out" })).toHaveCount(1);
+    await expect(page.getByTestId("unpaid-tag")).toHaveCount(0);
   });
 });

@@ -10,12 +10,13 @@
  * web checkout's pending row belongs to the browser that started it (its holder token), not to
  * whoever holds a link. Anything else is `missing`, the same answer as no row at all.
  */
-import type { BookingInvoice, Reservation } from "../domain/entities.js";
+import type { Block, BookingInvoice, Offering, Reservation } from "../domain/entities.js";
+import { logSwallowed } from "../log.js";
 import { balanceDueOn, type CheckoutQuote, type ScreenTotals } from "./checkout-quote.js";
-import type { ReservationId } from "../domain/ids.js";
+import { asId, type ReservationId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
-import { balanceDates, insideBalanceWindow } from "./availability.js";
+import { balanceDates, hasDeparted, insideBalanceWindow, isSlotBlocked } from "./availability.js";
 import { hasBalance } from "./booking-invoice.js";
 import {
   attachPaymentIntent,
@@ -23,7 +24,9 @@ import {
   shownIsStale,
 } from "./create-departure-payment-intent.js";
 import { flexChargedCents } from "./discount.js";
+import { candidateTripMinutes, XOLA_TRIP_MINUTES } from "./hull-busy.js";
 import { depositOffered, dueNowCents, type PaymentConfig } from "./payment-config.js";
+import { recordTrail } from "./trail.js";
 
 /** What a payment link opens onto. The `/p` page renders one state per kind. */
 export type PayLinkState =
@@ -42,6 +45,59 @@ export function payLinkState(r: Reservation | null): PayLinkState {
     return { kind: "payable", reservation: r };
   }
   return { kind: "missing" };
+}
+
+/** What the customer's pay link may do now (issue #1279): `payLinkState`, plus a trip that has
+ *  left and a slot under a block. */
+export type PayLinkStateAt =
+  | PayLinkState
+  | { kind: "departed"; reservation: Reservation }
+  | { kind: "blocked"; reservation: Reservation };
+
+/**
+ * The check (issue #1279): may this pay link take money now? Only the customer's page and the Pay
+ * press ask it; the operator's booking page keeps `payLinkState`. The order is fixed: no row is
+ * `missing`; anything `payLinkState` does not call `payable` keeps that answer; then a trip that has
+ * left is `departed` (so a booking both departed and blocked reads departed); then a slot under a
+ * block is `blocked`; otherwise `payable`.
+ */
+export function payLinkStateAt(
+  r: Reservation | null,
+  at: { asOf: string; blocks: readonly Block[]; offering: Offering | null },
+): PayLinkStateAt {
+  const state = payLinkState(r);
+  if (state.kind !== "payable") return state;
+  const reservation = state.reservation;
+  if (reservation.date && reservation.time && hasDeparted(reservation.date, reservation.time, at.asOf)) {
+    return { kind: "departed", reservation };
+  }
+  if (slotBlockedFor(at.blocks, reservation, at.offering)) return { kind: "blocked", reservation };
+  return state;
+}
+
+/**
+ * Is this booking's slot under these blocks (issue #1279)? The one home of the rule, for the pay
+ * link's check and the blocks page's count. `isSlotBlocked` is the calendar's own function; the
+ * booking supplies its vessel, date and time, so a reservation without all three is never blocked.
+ * The location is the offering's, none when the offering is gone; the trip length is the
+ * reservation's own, else the offering's, else the Xola stand-in (as `block-impact.ts` falls back).
+ */
+export function slotBlockedFor(
+  blocks: readonly Block[],
+  r: Reservation,
+  offering: Pick<Offering, "locationId" | "tripLengthMinutes"> | null | undefined,
+): boolean {
+  if (!r.vesselId || !r.date || !r.time) return false;
+  const locationId = offering ? String(offering.locationId) : "";
+  const tripMinutes = r.tripMinutes ?? (offering ? candidateTripMinutes(offering) : XOLA_TRIP_MINUTES);
+  return isSlotBlocked(blocks, locationId, r.vesselId, r.date, r.time, tripMinutes);
+}
+
+/** An unpaid phone booking (issue #1279): an operator's reservation still pending — a comp waiting
+ *  to confirm included. The one home of the question, for the blocks page's count and the hold's
+ *  refusal. */
+export function isUnpaidPhoneBooking(r: Reservation): boolean {
+  return r.source === "admin" && r.status === "pending";
 }
 
 /** Did this cancelled booking take a card payment? Decides which Cancelled card `/p` shows
@@ -131,7 +187,7 @@ export type PayByLinkStart =
       ok: false;
       /** `paid`: the row is booked. `already_paid`: its intent was paid moments ago and the
        *  confirm hasn't landed yet (15.8) — either way, never a second charge. */
-      reason: "missing" | "paid" | "cancelled" | "already_paid";
+      reason: "missing" | "paid" | "cancelled" | "already_paid" | "departed" | "blocked";
     }
   | {
       ok: false;
@@ -151,7 +207,9 @@ export async function startPayByLink(
   reservationId: ReservationId,
   choice: { payDeposit: boolean; shownDueNowCents?: number; shownBalanceCents?: number },
 ): Promise<PayByLinkStart> {
-  const state = payLinkState(await deps.repo.getReservation(reservationId));
+  // The check (issue #1279), before Stripe is asked: the booking may since have been cancelled or
+  // blocked, or its trip may have left, since the form that pressed Pay was opened.
+  const { state, offering } = await readCheck(deps, reservationId);
   if (state.kind !== "payable") return { ok: false, reason: state.kind };
   const stored = state.reservation;
   const frozen = stored.invoice!; // payable means an operator's row with an invoice
@@ -187,7 +245,6 @@ export async function startPayByLink(
 
   // The dashboard line, shaped like checkout's (#679). The offering may have been renamed or
   // retired since the booking; the charge still goes through, named for what is left.
-  const offering = row.offeringId ? await deps.repo.getOffering(row.offeringId) : null;
   const guests = row.partySize ?? 0;
   const description = [
     `${offering?.name ?? "Charter"} — ${row.date ?? ""} ${row.time ?? ""}`.trim(),
@@ -196,7 +253,7 @@ export async function startPayByLink(
     "phone booking",
   ].join(" · ");
 
-  return attachPaymentIntent(
+  const attached = await attachPaymentIntent(
     deps,
     row,
     {
@@ -207,4 +264,60 @@ export async function startPayByLink(
     // What the last intent was minted for: the stored split, before this attempt rewrites it.
     { priorHadBalance: hasBalance(frozen) },
   );
+  if (!attached.ok) return attached;
+
+  // The second check (issue #1279), after Stripe answered and before the customer is handed the card
+  // form: the whole check again on fresh reads, reusing none of the first's values. The attempt can
+  // be seconds long, and a cancel, a block or the departure can land inside it. If it no longer
+  // passes, the payment this attempt made (or raised) is cancelled at Stripe and the customer
+  // never receives its client secret, so nothing can be paid on it.
+  const again = (await readCheck(deps, reservationId)).state;
+  if (again.kind !== "payable") {
+    await retireRefusedIntent(deps, reservationId, attached.paymentIntentId);
+    return { ok: false, reason: again.kind };
+  }
+  return attached;
+}
+
+/** One reading of the check: the reservation, the blocks, its offering and the clock. */
+async function readCheck(
+  deps: { repo: Repository; now: () => string },
+  reservationId: ReservationId,
+): Promise<{ state: PayLinkStateAt; offering: Offering | null }> {
+  const reservation = await deps.repo.getReservation(reservationId);
+  const blocks = await deps.repo.listBlocks();
+  const offering = reservation?.offeringId ? await deps.repo.getOffering(reservation.offeringId) : null;
+  return { state: payLinkStateAt(reservation, { asOf: deps.now(), blocks, offering }), offering };
+}
+
+/**
+ * Cancel the payment a refused attempt made, at Stripe, and say so in the history when the cancel
+ * took. Best-effort and never thrown: the customer is refused whether or not Stripe cancels, because
+ * they never received the secret, and a payment that lands anyway is the admin text's (AC7, AC8).
+ */
+async function retireRefusedIntent(
+  deps: { repo: Repository; payments: PaymentPort; now: () => string },
+  reservationId: ReservationId,
+  paymentIntentId: string,
+): Promise<void> {
+  try {
+    await deps.payments.cancelPaymentIntent(paymentIntentId, "abandoned");
+  } catch (e) {
+    logSwallowed(
+      "reservations:payLinkRefusedIntent",
+      e,
+      `could not cancel intent ${paymentIntentId} for a pay link that stopped being payable`,
+    );
+    return;
+  }
+  // Only when the cancel took: a `payment_superseded` row for an intent still payable would assert
+  // the one state somebody opens the history to check (issue #1051). Derived id, as in `attachPaymentIntent`.
+  await recordTrail(deps, {
+    id: asId<"TrailEventId">(`payment_superseded:${paymentIntentId}`),
+    reservationId,
+    paymentIntentId: asId<"PaymentIntentId">(paymentIntentId),
+    actorKind: "engine",
+    type: "payment_superseded",
+    metadata: { reason: "the booking stopped being payable while the payment was set up" },
+  });
 }

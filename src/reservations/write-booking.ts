@@ -54,7 +54,9 @@ export type ConfirmResult =
   //                  (`/security-review`). Unreachable today; loud if it ever happens.
   //   `not_comp`     the comp confirm only (DEC-194): the row is pending but is not an operator's
   //                  booking with $0 due and no payment started. It is the payment's to confirm.
-  | { outcome: "unconfirmable"; reason: "no_row" | "not_pending" | "unusable_row" | "not_comp" };
+  | { outcome: "unconfirmable"; reason: "no_row" | "unusable_row" | "not_comp" }
+  // `not_pending` carries the cancelled row (issue #1279): the admin text names its customer.
+  | { outcome: "unconfirmable"; reason: "not_pending"; reservation: Reservation };
 
 /**
  * Confirm the pending row that carries `paymentIntentId` (§2.8.6). Idempotent: a second run over
@@ -85,7 +87,7 @@ export async function confirmPendingRow(
   // Already flipped — a redelivered webhook, or the success page after the webhook. The intent
   // id on the booked row is the idempotency key now that the reservation id is not derived.
   if (row.status === "booked") return { outcome: "already", reservation: row };
-  if (row.status !== "pending") return { outcome: "unconfirmable", reason: "not_pending" };
+  if (row.status !== "pending") return { outcome: "unconfirmable", reason: "not_pending", reservation: row };
   return flipPendingRow(repo, row, now, paymentMethodId);
 }
 
@@ -109,7 +111,7 @@ export async function confirmCompedRow(
   const row = await repo.getReservation(reservationId);
   if (!row) return { outcome: "unconfirmable", reason: "no_row" };
   if (row.status === "booked") return { outcome: "already", reservation: row };
-  if (row.status !== "pending") return { outcome: "unconfirmable", reason: "not_pending" };
+  if (row.status !== "pending") return { outcome: "unconfirmable", reason: "not_pending", reservation: row };
   const isComp =
     row.source === "admin" &&
     row.invoice?.amountDueNowCents === 0 &&

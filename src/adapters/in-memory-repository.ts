@@ -85,6 +85,7 @@ import {
   type PaymentConfig,
 } from "../reservations/payment-config.js";
 import { slotIdentity } from "../reservations/availability.js";
+import { isLivePending } from "../reservations/pending.js";
 import {
   XOLA_TRIP_MINUTES,
   busyIntervalsFor,
@@ -650,7 +651,9 @@ export class InMemoryRepository implements Repository {
     // `RESERVATION_COLUMNS`, so a whole-row write neither sets nor clears them (issue #1250) —
     // `recordCheckoutAttempt` sets the customer once, the confirm flip sets the card.
     // The balance intent likewise (issue #1254): only `saveBalancePaymentIntentId` writes it.
-    const { stripeCustomerId: _c, stripePaymentMethodId: _p, balancePaymentIntentId: _b, ...incoming } = reservation;
+    // `paymentCheckedAt` too (issue #1236): only `markPaymentChecked` writes it.
+    const { stripeCustomerId: _c, stripePaymentMethodId: _p, balancePaymentIntentId: _b, paymentCheckedAt: _k, ...incoming } =
+      reservation;
     this.#reservations.set(
       reservation.id,
       clone({
@@ -663,6 +666,7 @@ export class InMemoryRepository implements Repository {
         ...(stored?.balancePaymentIntentId !== undefined
           ? { balancePaymentIntentId: stored.balancePaymentIntentId }
           : {}),
+        ...(stored?.paymentCheckedAt !== undefined ? { paymentCheckedAt: stored.paymentCheckedAt } : {}),
       }),
     );
   }
@@ -954,6 +958,31 @@ export class InMemoryRepository implements Repository {
     const row = this.#reservations.get(reservationId);
     if (!row || row.stripeCustomerId !== undefined) return;
     this.#reservations.set(reservationId, clone({ ...row, stripeCustomerId: customerId }));
+  }
+
+  // ── The reconciler (issue #1236) ───────────────────────────────────────────────────────────
+  async listCheckoutsToCheck(liveSince: string): Promise<Reservation[]> {
+    // `isLivePending` false is "timed out"; it also calls an admin row live, so `source` is checked
+    // beside it. A row with no `reservedAt` is off the list, which `isLivePending` alone would not do
+    // (`abandonedCheckouts` guards it the same way).
+    return [...this.#reservations.values()]
+      .filter(
+        (r) =>
+          r.status === "pending" &&
+          r.source === "muster" &&
+          r.reservedAt !== undefined &&
+          !isLivePending(r, liveSince) &&
+          (r.paymentIntentIds?.length ?? 0) > 0 &&
+          r.paymentCheckedAt === undefined,
+      )
+      .sort((a, b) => Date.parse(a.reservedAt!) - Date.parse(b.reservedAt!) || String(a.id).localeCompare(String(b.id)))
+      .map(clone);
+  }
+  async markPaymentChecked(reservationId: ReservationId, at: string): Promise<void> {
+    // Only while the column is empty, as the Postgres `where payment_checked_at is null`.
+    const row = this.#reservations.get(reservationId);
+    if (!row || row.paymentCheckedAt !== undefined) return;
+    this.#reservations.set(reservationId, clone({ ...row, paymentCheckedAt: at }));
   }
 
   // ── The scheduled balance charge (issue #1254) ─────────────────────────────────────────────

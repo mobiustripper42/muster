@@ -31,15 +31,18 @@
  * The copy below is unchanged and still points at the booking link, because the link is sent by
  * the confirm path either way and it is what the customer needs to keep.
  */
+import type { ReactNode } from "react";
 import { AppLink } from "../../../../components/ui/app-link";
 import { bookingDeps } from "../../../lib/booking-deps";
 import { confirmBookingByPaymentIntent } from "@core/reservations/confirm-booking.js";
 import {
   bookingOutcomeView,
+  NOT_BOOKED_VIEW_COPY,
   SOLD_OUT_VIEW_COPY,
 } from "@core/reservations/booking-outcome-view.js";
 import type { BookingOutcome } from "@core/reservations/booking-outcome-view.js";
 import { Card } from "../../../../components/ui/card";
+import { TENANT_NAME } from "../../../lib/tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,7 +62,8 @@ async function confirmFromRedirect(
     // **The outcome is RETURNED now, not discarded (15.5).** This used to be `Promise<void>` and
     // the page rendered "You're booked!" regardless — so the residual-race loser, whose boat went
     // to a rival and whose money is being refunded, was congratulated on a booking they did not
-    // get. Every other outcome still renders the success card; only `lost` is a known negative.
+    // get. `lost` and `unbookable` (issue #1279) are the known negatives, each with its own card;
+    // every other outcome still renders the success card.
     const result = await confirmBookingByPaymentIntent(bookingDeps(secretKey), paymentIntentId);
     return result.handled ? result.outcome : undefined;
   } catch (e) {
@@ -68,6 +72,34 @@ async function confirmFromRedirect(
     console.error("[book/success] confirm from redirect failed", e);
     return undefined;
   }
+}
+
+/**
+ * The card for a payment that did not become a booking (the sold-out race, issue #1279's not-booked
+ * case): the "!" mark, a heading and a lead, the body as `children`, and a quiet link back to `/book`.
+ */
+function OutcomeCard(props: { heading: string; lead: string; action: string; children: ReactNode }) {
+  return (
+    <main className="mx-auto max-w-lg px-4 py-16">
+      <Card pad="none" className="overflow-hidden">
+        <div className="border-b border-line px-6 py-7 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-warn-bg text-2xl text-warn">
+            !
+          </div>
+          <h1 className="text-[22px] font-semibold">{props.heading}</h1>
+          <p className="mt-1.5 text-[13px] text-muted">{props.lead}</p>
+        </div>
+        <div className="px-6 py-6 text-[13.5px] text-muted">
+          {props.children}
+          <div className="mt-5">
+            <AppLink href="/book" className="btn-quiet text-[13px]">
+              {props.action} →
+            </AppLink>
+          </div>
+        </div>
+      </Card>
+    </main>
+  );
 }
 
 export default async function BookingSuccessPage(props: {
@@ -82,31 +114,32 @@ export default async function BookingSuccessPage(props: {
   // on its way back. Its own card, because every word of the success card below is false here.
   if (view.kind === "sold_out") {
     return (
-      <main className="mx-auto max-w-lg px-4 py-16">
-        <Card pad="none" className="overflow-hidden">
-          <div className="border-b border-line px-6 py-7 text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-warn-bg text-2xl text-warn">
-              !
-            </div>
-            <h1 className="text-[22px] font-semibold">{SOLD_OUT_VIEW_COPY.heading}</h1>
-            <p className="mt-1.5 text-[13px] text-muted">{SOLD_OUT_VIEW_COPY.lead}</p>
-          </div>
-          <div className="px-6 py-6 text-[13.5px] text-muted">
-            <p>
-              <b className="text-ink">Your card was charged and refunded in full right away.</b> Refunds usually take a
-              few days to show up on a statement. You have not lost any money, and there is nothing you need to do.
-            </p>
-            <p className="mt-4 text-[12px] text-muted">
-              We’ve texted you this as well, so you have a record of it.
-            </p>
-            <div className="mt-5">
-              <AppLink href="/book" className="btn-quiet text-[13px]">
-                {SOLD_OUT_VIEW_COPY.action} →
-              </AppLink>
-            </div>
-          </div>
-        </Card>
-      </main>
+      <OutcomeCard heading={SOLD_OUT_VIEW_COPY.heading} lead={SOLD_OUT_VIEW_COPY.lead} action={SOLD_OUT_VIEW_COPY.action}>
+        <p>
+          <b className="text-ink">Your card was charged and refunded in full right away.</b> Refunds usually take a
+          few days to show up on a statement. You have not lost any money, and there is nothing you need to do.
+        </p>
+        <p className="mt-4 text-[12px] text-muted">
+          We’ve texted you this as well, so you have a record of it.
+        </p>
+      </OutcomeCard>
+    );
+  }
+
+  // They paid and the booking could not be made (issue #1279): nothing is refunded, the admins were
+  // texted, and a person will be in touch. The same card as the sold-out one, for the same reason.
+  if (view.kind === "not_booked") {
+    const body = NOT_BOOKED_VIEW_COPY.body(TENANT_NAME);
+    return (
+      <OutcomeCard
+        heading={NOT_BOOKED_VIEW_COPY.heading}
+        lead={NOT_BOOKED_VIEW_COPY.lead}
+        action={NOT_BOOKED_VIEW_COPY.action}
+      >
+        <p>
+          <b className="text-ink">{body.bold}</b> {body.rest}
+        </p>
+      </OutcomeCard>
     );
   }
 

@@ -874,6 +874,11 @@ export async function processBookingCharge(
   // AC7): every admin is texted the customer, the amount and the booking's link, and refunds it by
   // hand. Nothing is booked, recorded or refunded here — the text is the only trace.
   if (result.outcome === "unconfirmable" && result.reason === "not_pending") {
+    // **Not this case if this payment is already on the booking** (issue #1279 AC7): a booking that
+    // was paid, booked and cancelled later holds this intent's Payment. The money has its own record
+    // and its refund is the cancel's, so there is nothing to text and nothing to write.
+    const held = await deps.repo.listPaymentsForReservation(result.reservation.id);
+    if (held.some((p) => p.id === paymentIdFor(charge.key))) return { handled: true, outcome: "ignored" };
     await deps.alertPaidButUnbooked(
       paidOnCancelledAlertText(result.reservation, charge.amountCents),
       bookingPanePath(result.reservation.id),

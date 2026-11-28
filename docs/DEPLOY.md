@@ -350,7 +350,7 @@ Muster does not refund these itself (DEC-206). Every active admin gets a text na
 the amount, with a link to the booking. Both are rare; the second one is told apart by its wording.
 
 - **"…paid $X on a booking that was already cancelled."** Nothing was booked, recorded or refunded, and
-  the booking has no payment on it, so the Refund box cannot send it back. In Stripe, find the customer's
+  this charge is not on the booking, so the Refund box cannot send it back. In Stripe, find the customer's
   payment, refund it in full from the dashboard, and message the customer. The page they saw after paying
   said the trip could not be booked and the office had been told.
 - **"…paid twice for one booking. The second payment is $X."** The second payment is on the booking and

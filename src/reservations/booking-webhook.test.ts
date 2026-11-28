@@ -2806,6 +2806,58 @@ describe("processBookingCharge — a payment on a cancelled booking (issue #1279
     expect(await repo.getReservation(PEND)).toEqual(cancelled);
   });
 
+  /** Paid on `paidOn` and booked, then cancelled later. The trip carries a tip, so a Gratuity
+   *  would show if one were written. Stripe refuses to retire the row's other intents. */
+  async function bookedThenCancelled(paidOn: string, intents: string[]) {
+    const repo = new InMemoryRepository();
+    const amount = 58625;
+    await seedPending(repo, {
+      invoice: { ...pendingRow().invoice!, gratuityCents: 5000, gratuityBps: 1000, totalCents: amount, amountDueNowCents: amount },
+      paymentIntentIds: intents,
+    });
+    const payments = new FakePaymentPort();
+    payments.cancelError = new Error("Stripe refused the cancel");
+    const made = makeDeps(repo, payments);
+    expect(await processBookingWebhook(made.deps, bookingPi(paidOn, amount), FAKE_SIGNATURE)).toEqual({
+      handled: true,
+      outcome: "booked",
+    });
+    await repo.saveReservation({ ...(await repo.getReservation(PEND))!, status: "cancelled" });
+    const cancelled = (await repo.getReservation(PEND))!;
+    expect(await repo.listPaymentsForReservation(PEND)).toHaveLength(1);
+    return { repo, ...made, amount, cancelled };
+  }
+
+  it("AC7: a cancelled booking already holding a Payment for this intent is ignored — no text, nothing written, still cancelled", async () => {
+    const { repo, deps, alert, payments, amount, cancelled } = await bookedThenCancelled(PI, [PI]);
+    const paymentsBefore = await repo.listPaymentsForReservation(PEND);
+    const tipsBefore = await repo.listGratuitiesForReservation(PEND);
+    const savePayment = vi.spyOn(repo, "savePayment");
+    const saveGratuity = vi.spyOn(repo, "saveGratuity");
+
+    const r = await processBookingWebhook(deps, bookingPi(PI, amount), FAKE_SIGNATURE);
+
+    expect(r).toEqual({ handled: true, outcome: "ignored" });
+    expect(alert).not.toHaveBeenCalled();
+    expect(savePayment).not.toHaveBeenCalled();
+    expect(saveGratuity).not.toHaveBeenCalled();
+    expect(payments.refunds).toEqual([]);
+    expect(await repo.listPaymentsForReservation(PEND)).toEqual(paymentsBefore);
+    expect(await repo.listGratuitiesForReservation(PEND)).toEqual(tipsBefore);
+    expect(await repo.getReservation(PEND)).toEqual(cancelled);
+  });
+
+  it("AC7: a cancelled booking holding only another intent's Payment is still texted", async () => {
+    const B = "pi_B";
+    const { repo, deps, alert, amount, cancelled } = await bookedThenCancelled(PI, [PI, B]);
+
+    const r = await processBookingWebhook(deps, bookingPi(B, amount), FAKE_SIGNATURE);
+
+    expect(r).toEqual({ handled: true, outcome: "unbookable" });
+    expect(alert).toHaveBeenCalledExactlyOnceWith(paidOnCancelledAlertText(cancelled, amount), bookingPanePath(PEND));
+    expect(await repo.getReservation(PEND)).toEqual(cancelled);
+  });
+
   it("AC7: a pending row missing its invoice (unusable_row) is alerted as today — once, with no link", async () => {
     const repo = new InMemoryRepository();
     const { invoice: _invoice, ...unusable } = pendingRow();

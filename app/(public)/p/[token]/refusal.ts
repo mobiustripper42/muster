@@ -19,6 +19,6 @@ export const REFUSAL: Record<
   stale: PRICE_CHANGED_MESSAGE,
   // The pay link's check (issue #1279): the page renders these two words for its own two states,
   // and a Pay press on a form opened earlier is refused with the same.
-  departed: "This trip has already left, so it can't be paid for here. Nothing was charged.",
-  blocked: `This trip can't be paid for right now. Nothing was charged. Please contact ${TENANT_NAME} before you try again.`,
+  departed: "This trip has already left, so it can’t be paid for here. Nothing was charged.",
+  blocked: `This trip can’t be paid for right now. Nothing was charged. Please contact ${TENANT_NAME} before you try again.`,
 };

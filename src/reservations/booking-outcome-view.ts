@@ -75,11 +75,11 @@ export const SOLD_OUT_VIEW_COPY = {
  * `TENANT_NAME`, so it is built from the name the page passes in; its first sentence is the bold one.
  */
 export const NOT_BOOKED_VIEW_COPY = {
-  heading: "We couldn't book this trip",
+  heading: "We couldn’t book this trip",
   lead: "Your payment went through, but the booking could not be confirmed.",
   body: (tenantName: string) => ({
     bold: `Your card was charged, and ${tenantName} has been told.`,
-    rest: "They'll be in touch to put it right. There is nothing you need to do.",
+    rest: "They’ll be in touch to put it right. There is nothing you need to do.",
   }),
   action: "Find another trip",
 } as const;

@@ -62,7 +62,8 @@ async function confirmFromRedirect(
     // **The outcome is RETURNED now, not discarded (15.5).** This used to be `Promise<void>` and
     // the page rendered "You're booked!" regardless — so the residual-race loser, whose boat went
     // to a rival and whose money is being refunded, was congratulated on a booking they did not
-    // get. Every other outcome still renders the success card; only `lost` is a known negative.
+    // get. `lost` and `unbookable` (issue #1279) are the known negatives, each with its own card;
+    // every other outcome still renders the success card.
     const result = await confirmBookingByPaymentIntent(bookingDeps(secretKey), paymentIntentId);
     return result.handled ? result.outcome : undefined;
   } catch (e) {

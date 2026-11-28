@@ -163,7 +163,7 @@ try {
   const blockedDate = addDays(today, 25);
   const noor = await phoneBook(blockedDate, "13:30", "Noor Castellanos", "440-555-1279", { guestCount: 2 });
   if (noor) {
-    await saveBlockAdmin(repo, {
+    const blocked = await saveBlockAdmin(repo, {
       id: `blk-seed-pay-link-${blockedDate}`,
       kind: "vessel",
       vesselId: demo.vesselId,
@@ -171,7 +171,11 @@ try {
       endDate: blockedDate,
       note: "pay-link seed",
     });
-    show(noor, `under a boat out: a notice, no card form; /admin/blocks shows ⚠ 1 unpaid booking on that block`);
+    if (blocked.ok) {
+      show(noor, `under a boat out: a notice, no card form; /admin/blocks shows ⚠ 1 unpaid booking on that block`);
+    } else {
+      console.log(`The boat out for ${blockedDate} was not saved (${blocked.code}), so that booking's link is still payable.`);
+    }
   }
 } finally {
   await repo.close();
